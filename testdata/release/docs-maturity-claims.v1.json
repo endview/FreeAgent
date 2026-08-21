@@ -1,0 +1,699 @@
+{
+    "schema_version":  "v1",
+    "entries":  [
+                    {
+                        "path":  "README.md",
+                        "line_sha256":  "737485a4c23ba5022fea82591ae5f364fade8bdf3f7573706a596a924e9d2941",
+                        "kind":  "POLICY",
+                        "claims":  [],
+                        "policy":  {
+                                       "syntax":  "NEGATION",
+                                       "subject":  "MATURITY"
+                                   },
+                        "reason":  "W2-R2 non-production maturity boundary"
+                    },
+                    {
+                        "path":  "docs/CURRENT_CAPABILITIES.md",
+                        "line_sha256":  "737485a4c23ba5022fea82591ae5f364fade8bdf3f7573706a596a924e9d2941",
+                        "kind":  "POLICY",
+                        "claims":  [],
+                        "policy":  {
+                                       "syntax":  "NEGATION",
+                                       "subject":  "MATURITY"
+                                   },
+                        "reason":  "W2-R2 non-production maturity boundary"
+                    },
+                    {
+                        "path":  "docs/MODULE_DEVELOPMENT_V1.md",
+                        "line_sha256":  "f8cce5a52c75a519b3603858845e48b1effb628aa221d419bd55d8fafdf94fcd",
+                        "kind":  "POLICY",
+                        "claims":  [],
+                        "policy":  {
+                                       "syntax":  "NEGATION",
+                                       "subject":  "MATURITY"
+                                   },
+                        "reason":  "W2-R2 non-production maturity boundary"
+                    },
+                    {
+                        "path":  "docs/PRD.md",
+                        "line_sha256":  "737485a4c23ba5022fea82591ae5f364fade8bdf3f7573706a596a924e9d2941",
+                        "kind":  "POLICY",
+                        "claims":  [],
+                        "policy":  {
+                                       "syntax":  "NEGATION",
+                                       "subject":  "MATURITY"
+                                   },
+                        "reason":  "W2-R2 non-production maturity boundary"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "00f1bd2c9c4f3b24173028d2e0e124d9385ed04ba0c235baa62bbf000ec016d0",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.cache.singleflight-enforcement",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "0fecefa3d02642547bba78e665f9e7d1c0f32ced14680c199e77dc41506e8953",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "extension-host.mcp.lifecycle-recovery",
+                                           "claimed_status":  "planned"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "100adc7b4ba611d98aec25e1a2abc973efb59eaed2508d8450bffaf7c4eeb88e",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.memory.delivery-lineage",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "12db74f00605d4deb98f53b209ceb8e966700e38af42d31d10ee96256886a46d",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.persona.static-fidelity",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "14a05e9279a31bdc57e1981b54c3717aa06120275a76efe836f1911d1d107d6a",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.backup.cursor-restore",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "189e826ac8c8035e214b685d908dac2b381cffd5889282a5c2b8ee2ee46261bd",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.governance.rejected-source",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "226a96ae8520ada86768c7b5b9c640aa1bafe90717a4de646416257b2d197a87",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.channel.local-chat",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "331038ea83f3456af1b7f4e19e3040abaa814fe6d1617ee317c414a05d6f5363",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.channel.cursor-cas",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "33f5310ac8a154b800790d2602ab73117927be08ede700ed573b0c3280797f2d",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "extension-host.mcp.transports",
+                                           "claimed_status":  "planned"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "36e00f039fd9e3be108d6763fafa516147b7d7fd63308984d9aeb752442a7e14",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "extension-host.member.exact-locks",
+                                           "claimed_status":  "planned"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "371e3d987d9c535a781f96b43dffb5edbcc6614b2a2a065f882d63d92d45185c",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.chat.multi-turn-continuity",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "3b4e3047ed3370de51db6ff371b9c1894a0904e24a39ad4f4d516cd21b2a6115",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "external-adapter.channel.telegram",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "3f1d1132a313280eedcf32638ba4058662c94c9cfb5439da52b625cf66949efd",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.effect.model-ledger",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "3fb99ab979c7f3ec3bbb795fb310a173dae1ee788d9814e13e4931b01fef8b2f",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.model.reservation",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "40dd6fe7e47b1a090d659dee032ba14883eba5234cae89d5e09a89c463ad8878",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "extension-host.schemas.public",
+                                           "claimed_status":  "planned"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "566be6e393096e25487fd309c7b56b09ab2766b562c7bf1b58d50ca7723ff050",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.model.reasoning-summary",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "5f6794cc1ac70c2c443d2431da0c6ffc8dd80e6b6c591593e29cc34742043cf8",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.lifecycle.graceful-drain",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "610970146ead2740879952cb0ae6146c59038f12c7f6b901b674262b54591706",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.governance.reports",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "695a7168bd9cd787aeea9aead25c97bfc21847baad6e74707efcc1df00828571",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.workspace.identity-acl",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "6b41b257b257f850aec4938cee34add811951bbfc8b27899d6b0a0b3ffc13a2f",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.chat.pure-execution",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "728a019546f4da9792cc45221b66526a4a3afb0d1df6556593346889b3b4c8ef",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "external-adapter.channel.lark",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "7648d0c22a9e620c2089f86cc1fd38d2385f788991ee8bc4b43c5f685747efe6",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.memory.lease-commit",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "7a81d22d67d1342c31b5dcea861dfe732c67780e8bce28e837a6f853c1efefcd",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.run.frozen-assembly",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "7fde61b18a57ae9c92ad99f7d2e164f62814a057b479864b5b6c9a587eedddf0",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.model.evaluation-routing",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "84dda316ac63ab21be0f5d8ec3f75c1c6576df38fa68bc17d7fd7722869c44b8",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.workspace.fair-scheduling",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "965318cc8a544bd205631abd0a36aa2eb8bb141b8c69e7013586934627dde08b",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.team.selection",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "976933c74e2ad5f652319d1c750d43b3dba48cb2951574f6c60ff025c123b6b5",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "external-adapter.channel.weixin-ilink",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "97876184c74dc152831e40c81a1a1bea982f916a475fe1629ad392e5c8980034",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.context.direct-eviction",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "9b9fcf6aa29333a84aa55171515bf978c97438a01701f958e4f0b144bb67f257",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.effect.channel-ledger",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "9bfc72a11c080e0eb86513444c981c27cab5278501f24aa983c87dc1698fd8f5",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.role.module-fidelity",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "a83cb09c9149f687eaf3e2806e09968e7481e97b64936b22c8c11e6841eddddf",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.memory.backfill",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "a92c5bba1e373c77c877e03c5e9e351e19af10207452f159e3d3bd38339659f9",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.team.bounded-repair",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "b680eed1431adf0ebf1be6f68ce5deda392c0f3d461b2f180a6d08f9d2b788bb",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.backup.complete",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "b6d7769e17ac4f50edf47c0c03da3fba439f57e36b886d5817473a8e18f0d55d",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.cache.cold-family-policy",
+                                           "claimed_status":  "planned"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "c3e8d8c6ee76bfb987c48e717efe2d6f310de80f5e2145464df59076b2235599",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.channel.redirect-safety",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "cfa364ed6e906dd9bac25450758f4c64266019431756e6bf0c71e432e01e0f92",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.database.identity-migrations",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "d205a924145bd5763b3b7db7ccafa8071bdd53dd1113d47a9e56baba6df08490",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "extension-host.skill.governance",
+                                           "claimed_status":  "planned"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "d55ff454ad67cd2d34a713609474ab81f88b0e5a317ab859f59f2fbd8a83325c",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.context.summary-checkpoint",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "d8f7ad2020f5ab2254e1ce30ae951f970e642654f7bb5bc79106db294d3c3afd",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.privacy.deletion",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "da25d6a5b4670d8bfc499765d53b18ca7409fac48a886853b2d7475dc8cc0130",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.toolgateway.final-authorization",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "dec7eda2476f7b51b69bcfe3a961064fa7f5d0fcafa9e90dd4f70dec572008fe",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.team.parallel-review",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "e7e10c99a5d489cb3208a2b038d5c8277f87f34ab92bf095250fdee814e45ee7",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.effect.tool-ledger",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "e89721c4fc75de60e537959f9ae9b9cc7e280fdbcfaca68093cbf15faf1192a0",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.governance.maintenance",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "eaa3fc26eaa165158602c1db9105232523f6fb98db8c12d4e0fd7f0fd4a438c2",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.rag.shared-authorized",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "ead7b48220e9a11d8c54095156d0e9e2e396513b4bb4c75096e7f0b6471695a6",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "external-adapter.channel.qqbot",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "ec19c850958356473cbff3ec46547d11f128c4c7b1b41653d2a30ac2d0d245a6",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.model.usage-observation",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "ece59723146da4e23f7b8d3243e069eaa6b7997d2919954e25464ef441f5462a",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.chat.default-pure-profile",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "eebdeed6f0353de63db62cf2ceeb753adb01eb2e63e4c545bb9cc1e3f77ef605",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "core.runtime-attempt-generation",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/RELEASE_MATURITY.md",
+                        "line_sha256":  "ef709f375a8b462caa5d279008cd0c6b80fc5fabb86c5d718e1823e32db7af58",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "first-party.rag.modes",
+                                           "claimed_status":  "unverified"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "historical baseline evidence heading"
+                    },
+                    {
+                        "path":  "docs/specs/CAPABILITY_PRESERVATION.md",
+                        "line_sha256":  "5cb524c13df4e25b15e0ae8b5451ac27bfe2ac9b826ae1638547c71e88e93ae8",
+                        "kind":  "CAPABILITY",
+                        "claims":  [
+                                       {
+                                           "capability_id":  "extension-host.mcp.transports",
+                                           "claimed_status":  "planned"
+                                       }
+                                   ],
+                        "policy":  null,
+                        "reason":  "extension execution boundary maturity statement"
+                    }
+                ]
+}

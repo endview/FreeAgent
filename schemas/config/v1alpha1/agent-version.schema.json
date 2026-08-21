@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.freeagent.io/config/v1alpha1/agent-version.schema.json",
+  "title": "FreeAgent AgentVersion v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "tenant_id",
+    "agent_id",
+    "version_id",
+    "type_labels",
+    "routing",
+    "trust",
+    "cost_weight",
+    "bindings",
+    "policy",
+    "hash"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "freeagent.io/v1alpha1"
+    },
+    "kind": {
+      "const": "AgentVersion"
+    },
+    "tenant_id": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/identifier"
+    },
+    "agent_id": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/identifier"
+    },
+    "version_id": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/exactVersion"
+    },
+    "type_labels": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/typeLabel"
+      }
+    },
+    "routing": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/routingHints"
+    },
+    "trust": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "cost_weight": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "bindings": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/bindingSet"
+    },
+    "policy": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/agentBindingPolicy"
+    },
+    "hash": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/hashOrEmpty"
+    }
+  }
+}

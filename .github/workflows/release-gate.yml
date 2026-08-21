@@ -1,0 +1,1377 @@
+name: Release Gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  permanent-gates:
+    name: Permanent public release gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      proof_complete: ${{ steps.finalize.outputs.run_succeeded }}
+    steps:
+      - name: Check out exact workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          clean: true
+          set-safe-directory: false
+
+      - name: Prepare authenticated release workspace
+        id: prepare
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path $env:GITHUB_WORKSPACE 'scripts/Invoke-CIWorkflowControl.ps1'
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          if ($bytes.Length -gt 4194304) { throw 'Workflow control file is too large.' }
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $utf8 = New-Object Text.UTF8Encoding($false, $true)
+          $source = $utf8.GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          $control = [ScriptBlock]::Create($source)
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $probe = $runnerTemp
+          while (-not [string]::IsNullOrWhiteSpace($probe)) {
+            if (Test-Path -LiteralPath $probe) {
+              $probeItem = Get-Item -LiteralPath $probe -Force
+              if (($probeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Runner temp ancestry is not trusted.'
+              }
+            }
+            $parent = [IO.Path]::GetDirectoryName($probe)
+            if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $probe) { break }
+            $probe = $parent
+          }
+          $base = Join-Path $runnerTemp 'freeagent-release-job'
+          if (Test-Path -LiteralPath $base) { throw 'Release workspace already exists.' }
+          $controlDirectory = [IO.Directory]::CreateDirectory((Join-Path $base 'control')).FullName
+          $snapshot = Join-Path $controlDirectory 'workflow-control.ps1'
+          $stream = New-Object IO.FileStream(
+            $snapshot,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+          )
+          try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+          } finally { $stream.Dispose() }
+          & $control `
+            -Prepare `
+            -JobKind permanent `
+            -BaseRoot $base `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -Revision $env:GITHUB_SHA `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -GitHubEnvironmentPath $env:GITHUB_ENV
+
+      - name: Initialize authenticated job evidence
+        id: initialize
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Initialize -JobKind permanent -BaseRoot $env:CIWC_BASE
+
+      - name: Set up Go from sealed go.mod
+        id: setup
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: ${{ steps.prepare.outputs.stage }}/go.mod
+          cache: false
+          check-latest: false
+
+      - name: Set up exact Node from sealed control-web policy
+        id: setup-node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ${{ steps.prepare.outputs.stage }}/internal/controlweb/.node-version
+          cache: false
+          check-latest: false
+          package-manager-cache: false
+
+      - name: Authenticate external npm 12 tool
+        id: setup-npm
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          FREEAGENT_NPM_TARBALL_URL: https://registry.npmjs.org/npm/-/npm-12.0.2.tgz
+          FREEAGENT_NPM_TARBALL_SHA512: uIXokLlBj6FpNUTQX1PmT5pz7BlIN9QlixX+zdaSNHsd0qUXsbDLr50xzY6Sw7cJVr0uzHKDOle0swmPW/p5Qw==
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path ([IO.Path]::GetFullPath($env:RUNNER_TEMP)) 'freeagent-npm-12.0.2'
+          if (Test-Path -LiteralPath $root) { throw 'npm tool workspace already exists.' }
+          [void][IO.Directory]::CreateDirectory($root)
+          $archive = Join-Path $root 'npm-12.0.2.tgz'
+          $handler = New-Object Net.Http.HttpClientHandler
+          $handler.AllowAutoRedirect = $false
+          $client = New-Object Net.Http.HttpClient($handler)
+          try {
+            $response = $client.GetAsync($env:FREEAGENT_NPM_TARBALL_URL).GetAwaiter().GetResult()
+            if ([int]$response.StatusCode -ne 200) { throw 'npm tarball download failed.' }
+            [byte[]]$bytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+          } finally {
+            $client.Dispose()
+            $handler.Dispose()
+          }
+          if ($bytes.Length -le 0 -or $bytes.Length -gt 16777216) {
+            throw 'npm tarball size is invalid.'
+          }
+          $sha = [Security.Cryptography.SHA512]::Create()
+          try { $actual = [Convert]::ToBase64String($sha.ComputeHash($bytes)) }
+          finally { $sha.Dispose() }
+          if ($actual -cne $env:FREEAGENT_NPM_TARBALL_SHA512) {
+            throw 'npm tarball authentication failed.'
+          }
+          $stream = New-Object IO.FileStream(
+            $archive,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+          )
+          try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+          } finally { $stream.Dispose() }
+          $extract = [IO.Directory]::CreateDirectory((Join-Path $root 'extract')).FullName
+          $tar = Get-Command tar -CommandType Application -ErrorAction Stop | Select-Object -First 1
+          & $tar.Source -xzf $archive -C $extract
+          if ($LASTEXITCODE -ne 0) { throw 'npm tarball extraction failed.' }
+          $cli = [IO.Path]::GetFullPath((Join-Path $extract 'package/bin/npm-cli.js'))
+          $probe = $cli
+          while (-not [string]::IsNullOrWhiteSpace($probe)) {
+            $item = Get-Item -LiteralPath $probe -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+              throw 'npm CLI ancestry contains a reparse point.'
+            }
+            if ($probe -ceq $root) { break }
+            $parent = [IO.Path]::GetDirectoryName($probe)
+            if ([string]::IsNullOrWhiteSpace($parent) -or $parent -ceq $probe) {
+              throw 'npm CLI escaped its authenticated workspace.'
+            }
+            $probe = $parent
+          }
+          $cliItem = Get-Item -LiteralPath $cli -Force
+          if (-not ($cliItem -is [IO.FileInfo]) -or $cliItem.Length -gt 1048576) {
+            throw 'npm CLI is invalid.'
+          }
+          $node = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          $nodeVersion = (& $node --version | Out-String).Trim()
+          $npmVersion = (& $node $cli --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $nodeVersion -cne 'v24.19.0' -or $npmVersion -cne '12.0.2') {
+            throw 'Node or npm tool version is invalid.'
+          }
+          [IO.File]::AppendAllText(
+            $env:GITHUB_ENV,
+            "FREEAGENT_NPM_CLI=$cli`n",
+            (New-Object Text.UTF8Encoding($false))
+          )
+
+      - name: Run authenticated permanent gates
+        id: run
+        if: ${{ !cancelled() && steps.initialize.outcome == 'success' && steps.setup.outcome == 'success' && steps.setup-node.outcome == 'success' && steps.setup-npm.outcome == 'success' }}
+        shell: pwsh
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Run -JobKind permanent -BaseRoot $env:CIWC_BASE
+
+      - name: Finalize authenticated job outputs
+        id: finalize
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.initialize.outcome == 'success' && (steps.run.outcome == 'success' || steps.run.outcome == 'failure') }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Finalize `
+            -JobKind permanent `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -GitHubOutputPath $env:GITHUB_OUTPUT
+
+  linux-quality:
+    name: Linux quality and ordinary tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      proof_complete: ${{ steps.finalize.outputs.run_succeeded }}
+    steps:
+      - name: Check out exact workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          clean: true
+          set-safe-directory: false
+
+      - name: Prepare authenticated release workspace
+        id: prepare
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path $env:GITHUB_WORKSPACE 'scripts/Invoke-CIWorkflowControl.ps1'
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          if ($bytes.Length -gt 4194304) { throw 'Workflow control file is too large.' }
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $utf8 = New-Object Text.UTF8Encoding($false, $true)
+          $source = $utf8.GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          $control = [ScriptBlock]::Create($source)
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $probe = $runnerTemp
+          while (-not [string]::IsNullOrWhiteSpace($probe)) {
+            if (Test-Path -LiteralPath $probe) {
+              $probeItem = Get-Item -LiteralPath $probe -Force
+              if (($probeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Runner temp ancestry is not trusted.'
+              }
+            }
+            $parent = [IO.Path]::GetDirectoryName($probe)
+            if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $probe) { break }
+            $probe = $parent
+          }
+          $base = Join-Path $runnerTemp 'freeagent-release-job'
+          if (Test-Path -LiteralPath $base) { throw 'Release workspace already exists.' }
+          $controlDirectory = [IO.Directory]::CreateDirectory((Join-Path $base 'control')).FullName
+          $snapshot = Join-Path $controlDirectory 'workflow-control.ps1'
+          $stream = New-Object IO.FileStream(
+            $snapshot,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+          )
+          try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+          } finally { $stream.Dispose() }
+          & $control `
+            -Prepare `
+            -JobKind linux-quality `
+            -BaseRoot $base `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -Revision $env:GITHUB_SHA `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -GitHubEnvironmentPath $env:GITHUB_ENV
+
+      - name: Initialize authenticated job evidence
+        id: initialize
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Initialize -JobKind linux-quality -BaseRoot $env:CIWC_BASE
+
+      - name: Set up Go from sealed go.mod
+        id: setup
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: ${{ steps.prepare.outputs.stage }}/go.mod
+          cache: false
+          check-latest: false
+
+      - name: Run authenticated Linux quality job
+        id: run
+        if: ${{ !cancelled() && steps.initialize.outcome == 'success' }}
+        shell: pwsh
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Run -JobKind linux-quality -BaseRoot $env:CIWC_BASE
+
+      - name: Finalize authenticated job outputs
+        id: finalize
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.initialize.outcome == 'success' && (steps.run.outcome == 'success' || steps.run.outcome == 'failure') }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Finalize `
+            -JobKind linux-quality `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -GitHubOutputPath $env:GITHUB_OUTPUT
+
+      - name: Upload verified Linux ordinary evidence
+        id: upload
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-evidence-linux-ordinary
+          path: ${{ steps.prepare.outputs.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: false
+          overwrite: false
+
+      - name: Seal local artifact after upload attempt
+        id: seal
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+          CIWC_ARTIFACT_SET_SHA256: ${{ steps.finalize.outputs.artifact_set_sha256 }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Seal `
+            -JobKind linux-quality `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -ExpectedArtifactSetSha256 $env:CIWC_ARTIFACT_SET_SHA256
+
+  windows:
+    name: Windows ordinary tests and build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    outputs:
+      proof_complete: ${{ steps.finalize.outputs.run_succeeded }}
+    steps:
+      - name: Check out exact workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          clean: true
+          set-safe-directory: false
+
+      - name: Prepare authenticated release workspace
+        id: prepare
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path $env:GITHUB_WORKSPACE 'scripts/Invoke-CIWorkflowControl.ps1'
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          if ($bytes.Length -gt 4194304) { throw 'Workflow control file is too large.' }
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $utf8 = New-Object Text.UTF8Encoding($false, $true)
+          $source = $utf8.GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          $control = [ScriptBlock]::Create($source)
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $probe = $runnerTemp
+          while (-not [string]::IsNullOrWhiteSpace($probe)) {
+            if (Test-Path -LiteralPath $probe) {
+              $probeItem = Get-Item -LiteralPath $probe -Force
+              if (($probeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Runner temp ancestry is not trusted.'
+              }
+            }
+            $parent = [IO.Path]::GetDirectoryName($probe)
+            if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $probe) { break }
+            $probe = $parent
+          }
+          $base = Join-Path $runnerTemp 'freeagent-release-job'
+          if (Test-Path -LiteralPath $base) { throw 'Release workspace already exists.' }
+          $controlDirectory = [IO.Directory]::CreateDirectory((Join-Path $base 'control')).FullName
+          $snapshot = Join-Path $controlDirectory 'workflow-control.ps1'
+          $stream = New-Object IO.FileStream(
+            $snapshot,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+          )
+          try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+          } finally { $stream.Dispose() }
+          & $control `
+            -Prepare `
+            -JobKind windows `
+            -BaseRoot $base `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -Revision $env:GITHUB_SHA `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -GitHubEnvironmentPath $env:GITHUB_ENV
+
+      - name: Initialize authenticated job evidence
+        id: initialize
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Initialize -JobKind windows -BaseRoot $env:CIWC_BASE
+
+      - name: Set up Go from sealed go.mod
+        id: setup
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: ${{ steps.prepare.outputs.stage }}/go.mod
+          cache: false
+          check-latest: false
+
+      - name: Run authenticated Windows job
+        id: run
+        if: ${{ !cancelled() && steps.initialize.outcome == 'success' }}
+        shell: pwsh
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Run -JobKind windows -BaseRoot $env:CIWC_BASE
+
+      - name: Finalize authenticated job outputs
+        id: finalize
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.initialize.outcome == 'success' && (steps.run.outcome == 'success' || steps.run.outcome == 'failure') }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Finalize `
+            -JobKind windows `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -GitHubOutputPath $env:GITHUB_OUTPUT
+
+      - name: Upload verified Windows ordinary evidence
+        id: upload
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-evidence-windows-ordinary
+          path: ${{ steps.prepare.outputs.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: false
+          overwrite: false
+
+      - name: Seal local artifact after upload attempt
+        id: seal
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+          CIWC_ARTIFACT_SET_SHA256: ${{ steps.finalize.outputs.artifact_set_sha256 }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Seal `
+            -JobKind windows `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -ExpectedArtifactSetSha256 $env:CIWC_ARTIFACT_SET_SHA256
+
+  linux-race:
+    name: Linux race tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      proof_complete: ${{ steps.finalize.outputs.run_succeeded }}
+    steps:
+      - name: Check out exact workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          clean: true
+          set-safe-directory: false
+
+      - name: Prepare authenticated release workspace
+        id: prepare
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path $env:GITHUB_WORKSPACE 'scripts/Invoke-CIWorkflowControl.ps1'
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          if ($bytes.Length -gt 4194304) { throw 'Workflow control file is too large.' }
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          $control = [ScriptBlock]::Create($source)
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $probe = $runnerTemp
+          while (-not [string]::IsNullOrWhiteSpace($probe)) {
+            if (Test-Path -LiteralPath $probe) {
+              $probeItem = Get-Item -LiteralPath $probe -Force
+              if (($probeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Runner temp ancestry is not trusted.'
+              }
+            }
+            $parent = [IO.Path]::GetDirectoryName($probe)
+            if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $probe) { break }
+            $probe = $parent
+          }
+          $base = Join-Path $runnerTemp 'freeagent-release-job'
+          if (Test-Path -LiteralPath $base) { throw 'Release workspace already exists.' }
+          $controlDirectory = [IO.Directory]::CreateDirectory((Join-Path $base 'control')).FullName
+          $snapshot = Join-Path $controlDirectory 'workflow-control.ps1'
+          $stream = New-Object IO.FileStream(
+            $snapshot,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+          )
+          try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+          } finally { $stream.Dispose() }
+          & $control `
+            -Prepare `
+            -JobKind linux-race `
+            -BaseRoot $base `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -Revision $env:GITHUB_SHA `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -GitHubEnvironmentPath $env:GITHUB_ENV
+
+      - name: Initialize authenticated job evidence
+        id: initialize
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Initialize -JobKind linux-race -BaseRoot $env:CIWC_BASE
+
+      - name: Set up Go from sealed go.mod
+        id: setup
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: ${{ steps.prepare.outputs.stage }}/go.mod
+          cache: false
+          check-latest: false
+
+      - name: Install GCC
+        id: gcc
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gcc
+
+      - name: Run authenticated race job
+        id: run
+        if: ${{ !cancelled() && steps.initialize.outcome == 'success' }}
+        shell: pwsh
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Run -JobKind linux-race -BaseRoot $env:CIWC_BASE
+
+      - name: Finalize authenticated job outputs
+        id: finalize
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.initialize.outcome == 'success' && (steps.run.outcome == 'success' || steps.run.outcome == 'failure') }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Finalize `
+            -JobKind linux-race `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -GitHubOutputPath $env:GITHUB_OUTPUT
+
+      - name: Upload verified race evidence
+        id: upload
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-evidence-linux-race
+          path: ${{ steps.prepare.outputs.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: false
+          overwrite: false
+
+      - name: Seal local artifact after upload attempt
+        id: seal
+        if: ${{ always() && steps.finalize.outcome == 'success' }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+          CIWC_ARTIFACT_SET_SHA256: ${{ steps.finalize.outputs.artifact_set_sha256 }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Seal `
+            -JobKind linux-race `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -ExpectedArtifactSetSha256 $env:CIWC_ARTIFACT_SET_SHA256
+
+  cross-build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs:
+      - permanent-gates
+      - linux-quality
+      - windows
+      - linux-race
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            binary: freeagent-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            binary: freeagent-windows-arm64.exe
+          - goos: linux
+            goarch: amd64
+            binary: freeagent-linux-amd64
+          - goos: linux
+            goarch: arm64
+            binary: freeagent-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            binary: freeagent-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            binary: freeagent-darwin-arm64
+    steps:
+      - name: Check out exact workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          fetch-tags: false
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          clean: true
+          set-safe-directory: false
+
+      - name: Prepare authenticated release workspace
+        id: prepare
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_TARGET_GOOS: ${{ matrix.goos }}
+          CIWC_TARGET_GOARCH: ${{ matrix.goarch }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path $env:GITHUB_WORKSPACE 'scripts/Invoke-CIWorkflowControl.ps1'
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          if ($bytes.Length -gt 4194304) { throw 'Workflow control file is too large.' }
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          $control = [ScriptBlock]::Create($source)
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $probe = $runnerTemp
+          while (-not [string]::IsNullOrWhiteSpace($probe)) {
+            if (Test-Path -LiteralPath $probe) {
+              $probeItem = Get-Item -LiteralPath $probe -Force
+              if (($probeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Runner temp ancestry is not trusted.'
+              }
+            }
+            $parent = [IO.Path]::GetDirectoryName($probe)
+            if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $probe) { break }
+            $probe = $parent
+          }
+          $base = Join-Path $runnerTemp 'freeagent-release-job'
+          if (Test-Path -LiteralPath $base) { throw 'Release workspace already exists.' }
+          $controlDirectory = [IO.Directory]::CreateDirectory((Join-Path $base 'control')).FullName
+          $snapshot = Join-Path $controlDirectory 'workflow-control.ps1'
+          $stream = New-Object IO.FileStream(
+            $snapshot,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+          )
+          try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+          } finally { $stream.Dispose() }
+          & $control `
+            -Prepare `
+            -JobKind cross-build `
+            -BaseRoot $base `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -Revision $env:GITHUB_SHA `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -GitHubEnvironmentPath $env:GITHUB_ENV `
+            -TargetGoos $env:CIWC_TARGET_GOOS `
+            -TargetGoarch $env:CIWC_TARGET_GOARCH
+
+      - name: Initialize authenticated job evidence
+        id: initialize
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_TARGET_GOOS: ${{ matrix.goos }}
+          CIWC_TARGET_GOARCH: ${{ matrix.goarch }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Initialize `
+            -JobKind cross-build `
+            -BaseRoot $env:CIWC_BASE `
+            -TargetGoos $env:CIWC_TARGET_GOOS `
+            -TargetGoarch $env:CIWC_TARGET_GOARCH
+
+      - name: Set up Go from sealed go.mod
+        id: setup
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: ${{ steps.prepare.outputs.stage }}/go.mod
+          cache: false
+          check-latest: false
+
+      - name: Run authenticated cross build
+        id: run
+        if: ${{ !cancelled() && steps.initialize.outcome == 'success' }}
+        shell: pwsh
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_TARGET_GOOS: ${{ matrix.goos }}
+          CIWC_TARGET_GOARCH: ${{ matrix.goarch }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Run `
+            -JobKind cross-build `
+            -BaseRoot $env:CIWC_BASE `
+            -TargetGoos $env:CIWC_TARGET_GOOS `
+            -TargetGoarch $env:CIWC_TARGET_GOARCH
+
+      - name: Finalize authenticated job outputs
+        id: finalize
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.initialize.outcome == 'success' && (steps.run.outcome == 'success' || steps.run.outcome == 'failure') }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+          CIWC_TARGET_GOOS: ${{ matrix.goos }}
+          CIWC_TARGET_GOARCH: ${{ matrix.goarch }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Finalize `
+            -JobKind cross-build `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -TargetGoos $env:CIWC_TARGET_GOOS `
+            -TargetGoarch $env:CIWC_TARGET_GOARCH
+
+      - name: Upload verified executable
+        id: upload
+        if: ${{ always() && steps.setup.outcome == 'success' && steps.run.outcome == 'success' && steps.finalize.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: freeagent-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ steps.prepare.outputs.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: false
+          overwrite: false
+
+      - name: Seal local artifact after upload attempt
+        id: seal
+        if: ${{ always() && steps.setup.outcome == 'success' && steps.run.outcome == 'success' && steps.finalize.outcome == 'success' }}
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}
+          CIWC_BASE: ${{ steps.prepare.outputs.base }}
+          CIWC_MANIFEST_SHA256: ${{ steps.prepare.outputs.manifest_sha256 }}
+          CIWC_ARTIFACT_SET_SHA256: ${{ steps.finalize.outputs.artifact_set_sha256 }}
+          CIWC_TARGET_GOOS: ${{ matrix.goos }}
+          CIWC_TARGET_GOARCH: ${{ matrix.goarch }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $path = [IO.Path]::GetFullPath($env:CIWC_CONTROL_PATH)
+          $item = Get-Item -LiteralPath $path -Force
+          if (-not ($item -is [IO.FileInfo]) -or
+              ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $item.Length -gt 4194304) { throw 'Invalid workflow control file.' }
+          [byte[]]$bytes = [IO.File]::ReadAllBytes($path)
+          $sha = [Security.Cryptography.SHA256]::Create()
+          try {
+            $actual = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+          } finally { $sha.Dispose() }
+          if ($bytes.Length -gt 4194304 -or
+              $actual -cne '79cd6d117eb5138e8dfc558f28e476267bbcab99a383e4df27dc6a5fbc0c8345') {
+            throw 'Workflow control authentication failed.'
+          }
+          $source = (New-Object Text.UTF8Encoding($false, $true)).GetString($bytes)
+          $tokens = $null
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)
+          if (@($errors).Count -ne 0) { throw 'Workflow control parsing failed.' }
+          & ([ScriptBlock]::Create($source)) `
+            -Seal `
+            -JobKind cross-build `
+            -BaseRoot $env:CIWC_BASE `
+            -ManifestSha256 $env:CIWC_MANIFEST_SHA256 `
+            -ExpectedArtifactSetSha256 $env:CIWC_ARTIFACT_SET_SHA256 `
+            -TargetGoos $env:CIWC_TARGET_GOOS `
+            -TargetGoarch $env:CIWC_TARGET_GOARCH
+
+  release-seal:
+    name: Release proof seal
+    needs:
+      - permanent-gates
+      - linux-quality
+      - windows
+      - linux-race
+      - cross-build
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every proof job and proof bit
+        shell: pwsh
+        env:
+          PERMANENT_RESULT: ${{ needs.permanent-gates.result }}
+          LINUX_QUALITY_RESULT: ${{ needs.linux-quality.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          LINUX_RACE_RESULT: ${{ needs.linux-race.result }}
+          CROSS_BUILD_RESULT: ${{ needs.cross-build.result }}
+          PERMANENT_PROOF: ${{ needs.permanent-gates.outputs.proof_complete }}
+          LINUX_QUALITY_PROOF: ${{ needs.linux-quality.outputs.proof_complete }}
+          WINDOWS_PROOF: ${{ needs.windows.outputs.proof_complete }}
+          LINUX_RACE_PROOF: ${{ needs.linux-race.outputs.proof_complete }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $results = [ordered]@{
+            permanent = $env:PERMANENT_RESULT
+            linux_quality = $env:LINUX_QUALITY_RESULT
+            windows = $env:WINDOWS_RESULT
+            linux_race = $env:LINUX_RACE_RESULT
+            cross_build = $env:CROSS_BUILD_RESULT
+          }
+          foreach ($entry in $results.GetEnumerator()) {
+            if ($entry.Value -cne 'success') {
+              throw "Release proof job failed: $($entry.Key)=$($entry.Value)"
+            }
+          }
+          $proofs = [ordered]@{
+            permanent = $env:PERMANENT_PROOF
+            linux_quality = $env:LINUX_QUALITY_PROOF
+            windows = $env:WINDOWS_PROOF
+            linux_race = $env:LINUX_RACE_PROOF
+          }
+          foreach ($entry in $proofs.GetEnumerator()) {
+            if ($entry.Value -cne 'true') {
+              throw "Release proof is incomplete: $($entry.Key)=$($entry.Value)"
+            }
+          }
+          Write-Host 'RELEASE_PROOF_SEAL_PASS'

@@ -1,0 +1,865 @@
+{
+    "schema_version":  "v1",
+    "items":  [
+                  {
+                      "id":  "core.workspace.identity-acl",
+                      "title":  "Workspace identity, ACL freeze, readonly references, and revocation",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "workspace-identity-acl",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.workspace.fair-scheduling",
+                      "title":  "Durable multi-Workspace fair scheduling, restart fairness, and no duplicate claim",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "workspace-fair-scheduling",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.run.frozen-assembly",
+                      "title":  "Immutable AgentVersion, Profile, RunManifest, and exact current assembly",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/assemblycompiler",
+                                        "name":  "TestCurrentCompilerUsesOneFrozenControlCatalogAndPreservesBindingOrder"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestCommitRunAdmissionPublishesClosureAndRetriesBeforeCurrentBasis"
+                                    }
+                                ],
+                      "docs_anchor":  "frozen-run-assembly",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.runtime-attempt-generation",
+                      "title":  "Run, LoopFrame, model Attempt, and lease-generation binding",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestLoadRunForLoopReturnsFrozenRecoveryClosure"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestBeginModelDispatchUsesFrozenBindingAndPrice"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestAcquireCurrentRunLeaseAllowsExactlyOneConcurrentOwner"
+                                    }
+                                ],
+                      "docs_anchor":  "runtime-attempt-generation",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.context.direct-eviction",
+                      "title":  "Mutually exclusive threshold selection and protected direct ordered eviction",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "context-direct-eviction",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.context.summary-checkpoint",
+                      "title":  "Persisted context summary, checkpoint, and restart reuse",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "context-summary-checkpoint",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.model.reservation",
+                      "title":  "Model reservation and bounded immutable budget commit",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestBeginModelDispatchCommitsPreNetworkBoundary"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestBeginModelDispatchExactRetryNeverGrantsReplay"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestModelBudgetAcceptsMaximumLengthBudgetStateRefV1"
+                                    }
+                                ],
+                      "docs_anchor":  "model-reservation",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.model.usage-observation",
+                      "title":  "Observed provider usage persists atomically without budget semantic drift",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./sdk/moduleapi",
+                                        "name":  "TestModelUsageReceiptV1PreservesUnknownAndReportedZero"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestCommitModelDispatchOutcomeSuccessIsAtomicAndIdempotent"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentbackup",
+                                        "name":  "TestFullBundleRoundTripPreservesIdentityPendingAndNullUsage"
+                                    }
+                                ],
+                      "docs_anchor":  "model-usage-observation",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.model.reasoning-summary",
+                      "title":  "Reasoning usage summary semantics",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/corecontract",
+                                        "name":  "TestUsageTokensPreserveUnknownAndKnownZero"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./sdk/moduleapi",
+                                        "name":  "TestModelUsageReceiptV1PreservesUnknownAndReportedZero"
+                                    }
+                                ],
+                      "docs_anchor":  "model-reasoning-summary",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.cache.singleflight-enforcement",
+                      "title":  "Cache-family isolation, bounded singleflight enforcement, and atomic auditable observations",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "cache-singleflight-enforcement",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.effect.model-ledger",
+                      "title":  "Model UNKNOWN reconciliation without semantic replay",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/corecontract",
+                                        "name":  "TestModelAttemptTransitionGraphForbidsUnknownReplay"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestCommitModelDispatchOutcomeUnknownBlocksReplayUntilReconciled"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/coreloop",
+                                        "name":  "TestUniversalLoopRecoversPersistedPendingWithoutReplay"
+                                    }
+                                ],
+                      "docs_anchor":  "effect-model-ledger",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.effect.tool-ledger",
+                      "title":  "Tool UNKNOWN suspension and no replay",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "effect-tool-ledger",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.effect.channel-ledger",
+                      "title":  "Channel send UNKNOWN suspension and no semantic replay",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestModelChannelBeginIsAtomicIdempotentAndPermitIsOneShot"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestChannelUnknownNeverReplaysOrReturnsPendingAndReconcilesOriginal"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestProductionActionChannelCompositionRunsTwoModelOneActionOneSend"
+                                    }
+                                ],
+                      "docs_anchor":  "effect-channel-ledger",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.toolgateway.final-authorization",
+                      "title":  "ToolGateway authorization and exact terminal replay",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestChannelIngressAcceptedCommitsCursorAndRunAtomicallyAndDedupes"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestRejectedChannelIngressCannotOverrideActiveIdentity"
+                                    }
+                                ],
+                      "docs_anchor":  "toolgateway-final-authorization",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.channel.cursor-cas",
+                      "title":  "Channel cursor compare-and-swap and durable identity",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/loopbackchannel",
+                                        "name":  "TestExecutePreparedNeverFollowsRedirect"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/loopbackchannel",
+                                        "name":  "TestExecutePreparedAmbiguousHTTPFailuresAreUnknownAndNeverRetried"
+                                    }
+                                ],
+                      "docs_anchor":  "channel-cursor-cas",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.channel.redirect-safety",
+                      "title":  "Single channel effect attempt does not follow redirects",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentbackup",
+                                        "name":  "TestChannelBundleRoundTripPreservesCursorAndUnknownWithoutExternalAccess"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentbackup",
+                                        "name":  "TestChannelSemanticVerifierRejectsDeletedTerminalSend"
+                                    }
+                                ],
+                      "docs_anchor":  "channel-redirect-safety",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.backup.complete",
+                      "title":  "Complete backup binds snapshot to referenced artifacts",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentbackup",
+                                        "name":  "TestFullBundleRoundTripPreservesIdentityPendingAndNullUsage"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentbackup",
+                                        "name":  "TestVerifyBundleRejectsTamperedDatabaseArtifactAndManifest"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestRunBackupVerifyRestoreCommands"
+                                    }
+                                ],
+                      "docs_anchor":  "backup-complete",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.backup.cursor-restore",
+                      "title":  "Backup restores generic channel cursors",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "backup-cursor-restore",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.privacy.deletion",
+                      "title":  "Privacy purge produces a complete backup without secrets",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "privacy-deletion",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.lifecycle.graceful-drain",
+                      "title":  "Graceful lifecycle drain completes admitted effects before store close",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestServeHTTPDrainsActiveRequestBeforeCancellation"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestForcedHTTPShutdownReportsUndrainedHandlerAndCancelsOnlyAfterGrace"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestRunServeLoopbackAndGracefulShutdown"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestDrainingHTTPHandlerConcurrentAdmissionBoundary"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestProductionShutdownRecoveryUsesBoundedDetachedContext"
+                                    }
+                                ],
+                      "docs_anchor":  "lifecycle-graceful-drain",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "core.database.identity-migrations",
+                      "title":  "Current Store identity, frozen schema, and atomic initialization",
+                      "status":  "unverified",
+                      "owner":  "core",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestMigration0001CreatesExactlyCurrentStoreTables"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestSchemaFingerprintIsFrozenAndDetectsDrift"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/currentstore",
+                                        "name":  "TestInitVerifyOpenAndCloseCurrentStore"
+                                    }
+                                ],
+                      "docs_anchor":  "database-identity-migrations",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.chat.pure-execution",
+                      "title":  "Pure chat execution suppresses optional context and structured collaboration",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/coreloop",
+                                        "name":  "TestUniversalLoopPureChatSuccessTerminalReadAndReentry"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/localchat",
+                                        "name":  "TestChatServiceRunsStablePureChatAdmissionAndReusesTerminalRun"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestProductionCompositionInitChatAndRestartIdempotency"
+                                    }
+                                ],
+                      "docs_anchor":  "pure-chat-execution",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.chat.default-pure-profile",
+                      "title":  "New installations and implicit ingress select the audited pure_chat profile",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/bootstrapseed",
+                                        "name":  "TestExampleSeedImportsThroughNormalAPIsAndIsIdempotent"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/assemblycompiler",
+                                        "name":  "TestCurrentCompilerUsesOneFrozenControlCatalogAndPreservesBindingOrder"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestProductionCompositionInitChatAndRestartIdempotency"
+                                    }
+                                ],
+                      "docs_anchor":  "default-pure-profile",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.chat.multi-turn-continuity",
+                      "title":  "Pure multi-turn continuity without optional attachments",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "pure-multi-turn-continuity",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.persona.static-fidelity",
+                      "title":  "Static Persona fidelity in frozen ordinary execution",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "static-persona-fidelity",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.role.module-fidelity",
+                      "title":  "Replaceable Role and declarative static Skill module fidelity",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/localchat",
+                                        "name":  "TestDeclarativeRoleAndSkillTraverseProductionPureChatChain"
+                                    }
+                                ],
+                      "docs_anchor":  "role-module-fidelity",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.rag.shared-authorized",
+                      "title":  "Shared authorized RAG, CJK recall, scope isolation, and cache invalidation",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "shared-authorized-rag",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.rag.modes",
+                      "title":  "NO_RAG, LIGHT_RAG, and FRESH_RAG selection",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "rag-modes",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.memory.delivery-lineage",
+                      "title":  "Post-delivery learning enqueue is ordered and idempotent",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "memory-delivery-lineage",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.memory.backfill",
+                      "title":  "Learning backfill scan is concurrent and restart-idempotent",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "memory-backfill",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.memory.lease-commit",
+                      "title":  "Memory learning lease commit replay and scope invalidation",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "memory-lease-commit",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.governance.rejected-source",
+                      "title":  "Governance approval merge and permanent rejected-source block",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "governance-rejected-source",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.governance.reports",
+                      "title":  "Governance reports can be disabled and persist window statistics",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "governance-reports",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.governance.maintenance",
+                      "title":  "Domain maintenance defaults to 24 hours and avoids semantic no-change work",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "governance-maintenance",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.team.selection",
+                      "title":  "Composite, specialist, and reviewer selection",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "team-selection",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.team.parallel-review",
+                      "title":  "Frozen parallel team execution publishes only reviewed draft",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "team-parallel-review",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.team.bounded-repair",
+                      "title":  "Team repair is bounded and requires final review",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "team-bounded-repair",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.model.evaluation-routing",
+                      "title":  "Model profile evaluation, routing, and context policy",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "model-evaluation-routing",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.cache.cold-family-policy",
+                      "title":  "Replaceable default-off cold-family policy and manual Control Plane cost comparison",
+                      "status":  "planned",
+                      "owner":  "first-party-module",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "cold-family-policy",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "first-party.channel.local-chat",
+                      "title":  "Local chat and optional loopback Channel ingress validation",
+                      "status":  "unverified",
+                      "owner":  "first-party-module",
+                      "tests":  [
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/localchat",
+                                        "name":  "TestPostChatRejectsMalformedInputBeforeService"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./internal/localchat",
+                                        "name":  "TestHandlerExposesOnlyLoopbackHealthAndChat"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestRunServeLoopbackAndGracefulShutdown"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestExplicitChannelServeEndToEndAndDuplicateDoesNotResend"
+                                    },
+                                    {
+                                        "kind":  "go",
+                                        "package":  "./cmd/freeagent",
+                                        "name":  "TestDefaultProductionCompositionNeverTouchesConfiguredChannel"
+                                    }
+                                ],
+                      "docs_anchor":  "local-chat-adapter",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "external-adapter.channel.telegram",
+                      "title":  "Telegram adapter",
+                      "status":  "unverified",
+                      "owner":  "external-adapter",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "telegram-adapter",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "external-adapter.channel.lark",
+                      "title":  "Lark adapter",
+                      "status":  "unverified",
+                      "owner":  "external-adapter",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "lark-adapter",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "external-adapter.channel.qqbot",
+                      "title":  "QQ Bot adapter",
+                      "status":  "unverified",
+                      "owner":  "external-adapter",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "qqbot-adapter",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "external-adapter.channel.weixin-ilink",
+                      "title":  "Weixin iLink adapter",
+                      "status":  "unverified",
+                      "owner":  "external-adapter",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "weixin-ilink-adapter",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "extension-host.schemas.public",
+                      "title":  "Workspace, Agent, Profile, and Task public schemas",
+                      "status":  "planned",
+                      "owner":  "extension-host",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "public-schemas",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "extension-host.member.exact-locks",
+                      "title":  "Exact per-member Module, Skill, and MCP locks",
+                      "status":  "planned",
+                      "owner":  "extension-host",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "member-exact-locks",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "extension-host.skill.governance",
+                      "title":  "Skill selection, governance, and rollback",
+                      "status":  "planned",
+                      "owner":  "extension-host",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "skill-governance-rollback",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "extension-host.mcp.transports",
+                      "title":  "MCP stdio and Streamable HTTP",
+                      "status":  "planned",
+                      "owner":  "extension-host",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "mcp-transports",
+                      "external_evidence":  [
+
+                                            ]
+                  },
+                  {
+                      "id":  "extension-host.mcp.lifecycle-recovery",
+                      "title":  "MCP lifecycle recovery and restart reproving",
+                      "status":  "planned",
+                      "owner":  "extension-host",
+                      "tests":  [
+
+                                ],
+                      "docs_anchor":  "mcp-lifecycle-recovery",
+                      "external_evidence":  [
+
+                                            ]
+                  }
+              ]
+}

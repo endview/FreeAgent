@@ -1,0 +1,1408 @@
+{
+    "schema_version":  1,
+    "kind":  "freeagent-go-dependency-licenses",
+    "main_module":  "github.com/endview/freeagent",
+    "compatibility_policy":  {
+                                 "id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                 "version":  1,
+                                 "project_license":  "AGPL-3.0-only",
+                                 "source_dependency_mode":  "module-reference-only",
+                                 "binary_targets":  [
+                                                        "darwin/amd64",
+                                                        "darwin/arm64",
+                                                        "linux/amd64",
+                                                        "linux/arm64",
+                                                        "windows/amd64",
+                                                        "windows/arm64"
+                                                    ],
+                                 "cgo_enabled":  false,
+                                 "go_version":  "go1.26.5"
+                             },
+    "license_refs":  [
+                         {
+                             "id":  "LicenseRef-SQLite-Public-Domain",
+                             "name":  "SQLite public-domain dedication",
+                             "source_url":  "https://gitlab.com/cznic/sqlite/-/raw/v1.53.0/SQLITE-LICENSE",
+                             "text_sha256":  "8438c9c89b849131ead81d5435cb97fcf052df5b0b286dda8a2d4c29e6cb3fd0",
+                             "applies_to":  "modernc.org/sqlite@v1.53.0",
+                             "required_file":  "SQLITE-LICENSE"
+                         },
+                         {
+                             "id":  "LicenseRef-modernc-libc-third-party",
+                             "name":  "modernc libc bundled third-party license declarations",
+                             "source_url":  "https://gitlab.com/cznic/libc/-/raw/v1.73.4/LICENSE-3RD-PARTY.md",
+                             "text_sha256":  "f597097efe3d97021f89170746bd3a0fb9a8b6fb26b82043ed68a4e0283bee6c",
+                             "applies_to":  "modernc.org/libc@v1.73.4",
+                             "required_file":  "LICENSE-3RD-PARTY.md"
+                         }
+                     ],
+    "modules":  [
+                    {
+                        "path":  "cloud.google.com/go/compute/metadata",
+                        "version":  "v0.3.0",
+                        "module_sum":  "h1:Tz+eQXMEqDIKRsmY3cHTL6FVaynIjX2QxYC4trgAKZc=",
+                        "go_mod_sum":  "h1:zFmK7XCadkQkj6TtorcaGlCW1hT1fIilQDwofLpJ20k=",
+                        "declared_license_expression":  "Apache-2.0",
+                        "source_url":  "https://github.com/googleapis/google-cloud-go",
+                        "notice_id":  "go-0f0a9074d7d9bf9774edfa49",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  11358,
+                                                   "sha256":  "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/dustin/go-humanize",
+                        "version":  "v1.0.1",
+                        "module_sum":  "h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=",
+                        "go_mod_sum":  "h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=",
+                        "declared_license_expression":  "MIT",
+                        "source_url":  "https://github.com/dustin/go-humanize",
+                        "notice_id":  "go-10387c8852023b6378e2d897",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1136,
+                                                   "sha256":  "a973b4498c13eb74baa2a8e5c351426a6826f2fcdd909916dbe53ee2e755fd71"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/golang-jwt/jwt/v5",
+                        "version":  "v5.3.1",
+                        "module_sum":  "h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=",
+                        "go_mod_sum":  "h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=",
+                        "declared_license_expression":  "MIT",
+                        "source_url":  "https://github.com/golang-jwt/jwt",
+                        "notice_id":  "go-a56f4956738869903bf3d5df",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1100,
+                                                   "sha256":  "fe26ca41577b9b2b4448050a24b25e5753af66b5d5945d5d36094e7790bfcb2f"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/google/go-cmp",
+                        "version":  "v0.7.0",
+                        "module_sum":  "h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=",
+                        "go_mod_sum":  "h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://github.com/google/go-cmp",
+                        "notice_id":  "go-68154086d1bb97c000b96b64",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1479,
+                                                   "sha256":  "17b5d209ba8f9684257ecfcff87df6ceda6194143a8fbd074f29727cff6f0c40"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/google/jsonschema-go",
+                        "version":  "v0.4.3",
+                        "module_sum":  "h1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+DQPd0=",
+                        "go_mod_sum":  "h1:r5quNTdLOYEz95Ru18zA0ydNbBuYoo9tgaYcxEYhJVE=",
+                        "declared_license_expression":  "MIT",
+                        "source_url":  "https://github.com/google/jsonschema-go",
+                        "notice_id":  "go-8fd6c021619e70d958af8313",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1087,
+                                                   "sha256":  "2d56c53449691d85d9aea245eb8dac12713e9075d70d5557b82ae1e94805b357"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/google/pprof",
+                        "version":  "v0.0.0-20250317173921-a4b03ec1a45e",
+                        "module_sum":  "h1:ijClszYn+mADRFY17kjQEVQ1XRhq2/JR1M3sGqeJoxs=",
+                        "go_mod_sum":  "h1:boTsfXsheKC2y+lKOCMpSfarhxDeIzfZG1jqGcPl3cA=",
+                        "declared_license_expression":  "Apache-2.0 AND BSD-3-Clause",
+                        "source_url":  "https://github.com/google/pprof",
+                        "notice_id":  "go-ff2fd3f10ec676359286f2e5",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  305,
+                                                   "sha256":  "8a196dfd9252ad9cb0670365e680d6b19560c688776fa76f0203854ae2c0e29c"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  654,
+                                                   "sha256":  "2e6c7aac8aaaed781b36b1edb63cfb0692671310008d9a50afb585a686c74f1e"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  11358,
+                                                   "sha256":  "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+                                               },
+                                               {
+                                                   "path":  "third_party/svgpan/LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1754,
+                                                   "sha256":  "154c946c17de61ca71d28e13673d76a5798e6e25995a7397fbae157afc8f62b4"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/google/uuid",
+                        "version":  "v1.6.0",
+                        "module_sum":  "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=",
+                        "go_mod_sum":  "h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://github.com/google/uuid",
+                        "notice_id":  "go-d0d666767bf9063c153c1db8",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  105,
+                                                   "sha256":  "d69e90a1901a669b3cc34dc07e99d60c8627d73c88dd374de488fec4fefd7118"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1480,
+                                                   "sha256":  "0a8d61ed3cbfd5312326e8126c31ce9c627a283adc99131b56896d29ada04b2d"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/hashicorp/golang-lru/v2",
+                        "version":  "v2.0.7",
+                        "module_sum":  "h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=",
+                        "go_mod_sum":  "h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=",
+                        "declared_license_expression":  "BSD-3-Clause AND MPL-2.0",
+                        "source_url":  "https://github.com/hashicorp/golang-lru",
+                        "notice_id":  "go-28db392058ff9f96d1189072",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  12,
+                                                 "sha256":  "8aa06329c1cbef67b7a18530a5194cdfa344bacc38eee0d5ec2b99ba0603cc0e",
+                                                 "expressions":  [
+                                                                     "MPL-2.0"
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  15957,
+                                                   "sha256":  "6c7088eb877b5d7e6e0e9d27e822ea25fcda2e83f9eba59bb5f1418a656796e0"
+                                               },
+                                               {
+                                                   "path":  "simplelru/LICENSE_list",
+                                                   "role":  "license",
+                                                   "size":  1522,
+                                                   "sha256":  "6d462371baa8649492b06f51f154dba9b25d2ac9548369b8b4fdbbbb85f2f75d"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/mattn/go-isatty",
+                        "version":  "v0.0.20",
+                        "module_sum":  "h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=",
+                        "go_mod_sum":  "h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=",
+                        "declared_license_expression":  "MIT",
+                        "source_url":  "https://github.com/mattn/go-isatty",
+                        "notice_id":  "go-b24aeb3102146d70a432679c",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1099,
+                                                   "sha256":  "08eab1118c80885fa1fa6a6dd7303f65a379fcb3733e063d20d1bbc2c76e6fa1"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/modelcontextprotocol/go-sdk",
+                        "version":  "v1.6.0",
+                        "module_sum":  "h1:PPLS3kn7WtOEnR+Af4X5H96SG0qSab8R/ZQT/HkhPkY=",
+                        "go_mod_sum":  "h1:kzm3kzFL1/+AziGOE0nUs3gvPoNxMCvkxokMkuFapXQ=",
+                        "declared_license_expression":  "Apache-2.0 AND CC-BY-4.0 AND MIT",
+                        "source_url":  "https://github.com/modelcontextprotocol/go-sdk",
+                        "notice_id":  "go-777e57014b9f6d7a309f9bd9",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  12223,
+                                                   "sha256":  "af679003d933f045393a6a029f43da113f9ae364eac651d9ae268392985580f5"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/ncruces/go-strftime",
+                        "version":  "v1.0.0",
+                        "module_sum":  "h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=",
+                        "go_mod_sum":  "h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=",
+                        "declared_license_expression":  "MIT",
+                        "source_url":  "https://github.com/ncruces/go-strftime",
+                        "notice_id":  "go-90de0de07ef5aee9233a3962",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1068,
+                                                   "sha256":  "38ae43959daf953a393a585b2988672cb65a5a541aca0d0be5e72595a0a16883"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/remyoudompheng/bigfft",
+                        "version":  "v0.0.0-20230129092748-24d4a6f8daec",
+                        "module_sum":  "h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=",
+                        "go_mod_sum":  "h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://github.com/remyoudompheng/bigfft",
+                        "notice_id":  "go-ccde9cb2b3b92254b0912c47",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1479,
+                                                   "sha256":  "dd26a7abddd02e2d0aba97805b31f248ef7835d9e10da289b22e3b8ab78b324d"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/segmentio/asm",
+                        "version":  "v1.1.3",
+                        "module_sum":  "h1:WM03sfUOENvvKexOLp+pCqgb/WDjsi7EK8gIsICtzhc=",
+                        "go_mod_sum":  "h1:Ld3L4ZXGNcSLRg4JBsZ3//1+f/TjYl0Mzen/DQy1EJg=",
+                        "declared_license_expression":  "MIT",
+                        "source_url":  "https://github.com/segmentio/asm",
+                        "notice_id":  "go-b477ab01a906328e93d2077c",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1064,
+                                                   "sha256":  "e2a78de21d6d8ded2dff0f3189cd32e011630d785da127ebfbc8949012c0947b"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/segmentio/encoding",
+                        "version":  "v0.5.4",
+                        "module_sum":  "h1:OW1VRern8Nw6ITAtwSZ7Idrl3MXCFwXHPgqESYfvNt0=",
+                        "go_mod_sum":  "h1:HS1ZKa3kSN32ZHVZ7ZLPLXWvOVIiZtyJnO1gPH1sKt0=",
+                        "declared_license_expression":  "Apache-2.0 AND MIT",
+                        "source_url":  "https://github.com/segmentio/encoding",
+                        "notice_id":  "go-d6f7d28ef6a8851b2eada1e7",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1073,
+                                                   "sha256":  "d6d71a1f7dc6539e371120cc7af6e3257e55ca79634d473211f217b8965b0f16"
+                                               },
+                                               {
+                                                   "path":  "json/fuzz/LICENSE",
+                                                   "role":  "license",
+                                                   "size":  11357,
+                                                   "sha256":  "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/tetratelabs/wazero",
+                        "version":  "v1.12.0",
+                        "module_sum":  "h1:DuWcpNu/FzgEXgGBDp8J1Spc+CWOvvtvVyjKlaZopYU=",
+                        "go_mod_sum":  "h1:LvKtzl2RqO4gyF27BiXU+nKAjcV8f38U+kP/q2vgxh0=",
+                        "declared_license_expression":  "Apache-2.0",
+                        "source_url":  "https://github.com/tetratelabs/wazero",
+                        "notice_id":  "go-ae8ccfe711c6cd4a7413a822",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  11349,
+                                                   "sha256":  "c46f033d017a5af71a1de0105ec56c41bd47f81a0bbdf779fffe316336dc7c1f"
+                                               },
+                                               {
+                                                   "path":  "NOTICE",
+                                                   "role":  "notice",
+                                                   "size":  42,
+                                                   "sha256":  "e6f0c5c151a3ff1eba8f5930a31ec084ca6d7adda43c8675ab81f7d36af50b4f"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "github.com/yosida95/uritemplate/v3",
+                        "version":  "v3.0.2",
+                        "module_sum":  "h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=",
+                        "go_mod_sum":  "h1:ILOh0sOhIJR3+L/8afwt/kE++YT040gmv5BQTMR2HP4=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://github.com/yosida95/uritemplate",
+                        "notice_id":  "go-21341595d074f0085031000d",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1546,
+                                                   "sha256":  "0761aadfb1921103752869ee942d4a71bdd54494697684d4b13dc17ad9781191"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "golang.org/x/mod",
+                        "version":  "v0.37.0",
+                        "module_sum":  "h1:vF1DjpVEshcIqoEaauuHebaLk1O1forxjxBaVn884JQ=",
+                        "go_mod_sum":  "h1:m8S8VeM9r4dzDwjrKO0a1sZP3YjeMamRRlD+fmR2Q/0=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://go.googlesource.com/mod",
+                        "notice_id":  "go-84892de4fc2cf60a1130fa9f",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1453,
+                                                   "sha256":  "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+                                               },
+                                               {
+                                                   "path":  "PATENTS",
+                                                   "role":  "patent",
+                                                   "size":  1303,
+                                                   "sha256":  "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "golang.org/x/oauth2",
+                        "version":  "v0.35.0",
+                        "module_sum":  "h1:Mv2mzuHuZuY2+bkyWXIHMfhNdJAdwW3FuWeCPYN5GVQ=",
+                        "go_mod_sum":  "h1:lzm5WQJQwKZ3nwavOZ3IS5Aulzxi68dUSgRHujetwEA=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://go.googlesource.com/oauth2",
+                        "notice_id":  "go-109339290ce3d234f6670f77",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1453,
+                                                   "sha256":  "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "golang.org/x/sync",
+                        "version":  "v0.22.0",
+                        "module_sum":  "h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=",
+                        "go_mod_sum":  "h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://go.googlesource.com/sync",
+                        "notice_id":  "go-af94cab6dfaad8454e0598f6",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1453,
+                                                   "sha256":  "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+                                               },
+                                               {
+                                                   "path":  "PATENTS",
+                                                   "role":  "patent",
+                                                   "size":  1303,
+                                                   "sha256":  "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "golang.org/x/sys",
+                        "version":  "v0.44.0",
+                        "module_sum":  "h1:ildZl3J4uzeKP07r2F++Op7E9B29JRUy+a27EibtBTQ=",
+                        "go_mod_sum":  "h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://go.googlesource.com/sys",
+                        "notice_id":  "go-748601dc033cedb79b2439e8",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1453,
+                                                   "sha256":  "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+                                               },
+                                               {
+                                                   "path":  "PATENTS",
+                                                   "role":  "patent",
+                                                   "size":  1303,
+                                                   "sha256":  "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "golang.org/x/text",
+                        "version":  "v0.40.0",
+                        "module_sum":  "h1:Ub2Z6/xjgF1WrYQz2nuITOEegKFtiIy+rieRJ5lHZKs=",
+                        "go_mod_sum":  "h1:hpnzDAfGV753zIKo+wk3u1bVKCGPbrnF7+7LBF/UHVY=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://go.googlesource.com/text",
+                        "notice_id":  "go-fc76a9419522a81422724838",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1453,
+                                                   "sha256":  "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+                                               },
+                                               {
+                                                   "path":  "PATENTS",
+                                                   "role":  "patent",
+                                                   "size":  1303,
+                                                   "sha256":  "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "golang.org/x/tools",
+                        "version":  "v0.47.0",
+                        "module_sum":  "h1:7Kn5x/d1svx/PzryTsqeoZN4TZwqeH5pGWjefhLi/1Q=",
+                        "go_mod_sum":  "h1:dFHnyTvFWY212G+h7ZY4Vsp/K3U4/7W9TyVaAul8uCA=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://go.googlesource.com/tools",
+                        "notice_id":  "go-342a3691cfc9139f93546efd",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1453,
+                                                   "sha256":  "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+                                               },
+                                               {
+                                                   "path":  "PATENTS",
+                                                   "role":  "patent",
+                                                   "size":  1303,
+                                                   "sha256":  "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/cc/v4",
+                        "version":  "v4.28.4",
+                        "module_sum":  "h1:Hd/4Es+MBj+/7hSdZaisNyu6bv3V0Dp2MdllyfqaH+c=",
+                        "go_mod_sum":  "h1:OnovgIhbbMXMu1aISnJ0wvVD1KnW+cAUJkIrAWh+kVI=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/cc",
+                        "notice_id":  "go-523fc50540a7fc6026fd4016",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1480,
+                                                   "sha256":  "1c77905db36f407e0fdb513f97f1f2a3f2282049ca273637841face982d5d003"
+                                               },
+                                               {
+                                                   "path":  "testdata/jhjourdan/LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1471,
+                                                   "sha256":  "f4e673d9ef995ee5da2c7a08e5ad9aea5d899be917618b7367c3a748c53b6c63"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/ccgo/v4",
+                        "version":  "v4.34.4",
+                        "module_sum":  "h1:OVnSOWQjVKOYkFxoHYB+qQmSHK5gqMqARM+K9DpR/Ws=",
+                        "go_mod_sum":  "h1:qdKqE8FNIYyysougB1RX9MxCzp5oJOcQXSobANJ4TuE=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/ccgo",
+                        "notice_id":  "go-f54a0cc08da1e0b67d7aded0",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1482,
+                                                   "sha256":  "343748b20da2ceb739c1ab7b85fe16f6fe4b67fad88fea40c5835a08383d8ffe"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/fileutil",
+                        "version":  "v1.4.0",
+                        "module_sum":  "h1:j6ZzNTftVS054gi281TyLjHPp6CPHr2KCxEXjEbD6SM=",
+                        "go_mod_sum":  "h1:EqdKFDxiByqxLk8ozOxObDSfcVOv/54xDs/DUHdvCUU=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/fileutil",
+                        "notice_id":  "go-d8223cef4fd689390a0f58ee",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  605,
+                                                   "sha256":  "4d6b1a3d39cf902d150fb1b4999c6386dbb7f9967179dbc1b8bb34188569fd2e"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  671,
+                                                   "sha256":  "e8c12a4770dbc4f3445a9e8150099c7e5583d963564839938cac4891d813b3ab"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1486,
+                                                   "sha256":  "7dc07397727fc500d5ce768d724e4d555eee8fb7687f421fd40d72249868b0ca"
+                                               },
+                                               {
+                                                   "path":  "falloc/LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1474,
+                                                   "sha256":  "078134734db24112b59bcfd4ce3462e2d167471e5a11a69911785e881fc92c86"
+                                               },
+                                               {
+                                                   "path":  "hdb/LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1474,
+                                                   "sha256":  "078134734db24112b59bcfd4ce3462e2d167471e5a11a69911785e881fc92c86"
+                                               },
+                                               {
+                                                   "path":  "storage/LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1474,
+                                                   "sha256":  "078134734db24112b59bcfd4ce3462e2d167471e5a11a69911785e881fc92c86"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/gc/v2",
+                        "version":  "v2.6.5",
+                        "module_sum":  "h1:nyqdV8q46KvTpZlsw66kWqwXRHdjIlJOhG6kxiV/9xI=",
+                        "go_mod_sum":  "h1:YgIahr1ypgfe7chRuJi2gD7DBQiKSLMPgBQe9oIiito=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/gc",
+                        "notice_id":  "go-197cefc1527ef5351dae5f3d",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  3567,
+                                                   "sha256":  "4719790df5e9d33b1cef3a67df8264fb1e3e7f54f3ca900c562e84a951de62d9"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/gc/v3",
+                        "version":  "v3.1.3",
+                        "module_sum":  "h1:6QAplYyVO+KdPW3pGnqmJDUxtkec8ooEWvks/hhU3lc=",
+                        "go_mod_sum":  "h1:HFK/6AGESC7Ex+EZJhJ2Gni6cTaYpSMmU/cT9RmlfYY=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/gc",
+                        "notice_id":  "go-585c9b5fff2ce87359059a87",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "GO-LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1479,
+                                                   "sha256":  "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  3567,
+                                                   "sha256":  "4719790df5e9d33b1cef3a67df8264fb1e3e7f54f3ca900c562e84a951de62d9"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/goabi0",
+                        "version":  "v0.2.0",
+                        "module_sum":  "h1:HvEowk7LxcPd0eq6mVOAEMai46V+i7Jrj13t4AzuNks=",
+                        "go_mod_sum":  "h1:CEFRnnJhKvWT1c1JTI3Avm+tgOWbkOu5oPA8eH8LnMI=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/goabi0",
+                        "notice_id":  "go-de94f02fa2c1b90b7a880cc6",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  346,
+                                                   "sha256":  "f79ff8b413938c3ce7c60db12242a663d8e840249bd838fcf58f4aaccfec5454"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  277,
+                                                   "sha256":  "3e15203e4b12f2d1b0286daec3cd80da1517e0224325b6aa5be0acedf3330406"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1489,
+                                                   "sha256":  "6d33428c98f9d7113dfc86e17fca00f81aeaac33e02f79c8a5afafb0a5fd33c6"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/libc",
+                        "version":  "v1.73.4",
+                        "module_sum":  "h1:+ra4Ui8ngyt8HDcO1FTDPWlkAh6yOdaO2yAoh8MddQA=",
+                        "go_mod_sum":  "h1:DXZ3eO8qMCNn2SnmTNCiC71nJ9Rcq3PsnpU6Vc4rWK8=",
+                        "declared_license_expression":  "BSD-3-Clause AND GPL-2.0-only AND LicenseRef-modernc-libc-third-party AND MIT",
+                        "source_url":  "https://gitlab.com/cznic/libc",
+                        "notice_id":  "go-2fa27298102aa381f82689b5",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  1777,
+                                                 "sha256":  "e44c0ae85013754df4c8306596cb3bf1533b356cec36cdfbfd86c640add7e0f2",
+                                                 "expressions":  [
+                                                                     "(BSD-3-Clause AND ISC)",
+                                                                     "(BSD-4-Clause AND BSD-2-Clause-FreeBSD)",
+                                                                     "Apache-2.0 WITH LLVM-exception",
+                                                                     "BSD-2-Clause",
+                                                                     "BSD-2-Clause-FreeBSD",
+                                                                     "BSD-2-Clause-NetBSD",
+                                                                     "BSD-3-Clause",
+                                                                     "BSD-4-Clause",
+                                                                     "GPL-2.0 WITH Linux-syscall-note",
+                                                                     "GPL-2.0+ WITH Linux-syscall-note",
+                                                                     "GPL-2.0-only WITH Linux-syscall-note",
+                                                                     "MIT"
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  793,
+                                                   "sha256":  "b164ff1da4615d0ad236250dac4692e21d180ef556a2fa401829b41b4bb80d7d"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  933,
+                                                   "sha256":  "887913f8a51d387cd99fa49a2b5265900f29cf32a7e231a31b3ebac0c8b8f1e3"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1482,
+                                                   "sha256":  "95ff867eb55a56935fa7492406cfa953fb7c13ca73f4c0a86ae05756b4605600"
+                                               },
+                                               {
+                                                   "path":  "LICENSE-3RD-PARTY.md",
+                                                   "role":  "license",
+                                                   "size":  10505,
+                                                   "sha256":  "f597097efe3d97021f89170746bd3a0fb9a8b6fb26b82043ed68a4e0283bee6c"
+                                               },
+                                               {
+                                                   "path":  "testdata/nsz.repo.hu/libc-test/AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  103,
+                                                   "sha256":  "d04faa7fbed5d7e30d5f55c014c0f5e702245ca5ba62a39c7bc4df8724853a6c"
+                                               },
+                                               {
+                                                   "path":  "testdata/nsz.repo.hu/libc-test/COPYRIGHT",
+                                                   "role":  "copyright",
+                                                   "size":  1314,
+                                                   "sha256":  "41b8f2e2706012eb534f89e72ff547308cb81dcb9acf077c40a9058a7c06088d"
+                                               },
+                                               {
+                                                   "path":  "testdata/nsz.repo.hu/libc-test/src/math/crlibm/COPYING",
+                                                   "role":  "license",
+                                                   "size":  18007,
+                                                   "sha256":  "dcc100d4161cc0b7177545ab6e47216f84857cda3843847c792a25289852dcaa"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/mathutil",
+                        "version":  "v1.7.1",
+                        "module_sum":  "h1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=",
+                        "go_mod_sum":  "h1:4p5IwJITfppl0G4sUEDtCr4DthTaT47/N3aT6MhfgJg=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/mathutil",
+                        "notice_id":  "go-bc866d47782e62afbbbc5108",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  412,
+                                                   "sha256":  "51fcdd68bb605f080283bb6eabb72452591289650599d3d67603381834e536af"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  511,
+                                                   "sha256":  "9d28a0a20fa7014a6f1ff7811da94ec9c51552ca420a36eb6b62a2210ede64a2"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1486,
+                                                   "sha256":  "bfa9bf72a72ca009fd62a8f84fca3dca67e51d93af96352723646599898b6cf5"
+                                               },
+                                               {
+                                                   "path":  "mersenne/AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  346,
+                                                   "sha256":  "f79ff8b413938c3ce7c60db12242a663d8e840249bd838fcf58f4aaccfec5454"
+                                               },
+                                               {
+                                                   "path":  "mersenne/CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  328,
+                                                   "sha256":  "6ada41c64a228f1c22d929a773ea60d211550c218ce39b5de7d9f7789c1bf450"
+                                               },
+                                               {
+                                                   "path":  "mersenne/LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1486,
+                                                   "sha256":  "c05630f9ca899ea094620d37daea6ba66f99adbf9268ea5fea9db607e1102bd9"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/memory",
+                        "version":  "v1.11.0",
+                        "module_sum":  "h1:o4QC8aMQzmcwCK3t3Ux/ZHmwFPzE6hf2Y5LbkRs+hbI=",
+                        "go_mod_sum":  "h1:/JP4VbVC+K5sU2wZi9bHoq2MAkCnrt2r98UGeSK7Mjw=",
+                        "declared_license_expression":  "BSD-3-Clause AND CC-BY-2.5 AND CC0-1.0",
+                        "source_url":  "https://gitlab.com/cznic/memory",
+                        "notice_id":  "go-d7308111de337a632906a6bc",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  529,
+                                                   "sha256":  "df1f424436f279309de85b82e494d548297a2570e9b5794630d7e72c9eb50b6a"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  532,
+                                                   "sha256":  "1066923ff5a4ddebd362c37f64bf4f2622a41696a298623ab1f82406165477e0"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1484,
+                                                   "sha256":  "59895e669f48f168b6b858358f6005779cdf40a265f7828813061b56af67b496"
+                                               },
+                                               {
+                                                   "path":  "LICENSE-GO",
+                                                   "role":  "license",
+                                                   "size":  1479,
+                                                   "sha256":  "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+                                               },
+                                               {
+                                                   "path":  "LICENSE-LOGO",
+                                                   "role":  "license",
+                                                   "size":  62,
+                                                   "sha256":  "5ae5bee3072a841376451b48d8cfcec7188e10543926d5870828d36c8a750dc5"
+                                               },
+                                               {
+                                                   "path":  "LICENSE-MMAP-GO",
+                                                   "role":  "license",
+                                                   "size":  1518,
+                                                   "sha256":  "c2eba69f20d05414538c3a5df7694dde392e065ff70882e1625e90f5d6659fff"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/opt",
+                        "version":  "v0.2.0",
+                        "module_sum":  "h1:tGyef5ApycA7FSEOMraay9SaTk5zmbx7Tu+cJs4QKZg=",
+                        "go_mod_sum":  "h1:03fq9lsNfvkYSfxrfUhZCWPk1lm4cq4N+Bh//bEtgns=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/opt",
+                        "notice_id":  "go-b2b87d31904ae78a9f8b0014",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  346,
+                                                   "sha256":  "f79ff8b413938c3ce7c60db12242a663d8e840249bd838fcf58f4aaccfec5454"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  277,
+                                                   "sha256":  "3e15203e4b12f2d1b0286daec3cd80da1517e0224325b6aa5be0acedf3330406"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1481,
+                                                   "sha256":  "7a0dd90f1d1c8fa80d03c1806bdd8e4dca7285fae9b4a34f2c4a8a2552fdd77c"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/sortutil",
+                        "version":  "v1.2.1",
+                        "module_sum":  "h1:+xyoGf15mM3NMlPDnFqrteY07klSFxLElE2PVuWIJ7w=",
+                        "go_mod_sum":  "h1:7ZI3a3REbai7gzCLcotuw9AC4VZVpYMjDzETGsSMqJE=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/sortutil",
+                        "notice_id":  "go-fc6f3ec3f0c03f92b8a76649",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  346,
+                                                   "sha256":  "f79ff8b413938c3ce7c60db12242a663d8e840249bd838fcf58f4aaccfec5454"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  311,
+                                                   "sha256":  "1711c96d962c1d039c16f95bb298874f8da88f0cd133ac9b0f4d9febca54e700"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1486,
+                                                   "sha256":  "7bc9df688c16dd8e64463ec0ad66728730a0e1a70a1dbda3dcbcd8a9b45bfaab"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/sqlite",
+                        "version":  "v1.53.0",
+                        "module_sum":  "h1:20WG8N9q4ji/dEqGk4uiI0c6OPjSeLTNYGFCc3+7c1M=",
+                        "go_mod_sum":  "h1:xoEpOIpGrgT48H5iiyt/YXPCZPEzlfmfFwtk8Lklw8s=",
+                        "declared_license_expression":  "BSD-3-Clause AND LicenseRef-SQLite-Public-Domain",
+                        "source_url":  "https://gitlab.com/cznic/sqlite",
+                        "notice_id":  "go-aa779bc3ca0bfffc75833c38",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  3,
+                                                 "sha256":  "19d6a0e85511d6d3e3c6a544267ca982bc7a36afe9a4fafcc5d27e09116c7591",
+                                                 "expressions":  [
+                                                                     "Apache-2.0 WITH LLVM-exception"
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  1159,
+                                                   "sha256":  "7522760e88136024c130139b2eaa6f4305e8f52ae1315b6bad1c4dffa7bd6978"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  1708,
+                                                   "sha256":  "d19aed7e7f1170e1b34292967806bb433f8368bba8d29b16b2281fae11d971c4"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1489,
+                                                   "sha256":  "c6fe05491a60ae13bcd223088d2705e36dede24e5587226231d2459ada5c4822"
+                                               },
+                                               {
+                                                   "path":  "SQLITE-LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1506,
+                                                   "sha256":  "8438c9c89b849131ead81d5435cb97fcf052df5b0b286dda8a2d4c29e6cb3fd0"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/strutil",
+                        "version":  "v1.2.1",
+                        "module_sum":  "h1:UneZBkQA+DX2Rp35KcM69cSsNES9ly8mQWD71HKlOA0=",
+                        "go_mod_sum":  "h1:EHkiggD70koQxjVdSBM3JKM7k6L0FbGE5eymy9i3B9A=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/strutil",
+                        "notice_id":  "go-f1805d91f28d0e497a74e754",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "AUTHORS",
+                                                   "role":  "attribution",
+                                                   "size":  379,
+                                                   "sha256":  "7c0fabaec4dff6b1774a7435e772cd38db760d322ddb13027cab715dfe93c1d0"
+                                               },
+                                               {
+                                                   "path":  "CONTRIBUTORS",
+                                                   "role":  "attribution",
+                                                   "size":  277,
+                                                   "sha256":  "3e15203e4b12f2d1b0286daec3cd80da1517e0224325b6aa5be0acedf3330406"
+                                               },
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1485,
+                                                   "sha256":  "0f594b710bedb0335b15155204150cb1aac98e76144b52b852b43ce6a65eaaad"
+                                               }
+                                           ]
+                    },
+                    {
+                        "path":  "modernc.org/token",
+                        "version":  "v1.1.0",
+                        "module_sum":  "h1:Xl7Ap9dKaEs5kLoOQeQmPWevfnk/DM5qcLcYlA8ys6Y=",
+                        "go_mod_sum":  "h1:UGzOrNV1mAFSEB63lOFHIpNRUVMvYTc6yu1SMY/XTDM=",
+                        "declared_license_expression":  "BSD-3-Clause",
+                        "source_url":  "https://gitlab.com/cznic/token",
+                        "notice_id":  "go-a782ab21768e9b032c366dc9",
+                        "compatibility_conclusion":  {
+                                                         "status":  "reviewed-compatible-for-policy",
+                                                         "policy_id":  "freeagent-agpl-3.0-unvendored-source-six-cgo0-binaries",
+                                                         "policy_version":  1
+                                                     },
+                        "source_spdx_scan":  {
+                                                 "algorithm":  "raw-ascii-marker-path-line-v1",
+                                                 "occurrence_count":  0,
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                                 "expressions":  [
+
+                                                                 ]
+                                             },
+                        "required_files":  [
+                                               {
+                                                   "path":  "LICENSE",
+                                                   "role":  "license",
+                                                   "size":  1479,
+                                                   "sha256":  "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+                                               }
+                                           ]
+                    }
+                ]
+}

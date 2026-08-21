@@ -1,0 +1,1 @@
+{"api_version":"freeagent.module/v1","id":"freeagent.example.knowledge.shared","provides":[{"exact_version":"v1","name":"context.provide"}],"requested_permissions":["knowledge.read"],"requires":[{"exact_version":"v1","name":"model.generate"}],"runtime":{"entrypoint":"content/source.json","mode":"TRUSTED_IN_PROCESS","protocol":"go-in-process/v1"},"version":"1.1.0"}

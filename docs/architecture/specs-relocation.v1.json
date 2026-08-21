@@ -1,0 +1,68 @@
+{
+  "schema_version": 2,
+  "kind": "freeagent-architecture-spec-authority-index",
+  "index": {
+    "path": "docs/architecture/specs/README.md",
+    "status": "HISTORICAL_INDEX_NON_NORMATIVE"
+  },
+  "current_authorities": [
+    {
+      "path": "docs/specs/CORE_RUNTIME_V1.md",
+      "status": "S1_ACCEPTED_DEVELOPMENT_BASELINE"
+    },
+    {
+      "path": "docs/specs/CURRENT_STORE_V1.md",
+      "status": "S1_SCHEMA_DRAFT_DEVELOPMENT_BASELINE_ACCEPTED"
+    },
+    {
+      "path": "docs/CUTOVER_ACCEPTANCE.md",
+      "status": "CUTOVER_NOT_APPLICABLE_NEVER_DEPLOYED"
+    }
+  ],
+  "historical_sources": [
+    {
+      "path": "docs/architecture/specs/2026-07-18-compatibility-remediation-b-design.md",
+      "status": "HISTORICAL_NON_NORMATIVE"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-19-task3-lossless-persistence-design.md",
+      "status": "HISTORICAL_NON_NORMATIVE"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-20-locked-mcp-evidence-first-discovery-design.md",
+      "status": "S2_SEMANTIC_SOURCE_ONLY"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-20-storage-backend-b-design.md",
+      "status": "HISTORICAL_NON_NORMATIVE"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-21-runtime-catalog-authority-design.md",
+      "status": "HISTORICAL_NON_NORMATIVE"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-22-governance-rule-wire-design.md",
+      "status": "HISTORICAL_NON_NORMATIVE"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-22-governance-rule-wire-v1-lock.md",
+      "status": "HISTORICAL_NON_NORMATIVE"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-22-p0-spec-lock-attestation.md",
+      "status": "HISTORICAL_NON_NORMATIVE"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-26-stage2-unified-assembly-cutover.md",
+      "status": "HISTORICAL_NON_NORMATIVE"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-28-stage3-sealed-content-parents.md",
+      "status": "S2_SEMANTIC_SOURCE_ONLY"
+    },
+    {
+      "path": "docs/architecture/specs/2026-07-28-stage3-skill-lifecycle-lock.md",
+      "status": "S2_SEMANTIC_SOURCE_ONLY"
+    }
+  ]
+}

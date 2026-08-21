@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.freeagent.io/config/v1alpha1/assembly-profile.schema.json",
+  "title": "FreeAgent AssemblyProfile v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "tenant_id",
+    "profile_id",
+    "version_id",
+    "defaults",
+    "selections",
+    "disabled_modules",
+    "constraints",
+    "hash"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "freeagent.io/v1alpha1"
+    },
+    "kind": {
+      "const": "AssemblyProfile"
+    },
+    "tenant_id": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/identifier"
+    },
+    "profile_id": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/identifier"
+    },
+    "version_id": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/exactVersion"
+    },
+    "defaults": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/bindingSet"
+    },
+    "disabled_modules": {
+      "description": "Exact module identities that cannot be selected. Disabled entries never carry instance configuration.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/moduleRef"
+      }
+    },
+    "selections": {
+      "description": "Capability/provider selections without concrete instance configuration. OPTIONAL means IF_PRESENT; REQUIRED requires a matching valid attachment.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/moduleSelection"
+      }
+    },
+    "constraints": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/authorityPolicy"
+    },
+    "hash": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/hashOrEmpty"
+    }
+  }
+}

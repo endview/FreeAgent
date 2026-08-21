@@ -1,0 +1,13 @@
+docs/architecture/specs/*.md text eol=lf
+*.ps1 text eol=lf
+.github/workflows/*.yml text eol=lf
+sdk/moduleapi/testdata/compat/v1/** text eol=lf
+internal/controlweb/*.html text eol=lf
+internal/controlweb/*.json text eol=lf
+internal/controlweb/*.ts text eol=lf
+internal/controlweb/scripts/*.mjs text eol=lf
+internal/controlweb/src/*.css text eol=lf
+internal/controlweb/src/*.tsx text eol=lf
+internal/controlweb/dist/*.html text eol=lf
+internal/controlweb/dist/assets/*.css text eol=lf
+internal/controlweb/dist/assets/*.js text eol=lf

@@ -1,0 +1,1056 @@
+{
+    "schema_version":  1,
+    "kind":  "freeagent-distributed-assets",
+    "assets":  [
+                   {
+                       "path":  "examples/README.md",
+                       "size":  11416,
+                       "sha256":  "6aa67a5d14293fc9ba9b75fce8577e60ba9df9488a21d71c8cc73cfb4fe936c2",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/agents.seed.json",
+                       "size":  3103,
+                       "sha256":  "2403cc966a39292d4fb11605c845c7b1557747190078c6499c299449d67016dd",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.action.text_stats/1.0.0/README.md",
+                       "size":  573,
+                       "sha256":  "ed911c84062d30354f02ce97cc20f3b524c86ee11bc71a65d8d23ac5d0d5ee6e",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.action.text_stats/1.0.0/implementation/adapter.json",
+                       "size":  270,
+                       "sha256":  "0792eb8da4a4e375ea4e3c265f83aa9e6d8d173854e20cc721736ab0b51ce2fe",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.action.text_stats/1.0.0/module.yaml",
+                       "size":  435,
+                       "sha256":  "f3d2362ca670e4627eaf8ad43cc0a72bb18b43f03d69ff43c20699b06943b6ea",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.action.text_stats/1.0.0/schemas/config.schema.json",
+                       "size":  658,
+                       "sha256":  "0c2cf71e9b5540e911c36625e8fb81f59c4f40989d7a1a5150bde8f8bc23514c",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE",
+                       "size":  34523,
+                       "sha256":  "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md",
+                       "size":  573,
+                       "sha256":  "74315aecb41b67b3b5d9d0e41a179d5d9541ad5f1066da1b9132059f51309dc5",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json",
+                       "size":  87,
+                       "sha256":  "f3e361500fae788e264135c147477fe146cadd877f23fabcd6359ac89c104f96",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml",
+                       "size":  247,
+                       "sha256":  "5ec3012452ed335abb85e3899022880a64fb8b13bcd7865a0bba40786a20f12f",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.document-insight/1.0.0/content/source.json",
+                       "size":  683,
+                       "sha256":  "53aad6008f86f4e76b7ec22bf248cfc0aa620c2bc4360a3ccd3cfe780442b278",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.document-insight/1.0.0/module.yaml",
+                       "size":  414,
+                       "sha256":  "b3642711557d81a9915ff2cc8f0fee623d04ccb99665711ef7c0f509daaed29c",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.deepseek/1.0.0/README.md",
+                       "size":  404,
+                       "sha256":  "277dd3d9ef5b1b3b1354436ecd438deda39fd67916eb03cd2e846f44aba497ab",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.deepseek/1.0.0/implementation/adapter.json",
+                       "size":  171,
+                       "sha256":  "829e727ef534529c042b51be5d2827b6a0998b1b19bbc4494710c0b79505944c",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.deepseek/1.0.0/module.yaml",
+                       "size":  428,
+                       "sha256":  "6a842cb5624b15f6fb7f5c66768921cf54594767c31f6e922aa76965d6df95f1",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.deepseek/1.0.0/schemas/config.schema.json",
+                       "size":  1911,
+                       "sha256":  "2113510aca9f5332ba0a7ace2267d9964295c087fadd3ca4be5c47ba7e863d66",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE",
+                       "size":  34523,
+                       "sha256":  "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md",
+                       "size":  538,
+                       "sha256":  "5d2bebd01c0e9f27b1d95926bda9ec892fc40aa9f69972903120bdcd2fdc77e1",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json",
+                       "size":  257,
+                       "sha256":  "f781fd76c9df9b340a630f17483e9973cd86fe44beb707d8a2735703c5ef42a1",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml",
+                       "size":  420,
+                       "sha256":  "a882eb243913f2382ea388d4779b37ea9f14ddc3269ecb56c88d7feb30e81088",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json",
+                       "size":  582,
+                       "sha256":  "82579ffd1df5d1c73a360ffff85c1d155fc43bd3665dd238df5bc189ea822f86",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.context.s3c/1.0.0/README.md",
+                       "size":  195,
+                       "sha256":  "b504d7015dd9c5e4c8865e8c1650a6d3f850ce9d68ff21874560a7d0cc60d656",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.context.s3c/1.0.0/content/context.json",
+                       "size":  693,
+                       "sha256":  "db58064a59b95f02486b3986ea4e9ec6f2a1baa2fd3f6596d150ce4e956c8c34",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.context.s3c/1.0.0/module.yaml",
+                       "size":  245,
+                       "sha256":  "c260c42c0c0768915440d0f273391013899e458ec1714682a625e077f1308beb",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.knowledge.shared/1.0.0/content/source.json",
+                       "size":  683,
+                       "sha256":  "53aad6008f86f4e76b7ec22bf248cfc0aa620c2bc4360a3ccd3cfe780442b278",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.knowledge.shared/1.0.0/module.yaml",
+                       "size":  263,
+                       "sha256":  "06c01f1bfa92e0805389045015674d1096cc62c7464d6b7902d7236a416aea21",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.knowledge.shared/1.1.0/content/source.json",
+                       "size":  683,
+                       "sha256":  "53aad6008f86f4e76b7ec22bf248cfc0aa620c2bc4360a3ccd3cfe780442b278",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.knowledge.shared/1.1.0/module.yaml",
+                       "size":  366,
+                       "sha256":  "e82f83481f50137a9f877bee7515146ecccee92b92e0772fbe7bb20a68bf46c6",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.memory.deterministic/1.0.0/content/adapter.json",
+                       "size":  112,
+                       "sha256":  "6d12f0d2c9c8a437470ff12e97fc9294727450b84d495a98b0d008aaa4a24615",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.memory.deterministic/1.0.0/module.yaml",
+                       "size":  268,
+                       "sha256":  "1d29b6d5d0c3c7a74e8a39bad3a2e52b2b25b4c1d3697ca1078c69191a680185",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.role.architect/1.0.0/LICENSE",
+                       "size":  34523,
+                       "sha256":  "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.role.architect/1.0.0/README.md",
+                       "size":  285,
+                       "sha256":  "0bc628dffbb92087e3cfaa87522762806cdef2a1456abb55cb0be5b9d34441ed",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.role.architect/1.0.0/content/context.json",
+                       "size":  136,
+                       "sha256":  "15d15b40a95feb76950f7bb562c4433bf9b42a50d14c128df8981802276360e4",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.role.architect/1.0.0/module.yaml",
+                       "size":  248,
+                       "sha256":  "302dca99bf0026fb77f9c5dfa76d42dc9c82e21f42224ac55b8217b260a8030e",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.skill.implementation/1.0.0/LICENSE",
+                       "size":  34523,
+                       "sha256":  "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.skill.implementation/1.0.0/README.md",
+                       "size":  263,
+                       "sha256":  "a366d8590cc4897eae13e6960c92057966f5015d052736441c982eeaca878a67",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.skill.implementation/1.0.0/content/context.json",
+                       "size":  138,
+                       "sha256":  "af6058cef32472aca1cf7de555dcf6bfad32535b9af43206ee0e63641d10a1fb",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/bootstrap-artifacts/freeagent.example.skill.implementation/1.0.0/module.yaml",
+                       "size":  254,
+                       "sha256":  "ebf9eeb8f6bdaa4df664a23fb38509c9bf526dec6fc6983b95873d38f3ad4191",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/current-v1.action.bootstrap.seed.json",
+                       "size":  4541,
+                       "sha256":  "364eac0fa0b5414712800b4e2fa3aca0dcb717401fdccd6fef9a69be3f61491b",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/current-v1.bootstrap.seed.json",
+                       "size":  3453,
+                       "sha256":  "34f712989fd31120c2c4ccc026d36ed9e365813747e6de8bf2ca85af9ddb5a3d",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/current-v1.deepseek.bootstrap.seed.json",
+                       "size":  3058,
+                       "sha256":  "0103b85f0513900a09c6fd04b38fd94f3a8d50185493d84010b6c60f4f462d48",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/current-v1.memory.bootstrap.seed.json",
+                       "size":  5073,
+                       "sha256":  "8ba615f2e95b7b9fc7f66ed7dbb3c45eb5c1d2160140bb5855cf7090decf5350",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/current-v1.rag.bootstrap.seed.json",
+                       "size":  4853,
+                       "sha256":  "44210e9a3b92cfe11347f67d71e09321dad9aeafebb3bd366dc3503048553878",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/knowledge-seed.json",
+                       "size":  635,
+                       "sha256":  "35970c7bb94967f5ca9d2110054b12adb0036795d3ab3435a46a13708ac12517",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/s3c-architecture-clean.scenario.json",
+                       "size":  1354,
+                       "sha256":  "8518150d488f7e813be393c0577d072751867d807b2409d2d6b5a9c0139ccdc9",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/s3c-architecture-trap.scenario.json",
+                       "size":  1421,
+                       "sha256":  "0d47a36469a980e65d04377adcffac7f5b150cfccab00abbb211547c24ab58fc",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/s3c-deepseek-v4-flash-reviewer-off.bootstrap.seed.json",
+                       "size":  5965,
+                       "sha256":  "047bd4eb68ed2e84ac48c41dc1a3c316664fdfd44151c9cdef8a08a0b9948509",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/s3c-deepseek-v4-flash-reviewer-on.bootstrap.seed.json",
+                       "size":  6508,
+                       "sha256":  "85b23620ef228a179c38425e49f0a2b6ed5b433466c7397f54e18e6f03390ffd",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/s3c-deepseek-v4-pro-reviewer-off.bootstrap.seed.json",
+                       "size":  5933,
+                       "sha256":  "98c9d1276a774711ea500a29b8d71af173f1c11bbf1698b5eef308aedfbe4070",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/s3c-deepseek-v4-pro-reviewer-on.bootstrap.seed.json",
+                       "size":  6474,
+                       "sha256":  "744e38599bbefa5523cce92760e6b44c654474a32468a76a7157c4c5e1582ee6",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/workspaces.local.seed.json",
+                       "size":  737,
+                       "sha256":  "f6965aec20325798fb4c01b9bb66b16e39fcb0acba61a4ebd6ee089c0e858de5",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "examples/workspaces.seed.json",
+                       "size":  2322,
+                       "sha256":  "35f4c9ab0f90df1f5f1681f1a6ce41e29a5b0201c328fef8270893923cd2265b",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "internal/controlweb/dist/assets/app.css",
+                       "size":  16480,
+                       "sha256":  "2d2ab8c385d972a7c1cbd9fbbfd9a11e26d53f0ce71a8bed0528c7d4a248f7ce",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "internal/controlweb/dist/assets/app.js",
+                       "size":  220392,
+                       "sha256":  "abfce7c87582ca1cadf2e3fab9cc8462b1fa264eacc74f311fafac12c517b001",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "internal/controlweb/dist/assets/react.js",
+                       "size":  554455,
+                       "sha256":  "87b823d95ddc471c8ea19c7891961eadf87cbc422e600dae77680da28dc393f9",
+                       "origin":  "third-party",
+                       "source_url":  "https://github.com/facebook/react",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-3155935f8f5948a96e9f3006",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/react/19.2.8/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1088,
+                                                  "sha256":  "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "internal/controlweb/dist/assets/tanstack-query.js",
+                       "size":  79776,
+                       "sha256":  "ec1bbca1b6df03fa9ba364ac3f70097def64f3e049c30e550a81d6c1e0cf2e9c",
+                       "origin":  "third-party",
+                       "source_url":  "https://github.com/TanStack/query",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-91632cd27eb47ceea95466a0",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/tanstack-query/5.101.4/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1079,
+                                                  "sha256":  "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "internal/controlweb/dist/index.html",
+	                       "size":  494,
+	                       "sha256":  "d6d262877636c5257056100134611cc9658fa7870e3e177b41ee8f5f481aa8d6",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "internal/currentstore/migrations/0001_current.sql",
+                       "size":  150301,
+                       "sha256":  "6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "schemas/config/v1alpha1/agent-version.schema.json",
+                       "size":  1851,
+                       "sha256":  "7380e02047dd672795399e76ad269fbca4cbdf76a14ef89118528a10b8f1518f",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "schemas/config/v1alpha1/assembly-profile.schema.json",
+                       "size":  2062,
+                       "sha256":  "03670b3d7fc81f349b302906bc81c3874b67bb2a44a07b22d2ba5e791a9991e2",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "schemas/config/v1alpha1/task-requirements.schema.json",
+                       "size":  1971,
+                       "sha256":  "c79ecc47b61fe067bd98487a2d4153ddef92b00873212a7ee12f7789523ebec3",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "schemas/config/v1alpha1/workspace.schema.json",
+                       "size":  35306,
+                       "sha256":  "85a5f257a72d3eddfc8a7e9f48a4a5a9870d57485031668ea49c62d4a60f029d",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "testdata/release/capabilities.v1.json",
+                       "size":  40332,
+                       "sha256":  "98685621722427ff2586fd96fda42da28adb23b881ce19b911df1f79e5f27439",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "testdata/release/docs-maturity-claims.v1.json",
+                       "size":  38088,
+                       "sha256":  "c450b00b7b03bc96efbfe9d3fbf5b6b40501c2f170630006f80b972c4e02157f",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/csstype/3.2.3/LICENSE",
+                       "size":  1062,
+                       "sha256":  "11d55bd4541c75ee7879547ac49089c489163dae49551389713c3d026cab383e",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/csstype/-/csstype-3.2.3.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-9199c8187f733ce3e3a1a718",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/csstype/3.2.3/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1062,
+                                                  "sha256":  "11d55bd4541c75ee7879547ac49089c489163dae49551389713c3d026cab383e"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/definitelytyped/LICENSE",
+                       "size":  1141,
+                       "sha256":  "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-6431a142d602dee90ae3118f",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/definitelytyped/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1141,
+                                                  "sha256":  "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/esbuild/0.28.2/LICENSE.md",
+                       "size":  1069,
+                       "sha256":  "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.28.2.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-f183019ed38a989671de71bb",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/esbuild/0.28.2/LICENSE.md",
+                                                  "role":  "license",
+                                                  "size":  1069,
+                                                  "sha256":  "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/fdir/6.5.0/LICENSE",
+                       "size":  1053,
+                       "sha256":  "9a39f2aadab11a3697edd668ff2d8ad885b649737b7ab4d3bf12b34e5ada0c86",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-86c0c1dbc289ba215d7596f1",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/fdir/6.5.0/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1053,
+                                                  "sha256":  "9a39f2aadab11a3697edd668ff2d8ad885b649737b7ab4d3bf12b34e5ada0c86"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/fsevents/2.3.3/LICENSE",
+                       "size":  1133,
+                       "sha256":  "2a8a5d6197bb97a018b8a190dd3ed853d750ca87c8e80c17aad41d6c6ff448e1",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-0162f7b92c9e49f822904292",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/fsevents/2.3.3/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1133,
+                                                  "sha256":  "2a8a5d6197bb97a018b8a190dd3ed853d750ca87c8e80c17aad41d6c6ff448e1"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/nanoid/3.3.18/LICENSE",
+                       "size":  1095,
+                       "sha256":  "da4db1480d9beea3483a2eda5c53b22238d0827d57da162b48f122e04d2d9987",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-ec91b734f700d956d2ffdac5",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/nanoid/3.3.18/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1095,
+                                                  "sha256":  "da4db1480d9beea3483a2eda5c53b22238d0827d57da162b48f122e04d2d9987"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/picocolors/1.1.1/LICENSE",
+                       "size":  787,
+                       "sha256":  "6582629e2979466878f6014313dcc2f3756c9616148682227ce3063dde310750",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz",
+                       "spdx_expression":  "ISC",
+                       "notice_id":  "asset-4c476e9bd5835d2aa0f3d268",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/picocolors/1.1.1/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  787,
+                                                  "sha256":  "6582629e2979466878f6014313dcc2f3756c9616148682227ce3063dde310750"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/picomatch/4.0.5/LICENSE",
+                       "size":  1091,
+                       "sha256":  "d0cd141b0c322fded5dfad1d4645bb2fedfc05b7321fe1009469638190d59ef9",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/picomatch/-/picomatch-4.0.5.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-c4f6d98ba27751708248ff27",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/picomatch/4.0.5/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1091,
+                                                  "sha256":  "d0cd141b0c322fded5dfad1d4645bb2fedfc05b7321fe1009469638190d59ef9"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/postcss/8.5.26/LICENSE",
+                       "size":  1095,
+                       "sha256":  "5be1f3465bba68a626777f984878814aaf35e7ef8e9fd314d469bcf887050fb8",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/postcss/-/postcss-8.5.26.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-021abfd2e261af73e4cec141",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/postcss/8.5.26/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1095,
+                                                  "sha256":  "5be1f3465bba68a626777f984878814aaf35e7ef8e9fd314d469bcf887050fb8"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/react/19.2.8/LICENSE",
+                       "size":  1088,
+                       "sha256":  "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/react/-/react-19.2.8.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-1059f61cd162601effb85aaf",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/react/19.2.8/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1088,
+                                                  "sha256":  "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/rollup/4.62.0/LICENSE.md",
+                       "size":  35231,
+                       "sha256":  "fa1bd040c5bdeefe65b3821cebf474f2733ce65df13089bd151dda1778e62fe8",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/@rollup/rollup-android-arm64/-/rollup-android-arm64-4.62.0.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-bbd8bc8fa0260e81d2f5778e",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/rollup/4.62.0/LICENSE.md",
+                                                  "role":  "license",
+                                                  "size":  35231,
+                                                  "sha256":  "fa1bd040c5bdeefe65b3821cebf474f2733ce65df13089bd151dda1778e62fe8"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/source-map-js/1.2.1/LICENSE",
+                       "size":  1526,
+                       "sha256":  "6cb0631f71c7749763fd3dd1d5bee52dd1070ec17f2edc1710079ad070bd2fbd",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
+                       "spdx_expression":  "BSD-3-Clause",
+                       "notice_id":  "asset-9b9452269cfd0a27e49e1edf",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/source-map-js/1.2.1/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1526,
+                                                  "sha256":  "6cb0631f71c7749763fd3dd1d5bee52dd1070ec17f2edc1710079ad070bd2fbd"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/tanstack-query/5.101.4/LICENSE",
+                       "size":  1079,
+                       "sha256":  "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/@tanstack/query-core/-/query-core-5.101.4.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-d44d49ed9e5589fb41d9d6cf",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/tanstack-query/5.101.4/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1079,
+                                                  "sha256":  "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/tinyglobby/0.2.17/LICENSE",
+                       "size":  1076,
+                       "sha256":  "22c68811e174cbbfb3813d4135918df4f540959c14d872e601d9abe83d3cde8f",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-f6a8b58b1aa439912608607f",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/tinyglobby/0.2.17/LICENSE",
+                                                  "role":  "license",
+                                                  "size":  1076,
+                                                  "sha256":  "22c68811e174cbbfb3813d4135918df4f540959c14d872e601d9abe83d3cde8f"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/typescript/5.9.3/LICENSE.txt",
+                       "size":  9142,
+                       "sha256":  "a5e9f9b1575301c7a7a03508fdaa2e05a918cc17fd21c6e898096a96d6a34f61",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz",
+                       "spdx_expression":  "Apache-2.0",
+                       "notice_id":  "asset-d674a493530c58c05a79caba",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/typescript/5.9.3/LICENSE.txt",
+                                                  "role":  "license",
+                                                  "size":  9142,
+                                                  "sha256":  "a5e9f9b1575301c7a7a03508fdaa2e05a918cc17fd21c6e898096a96d6a34f61"
+                                              }
+                                          ]
+                   },
+                   {
+                       "path":  "third_party/npm/vite/7.3.6/LICENSE.md",
+                       "size":  101176,
+                       "sha256":  "a77a1c089806b39ad339535bdf3677f636c91d96693e8ad7b11fe733f650ea64",
+                       "origin":  "third-party",
+                       "source_url":  "https://registry.npmjs.org/vite/-/vite-7.3.6.tgz",
+                       "spdx_expression":  "MIT",
+                       "notice_id":  "asset-12e01d69f2541edf589845b8",
+                       "required_files":  [
+                                              {
+                                                  "path":  "third_party/npm/vite/7.3.6/LICENSE.md",
+                                                  "role":  "license",
+                                                  "size":  101176,
+                                                  "sha256":  "a77a1c089806b39ad339535bdf3677f636c91d96693e8ad7b11fe733f650ea64"
+                                              }
+                                          ]
+                   }
+               ]
+}

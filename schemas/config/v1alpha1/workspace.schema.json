@@ -1,0 +1,1508 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json",
+  "title": "FreeAgent WorkspaceDefinition v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "tenant_id",
+    "workspace_id",
+    "name",
+    "revision",
+    "members",
+    "routes",
+    "acl",
+    "knowledge",
+    "agent_roster",
+    "retention",
+    "default_team",
+    "bindings",
+    "binding_policy",
+    "secret_refs",
+    "hash"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "freeagent.io/v1alpha1"
+    },
+    "kind": {
+      "const": "WorkspaceDefinition"
+    },
+    "tenant_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "workspace_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "name": {
+      "$ref": "#/$defs/displayName"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "members": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": {
+        "$ref": "#/$defs/workspaceMember"
+      }
+    },
+    "routes": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": {
+        "$ref": "#/$defs/workspaceRoute"
+      }
+    },
+    "acl": {
+      "$ref": "#/$defs/workspaceACL"
+    },
+    "knowledge": {
+      "$ref": "#/$defs/knowledgePolicy"
+    },
+    "agent_roster": {
+      "$ref": "#/$defs/agentRoster"
+    },
+    "retention": {
+      "$ref": "#/$defs/retentionPolicy"
+    },
+    "default_profile": {
+      "$ref": "#/$defs/profileRef"
+    },
+    "default_team": {
+      "$ref": "#/$defs/teamPolicy"
+    },
+    "bindings": {
+      "$ref": "#/$defs/bindingSet"
+    },
+    "binding_policy": {
+      "$ref": "#/$defs/workspaceBindingPolicy"
+    },
+    "secret_refs": {
+      "$ref": "#/$defs/secretRefs"
+    },
+    "hash": {
+      "$ref": "#/$defs/hashOrEmpty"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9._-]{0,127}$"
+    },
+    "dottedIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)*$"
+    },
+    "exactVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._+-]{0,62}[A-Za-z0-9])?$"
+    },
+    "opaqueID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?:[!-~]|[!-~][ -~]*[!-~])$"
+    },
+    "secretOpaqueID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?:[!-~]|[!-~][ -~]*[!-~])$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "knowledgeCollectionID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+      "x-freeagent-maxUtf8Bytes": 256,
+      "x-freeagent-normalization": "NFC_TRIMMED"
+    },
+    "domainID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\x00-\\x08\\x0e-\\x1f\\x7f]+$",
+      "x-freeagent-maxUtf8Bytes": 1024,
+      "x-freeagent-normalization": "UNICODE_LOWER_COLLAPSED_WHITESPACE"
+    },
+    "domainAliasText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[^\\x00-\\x08\\x0e-\\x1f\\x7f]+$",
+      "x-freeagent-maxUtf8Bytes": 4096,
+      "x-freeagent-normalization": "UNICODE_LOWER_COLLAPSED_WHITESPACE"
+    },
+    "toolCapabilityID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "policyMode": {
+      "enum": [
+        "INHERIT",
+        "CEILING"
+      ]
+    },
+    "channelIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hashOrEmpty": {
+      "type": "string",
+      "pattern": "^$|^[0-9a-f]{64}$"
+    },
+    "configBlobRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "size"
+      ],
+      "properties": {
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "typeLabel": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 317,
+      "allOf": [
+        {
+          "pattern": "^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?/[a-z0-9](?:[a-z0-9._-]{0,61}[a-z0-9])?$"
+        },
+        {
+          "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?/[a-z0-9](?:[a-z0-9._-]{0,61}[a-z0-9])?$"
+        },
+        {
+          "anyOf": [
+            {
+              "enum": [
+                "freeagent.io/composite",
+                "freeagent.io/specialist",
+                "freeagent.io/reviewer"
+              ]
+            },
+            {
+              "not": {
+                "pattern": "^freeagent\\.io/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "moduleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "version": {
+          "$ref": "#/$defs/exactVersion"
+        }
+      }
+    },
+    "skillRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "digest"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "digest": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "mcpServerRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "version": {
+          "$ref": "#/$defs/exactVersion"
+        }
+      }
+    },
+    "secretRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "scope",
+        "scope_id",
+        "name",
+        "version"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "scope": {
+          "enum": [
+            "TENANT",
+            "WORKSPACE",
+            "AGENT",
+            "MODULE_INSTALLATION"
+          ]
+        },
+        "scope_id": {
+          "$ref": "#/$defs/secretOpaqueID"
+        },
+        "name": {
+          "$ref": "#/$defs/secretOpaqueID"
+        },
+        "version": {
+          "$ref": "#/$defs/exactVersion"
+        }
+      }
+    },
+    "secretRefs": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/secretRef"
+      }
+    },
+    "failurePolicy": {
+      "enum": [
+        "REQUIRED",
+        "OPTIONAL"
+      ]
+    },
+    "moduleAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "config",
+        "config_hash",
+        "secret_refs",
+        "failure_policy"
+      ],
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/moduleRef"
+        },
+        "config": {
+          "type": "object"
+        },
+        "config_hash": {
+          "$ref": "#/$defs/hashOrEmpty"
+        },
+        "secret_refs": {
+          "$ref": "#/$defs/secretRefs"
+        },
+        "failure_policy": {
+          "$ref": "#/$defs/failurePolicy"
+        }
+      }
+    },
+    "skillAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "config",
+        "config_hash",
+        "failure_policy"
+      ],
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/skillRef"
+        },
+        "config": {
+          "type": "object"
+        },
+        "config_hash": {
+          "$ref": "#/$defs/hashOrEmpty"
+        },
+        "failure_policy": {
+          "$ref": "#/$defs/failurePolicy"
+        }
+      }
+    },
+    "mcpAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "transport",
+        "config",
+        "config_hash",
+        "secret_refs",
+        "failure_policy"
+      ],
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/mcpServerRef"
+        },
+        "transport": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "config": {
+          "type": "object"
+        },
+        "config_hash": {
+          "$ref": "#/$defs/hashOrEmpty"
+        },
+        "secret_refs": {
+          "$ref": "#/$defs/secretRefs"
+        },
+        "failure_policy": {
+          "$ref": "#/$defs/failurePolicy"
+        }
+      }
+    },
+    "bindingSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modules",
+        "skills",
+        "mcp_servers"
+      ],
+      "properties": {
+        "modules": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/moduleAttachment"
+          }
+        },
+        "skills": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/skillAttachment"
+          }
+        },
+        "mcp_servers": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/mcpAttachment"
+          }
+        }
+      }
+    },
+    "budgetPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_model_calls",
+        "max_tool_calls",
+        "max_input_tokens",
+        "max_output_tokens",
+        "max_total_tokens",
+        "max_cost_micros",
+        "max_wall_time_ms"
+      ],
+      "properties": {
+        "max_model_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_tool_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_input_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_total_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_cost_micros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "max_wall_time_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/dottedIdentifier"
+      }
+    },
+    "effectClass": {
+      "enum": [
+        "none",
+        "read_only",
+        "reversible_write",
+        "irreversible_write"
+      ]
+    },
+    "authorityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "permission_ceiling",
+        "effect_ceiling",
+        "data_scope_ceiling",
+        "budget"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/policyMode"
+        },
+        "permission_ceiling": {
+          "$ref": "#/$defs/permissions"
+        },
+        "effect_ceiling": {
+          "$ref": "#/$defs/effectClass"
+        },
+        "data_scope_ceiling": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/opaqueID"
+          }
+        },
+        "budget": {
+          "$ref": "#/$defs/budgetPolicy"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "INHERIT"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "permission_ceiling": {
+                "maxItems": 0
+              },
+              "effect_ceiling": {
+                "const": "none"
+              },
+              "data_scope_ceiling": {
+                "maxItems": 0
+              },
+              "budget": {
+                "const": {
+                  "max_model_calls": 0,
+                  "max_tool_calls": 0,
+                  "max_input_tokens": 0,
+                  "max_output_tokens": 0,
+                  "max_total_tokens": 0,
+                  "max_cost_micros": 0,
+                  "max_wall_time_ms": 0
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "toolCapabilityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allow",
+        "deny"
+      ],
+      "properties": {
+        "allow": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/toolCapabilityID"
+          }
+        },
+        "deny": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/toolCapabilityID"
+          }
+        }
+      }
+    },
+    "workspaceBindingPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed_modules",
+        "denied_modules",
+        "default_modules",
+        "allowed_skills",
+        "denied_skills",
+        "default_skills",
+        "allowed_mcp_servers",
+        "denied_mcp_servers",
+        "default_mcp_servers",
+        "tools",
+        "authority",
+        "policy_hash"
+      ],
+      "properties": {
+        "allowed_modules": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/moduleRef"
+          }
+        },
+        "denied_modules": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/moduleRef"
+          }
+        },
+        "default_modules": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/moduleAttachment"
+          }
+        },
+        "allowed_skills": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/skillRef"
+          }
+        },
+        "denied_skills": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/skillRef"
+          }
+        },
+        "default_skills": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/skillAttachment"
+          }
+        },
+        "allowed_mcp_servers": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/mcpServerRef"
+          }
+        },
+        "denied_mcp_servers": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/mcpServerRef"
+          }
+        },
+        "default_mcp_servers": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/mcpAttachment"
+          }
+        },
+        "tools": {
+          "$ref": "#/$defs/toolCapabilityPolicy"
+        },
+        "authority": {
+          "$ref": "#/$defs/authorityPolicy"
+        },
+        "policy_hash": {
+          "const": ""
+        }
+      }
+    },
+    "workspaceMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "role"
+      ],
+      "properties": {
+        "user_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "role": {
+          "enum": [
+            "OWNER",
+            "ADMIN",
+            "MEMBER",
+            "VIEWER"
+          ]
+        }
+      }
+    },
+    "workspaceRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channel",
+        "account_id",
+        "conversation_id"
+      ],
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/channelIdentifier"
+        },
+        "account_id": {
+          "$ref": "#/$defs/opaqueID"
+        },
+        "conversation_id": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/opaqueID"
+            },
+            {
+              "not": {
+                "const": "*"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "workspaceACL": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "epoch",
+        "permission_allow",
+        "permission_deny"
+      ],
+      "properties": {
+        "epoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "permission_allow": {
+          "$ref": "#/$defs/permissions"
+        },
+        "permission_deny": {
+          "$ref": "#/$defs/permissions"
+        }
+      }
+    },
+    "knowledgePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "allowed_collections",
+        "default_collections"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/policyMode"
+        },
+        "allowed_collections": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/knowledgeCollectionID"
+          }
+        },
+        "default_collections": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/knowledgeCollectionID"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "INHERIT"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowed_collections": {
+                "maxItems": 0
+              },
+              "default_collections": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "agentVersionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_id",
+        "version_id",
+        "hash"
+      ],
+      "properties": {
+        "agent_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version_id": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "hash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "agentRoster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed",
+        "denied"
+      ],
+      "properties": {
+        "allowed": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/agentVersionRef"
+          }
+        },
+        "denied": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/agentVersionRef"
+          }
+        },
+        "default_agent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/agentVersionRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "retentionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "message_days",
+        "memory_days",
+        "artifact_days",
+        "audit_days"
+      ],
+      "properties": {
+        "message_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "memory_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "artifact_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "audit_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "profileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "hash"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "hash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "teamPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_members",
+        "max_specialists",
+        "require_independent_reviewer",
+        "composite_labels",
+        "specialist_labels",
+        "reviewer_labels"
+      ],
+      "properties": {
+        "max_members": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "max_specialists": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256
+        },
+        "require_independent_reviewer": {
+          "type": "boolean"
+        },
+        "composite_labels": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/typeLabel"
+          }
+        },
+        "specialist_labels": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/typeLabel"
+          }
+        },
+        "reviewer_labels": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/typeLabel"
+          }
+        }
+      }
+    },
+    "weightedHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "weight_basis"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "weight_basis": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      }
+    },
+    "weightedAliasHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "weight"
+      ],
+      "properties": {
+        "text": {
+          "$ref": "#/$defs/domainAliasText"
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "domainRoutingHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "capability",
+        "authority",
+        "aliases"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/domainID"
+        },
+        "capability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "authority": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "aliases": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/weightedAliasHint"
+          }
+        }
+      }
+    },
+    "routingHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domains",
+        "capabilities"
+      ],
+      "properties": {
+        "domains": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/domainRoutingHint"
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/weightedHint"
+          }
+        }
+      }
+    },
+    "agentBindingPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "denied_modules",
+        "denied_skills",
+        "denied_mcp_servers",
+        "knowledge_mode",
+        "knowledge_collections",
+        "tools",
+        "authority",
+        "policy_hash"
+      ],
+      "properties": {
+        "denied_modules": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/moduleRef"
+          }
+        },
+        "denied_skills": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/skillRef"
+          }
+        },
+        "denied_mcp_servers": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/mcpServerRef"
+          }
+        },
+        "knowledge_mode": {
+          "$ref": "#/$defs/policyMode"
+        },
+        "knowledge_collections": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/knowledgeCollectionID"
+          }
+        },
+        "tools": {
+          "$ref": "#/$defs/toolCapabilityPolicy"
+        },
+        "authority": {
+          "$ref": "#/$defs/authorityPolicy"
+        },
+        "policy_hash": {
+          "const": ""
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "knowledge_mode": {
+                "const": "INHERIT"
+              }
+            },
+            "required": [
+              "knowledge_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "knowledge_collections": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "moduleSelection": {
+      "description": "Selects one provider for a capability without owning its concrete attachment configuration.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability",
+        "failure_policy"
+      ],
+      "properties": {
+        "capability": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "exact_ref": {
+          "$ref": "#/$defs/moduleRef"
+        },
+        "failure_policy": {
+          "$ref": "#/$defs/failurePolicy"
+        }
+      }
+    },
+    "taskEvidenceInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "version",
+        "hash"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "WorkspaceDefinition",
+            "AssemblyProfile",
+            "OperatorRequest",
+            "TrustedClassifier",
+            "LegacyTaskScope",
+            "LegacyProfileSnapshot"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/opaqueID"
+        },
+        "version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "hash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "taskEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "source",
+        "compiler_id",
+        "compiler_version",
+        "source_hash",
+        "inputs"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "NEW",
+            "LEGACY_BACKFILL"
+          ]
+        },
+        "source": {
+          "enum": [
+            "OPERATOR_REQUEST",
+            "TRUSTED_CLASSIFIER",
+            "WORKSPACE_DEFAULT"
+          ]
+        },
+        "compiler_id": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "compiler_version": {
+          "$ref": "#/$defs/exactVersion"
+        },
+        "source_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/taskEvidenceInput"
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "mode": {
+              "const": "NEW"
+            },
+            "source": {
+              "const": "WORKSPACE_DEFAULT"
+            },
+            "inputs": {
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/taskEvidenceInput"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "WorkspaceDefinition",
+                          "AssemblyProfile"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "allOf": [
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "WorkspaceDefinition"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                },
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "AssemblyProfile"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                }
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "mode": {
+              "const": "NEW"
+            },
+            "source": {
+              "const": "OPERATOR_REQUEST"
+            },
+            "inputs": {
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/taskEvidenceInput"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "WorkspaceDefinition",
+                          "AssemblyProfile",
+                          "OperatorRequest"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "allOf": [
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "WorkspaceDefinition"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                },
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "AssemblyProfile"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                },
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "OperatorRequest"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                }
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "mode": {
+              "const": "NEW"
+            },
+            "source": {
+              "const": "TRUSTED_CLASSIFIER"
+            },
+            "inputs": {
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/taskEvidenceInput"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "WorkspaceDefinition",
+                          "AssemblyProfile",
+                          "TrustedClassifier"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "allOf": [
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "WorkspaceDefinition"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                },
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "AssemblyProfile"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                },
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "TrustedClassifier"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                }
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "mode": {
+              "const": "LEGACY_BACKFILL"
+            },
+            "source": {
+              "const": "WORKSPACE_DEFAULT"
+            },
+            "inputs": {
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/taskEvidenceInput"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "LegacyTaskScope",
+                          "LegacyProfileSnapshot"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "allOf": [
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "LegacyTaskScope"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                },
+                {
+                  "contains": {
+                    "properties": {
+                      "kind": {
+                        "const": "LegacyProfileSnapshot"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "minContains": 1,
+                  "maxContains": 1
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

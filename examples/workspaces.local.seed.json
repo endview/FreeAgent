@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "tenant_id": "default",
+  "users": [
+    {
+      "id": "local-user",
+      "display_name": "Local User"
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "local-chat",
+      "name": "Local Chat",
+      "revision": 1
+    }
+  ],
+  "members": [
+    {
+      "workspace_id": "local-chat",
+      "user_id": "local-user",
+      "role": "OWNER"
+    }
+  ],
+  "channel_identities": [
+    {
+      "id": "local-user-local-chat",
+      "user_id": "local-user",
+      "channel": "local",
+      "account_id": "default",
+      "external_user_id": "local-user"
+    }
+  ],
+  "routes": [
+    {
+      "workspace_id": "local-chat",
+      "channel": "local",
+      "account_id": "default",
+      "conversation_id": "local"
+    }
+  ]
+}

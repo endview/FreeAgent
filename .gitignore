@@ -1,0 +1,42 @@
+# Build output
+/bin/
+*.exe
+*.test
+*.out
+coverage.*
+$cover
+
+# Runtime state
+/data/
+/logs/
+/storage/
+/release-evidence/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Local tooling and construction material
+/.tools/
+/.cache/
+/.construction/
+/.superpowers/
+/internal/controlweb/node_modules/
+/internal/controlweb/.npm-cache/
+/internal/controlweb/.vite/
+
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

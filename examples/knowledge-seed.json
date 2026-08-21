@@ -1,0 +1,27 @@
+{
+  "tenant_id": "default",
+  "collection": {
+    "id": "domain:example",
+    "name": "Example domain knowledge",
+    "namespace": "domain:example",
+    "tags": ["example"],
+    "active_version": 1
+  },
+  "source": {
+    "id": "example-source",
+    "source_key": "example-primary-source",
+    "source_type": "official_primary",
+    "uri": "https://example.com/docs",
+    "status": "ACTIVE"
+  },
+  "items": [
+    {
+      "id": "example-item-v1",
+      "version": 1,
+      "title": "Example fact",
+      "body": "Replace this text with operator-reviewed source material.",
+      "tags": ["example"],
+      "status": "ACTIVE"
+    }
+  ]
+}

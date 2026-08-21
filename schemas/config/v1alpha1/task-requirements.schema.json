@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.freeagent.io/config/v1alpha1/task-requirements.schema.json",
+  "title": "FreeAgent TaskRequirements v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "task_id",
+    "requested_modules",
+    "requested_skills",
+    "requested_mcp_servers",
+    "required_capabilities",
+    "budget_ceiling",
+    "evidence",
+    "hash"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "freeagent.io/v1alpha1"
+    },
+    "kind": {
+      "const": "TaskRequirements"
+    },
+    "task_id": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/opaqueID"
+    },
+    "requested_modules": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/moduleRef"
+      }
+    },
+    "requested_skills": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/skillRef"
+      }
+    },
+    "requested_mcp_servers": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/mcpServerRef"
+      }
+    },
+    "required_capabilities": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/dottedIdentifier"
+      }
+    },
+    "budget_ceiling": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/budgetPolicy"
+    },
+    "evidence": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/taskEvidence"
+    },
+    "hash": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/hashOrEmpty"
+    }
+  }
+}

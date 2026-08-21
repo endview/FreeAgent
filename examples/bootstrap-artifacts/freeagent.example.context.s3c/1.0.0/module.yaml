@@ -1,0 +1,1 @@
+{"api_version":"freeagent.module/v1","id":"freeagent.example.context.s3c","provides":[{"exact_version":"v1","name":"context.provide"}],"runtime":{"entrypoint":"content/context.json","mode":"DECLARATIVE","protocol":"static/v1"},"version":"1.0.0"}

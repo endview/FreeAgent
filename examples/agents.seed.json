@@ -1,0 +1,77 @@
+{
+  "tenant_id": "default",
+  "agents": [
+    {
+      "id": "architect",
+      "name": "Architecture composite",
+      "version": 1,
+      "spec": {
+        "schema_version": 1,
+        "kind": "COMPOSITE",
+        "persona": "Prioritize interfaces, constraints, weights, tradeoffs, and integration order.",
+        "trust": 0.9,
+        "cost_weight": 1.2,
+        "domains": [
+          {"domain": "backend", "capability": 0.85, "authority": 0.75, "aliases": [{"text": "backend", "weight": 1}, {"text": "后端", "weight": 1}]},
+          {"domain": "frontend", "capability": 0.85, "authority": 0.75, "aliases": [{"text": "frontend", "weight": 1}, {"text": "前端", "weight": 1}]},
+          {"domain": "network", "capability": 0.8, "authority": 0.7, "aliases": [{"text": "network", "weight": 1}, {"text": "网络", "weight": 1}]}
+        ],
+        "allowed_collections": ["core:global", "domain:example", "domain:software"]
+      },
+      "tool_policy": {"allow": [], "deny": []}
+    },
+    {
+      "id": "frontend",
+      "name": "Frontend specialist",
+      "version": 1,
+      "spec": {
+        "schema_version": 1,
+        "kind": "SPECIALIST",
+        "persona": "Produce concrete frontend behavior, interaction, state, accessibility, and implementation details.",
+        "trust": 0.88,
+        "cost_weight": 1,
+        "domains": [
+          {"domain": "frontend", "capability": 0.95, "authority": 0.9, "aliases": [{"text": "frontend", "weight": 1}, {"text": "前端", "weight": 1}]}
+        ],
+        "allowed_collections": ["core:global", "domain:example", "domain:software"]
+      },
+      "tool_policy": {"allow": [], "deny": []}
+    },
+    {
+      "id": "backend",
+      "name": "Backend specialist",
+      "version": 1,
+      "spec": {
+        "schema_version": 1,
+        "kind": "SPECIALIST",
+        "persona": "Produce concrete backend contracts, persistence, concurrency, reliability, and failure semantics.",
+        "trust": 0.9,
+        "cost_weight": 1,
+        "domains": [
+          {"domain": "backend", "capability": 0.96, "authority": 0.92, "aliases": [{"text": "backend", "weight": 1}, {"text": "后端", "weight": 1}]}
+        ],
+        "allowed_collections": ["core:global", "domain:example", "domain:software"]
+      },
+      "tool_policy": {"allow": [], "deny": []}
+    },
+    {
+      "id": "reviewer",
+      "name": "Independent engineering reviewer",
+      "version": 1,
+      "spec": {
+        "schema_version": 1,
+        "kind": "REVIEWER",
+        "persona": "Fail closed on unsupported claims, missing interfaces, unresolved conflicts, and unreviewed changes.",
+        "trust": 0.95,
+        "cost_weight": 1,
+        "domains": [
+          {"domain": "backend", "capability": 0.85, "authority": 0.95, "aliases": []},
+          {"domain": "frontend", "capability": 0.85, "authority": 0.95, "aliases": []},
+          {"domain": "network", "capability": 0.82, "authority": 0.92, "aliases": []}
+        ],
+        "allowed_collections": ["core:global", "domain:example", "domain:software"]
+      },
+      "tool_policy": {"allow": [], "deny": []}
+    }
+  ]
+}

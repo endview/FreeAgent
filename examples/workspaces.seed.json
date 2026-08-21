@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "tenant_id": "default",
+  "users": [
+    {
+      "id": "engineer-bob",
+      "display_name": "Engineer Bob"
+    },
+    {
+      "id": "operator-alice",
+      "display_name": "Operator Alice"
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "operations",
+      "name": "Operations",
+      "revision": 1
+    },
+    {
+      "id": "product-design",
+      "name": "Product Design",
+      "revision": 1
+    }
+  ],
+  "members": [
+    {
+      "workspace_id": "operations",
+      "user_id": "engineer-bob",
+      "role": "MEMBER"
+    },
+    {
+      "workspace_id": "operations",
+      "user_id": "operator-alice",
+      "role": "OWNER"
+    },
+    {
+      "workspace_id": "product-design",
+      "user_id": "engineer-bob",
+      "role": "MEMBER"
+    },
+    {
+      "workspace_id": "product-design",
+      "user_id": "operator-alice",
+      "role": "OWNER"
+    }
+  ],
+  "channel_identities": [
+    {
+      "id": "engineer-bob-qq",
+      "user_id": "engineer-bob",
+      "channel": "qqbot",
+      "account_id": "default",
+      "external_user_id": "replace-qq-member-openid"
+    },
+    {
+      "id": "operator-alice-lark",
+      "user_id": "operator-alice",
+      "channel": "lark",
+      "account_id": "default",
+      "external_user_id": "replace-lark-open-id"
+    },
+    {
+      "id": "operator-alice-telegram",
+      "user_id": "operator-alice",
+      "channel": "telegram",
+      "account_id": "default",
+      "external_user_id": "123456789"
+    },
+    {
+      "id": "operator-alice-weixin",
+      "user_id": "operator-alice",
+      "channel": "weixin-ilink",
+      "account_id": "default",
+      "external_user_id": "replace-weixin-user-id"
+    }
+  ],
+  "routes": [
+    {
+      "workspace_id": "operations",
+      "channel": "qqbot",
+      "account_id": "default",
+      "conversation_id": "replace-qq-group-openid"
+    },
+    {
+      "workspace_id": "operations",
+      "channel": "weixin-ilink",
+      "account_id": "default",
+      "conversation_id": "replace-weixin-user-id"
+    },
+    {
+      "workspace_id": "product-design",
+      "channel": "lark",
+      "account_id": "default",
+      "conversation_id": "replace-lark-chat-id"
+    },
+    {
+      "workspace_id": "product-design",
+      "channel": "telegram",
+      "account_id": "default",
+      "conversation_id": "-1001234567890"
+    }
+  ]
+}
