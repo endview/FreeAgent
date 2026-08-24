@@ -68,15 +68,15 @@ func ResolveAsset(path string) (Asset, bool, error) {
 func metadataFor(path string) (assetMetadata, bool) {
 	switch path {
 	case "assets/app.css":
-		return assetMetadata{"text/css; charset=utf-8", "2d2ab8c385d972a7c1cbd9fbbfd9a11e26d53f0ce71a8bed0528c7d4a248f7ce", 16480}, true
+		return assetMetadata{"text/css; charset=utf-8", "848373990f012036cc54eefe263f7e9380b584675d4db76e9969f9dffd6af73a", 17300}, true
 	case "assets/app.js":
-		return assetMetadata{"text/javascript; charset=utf-8", "abfce7c87582ca1cadf2e3fab9cc8462b1fa264eacc74f311fafac12c517b001", 220392}, true
+		return assetMetadata{"text/javascript; charset=utf-8", "eeb19cc9991fad02ea0dfc36cb3a95af5d5fe9790abe5a2bd2f1838aca2f1084", 228790}, true
 	case "assets/react.js":
 		return assetMetadata{"text/javascript; charset=utf-8", "87b823d95ddc471c8ea19c7891961eadf87cbc422e600dae77680da28dc393f9", 554455}, true
 	case "assets/tanstack-query.js":
 		return assetMetadata{"text/javascript; charset=utf-8", "ec1bbca1b6df03fa9ba364ac3f70097def64f3e049c30e550a81d6c1e0cf2e9c", 79776}, true
 	case "index.html":
-		return assetMetadata{"text/html; charset=utf-8", "d6d262877636c5257056100134611cc9658fa7870e3e177b41ee8f5f481aa8d6", 494}, true
+		return assetMetadata{"text/html; charset=utf-8", "c153aca88b96eb5f13ddeab983ce2e7043230d1258473f745489664acc56b6d3", 497}, true
 	default:
 		return assetMetadata{}, false
 	}

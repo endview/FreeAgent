@@ -8,7 +8,7 @@ const project = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = await mkdtemp(join(tmpdir(), "freeagent-controlweb-test-"));
 
 try {
-  for (const name of ["controlweb", "modules"]) {
+  for (const name of ["controlweb", "modules", "i18n"]) {
     const testOutput = join(output, name);
     await build({
       configFile: false,

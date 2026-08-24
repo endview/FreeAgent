@@ -5,7 +5,7 @@ This file is validated by `scripts/Test-License.ps1`.
 <!-- freeagent-license-notices-v1 -->
 dependency-manifest-sha256: c0b1816f70e8ba0f2e9313447b9b8d9ef5baa0312950862c7f26bf129587bf37
 frontend-dependency-manifest-sha256: 55c35096c30631dc86950841891c8efe3f577bdd64055a63989e904a7bd2ab03
-distributed-assets-manifest-sha256: 1d557ae1ceebfe7dc368b4089ed59691c63f41c28566e95b59493940c50ab57a
+distributed-assets-manifest-sha256: 8c8c1b136e94ce0aa64b4943fc162e3222ffa67e5977670a75773607e680ab31
 notice-count: 126
 
 | Notice ID | Kind | Component | Version | Declared SPDX | Source |

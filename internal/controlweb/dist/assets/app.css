@@ -313,6 +313,36 @@ h2 {
   font-weight: 650;
 }
 
+.locale-selector {
+  position: fixed;
+  z-index: 100;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.locale-selector label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 720;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.locale-selector select {
+  min-height: 2rem;
+  padding: 0.2rem 1.75rem 0.2rem 0.45rem;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
 .status-dot {
   width: 0.55rem;
   height: 0.55rem;
@@ -913,6 +943,17 @@ h2 {
 }
 
 @media (max-width: 42rem) {
+  .entry {
+    min-height: auto;
+    padding-bottom: 1rem;
+  }
+
+  .entry + .locale-selector {
+    position: static;
+    justify-content: space-between;
+    margin: 0 1rem 1rem;
+  }
+
   .security-notes,
   .toolbar,
   .metric-grid {
@@ -929,7 +970,7 @@ h2 {
   }
 
   .content {
-    padding: 1rem;
+    padding: 1rem 1rem 6rem;
   }
 
   .brand span:last-child {

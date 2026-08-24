@@ -63,7 +63,7 @@ $script:DocsGateSha256 =
 $script:BrandingGateSha256 =
     '244db2cf888f8beb6eadbc0dd850d4c6e9ebf6e084e47cc637f10068a118bb00'
 $script:ControlWebGateSha256 =
-    'acde588b805f8d54d176e90f9cd107dc963b63d2dbb22f57bb164d7fa62f5f76'
+    'd21a1ab5b861d3a077a9de309b9afda750dd81e22dbfbe3445d5bbefffe089a3'
 
 function Fail-CIWorkflowJob {
     param([Parameter(Mandatory = $true)][string]$Code)

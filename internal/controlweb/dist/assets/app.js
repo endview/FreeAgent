@@ -4983,6 +4983,239 @@ function App() {
     }
   ) });
 }
+const SUPPORTED_LOCALES = ["en-US", "zh-CN"];
+const FALLBACK_LOCALE = "en-US";
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+function isSupportedLocale(value) {
+  return typeof value === "string" && SUPPORTED_LOCALES.some((locale) => locale === value);
+}
+function matchSupportedLocale(value) {
+  let canonical;
+  try {
+    [canonical] = Intl.getCanonicalLocales(value);
+  } catch {
+    return null;
+  }
+  if (canonical === "zh" || canonical.startsWith("zh-")) return "zh-CN";
+  if (canonical === "en" || canonical.startsWith("en-")) return "en-US";
+  return null;
+}
+function resolveLocale(candidates) {
+  for (const candidate of candidates) {
+    const locale = matchSupportedLocale(candidate);
+    if (locale !== null) return locale;
+  }
+  return FALLBACK_LOCALE;
+}
+function interpolateMessage(template, values = {}) {
+  return template.replace(
+    /\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/gu,
+    (placeholder, name) => hasOwn(values, name) ? String(values[name]) : placeholder
+  );
+}
+function interpolationParameterNames(template) {
+  return [...new Set(
+    [...template.matchAll(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/gu)].map((match) => match[1])
+  )].sort();
+}
+function assertCatalogCompatibility(catalogs, fallbackLocale = FALLBACK_LOCALE) {
+  const fallbackCatalog = catalogs[fallbackLocale];
+  if (fallbackCatalog === void 0) {
+    throw new Error(`i18n fallback catalog is missing: ${fallbackLocale}`);
+  }
+  const expectedKeys = Object.keys(fallbackCatalog).sort();
+  for (const locale of SUPPORTED_LOCALES) {
+    const catalog = catalogs[locale];
+    if (catalog === void 0) throw new Error(`i18n catalog is missing: ${locale}`);
+    const actualKeys = Object.keys(catalog).sort();
+    if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
+      throw new Error(`i18n catalog key mismatch: ${locale}`);
+    }
+    for (const key of expectedKeys) {
+      const expectedParameters = interpolationParameterNames(fallbackCatalog[key]);
+      const actualParameters = interpolationParameterNames(catalog[key]);
+      if (actualParameters.length !== expectedParameters.length || actualParameters.some((name, index) => name !== expectedParameters[index])) {
+        throw new Error(`i18n interpolation mismatch: ${locale}:${key}`);
+      }
+    }
+  }
+}
+const messageCandidates = (key, count, locale) => {
+  if (count === void 0) return [key];
+  const category = new Intl.PluralRules(locale).select(count);
+  return [`${key}_${category}`, `${key}_other`, key];
+};
+const findMessage = (catalog, candidates) => {
+  if (catalog === void 0) return null;
+  for (const candidate of candidates) {
+    if (hasOwn(catalog, candidate)) return catalog[candidate];
+  }
+  return null;
+};
+function translateMessage(catalogs, locale, fallbackLocale, key, options = {}, onMissingMessage) {
+  const localMessage = findMessage(
+    catalogs[locale],
+    messageCandidates(key, options.count, locale)
+  );
+  const fallbackMessage = localMessage === null && locale !== fallbackLocale ? findMessage(
+    catalogs[fallbackLocale],
+    messageCandidates(key, options.count, fallbackLocale)
+  ) : null;
+  const template = localMessage ?? fallbackMessage;
+  if (template === null) {
+    onMissingMessage?.({ fallbackLocale, key, locale });
+    return key;
+  }
+  const values = options.count === void 0 ? options.values : { ...options.values, count: options.count };
+  return interpolateMessage(template, values);
+}
+function createI18nRuntime(locale, catalogs, fallbackLocale = FALLBACK_LOCALE, onMissingMessage) {
+  const currency = (value, currencyCode, options) => new Intl.NumberFormat(locale, {
+    ...options,
+    currency: currencyCode,
+    style: "currency"
+  }).format(value);
+  return {
+    locale,
+    t: (key, options) => translateMessage(
+      catalogs,
+      locale,
+      fallbackLocale,
+      key,
+      options,
+      onMissingMessage
+    ),
+    formatNumber: (value, options) => new Intl.NumberFormat(locale, options).format(value),
+    formatCurrency: currency,
+    formatTokenCount: (value, options) => new Intl.NumberFormat(locale, options).format(value),
+    formatCost: currency,
+    formatDateTime: (value, options) => new Intl.DateTimeFormat(locale, options).format(
+      value instanceof Date ? value : new Date(value)
+    ),
+    formatRelativeTime: (value, unit, options) => new Intl.RelativeTimeFormat(locale, options).format(value, unit),
+    formatList: (values, options) => new Intl.ListFormat(locale, options).format([...values])
+  };
+}
+const LOCALE_PREFERENCE_STORAGE_KEY = "freeagent.ui.locale.v1";
+const browserStorage = () => {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+};
+class LocalePreferenceStore {
+  #storage;
+  constructor(storage = browserStorage()) {
+    this.#storage = storage;
+  }
+  read() {
+    try {
+      const stored = this.#storage?.getItem(LOCALE_PREFERENCE_STORAGE_KEY) ?? null;
+      return isSupportedLocale(stored) ? stored : null;
+    } catch {
+      return null;
+    }
+  }
+  write(locale) {
+    if (!isSupportedLocale(locale) || this.#storage === null) return false;
+    try {
+      this.#storage.setItem(LOCALE_PREFERENCE_STORAGE_KEY, locale);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  clear() {
+    if (this.#storage === null) return false;
+    try {
+      this.#storage.removeItem(LOCALE_PREFERENCE_STORAGE_KEY);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+const enUSMessages = {
+  "app.title": "FreeAgent Control",
+  "locale.selector.label": "Language",
+  "locale.name.en-US": "English",
+  "locale.name.zh-CN": "简体中文"
+};
+const zhCNMessages = {
+  "app.title": "FreeAgent 控制台",
+  "locale.selector.label": "语言",
+  "locale.name.en-US": "English",
+  "locale.name.zh-CN": "简体中文"
+};
+const i18nResources = {
+  "en-US": enUSMessages,
+  "zh-CN": zhCNMessages
+};
+assertCatalogCompatibility(i18nResources);
+const I18nContext = reactExports.createContext(null);
+const browserLocaleCandidates = () => {
+  if (typeof navigator === "undefined") return [];
+  return navigator.languages.length > 0 ? navigator.languages : [navigator.language];
+};
+function syncDocumentLocale(target, locale, title) {
+  target.documentElement.lang = locale;
+  target.title = title;
+}
+function I18nProvider({
+  children,
+  initialLocale,
+  onMissingMessage,
+  preferenceStore,
+  catalogs = i18nResources
+}) {
+  const [store] = reactExports.useState(
+    () => preferenceStore ?? new LocalePreferenceStore()
+  );
+  const [locale, setLocaleState] = reactExports.useState(
+    () => store.read() ?? initialLocale ?? resolveLocale(browserLocaleCandidates())
+  );
+  const runtime = reactExports.useMemo(
+    () => createI18nRuntime(locale, catalogs, void 0, onMissingMessage),
+    [catalogs, locale, onMissingMessage]
+  );
+  const setLocale = reactExports.useCallback((nextLocale) => {
+    if (!isSupportedLocale(nextLocale)) return false;
+    setLocaleState(nextLocale);
+    store.write(nextLocale);
+    return true;
+  }, [store]);
+  reactExports.useEffect(() => {
+    if (typeof document === "undefined") return;
+    syncDocumentLocale(document, locale, runtime.t("app.title"));
+  }, [locale, runtime]);
+  const value = reactExports.useMemo(
+    () => ({ ...runtime, setLocale }),
+    [runtime, setLocale]
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(I18nContext.Provider, { value, children });
+}
+function useI18n() {
+  const value = reactExports.useContext(I18nContext);
+  if (value === null) throw new Error("useI18n must be used within I18nProvider");
+  return value;
+}
+function LocaleSelector() {
+  const id = reactExports.useId();
+  const { locale, setLocale, t } = useI18n();
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "locale-selector", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: id, children: t("locale.selector.label") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "select",
+      {
+        id,
+        value: locale,
+        onChange: (event) => setLocale(event.target.value),
+        children: SUPPORTED_LOCALES.map((option) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { lang: option, value: option, children: t(`locale.name.${option}`) }, option))
+      }
+    )
+  ] });
+}
 const rootElement = document.getElementById("root");
 if (rootElement === null) {
   throw new Error("control web root element is missing");
@@ -4997,5 +5230,8 @@ const queryClient = new QueryClient({
   }
 });
 clientExports.createRoot(rootElement).render(
-  /* @__PURE__ */ jsxRuntimeExports.jsx(QueryClientProvider, { client: queryClient, children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
+  /* @__PURE__ */ jsxRuntimeExports.jsxs(I18nProvider, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(QueryClientProvider, { client: queryClient, children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(LocaleSelector, {})
+  ] })
 );

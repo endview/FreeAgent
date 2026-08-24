@@ -1,5 +1,15 @@
 import { readFileSync } from "node:fs";
 
+const i18nFiles = [
+  "src/i18n/catalogs/en-US.ts",
+  "src/i18n/catalogs/zh-CN.ts",
+  "src/i18n/core.ts",
+  "src/i18n/index.ts",
+  "src/i18n/locale-preference-store.ts",
+  "src/i18n/locale-selector.tsx",
+  "src/i18n/provider.tsx",
+  "src/i18n/resources.ts"
+];
 const files = [
   "src/app.tsx",
   "src/contracts.ts",
@@ -8,7 +18,8 @@ const files = [
   "src/modules.ts",
   "src/overview.ts",
   "src/session.ts",
-  "src/ui.tsx"
+  "src/ui.tsx",
+  ...i18nFiles
 ];
 const sources = new Map(files.map((path) => [path, readFileSync(path, "utf8")]));
 const source = [...sources.values()].join("\n");
@@ -22,7 +33,6 @@ const requireCount = (path, label, pattern, expected) => {
 };
 
 const forbidden = [
-  ["LOCAL_STORAGE_FORBIDDEN", /\blocalStorage\b/u],
   ["EVENT_SOURCE_FORBIDDEN", /\bEventSource\b/u],
   ["WEBSOCKET_FORBIDDEN", /\bWebSocket\b/u],
   ["BROADCAST_CHANNEL_FORBIDDEN", /\bBroadcastChannel\b/u],
@@ -34,6 +44,33 @@ const forbidden = [
 ];
 for (const [code, pattern] of forbidden) {
   if (pattern.test(source)) throw new Error(`[${code}] control-web source violates W6-4 policy`);
+}
+
+const localePreferencePath = "src/i18n/locale-preference-store.ts";
+for (const [path, text] of sources) {
+  if (path !== localePreferencePath && /\blocalStorage\b/u.test(text)) {
+    throw new Error(`[LOCAL_STORAGE_SCOPE_INVALID] ${path}`);
+  }
+}
+requireCount(
+  localePreferencePath,
+  "LOCALE_STORAGE_OWNER_INVALID",
+  /\blocalStorage\b/gu,
+  1
+);
+requireCount(
+  localePreferencePath,
+  "LOCALE_STORAGE_KEY_INVALID",
+  /["']freeagent\.ui\.locale\.v1["']/gu,
+  1
+);
+for (const method of ["getItem", "setItem", "removeItem"]) {
+  requireCount(
+    localePreferencePath,
+    "LOCALE_STORAGE_METHOD_INVALID",
+    new RegExp(`\\.${method}\\(LOCALE_PREFERENCE_STORAGE_KEY\\b`, "gu"),
+    1
+  );
 }
 
 for (const [path, text] of sources) {
@@ -90,6 +127,9 @@ const methodPolicy = new Map([
   ["src/session.ts", { GET: 0, POST: 2 }],
   ["src/ui.tsx", { GET: 0, POST: 0 }]
 ]);
+for (const path of i18nFiles) {
+  methodPolicy.set(path, { GET: 0, POST: 0 });
+}
 for (const [path, policy] of methodPolicy) {
   requireCount(path, "GET_METHOD_POLICY_INVALID", /method:\s*["']GET["']/gu, policy.GET);
   requireCount(path, "POST_METHOD_POLICY_INVALID", /method:\s*["']POST["']/gu, policy.POST);
@@ -106,10 +146,18 @@ for (const path of [
   "src/contracts.ts",
   "src/main.tsx",
   "src/modules-ui.tsx",
-  "src/ui.tsx"
+  "src/ui.tsx",
+  ...i18nFiles
 ]) {
   if (/\bfetch(?:er)?\s*\(/u.test(sources.get(path) ?? "")) {
     throw new Error(`[DIRECT_TRANSPORT_FORBIDDEN] ${path}`);
+  }
+}
+
+for (const path of i18nFiles) {
+  const text = sources.get(path) ?? "";
+  if (/\b(?:dangerouslySetInnerHTML|innerHTML)\b/u.test(text)) {
+    throw new Error(`[I18N_RAW_HTML_FORBIDDEN] ${path}`);
   }
 }
 

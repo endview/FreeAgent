@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { App } from "./app";
+import { I18nProvider, LocaleSelector } from "./i18n/index.ts";
 import "./styles.css";
 
 const rootElement = document.getElementById("root");
@@ -21,7 +22,10 @@ const queryClient = new QueryClient({
 });
 
 createRoot(rootElement).render(
-  <QueryClientProvider client={queryClient}>
-    <App />
-  </QueryClientProvider>
+  <I18nProvider>
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
+    <LocaleSelector />
+  </I18nProvider>
 );

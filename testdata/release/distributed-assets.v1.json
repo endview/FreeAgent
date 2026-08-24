@@ -628,8 +628,8 @@
                    },
                    {
                        "path":  "internal/controlweb/dist/assets/app.css",
-                       "size":  16480,
-                       "sha256":  "2d2ab8c385d972a7c1cbd9fbbfd9a11e26d53f0ce71a8bed0528c7d4a248f7ce",
+                       "size":  17300,
+                       "sha256":  "848373990f012036cc54eefe263f7e9380b584675d4db76e9969f9dffd6af73a",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -640,8 +640,8 @@
                    },
                    {
                        "path":  "internal/controlweb/dist/assets/app.js",
-                       "size":  220392,
-                       "sha256":  "abfce7c87582ca1cadf2e3fab9cc8462b1fa264eacc74f311fafac12c517b001",
+                       "size":  228790,
+                       "sha256":  "eeb19cc9991fad02ea0dfc36cb3a95af5d5fe9790abe5a2bd2f1838aca2f1084",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -686,8 +686,8 @@
                    },
                    {
                        "path":  "internal/controlweb/dist/index.html",
-	                       "size":  494,
-	                       "sha256":  "d6d262877636c5257056100134611cc9658fa7870e3e177b41ee8f5f481aa8d6",
+	                       "size":  497,
+	                       "sha256":  "c153aca88b96eb5f13ddeab983ce2e7043230d1258473f745489664acc56b6d3",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
