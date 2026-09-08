@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$ArtifactRoot,
     [Parameter(Mandatory = $true)][string]$ManifestSha256,
     [Parameter(Mandatory = $true)][string]$GoCommand,
+    [string]$RaceTestTimeout = '30m',
     [switch]$SkipRace
 )
 
@@ -1258,7 +1259,7 @@ try {
             $raceEvidence = Invoke-GoTestWithEvidence `
                 -GoCommand $go `
                 -Name 'race' `
-                -Arguments @('test', '-json', '-race', '-count=1', '-timeout=30m') `
+                -Arguments @('test', '-json', '-race', '-count=1', "-timeout=$RaceTestTimeout") `
                 -Packages @('./...') `
                 -EvidenceRoot $evidenceDirectory `
                 -GoVersion $goVersion `

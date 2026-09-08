@@ -692,7 +692,10 @@ Assert-ContractPattern -Name 'local gate enforces readonly modules' `
     -Pattern "Set-ProcessEnvironment -Name 'GOFLAGS' -Value '-mod=readonly'"
 Assert-ContractPattern -Name 'local race test emits Go JSON with timeout' `
     -Source $scriptSource `
-    -Pattern "'test', '-json', '-race', '-count=1', '-timeout=30m'"
+    -Pattern '''test'', ''-json'', ''-race'', ''-count=1'', "-timeout=\$RaceTestTimeout"'
+Assert-ContractPattern -Name 'local race timeout defaults to 30m' `
+    -Source $scriptSource `
+    -Pattern '\[string\]\$RaceTestTimeout = ''30m'''
 Assert-ContractPattern -Name 'local evidence records status' `
     -Source $scriptSource `
     -Pattern 'status'
@@ -751,7 +754,7 @@ if ($parseErrors.Count -ne 0) {
 }
 
 $parameterNames = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-$expectedParameterNames = @('ArtifactRoot', 'ManifestSha256', 'GoCommand', 'SkipRace')
+$expectedParameterNames = @('ArtifactRoot', 'ManifestSha256', 'GoCommand', 'RaceTestTimeout', 'SkipRace')
 if ($parameterNames.Count -ne $expectedParameterNames.Count) {
     throw "release gate parameter count mismatch; expected=$($expectedParameterNames.Count) actual=$($parameterNames.Count)"
 }
