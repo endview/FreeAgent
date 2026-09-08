@@ -9,6 +9,7 @@ param(
     [Parameter(Mandatory = $true)][string]$GoCommand,
     [string]$ControlPath = '',
     [string]$ArchiveToolPath = '',
+    [string]$ModuleCacheSeed = '',
     [switch]$BuildOnly
 )
 
@@ -209,6 +210,22 @@ if (-not (Test-Path -LiteralPath $archiveTool -PathType Leaf)) {
     Fail-DeveloperPreviewRelease -Code 'DPR_ARCHIVE_TOOL_PATH_MISSING'
 }
 
+$moduleCacheSeedPath = ''
+if (-not [string]::IsNullOrWhiteSpace($ModuleCacheSeed)) {
+    $moduleCacheSeedPath = Get-DPRNormalizedAbsolutePath `
+        -Value $ModuleCacheSeed `
+        -Code 'DPR_MODULE_CACHE_SEED_INVALID'
+    Assert-DPRNoReparseAncestry `
+        -Path $moduleCacheSeedPath `
+        -Code 'DPR_MODULE_CACHE_SEED_REPARSE'
+    if (-not (Test-Path -LiteralPath $moduleCacheSeedPath -PathType Container)) {
+        Fail-DeveloperPreviewRelease -Code 'DPR_MODULE_CACHE_SEED_MISSING'
+    }
+    Assert-DPRDisjointPaths `
+        -Paths @($repository, $output, $moduleCacheSeedPath) `
+        -Code 'DPR_MODULE_CACHE_SEED_OVERLAP'
+}
+
 $gitStatus = @(& git -C $repository status --porcelain 2>$null)
 if ($LASTEXITCODE -ne 0) {
     Fail-DeveloperPreviewRelease -Code 'DPR_GIT_STATUS_FAILED'
@@ -248,7 +265,7 @@ $goDirectory = [IO.Path]::GetDirectoryName($go)
 $savedPath = $env:PATH
 $savedEnvironment = @{}
 foreach ($name in @(
-    'GOWORK', 'GOENV', 'GOTOOLCHAIN', 'GOFLAGS',
+    'GOWORK', 'GOENV', 'GOTOOLCHAIN', 'GOFLAGS', 'GOPROXY',
     'GOCACHE', 'GOMODCACHE', 'GOTMPDIR', 'GOPATH',
     'TEMP', 'TMP', 'TMPDIR'
 )) {
@@ -310,6 +327,34 @@ try {
             )
         }
         $env:PATH = $goDirectory + [IO.Path]::PathSeparator + $savedPath
+
+        if (-not [string]::IsNullOrWhiteSpace($moduleCacheSeedPath)) {
+            $targetModuleCache = Join-Path ([string]$prepareOutput['cache']) 'module'
+            if (-not (Test-Path -LiteralPath $targetModuleCache -PathType Container)) {
+                Fail-DeveloperPreviewRelease -Code 'DPR_MODULE_CACHE_TARGET_MISSING'
+            }
+            if (@(Get-ChildItem -LiteralPath $targetModuleCache -Force).Count -ne 0) {
+                Fail-DeveloperPreviewRelease -Code 'DPR_MODULE_CACHE_TARGET_NOT_EMPTY'
+            }
+            try {
+                if ($script:IsWindowsPlatform) {
+                    & robocopy `
+                        $moduleCacheSeedPath `
+                        $targetModuleCache `
+                        /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 `
+                        /NFL /NDL /NP /NJH /NJS /MT:16 | Out-Null
+                    if ($LASTEXITCODE -gt 7) {
+                        Fail-DeveloperPreviewRelease -Code 'DPR_MODULE_CACHE_SEED_COPY_FAILED'
+                    }
+                } else {
+                    Get-ChildItem -LiteralPath $moduleCacheSeedPath -Force |
+                        Copy-Item -Destination $targetModuleCache -Recurse -Force
+                }
+            } catch {
+                Fail-DeveloperPreviewRelease -Code 'DPR_MODULE_CACHE_SEED_COPY_FAILED'
+            }
+            $env:GOPROXY = 'off'
+        }
 
         & $baseControlPath `
             -Initialize `
@@ -434,6 +479,7 @@ try {
         archive_manifest = $archiveResult.ManifestPath
         archive_count = $archiveCountResult
         build_only = [bool]$BuildOnly
+        module_cache_seed = $moduleCacheSeedPath
         targets = $targetRecords.ToArray()
     }
     $summaryPath = Join-Path $output 'developer-preview-release.json'

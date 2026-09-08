@@ -151,8 +151,9 @@ if ($Prepare) {
     $stage = Join-Path $work 'stage'
     $artifact = Join-Path $work 'artifact'
     $cache = Join-Path $work 'cache'
+    $moduleCache = Join-Path $cache 'module'
     $executionTemp = Join-Path $BaseRoot 'trusted/execution'
-    foreach ($directory in @($source, $stage, $artifact, $cache, $executionTemp)) {
+    foreach ($directory in @($source, $stage, $artifact, $cache, $moduleCache, $executionTemp)) {
         [void][IO.Directory]::CreateDirectory($directory)
     }
     $manifest = Join-Path $artifact 'public-tree-manifest.v1.json'
@@ -195,7 +196,7 @@ if ($Initialize) {
 }
 
 if ($Run) {
-    Append-Log ('run|' + $JobKind + '|' + $BaseRoot + '|' + $TargetGoos + '|' + $TargetGoarch)
+    Append-Log ('run|' + $JobKind + '|' + $BaseRoot + '|' + $TargetGoos + '|' + $TargetGoarch + '|GOPROXY=' + $env:GOPROXY)
     Write-Host 'FAKE_CONTROL_RUN_PASS'
     return
 }
@@ -311,6 +312,9 @@ try {
         Assert-True -Name 'archive integration contract' -Condition (
             $source.Contains('New-DeveloperPreviewArchives.ps1')
         )
+        Assert-True -Name 'module cache seed contract' -Condition (
+            $source.Contains('ModuleCacheSeed')
+        )
     }
 
     Invoke-TestCase -Name 'happy path orchestrates six targets and one archive call' -Body {
@@ -393,6 +397,61 @@ try {
         Assert-Equal -Name 'archive commit' `
             -Expected $repository.Revision `
             -Actual $archiveRecord.commit
+    }
+
+    Invoke-TestCase -Name 'module cache seed populates targets and forces offline mode' -Body {
+        $caseRoot = Join-Path $suiteRoot 'module-cache-seed'
+        $repositoryRoot = Join-Path $caseRoot 'repository'
+        $repository = New-TestRepository -Path $repositoryRoot
+        $controlPath = Join-Path $caseRoot 'fake-control.ps1'
+        $archiveToolPath = Join-Path $caseRoot 'fake-archive.ps1'
+        $controlLog = Join-Path $caseRoot 'control.log'
+        $archiveLog = Join-Path $caseRoot 'archive.log'
+        $outputRoot = Join-Path $caseRoot 'output'
+        $goCommand = Join-Path $caseRoot 'go.cmd'
+        $seedRoot = Join-Path $caseRoot 'module-cache-seed'
+        New-FakeControl -Path $controlPath -LogPath $controlLog
+        New-FakeArchiveTool -Path $archiveToolPath -LogPath $archiveLog
+        New-FakeGoCommand -Path $goCommand
+        [void][IO.Directory]::CreateDirectory($seedRoot)
+        Write-TestText -Path (Join-Path $seedRoot 'marker.txt') -Text "seed`n"
+
+        $result = & $script:Tool `
+            -RepositoryRoot $repository.Path `
+            -Revision $repository.Revision `
+            -Version 'v0.1.0-dev.1' `
+            -OutputRoot $outputRoot `
+            -GoCommand $goCommand `
+            -ControlPath $controlPath `
+            -ArchiveToolPath $archiveToolPath `
+            -ModuleCacheSeed $seedRoot
+
+        Assert-Equal -Name 'summary module cache seed' `
+            -Expected $seedRoot `
+            -Actual $result.module_cache_seed
+        foreach ($targetName in @(
+            'windows-amd64',
+            'windows-arm64',
+            'linux-amd64',
+            'linux-arm64',
+            'darwin-amd64',
+            'darwin-arm64'
+        )) {
+            $marker = Join-Path $outputRoot (
+                "control/$targetName/trusted/work/cache/module/marker.txt"
+            )
+            Assert-True -Name "$targetName module cache seed marker" -Condition (
+                [IO.File]::Exists($marker)
+            )
+        }
+
+        [string[]]$runLines = @(
+            [IO.File]::ReadAllLines($controlLog) |
+                Where-Object { $_.StartsWith('run|') }
+        )
+        Assert-Equal -Name 'offline run count' `
+            -Expected 6 `
+            -Actual @($runLines | Where-Object { $_.EndsWith('|GOPROXY=off') }).Count
     }
 
     Invoke-TestCase -Name 'invalid version fails closed' -Body {
