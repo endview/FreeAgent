@@ -12,6 +12,51 @@ $script:DocsGate = Join-Path $PSScriptRoot 'Test-Docs.ps1'
 $script:BrandingGate = Join-Path $PSScriptRoot 'Test-Branding.ps1'
 $script:ControlWebGate = Join-Path $PSScriptRoot 'Test-ControlWeb.ps1'
 $script:Utf8NoBom = New-Object Text.UTF8Encoding($false)
+$script:ReleaseRevision = '0123456789abcdef0123456789abcdef01234567'
+$script:CrossBuildPayload = [ordered]@{
+    'VERSION' = "v0.1.0-dev.1`n"
+    'LICENSE' = "fixture project license`n"
+    'THIRD_PARTY_NOTICES.md' = "fixture third-party notices`n"
+    'docs/INSTALL.md' = "# Install`n"
+    'docs/QUICKSTART.md' = "# Quickstart`n"
+    'docs/KNOWN_LIMITATIONS.md' = "# Known limitations`n"
+    'docs/RELEASE_NOTES_v0.1.0-dev.1.md' = "# v0.1.0-dev.1`n"
+    'docs/CHECKSUMS.md' = "# Verify checksums`n"
+    'docs/PACKAGE_CONFIG.md' = "# Package config`n"
+    'docs/PACKAGE_DATA.md' = "# Package data`n"
+    'examples/current-v1.bootstrap.seed.json' = "{}`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE' = "context license`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml' = "kind: context`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md' = "# Context bootstrap`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json' = "{}`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE' = "echo license`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml' = "kind: model`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md' = "# Echo bootstrap`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json' = "{}`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json' = "{}`n"
+}
+$script:CrossBuildArtifactMap = [ordered]@{
+    'VERSION' = 'VERSION'
+    'LICENSE' = 'LICENSE'
+    'THIRD_PARTY_NOTICES.md' = 'THIRD_PARTY_NOTICES.md'
+    'docs/INSTALL.md' = 'INSTALL.md'
+    'docs/QUICKSTART.md' = 'QUICKSTART.md'
+    'docs/KNOWN_LIMITATIONS.md' = 'KNOWN_LIMITATIONS.md'
+    'docs/RELEASE_NOTES_v0.1.0-dev.1.md' = 'RELEASE_NOTES.md'
+    'docs/CHECKSUMS.md' = 'VERIFY_CHECKSUMS.md'
+    'docs/PACKAGE_CONFIG.md' = 'config/README.md'
+    'docs/PACKAGE_DATA.md' = 'data/README.md'
+    'examples/current-v1.bootstrap.seed.json' = 'config/current-v1.bootstrap.seed.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE'
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml'
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md'
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json'
+}
 $script:Cases = 0
 $script:Assertions = 0
 $script:Failures = New-Object 'Collections.Generic.List[string]'
@@ -88,6 +133,22 @@ function New-WorkflowFixture {
         Stage = $stage
         Artifact = $artifact
         Execution = $execution
+    }
+}
+
+function Initialize-CrossBuildStage {
+    param([Parameter(Mandatory = $true)][string]$Stage)
+    foreach ($relative in $script:CrossBuildPayload.Keys) {
+        $path = Join-Path $Stage (
+            $relative.Replace([char]47, [IO.Path]::DirectorySeparatorChar)
+        )
+        $parent = [IO.Path]::GetDirectoryName($path)
+        [void][IO.Directory]::CreateDirectory($parent)
+        [IO.File]::WriteAllText(
+            $path,
+            [string]$script:CrossBuildPayload[$relative],
+            $script:Utf8NoBom
+        )
     }
 }
 
@@ -357,8 +418,57 @@ Invoke-Case 'ordinary evidence initializes an exact raw stream contract' {
                     -ExecutionTempRoot $fixture.Execution `
                     -CommandRunnerPath $script:Runner `
                     -ExpectedCommandRunnerSha256 ('0' * 64) `
+                    -Revision $script:ReleaseRevision `
                     -TargetGoos linux `
                     -TargetGoarch amd64 6>$null
+            }
+    }
+
+    Invoke-Case 'cross build requires one lowercase 40-hex revision' {
+        foreach ($invalid in @('', ('a' * 39), ('a' * 64), ('A' * 40))) {
+            $fixture = New-WorkflowFixture `
+                -Container $suiteRoot `
+                -Name ('invalid-revision-' + [Guid]::NewGuid().ToString('N'))
+            Assert-ThrowsCode `
+                -Name "invalid cross revision length=$($invalid.Length)" `
+                -Code 'CIW_RELEASE_REVISION_INVALID' `
+                -Body {
+                    & $script:Job `
+                        -Run `
+                        -JobKind cross-build `
+                        -StageRoot $fixture.Stage `
+                        -ArtifactRoot $fixture.Artifact `
+                        -ExecutionTempRoot $fixture.Execution `
+                        -CommandRunnerPath $script:Runner `
+                        -ExpectedCommandRunnerSha256 (
+                            Get-LowerSha256 -Path $script:Runner
+                        ) `
+                        -Revision $invalid `
+                        -TargetGoos linux `
+                        -TargetGoarch amd64 6>$null
+                }
+        }
+    }
+
+    Invoke-Case 'non-cross jobs reject release revision injection' {
+        $fixture = New-WorkflowFixture `
+            -Container $suiteRoot `
+            -Name 'permanent-with-revision'
+        Assert-ThrowsCode `
+            -Name 'permanent release revision' `
+            -Code 'CIW_RELEASE_REVISION_INVALID' `
+            -Body {
+                & $script:Job `
+                    -Run `
+                    -JobKind permanent `
+                    -StageRoot $fixture.Stage `
+                    -ArtifactRoot $fixture.Artifact `
+                    -ExecutionTempRoot $fixture.Execution `
+                    -CommandRunnerPath $script:Runner `
+                    -ExpectedCommandRunnerSha256 (
+                        Get-LowerSha256 -Path $script:Runner
+                    ) `
+                    -Revision $script:ReleaseRevision 6>$null
             }
     }
 
@@ -455,6 +565,7 @@ exit /b 9
                             -ExpectedCommandRunnerSha256 (
                                 Get-LowerSha256 -Path $script:Runner
                             ) `
+                            -Revision $script:ReleaseRevision `
                             -TargetGoos linux `
                             -TargetGoarch amd64 6>$null
                     }
@@ -465,9 +576,11 @@ exit /b 9
 
         Invoke-Case 'cross build consumes the pinned runner and external artifact root' {
             $fixture = New-WorkflowFixture -Container $suiteRoot -Name 'cross'
+            Initialize-CrossBuildStage -Stage $fixture.Stage
             $toolDirectory = Join-Path $fixture.Root 'tools'
             [void][IO.Directory]::CreateDirectory($toolDirectory)
             $fakeGo = Join-Path $toolDirectory 'go.cmd'
+            $buildArgsPath = Join-Path $toolDirectory 'build-args.txt'
             [IO.File]::WriteAllText(
                 $fakeGo,
                 @'
@@ -477,6 +590,12 @@ if "%1"=="build" goto build
 exit /b 3
 :build
 shift
+:record
+if "%~1"=="" exit /b 4
+>>"%CIW_TEST_BUILD_ARGS%" echo(%~1
+if "%~1"=="-o" goto output
+shift
+goto record
 :loop
 if "%1"=="" exit /b 4
 if "%1"=="-o" goto output
@@ -490,7 +609,9 @@ exit /b 0
                 $script:Utf8NoBom
             )
             $savedPath = $env:PATH
+            $savedBuildArgs = $env:CIW_TEST_BUILD_ARGS
             try {
+                $env:CIW_TEST_BUILD_ARGS = $buildArgsPath
                 $env:PATH = $toolDirectory + [IO.Path]::PathSeparator + $savedPath
                 & $script:Job `
                     -Run `
@@ -502,10 +623,12 @@ exit /b 0
                     -ExpectedCommandRunnerSha256 (
                         Get-LowerSha256 -Path $script:Runner
                     ) `
+                    -Revision $script:ReleaseRevision `
                     -TargetGoos windows `
                     -TargetGoarch amd64 6>$null
             } finally {
                 $env:PATH = $savedPath
+                $env:CIW_TEST_BUILD_ARGS = $savedBuildArgs
             }
             $binary = Join-Path $fixture.Artifact (
                 'bin/freeagent-windows-amd64.exe'
@@ -516,9 +639,53 @@ exit /b 0
             Assert-Equal -Name 'cross binary fixture bytes' `
                 -Expected 'fake-binary' `
                 -Actual ([IO.File]::ReadAllText($binary).Trim())
-            Assert-Equal -Name 'stage remains empty' -Expected 0 -Actual (
-                @(Get-ChildItem -LiteralPath $fixture.Stage -Force).Count
-            )
+            $argumentText = [IO.File]::ReadAllText(
+                $buildArgsPath
+            ).Replace("`r", '')
+            foreach ($requiredArgument in @(
+                '-trimpath',
+                '-ldflags',
+                '-buildid=',
+                '-X=main.buildVersion=v0.1.0-dev.1',
+                "-X=main.buildCommit=$($script:ReleaseRevision)",
+                '-X=main.buildTarget=windows/amd64'
+            )) {
+                Assert-True -Name "go build argument $requiredArgument" -Condition (
+                    $argumentText.IndexOf(
+                        $requiredArgument,
+                        [StringComparison]::Ordinal
+                    ) -ge 0
+                )
+            }
+            foreach ($sourceRelative in $script:CrossBuildArtifactMap.Keys) {
+                $artifactRelative =
+                    [string]$script:CrossBuildArtifactMap[$sourceRelative]
+                $sourcePath = Join-Path $fixture.Stage (
+                    $sourceRelative.Replace(
+                        [char]47,
+                        [IO.Path]::DirectorySeparatorChar
+                    )
+                )
+                $artifactPath = Join-Path $fixture.Artifact (
+                    $artifactRelative.Replace(
+                        [char]47,
+                        [IO.Path]::DirectorySeparatorChar
+                    )
+                )
+                Assert-True -Name "release payload exists $artifactRelative" `
+                    -Condition (
+                        Test-Path -LiteralPath $artifactPath -PathType Leaf
+                    )
+                Assert-Equal -Name "release payload bytes $artifactRelative" `
+                    -Expected (Get-LowerSha256 -Path $sourcePath) `
+                    -Actual (Get-LowerSha256 -Path $artifactPath)
+            }
+            Assert-Equal -Name 'release VERSION exact bytes' `
+                -Expected "v0.1.0-dev.1`n" `
+                -Actual ([IO.File]::ReadAllText(
+                    (Join-Path $fixture.Artifact 'VERSION'),
+                    $script:Utf8NoBom
+                ))
         }
     }
 } finally {

@@ -632,6 +632,8 @@ function New-CIJSupplyChainFixture {
         "$modulePath $moduleVersion $moduleSum`n" +
         "$modulePath $moduleVersion/go.mod $goModSum`n"
     )
+    $versionPath = Join-Path $source 'VERSION'
+    Write-Utf8NoBom -Path $versionPath -Text "v0.1.0-dev.1`n"
 
     $manifestRelative = 'public-tree-manifest.v1.json'
     $evidenceRelative = 'evidence/result.json'
@@ -681,6 +683,7 @@ function New-CIJSupplyChainFixture {
         ViteIdentity = $viteIdentity
         GoModPath = $goModPath
         GoSumPath = $goSumPath
+        VersionPath = $versionPath
         ModuleDirectory = $moduleDirectory
         LicensePath = $licensePath
         SpecialLicensePath = $specialLicensePath
@@ -1432,7 +1435,10 @@ throw 'EXPECTED_PROBE_STOP'
             -Actual ([string]$sbom.SPDXID)
         Assert-Equal -Name 'SPDX creation time' `
             -Expected $script:SupplyFixture.CreatedUtc `
-            -Actual ([string]$sbom.creationInfo.created)
+            -Actual ([DateTime]$sbom.creationInfo.created).ToUniversalTime().ToString(
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                [Globalization.CultureInfo]::InvariantCulture
+            )
         Assert-True -Name 'SPDX has a tool creator' -Condition (
             @($sbom.creationInfo.creators | Where-Object {
                 ([string]$_).StartsWith('Tool: ', [StringComparison]::Ordinal)
@@ -1463,6 +1469,21 @@ throw 'EXPECTED_PROBE_STOP'
             -Expected 1 `
             -Actual $mainPackages.Count
         $mainPackage = $mainPackages[0]
+        $releaseVersion = [IO.File]::ReadAllText(
+            $script:SupplyFixture.VersionPath,
+            $script:Utf8Strict
+        ).TrimEnd([char]10)
+        Assert-Equal -Name 'main package release version' -Expected $releaseVersion -Actual ([string]$mainPackage.versionInfo)
+        Assert-True -Name 'SPDX namespace binds release version and revision' -Condition (
+            ([string]$sbom.documentNamespace).Contains(
+                $releaseVersion,
+                [StringComparison]::Ordinal
+            ) -and
+            ([string]$sbom.documentNamespace).Contains(
+                $script:SupplyFixture.Revision,
+                [StringComparison]::Ordinal
+            )
+        )
         Assert-Equal -Name 'main package files are not analyzed' `
             -Expected $false `
             -Actual ([bool]$mainPackage.filesAnalyzed)
@@ -1689,9 +1710,14 @@ throw 'EXPECTED_PROBE_STOP'
         )
 
         $external = $provenance.predicate.buildDefinition.externalParameters
+        $provenanceReleaseVersion = [IO.File]::ReadAllText(
+            $script:SupplyFixture.VersionPath,
+            $script:Utf8Strict
+        ).TrimEnd([char]10)
         Assert-Equal -Name 'external revision' `
             -Expected $script:SupplyFixture.Revision `
             -Actual ([string]$external.revision)
+        Assert-Equal -Name 'external release version' -Expected $provenanceReleaseVersion -Actual ([string]$external.releaseVersion)
         Assert-Equal -Name 'external job kind' `
             -Expected $script:SupplyFixture.JobKind `
             -Actual ([string]$external.jobKind)
@@ -1704,7 +1730,10 @@ throw 'EXPECTED_PROBE_STOP'
         $internal = $provenance.predicate.buildDefinition.internalParameters
         Assert-Equal -Name 'internal created UTC' `
             -Expected $script:SupplyFixture.CreatedUtc `
-            -Actual ([string]$internal.createdUtc)
+            -Actual ([DateTime]$internal.createdUtc).ToUniversalTime().ToString(
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                [Globalization.CultureInfo]::InvariantCulture
+            )
         Assert-Equal -Name 'internal metadata generator pin' `
             -Expected (Get-LowerSha256 -Path $script:Controller) `
             -Actual ([string]$internal.metadataGeneratorSha256)
@@ -1718,6 +1747,10 @@ throw 'EXPECTED_PROBE_STOP'
             [pscustomobject]@{
                 Uri = 'file:internal/controlweb/package-lock.json'
                 Path = $script:SupplyFixture.PackageLockPath
+            },
+            [pscustomobject]@{
+                Uri = 'file:VERSION'
+                Path = $script:SupplyFixture.VersionPath
             }
         )) {
             $resolved = @($resolvedDependencies | Where-Object {

@@ -24,6 +24,29 @@ $script:SupplyChainRelativePaths = @(
     'supply-chain/provenance.unsigned.v1.json',
     'supply-chain/checksums.sha256'
 )
+$script:ReleaseVersion = 'v0.1.0-dev.1'
+$script:CrossBuildPayloadMap = [ordered]@{
+    'VERSION' = 'VERSION'
+    'LICENSE' = 'LICENSE'
+    'THIRD_PARTY_NOTICES.md' = 'THIRD_PARTY_NOTICES.md'
+    'docs/INSTALL.md' = 'INSTALL.md'
+    'docs/QUICKSTART.md' = 'QUICKSTART.md'
+    'docs/KNOWN_LIMITATIONS.md' = 'KNOWN_LIMITATIONS.md'
+    'docs/RELEASE_NOTES_v0.1.0-dev.1.md' = 'RELEASE_NOTES.md'
+    'docs/CHECKSUMS.md' = 'VERIFY_CHECKSUMS.md'
+    'docs/PACKAGE_CONFIG.md' = 'config/README.md'
+    'docs/PACKAGE_DATA.md' = 'data/README.md'
+    'examples/current-v1.bootstrap.seed.json' = 'config/current-v1.bootstrap.seed.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE'
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml'
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md'
+    'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json'
+}
 
 function Assert-True {
     param(
@@ -107,6 +130,47 @@ function Write-Utf8NoBom {
         [void][IO.Directory]::CreateDirectory($parent)
     }
     [IO.File]::WriteAllText($Path, $Text, $script:Utf8NoBom)
+}
+
+function Write-CrossBuildSourceFixture {
+    param([Parameter(Mandatory = $true)][string]$Repository)
+    foreach ($relative in $script:CrossBuildPayloadMap.Keys) {
+        $text = if ($relative -ceq 'VERSION') {
+            "$($script:ReleaseVersion)`n"
+        } elseif ($relative.EndsWith('.json', [StringComparison]::Ordinal)) {
+            "{}`n"
+        } elseif ($relative.EndsWith('.yaml', [StringComparison]::Ordinal)) {
+            "kind: fixture`n"
+        } else {
+            "fixture release payload $relative`n"
+        }
+        Write-Utf8NoBom `
+            -Path (Join-Path $Repository (
+                $relative.Replace(
+                    [char]47,
+                    [IO.Path]::DirectorySeparatorChar
+                )
+            )) `
+            -Text $text
+    }
+}
+
+function Get-CrossBuildArtifactRelativePaths {
+    param(
+        [Parameter(Mandatory = $true)][string]$Goos,
+        [Parameter(Mandatory = $true)][string]$Goarch
+    )
+    $relativePaths = [System.Collections.Generic.List[string]]::new()
+    [void]$relativePaths.Add('public-tree-manifest.v1.json')
+    foreach ($relativePath in $script:CrossBuildPayloadMap.Values) {
+        [void]$relativePaths.Add($relativePath)
+    }
+    $extension = if ($Goos -ceq 'windows') { '.exe' } else { '' }
+    [void]$relativePaths.Add("bin/freeagent-$Goos-$Goarch$extension")
+    foreach ($relativePath in $script:SupplyChainRelativePaths) {
+        [void]$relativePaths.Add($relativePath)
+    }
+    return $relativePaths.ToArray()
 }
 
 function Get-LowerSha256 {
@@ -243,6 +307,21 @@ function Assert-SupplyChainArtifacts {
             [StringComparison]::Ordinal
         ) -ge 0
     )
+    Assert-True -Name 'SPDX namespace binds release version' -Condition (
+        ([string]$sbom.documentNamespace).IndexOf(
+            "/$($script:ReleaseVersion)/$Revision/",
+            [StringComparison]::Ordinal
+        ) -ge 0
+    )
+    $mainPackages = @($sbom.packages | Where-Object {
+        [string]$_.SPDXID -ceq 'SPDXRef-Package-FreeAgent'
+    })
+    Assert-Equal -Name 'SPDX main package count' `
+        -Expected 1 `
+        -Actual $mainPackages.Count
+    Assert-Equal -Name 'SPDX main package release version' `
+        -Expected $script:ReleaseVersion `
+        -Actual ([string]$mainPackages[0].versionInfo)
 
     $provenancePath = Join-Path $ArtifactRoot (
         'supply-chain/provenance.unsigned.v1.json'.Replace(
@@ -279,6 +358,23 @@ function Assert-SupplyChainArtifacts {
     Assert-Equal -Name 'provenance records Run result' `
         -Expected $ExpectedRunSucceeded `
         -Actual $extensionProperty.Value.runSucceeded
+    $external = $provenance.predicate.buildDefinition.externalParameters
+    Assert-Equal -Name 'provenance release version' `
+        -Expected $script:ReleaseVersion `
+        -Actual ([string]$external.releaseVersion)
+    Assert-Equal -Name 'provenance revision' `
+        -Expected $Revision `
+        -Actual ([string]$external.revision)
+    $versionDependencies = @(
+        $provenance.predicate.buildDefinition.resolvedDependencies |
+            Where-Object { [string]$_.uri -ceq 'file:VERSION' }
+    )
+    Assert-Equal -Name 'provenance VERSION dependency count' `
+        -Expected 1 `
+        -Actual $versionDependencies.Count
+    Assert-Equal -Name 'provenance VERSION digest' `
+        -Expected (Get-StringSha256Hex -Value ($script:ReleaseVersion + [char]10)) `
+        -Actual ([string]$versionDependencies[0].digest.sha256)
 
     $checksumsPath = Join-Path $ArtifactRoot (
         'supply-chain/checksums.sha256'.Replace(
@@ -428,6 +524,7 @@ function New-ControlFixture {
         (Join-Path $repository 'LICENSE'),
         $false
     )
+    Write-CrossBuildSourceFixture -Repository $repository
     $assetPath = Join-Path $repository 'assets/banner.txt'
     $assetText = "fixture asset`n"
     Write-Utf8NoBom -Path $assetPath -Text $assetText
@@ -798,8 +895,7 @@ if (-not (Test-Path -LiteralPath $testTempRoot -PathType Container)) {
     )
 }
 $suiteRoot = Join-Path $testTempRoot (
-    'freeagent-ci-workflow-control-tests-' +
-    [Guid]::NewGuid().ToString('N')
+    'fawc-' + [Guid]::NewGuid().ToString('N').Substring(0, 16)
 )
 [void][IO.Directory]::CreateDirectory($suiteRoot)
 
@@ -1127,14 +1223,14 @@ try {
         $fakeGo = Join-Path $toolDirectory 'go.cmd'
         Write-Utf8NoBom -Path $fakeGo -Text @'
 @echo off
-if "%1"=="mod" exit /b 0
-if "%1"=="build" goto build
+if "%~1"=="mod" exit /b 0
+if "%~1"=="build" goto build
 exit /b 3
 :build
 shift
 :loop
-if "%1"=="" exit /b 4
-if "%1"=="-o" goto output
+if "%~1"=="" exit /b 4
+if "%~1"=="-o" goto output
 shift
 goto loop
 :output
@@ -1187,7 +1283,11 @@ exit /b 0
             -Value $finalize['artifact_set_sha256'] `
             -Pattern '^[0-9a-f]{64}$'
         Assert-Equal -Name 'artifact file count' `
-            -Expected '5' `
+            -Expected ([string](
+                (Get-CrossBuildArtifactRelativePaths `
+                    -Goos windows `
+                    -Goarch amd64).Count
+            )) `
             -Actual $finalize['artifact_file_count']
         Assert-True -Name 'artifact bytes positive' -Condition (
             [int64]$finalize['artifact_bytes'] -gt 0
@@ -1439,14 +1539,14 @@ exit /b 0
             -Path (Join-Path $tools 'go.cmd') `
             -Text @'
 @echo off
-if "%1"=="mod" exit /b 0
-if "%1"=="build" goto build
+if "%~1"=="mod" exit /b 0
+if "%~1"=="build" goto build
 exit /b 3
 :build
 shift
 :loop
-if "%1"=="" exit /b 4
-if "%1"=="-o" goto output
+if "%~1"=="" exit /b 4
+if "%~1"=="-o" goto output
 shift
 goto loop
 :output
@@ -1525,14 +1625,14 @@ exit /b 0
             -Path (Join-Path $tools 'go.cmd') `
             -Text @'
 @echo off
-if "%1"=="mod" exit /b 0
-if "%1"=="build" goto build
+if "%~1"=="mod" exit /b 0
+if "%~1"=="build" goto build
 exit /b 3
 :build
 shift
 :loop
-if "%1"=="" exit /b 4
-if "%1"=="-o" goto output
+if "%~1"=="" exit /b 4
+if "%~1"=="-o" goto output
 shift
 goto loop
 :output
@@ -1891,7 +1991,7 @@ exit /b 0
             -Path (Join-Path $tools 'go.cmd') `
             -Text @'
 @echo off
-if "%1"=="mod" exit /b 0
+if "%~1"=="mod" exit /b 0
 exit /b 9
 '@
         $savedPath = $env:PATH

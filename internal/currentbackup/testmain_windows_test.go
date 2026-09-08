@@ -293,12 +293,13 @@ func TestInheritedPrivateWindowsTestTempRejectsWrongParentPID(t *testing.T) {
 }
 
 func TestPrivateWindowsTestTempMarkerCommitsLast(t *testing.T) {
+	const protectedTestRoot = "C:" + `\protected-test-root`
 	var keys []string
 	if err := commitPrivateWindowsTestTempEnvironmentV1(
 		currentBackupWindowsTestTempRootEnvV1,
-		`C:\protected-test-root`,
+		protectedTestRoot,
 		func(key, value string) error {
-			if value != `C:\protected-test-root` {
+			if value != protectedTestRoot {
 				return fmt.Errorf("unexpected value %q", value)
 			}
 			keys = append(keys, key)
@@ -314,7 +315,7 @@ func TestPrivateWindowsTestTempMarkerCommitsLast(t *testing.T) {
 	keys = nil
 	err := commitPrivateWindowsTestTempEnvironmentV1(
 		currentBackupWindowsTestTempRootEnvV1,
-		`C:\protected-test-root`,
+		protectedTestRoot,
 		func(key, _ string) error {
 			keys = append(keys, key)
 			if key == "TMP" {

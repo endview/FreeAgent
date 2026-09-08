@@ -34,13 +34,18 @@ const (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(
-		context.Background(),
-		os.Interrupt,
-		syscall.SIGTERM,
-	)
+	args := os.Args[1:]
+	var ctx context.Context = context.Background()
+	var stop context.CancelFunc = func() {}
+	if !isVersionRequest(args) {
+		ctx, stop = signal.NotifyContext(
+			ctx,
+			os.Interrupt,
+			syscall.SIGTERM,
+		)
+	}
 	defer stop()
-	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	if err := run(ctx, args, os.Stdout, os.Stderr); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -59,6 +64,8 @@ func run(
 		return commandUsageError()
 	}
 	switch args[0] {
+	case "--version":
+		return runVersion(args[1:], stdout, currentBuildInfo())
 	case "init":
 		return runInit(ctx, args[1:], stdout, stderr)
 	case "conversation-create":
@@ -132,7 +139,7 @@ func run(
 
 func commandUsageError() error {
 	return errors.New(
-		"usage: freeagent <init|conversation-create|conversation-get|chat|module-verify|module-list|module-history|module-inspect|module-dry-run|module-apply|module-disable|module-source-register|module-source-refresh|module-artifact-ingress|module-publisher-key-revoke|module-upgrade-review|module-upgrade-decide|module-upgrade-apply|learning-materialize|learning-cycle-schedule-create|learning-cycle-schedule-get|learning-cycle-schedule-enable|learning-cycle-schedule-disable|learning-cycle-tick|learning-cycle-reconcile|learning-cycle-report|s3-eval|s3-store-audit|s3-cell-audit|serve|backup|backup-verify|restore> [flags]",
+		"usage: freeagent --version | freeagent <init|conversation-create|conversation-get|chat|module-verify|module-list|module-history|module-inspect|module-dry-run|module-apply|module-disable|module-source-register|module-source-refresh|module-artifact-ingress|module-publisher-key-revoke|module-upgrade-review|module-upgrade-decide|module-upgrade-apply|learning-materialize|learning-cycle-schedule-create|learning-cycle-schedule-get|learning-cycle-schedule-enable|learning-cycle-schedule-disable|learning-cycle-tick|learning-cycle-reconcile|learning-cycle-report|s3-eval|s3-store-audit|s3-cell-audit|serve|backup|backup-verify|restore> [flags]",
 	)
 }
 

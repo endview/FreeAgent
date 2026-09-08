@@ -75,17 +75,17 @@ $script:PathComparison = if ($script:IsWindowsPlatform) {
     [StringComparison]::Ordinal
 }
 $script:ControllerSha256 =
-    'fe8fe49bfc7ed32d3bf73ee7ffac39ee27a776146809d2de38da42ba3874aa74'
+    '61adff112a67b52963a9b2ebbb15ff4cc9a069f4a469a1e88ba9bedfb824aea1'
 $script:BootstrapSha256 =
     'c6611cd6eb290410912fcbb1a1be9c3327ad65ddb3f7185c3dccd7016391dd9f'
 $script:GeneratorSha256 =
-    '9549c1def4c9fe7941e8e6c8c75a78661653604c95e986d37fe35003fa8bc5b1'
+    '87345ec4e605b5c01e535507493c198266202abf875cd2a31e849ede7934695c'
 $script:VerifierSha256 =
-    '124bc97404747c438af5582bc62db0ebe5e156f67ba49361163048f1ad272678'
+    '3acf389912dab063f2817f3ad36293bdc2cfe403ada9f0b82d01fbb90b57bb44'
 $script:CommandRunnerSha256 =
     'bad861d4b929076af0c60d9c66ec28a461d74607649fe73a95c8c8308957668b'
 $script:WorkflowJobSha256 =
-    'a5f808ccdcf80e619344aab979d9a1ddf12c03deba716a4cff26b1925184aaa7'
+    '38aa8589a61145bf72ec31cfb1ea21a83e0a9bdfd7b48c95bf3d9d846e8b3653'
 $script:MaximumScriptBytes = 4194304
 $script:ExactJobKinds = @(
     'permanent',
@@ -601,6 +601,30 @@ function Get-CIWCArtifactContract {
             [void]$required.Add(
                 "bin/freeagent-$Goos-$Goarch$extension"
             )
+            foreach ($path in @(
+                'VERSION',
+                'LICENSE',
+                'THIRD_PARTY_NOTICES.md',
+                'INSTALL.md',
+                'QUICKSTART.md',
+                'KNOWN_LIMITATIONS.md',
+                'RELEASE_NOTES.md',
+                'VERIFY_CHECKSUMS.md',
+                'config/README.md',
+                'data/README.md',
+                'config/current-v1.bootstrap.seed.json',
+                'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE',
+                'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml',
+                'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md',
+                'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json'
+            )) {
+                [void]$required.Add($path)
+            }
         }
     }
     return [pscustomobject]@{
@@ -881,6 +905,12 @@ if ($PSCmdlet.ParameterSetName -in @('Initialize', 'Run')) {
         }
         if (-not [string]::IsNullOrWhiteSpace($TargetGoarch)) {
             $parameters.TargetGoarch = $TargetGoarch
+        }
+        if ($JobKind -ceq 'cross-build') {
+            if ($buildContext.Revision -cnotmatch '^[0-9a-f]{40}$') {
+                Fail-CIWorkflowControl -Code 'CIWC_REVISION_INVALID'
+            }
+            $parameters.Revision = $buildContext.Revision
         }
     }
     Write-CIWCSnapshot `

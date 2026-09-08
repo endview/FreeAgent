@@ -106,10 +106,23 @@ public static class PublicTreeNativeStreams
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FindClose(IntPtr findFile);
 
+    private static string ToNativePath(string path)
+    {
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            return path;
+        }
+        if (path.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return @"\\?\UNC\" + path.Substring(2);
+        }
+        return @"\\?\" + path;
+    }
+
     public static string[] Enumerate(string path)
     {
         Win32FindStreamData data;
-        IntPtr handle = FindFirstStreamW(path, 0, out data, 0);
+        IntPtr handle = FindFirstStreamW(ToNativePath(path), 0, out data, 0);
         if (handle == InvalidHandleValue)
         {
             int firstError = Marshal.GetLastWin32Error();
@@ -1935,7 +1948,8 @@ function Test-TopLevelEntry {
         'LICENSE',
         'README.md',
         'SECURITY.md',
-        'THIRD_PARTY_NOTICES.md'
+        'THIRD_PARTY_NOTICES.md',
+        'VERSION'
     )
 
     if ($IsDirectory) {
@@ -3588,6 +3602,15 @@ if (-not $texts.ContainsKey('go.mod')) {
     $moduleMatches = [regex]::Matches($texts['go.mod'], '(?m)^\s*module\s+(\S+)\s*$')
     if ($moduleMatches.Count -ne 1 -or $moduleMatches[0].Groups[1].Value -cne 'github.com/endview/freeagent') {
         Add-PublicTreeFinding -Rule 'PT_GO_MOD_IDENTITY' -Path 'go.mod'
+    }
+}
+
+if (-not $texts.ContainsKey('VERSION')) {
+    Add-PublicTreeFinding -Rule 'PT_VERSION_MISSING' -Path 'VERSION'
+} else {
+    $versionPattern = '^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\n$'
+    if (-not [regex]::IsMatch($texts['VERSION'], $versionPattern)) {
+        Add-PublicTreeFinding -Rule 'PT_VERSION_INVALID' -Path 'VERSION'
     }
 }
 

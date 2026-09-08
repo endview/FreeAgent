@@ -64,6 +64,7 @@ function New-CleanFixture {
     $root = Join-Path $suiteRoot (('{0:D2}-{1}' -f $script:CaseNumber, $safeName))
     [void][IO.Directory]::CreateDirectory($root)
     Write-TestText -Path (Join-Path $root 'go.mod') -Text "module github.com/endview/freeagent`n`ngo 1.22`n"
+    Write-TestText -Path (Join-Path $root 'VERSION') -Text "v0.1.0-dev.1`n"
     Write-TestText -Path (Join-Path $root 'README.md') -Text "# Fixture`n`nGeneric Role, Persona, and optional modules may be discussed as extension boundaries.`n"
     Write-TestText -Path (Join-Path $root 'cmd/main.go') -Text "package main`n`nfunc main() {}`n"
     $sha = '1' * 40
@@ -307,6 +308,31 @@ try {
     Write-TestText -Path (Join-Path $clean '.github/workflows/reusable.yml') -Text "name: reusable`non:`n  workflow_call:`njobs:`n  noop:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo ok`n"
     Write-TestText -Path (Join-Path $clean '.github/workflows/local.yml') -Text "name: local`non: [push]`njobs:`n  steps:`n    runs-on: ubuntu-latest`n    steps:`n      - 'uses': './.github/actions/local'`n      - `"uses`": `"actions/setup-go@$sha2`"`n      - run: |`n          echo 'uses: actions/example@v4'`n  local-reusable:`n    uses: ./.github/workflows/reusable.yml`n  remote:`n    uses: 'owner/repository/.github/workflows/reusable.yml@$sha2' # audited`n"
     Assert-GatePasses -Name 'portable clean fixture and exact root git exclusion' -Root $clean
+
+    $missingVersion = New-CleanFixture -Name 'missing release version'
+    Remove-Item -LiteralPath (Join-Path $missingVersion 'VERSION') -Force
+    Assert-GateFails `
+        -Name 'VERSION is mandatory' `
+        -Root $missingVersion `
+        -Rule 'PT_VERSION_MISSING'
+
+    foreach ($invalidVersion in @(
+        '0.1.0-dev.1',
+        'v01.0.0',
+        'v0.1.0-dev.01',
+        "v0.1.0-dev.1`r`n",
+        "v0.1.0-dev.1`nextra`n"
+    )) {
+        $invalidVersionFixture = New-CleanFixture `
+            -Name ('invalid release version ' + [Guid]::NewGuid().ToString('N'))
+        Write-TestText `
+            -Path (Join-Path $invalidVersionFixture 'VERSION') `
+            -Text $invalidVersion
+        Assert-GateFails `
+            -Name 'VERSION requires one canonical v-prefixed SemVer LF line' `
+            -Root $invalidVersionFixture `
+            -Rule 'PT_VERSION_INVALID'
+    }
 
     $blockingScript = Join-Path $suiteRoot 'blocking-gate.ps1'
     Write-TestText -Path $blockingScript -Text "param([string]`$Root)`nwhile (`$true) { Start-Sleep -Seconds 30 }`n"

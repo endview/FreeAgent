@@ -29,6 +29,12 @@ W2-R2 WASM Host 尚未生产可用。
 [`CUTOVER_ACCEPTANCE`](CUTOVER_ACCEPTANCE.md)。本清单不替代编码规格，也不把开发切片
 转换为部署或发布许可。
 
+当前仓库正在准备 `v0.1.0-dev.1` 本地 Developer Preview 归档。该轨道只包装既有开发切片，
+不新增 Runtime feature，也不改变任何 `accepted/planned` 状态；它不是公开 Release、生产
+版本、公开 Beta 或 `RELEASE_READY`。Windows/Linux amd64 必须通过真实本地安装验证，
+Darwin 输出仅 build-only，且生成归档不执行 push、远程 tag、上传、签名、公证、公网下载
+入口或公开发布。
+
 [`RELEASE_MATURITY`](RELEASE_MATURITY.md) 和
 [`capabilities.v1.json`](../testdata/release/capabilities.v1.json) 是旧架构的历史归档，继续保持
 `HISTORICAL_BASELINE_NON_NORMATIVE`。它们不再表达当前状态，也不得因为本清单而被回填或

@@ -33,6 +33,11 @@ Action HTTP Host 的开发切片；它不代表真实公网 HTTPS 第三方互�
 验收 exact WASM Action Host，W2-R3 只在该 Host 上增加第三方纯计算授权与停机撤权；二者都不代表
 任意 WASM、OS/container、生产恶意多租户隔离、供应链或公开发布已经完成。
 
+当前仓库正在准备 `v0.1.0-dev.1` 本地 Developer Preview 归档。该轨道只包装既有开发切片，
+不新增 Runtime feature，也不把项目提升为公开 Release、生产版本、公开 Beta 或
+`RELEASE_READY`。Windows/Linux amd64 必须通过真实本地安装验证，Darwin 输出仅 build-only；
+生成归档不执行 push、远程 tag、上传、签名、公证、公网下载入口或公开发布。
+
 当前架构已完成 S0，并验收可运行的 S1 开发基线。当前权威是
 [`CORE_RUNTIME_V1`](specs/CORE_RUNTIME_V1.md)、
 [`CURRENT_STORE_V1`](specs/CURRENT_STORE_V1.md) 与

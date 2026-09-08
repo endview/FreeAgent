@@ -1,7 +1,9 @@
 docs/architecture/specs/*.md text eol=lf
+docs/*.md text eol=lf
 *.ps1 text eol=lf
 .github/workflows/*.yml text eol=lf
 THIRD_PARTY_NOTICES.md text eol=lf
+VERSION text eol=lf
 sdk/moduleapi/testdata/compat/v1/** text eol=lf
 internal/controlweb/*.html text eol=lf
 internal/controlweb/*.json text eol=lf

@@ -27,6 +27,9 @@ param(
     [string]$ExpectedCommandRunnerSha256,
 
     [Parameter(ParameterSetName = 'Run')]
+    [string]$Revision = '',
+
+    [Parameter(ParameterSetName = 'Run')]
     [string]$TargetGoos = '',
 
     [Parameter(ParameterSetName = 'Run')]
@@ -55,7 +58,7 @@ $script:ExactJobKinds = @(
 )
 $script:MaximumAuthenticatedScriptBytes = 4194304
 $script:PublicTreeGateSha256 =
-    'bfb1dc5470172642e472cad57cd560d4344922da3f3ace15b7a0d90e615e6d2a'
+    '4702a81d6ba36cbdb7bd244424e3dfecc57645cd0979e3b3a8f5983fa1736c87'
 $script:LicenseGateSha256 =
     '6a4ac7c72ce2db82f17b85ae938022c63931a99bac7cd713dfa3a5236a244e3f'
 $script:DocsGateSha256 =
@@ -283,6 +286,110 @@ function Write-CIWText {
     [IO.File]::WriteAllText($Path, $Text, $script:Utf8NoBom)
 }
 
+function Write-CIWNewFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][byte[]]$Bytes,
+        [Parameter(Mandatory = $true)][string]$Code
+    )
+    Assert-CIWNoReparseAncestry -Path $Path -Code $Code
+    $parent = [IO.Path]::GetDirectoryName($Path)
+    if ([string]::IsNullOrWhiteSpace($parent)) {
+        Fail-CIWorkflowJob -Code $Code
+    }
+    try {
+        [void][IO.Directory]::CreateDirectory($parent)
+    } catch {
+        Fail-CIWorkflowJob -Code $Code
+    }
+    Assert-CIWNoReparseAncestry -Path $parent -Code $Code
+    $stream = $null
+    try {
+        $stream = New-Object IO.FileStream(
+            $Path,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+        )
+        $stream.Write($Bytes, 0, $Bytes.Length)
+        $stream.Flush($true)
+    } catch {
+        Fail-CIWorkflowJob -Code $Code
+    } finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+    [byte[]]$current = Read-CIWBoundedFile `
+        -Path $Path `
+        -MaximumBytes ([Math]::Max($Bytes.Length, 1)) `
+        -Code $Code
+    if ($current.Length -ne $Bytes.Length) {
+        Fail-CIWorkflowJob -Code $Code
+    }
+    for ($index = 0; $index -lt $Bytes.Length; $index++) {
+        if ($current[$index] -ne $Bytes[$index]) {
+            Fail-CIWorkflowJob -Code $Code
+        }
+    }
+}
+
+function Get-CIWReleaseVersion {
+    param([Parameter(Mandatory = $true)][string]$SourceRoot)
+    [byte[]]$bytes = Read-CIWBoundedFile `
+        -Path (Join-Path $SourceRoot 'VERSION') `
+        -MaximumBytes 256 `
+        -Code 'CIW_RELEASE_VERSION_INVALID'
+    try {
+        $text = $script:Utf8Strict.GetString($bytes)
+    } catch {
+        Fail-CIWorkflowJob -Code 'CIW_RELEASE_VERSION_INVALID'
+    }
+    $pattern = '^(v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)\n$'
+    $match = [regex]::Match($text, $pattern)
+    if (-not $match.Success) {
+        Fail-CIWorkflowJob -Code 'CIW_RELEASE_VERSION_INVALID'
+    }
+    return $match.Groups[1].Value
+}
+
+function Copy-CIWReleasePayload {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceRoot,
+        [Parameter(Mandatory = $true)][string]$DestinationRoot
+    )
+    foreach ($entry in @(
+        @('VERSION', 'VERSION'),
+        @('LICENSE', 'LICENSE'),
+        @('THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.md'),
+        @('docs/INSTALL.md', 'INSTALL.md'),
+        @('docs/QUICKSTART.md', 'QUICKSTART.md'),
+        @('docs/KNOWN_LIMITATIONS.md', 'KNOWN_LIMITATIONS.md'),
+        @('docs/RELEASE_NOTES_v0.1.0-dev.1.md', 'RELEASE_NOTES.md'),
+        @('docs/CHECKSUMS.md', 'VERIFY_CHECKSUMS.md'),
+        @('docs/PACKAGE_CONFIG.md', 'config/README.md'),
+        @('docs/PACKAGE_DATA.md', 'data/README.md'),
+        @('examples/current-v1.bootstrap.seed.json', 'config/current-v1.bootstrap.seed.json'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE', 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/LICENSE'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml', 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md', 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json', 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json')
+    )) {
+        $sourcePath = Join-Path $SourceRoot ([string]$entry[0])
+        [byte[]]$bytes = Read-CIWBoundedFile `
+            -Path $sourcePath `
+            -MaximumBytes 16777216 `
+            -Code 'CIW_RELEASE_PAYLOAD_INVALID'
+        Write-CIWNewFile `
+            -Path (Join-Path $DestinationRoot ([string]$entry[1])) `
+            -Bytes $bytes `
+            -Code 'CIW_RELEASE_PAYLOAD_INVALID'
+    }
+}
+
 function Write-CIWJson {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -434,6 +541,14 @@ if ($PSCmdlet.ParameterSetName -ceq 'Initialize') {
     Initialize-CIWEvidence -Kind $JobKind -Artifact $artifact
     Write-Host "CI_WORKFLOW_JOB_INITIALIZE_PASS kind=$JobKind"
     return
+}
+
+if ($JobKind -ceq 'cross-build') {
+    if ($Revision -cnotmatch '^[0-9a-f]{40}$') {
+        Fail-CIWorkflowJob -Code 'CIW_RELEASE_REVISION_INVALID'
+    }
+} elseif (-not [string]::IsNullOrEmpty($Revision)) {
+    Fail-CIWorkflowJob -Code 'CIW_RELEASE_REVISION_INVALID'
 }
 
 function Get-CIWSha256 {
@@ -878,6 +993,7 @@ if ($JobKind -ceq 'cross-build') {
         Fail-CIWorkflowJob -Code 'CIW_CROSS_TARGET_INVALID'
     }
     $extension = if ($TargetGoos -ceq 'windows') { '.exe' } else { '' }
+    $releaseVersion = Get-CIWReleaseVersion -SourceRoot $stage
     $binDirectory = Join-Path $artifact 'bin'
     [void][IO.Directory]::CreateDirectory($binDirectory)
     $output = Join-Path $binDirectory (
@@ -887,7 +1003,17 @@ if ($JobKind -ceq 'cross-build') {
         -Label "build-$TargetGoos-$TargetGoarch" `
         -Executable $go `
         -Arguments @(
-            'build', '-trimpath', '-o', $output, './cmd/freeagent'
+            'build',
+            '-trimpath',
+            '-ldflags',
+            (
+                '-buildid= ' +
+                '-X=main.buildVersion=' + $releaseVersion + ' ' +
+                '-X=main.buildCommit=' + $Revision + ' ' +
+                '-X=main.buildTarget=' + $TargetGoos + '/' + $TargetGoarch
+            ),
+            '-o', $output,
+            './cmd/freeagent'
         ) `
         -TimeoutSeconds 900 `
         -Environment @{
@@ -896,6 +1022,16 @@ if ($JobKind -ceq 'cross-build') {
             GOARCH = $TargetGoarch
         }
     Assert-CIWCommandPassed -Label 'CROSS_BUILD' -Capture $capture
+    [byte[]]$outputBytes = Read-CIWBoundedFile `
+        -Path $output `
+        -MaximumBytes 1073741824 `
+        -Code 'CIW_CROSS_OUTPUT_INVALID'
+    if ($outputBytes.Length -eq 0) {
+        Fail-CIWorkflowJob -Code 'CIW_CROSS_OUTPUT_INVALID'
+    }
+    Copy-CIWReleasePayload `
+        -SourceRoot $stage `
+        -DestinationRoot $artifact
     Write-Host (
         "CI_WORKFLOW_JOB_RUN_PASS kind=cross-build target=$TargetGoos/$TargetGoarch"
     )

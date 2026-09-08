@@ -372,21 +372,25 @@ func assertRestoredLearningMaterializeProductExport(
 func TestCurrentBackupNestedGoCommandEnvironmentRestoresOnlyUniqueOuterGoTmpDirV1(
 	t *testing.T,
 ) {
+	const (
+		workingDirectoryEnvironment = "=C:=C:" + `\working-directory`
+		outerGoTmpDir               = "D:" + `\outer-go-tmp`
+	)
 	environment := []string{
 		"TEMP=protected",
 		"FREEAGENT_CURRENTBACKUP_WINDOWS_TEST_TEMP_ROOT_V1=protected",
 		"gotmpdir=stale-one",
-		"=C:=C:\\working-directory",
+		workingDirectoryEnvironment,
 		"GOTMPDIR=stale-two",
 		"TMP=protected",
 	}
-	got := currentBackupNestedGoCommandEnvironmentV1(environment, `D:\outer-go-tmp`)
+	got := currentBackupNestedGoCommandEnvironmentV1(environment, outerGoTmpDir)
 	want := []string{
 		"TEMP=protected",
 		"FREEAGENT_CURRENTBACKUP_WINDOWS_TEST_TEMP_ROOT_V1=protected",
-		"=C:=C:\\working-directory",
+		workingDirectoryEnvironment,
 		"TMP=protected",
-		`GOTMPDIR=D:\outer-go-tmp`,
+		"GOTMPDIR=" + outerGoTmpDir,
 	}
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("nested Go command environment = %q, want %q", got, want)

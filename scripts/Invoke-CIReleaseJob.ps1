@@ -1781,6 +1781,20 @@ function New-CIJSupplyChainMetadata {
     $goSumRecord = Get-CIJInputFileRecord `
         -Root $Source `
         -RelativePath 'go.sum'
+    $versionRecord = Get-CIJInputFileRecord `
+        -Root $Source `
+        -RelativePath 'VERSION'
+    try {
+        $versionText = $script:Utf8Strict.GetString($versionRecord.Bytes)
+    } catch {
+        Fail-CIReleaseJob -Code 'CIJ_SUPPLY_CHAIN_INPUT_INVALID'
+    }
+    $versionPattern = '^(v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)\n$'
+    $versionMatch = [regex]::Match($versionText, $versionPattern)
+    if (-not $versionMatch.Success) {
+        Fail-CIReleaseJob -Code 'CIJ_SUPPLY_CHAIN_INPUT_INVALID'
+    }
+    $releaseVersion = $versionMatch.Groups[1].Value
     $inputFiles = New-Object 'Collections.Generic.List[object]'
     $inputFilePaths = New-Object 'Collections.Generic.HashSet[string]' (
         $script:PathComparer
@@ -1790,7 +1804,8 @@ function New-CIJSupplyChainMetadata {
         $assetManifestRecord,
         $frontendManifestRecord,
         $goModRecord,
-        $goSumRecord
+        $goSumRecord,
+        $versionRecord
     )) {
         [void]$inputFiles.Add($record)
         [void]$inputFilePaths.Add($record.Path)
@@ -2582,7 +2597,7 @@ function New-CIJSupplyChainMetadata {
         licenseConcluded = $projectLicense
         licenseDeclared = $projectLicense
         name = 'FreeAgent'
-        versionInfo = $RevisionValue
+        versionInfo = $releaseVersion
     })
     [void]$packages.Add([ordered]@{
         SPDXID = 'SPDXRef-Package-DistributedAssets'
@@ -2596,7 +2611,7 @@ function New-CIJSupplyChainMetadata {
         packageVerificationCode = [ordered]@{
             packageVerificationCodeValue = $assetVerificationCode
         }
-        versionInfo = $RevisionValue
+        versionInfo = $releaseVersion
     })
     $moduleRelationships = New-Object 'Collections.Generic.List[object]'
     foreach ($module in $modules) {
@@ -2696,6 +2711,7 @@ function New-CIJSupplyChainMetadata {
     )
     foreach ($pair in @(
         @('profile', 'freeagent-spdx-generator-1.0.0'),
+        @('release_version', $releaseVersion),
         @('revision', $RevisionValue),
         @('created_utc', $CreatedUtcValue),
         @('job_kind', $Kind),
@@ -2729,11 +2745,11 @@ function New-CIJSupplyChainMetadata {
         dataLicense = 'CC0-1.0'
         documentNamespace = (
             'https://github.com/endview/freeagent/spdx/2.3/' +
-            $RevisionValue + '/' + $inputSetSha256
+            $releaseVersion + '/' + $RevisionValue + '/' + $inputSetSha256
         )
         files = $files.ToArray()
         hasExtractedLicensingInfos = $extractedLicenses.ToArray()
-        name = "freeagent-$RevisionValue.spdx.json"
+        name = "freeagent-$releaseVersion-$RevisionValue.spdx.json"
         packages = $packages.ToArray()
         relationships = $relationships.ToArray()
         spdxVersion = 'SPDX-2.3'
@@ -2784,6 +2800,10 @@ function New-CIJSupplyChainMetadata {
         [ordered]@{
             digest = [ordered]@{ sha256 = $goSumRecord.Sha256 }
             uri = 'file:go.sum'
+        },
+        [ordered]@{
+            digest = [ordered]@{ sha256 = $versionRecord.Sha256 }
+            uri = 'file:VERSION'
         }
     )
     $predicate = [ordered]@{
@@ -2794,6 +2814,7 @@ function New-CIJSupplyChainMetadata {
             )
             externalParameters = [ordered]@{
                 jobKind = $Kind
+                releaseVersion = $releaseVersion
                 revision = $RevisionValue
                 targetGoarch = $Goarch
                 targetGoos = $Goos

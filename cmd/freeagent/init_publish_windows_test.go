@@ -13,8 +13,8 @@ import (
 
 func TestPublishInitNoReplaceWindowsRetriesTransientFailures(t *testing.T) {
 	const (
-		source      = `C:\source`
-		destination = `C:\destination`
+		source      = "C:" + `\source`
+		destination = "C:" + `\destination`
 	)
 	failures := []error{
 		windows.ERROR_ACCESS_DENIED,
@@ -82,8 +82,8 @@ func TestPublishInitNoReplaceWindowsExhaustsTransientRetryBudget(t *testing.T) {
 	attempts := 0
 	var delays []time.Duration
 	err := publishInitNoReplaceWindows(
-		`C:\source`,
-		`C:\destination`,
+		"C:"+`\source`,
+		"C:"+`\destination`,
 		func(_, _ *uint16, flags uint32) error {
 			attempts++
 			if flags != windows.MOVEFILE_WRITE_THROUGH {
@@ -130,8 +130,16 @@ func TestPublishInitNoReplaceWindowsRejectsInvalidPathBeforeMove(t *testing.T) {
 		source      string
 		destination string
 	}{
-		{name: "source", source: "C:\\source\x00invalid", destination: `C:\destination`},
-		{name: "destination", source: `C:\source`, destination: "C:\\destination\x00invalid"},
+		{
+			name:        "source",
+			source:      "C:" + `\source` + "\x00invalid",
+			destination: "C:" + `\destination`,
+		},
+		{
+			name:        "destination",
+			source:      "C:" + `\source`,
+			destination: "C:" + `\destination` + "\x00invalid",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -183,8 +191,8 @@ func TestPublishInitNoReplaceWindowsDoesNotRetryTerminalFailures(t *testing.T) {
 			attempts := 0
 			sleeps := 0
 			err := publishInitNoReplaceWindows(
-				`C:\source`,
-				`C:\destination`,
+				"C:"+`\source`,
+				"C:"+`\destination`,
 				func(_, _ *uint16, flags uint32) error {
 					attempts++
 					if flags != windows.MOVEFILE_WRITE_THROUGH {
@@ -200,7 +208,8 @@ func TestPublishInitNoReplaceWindowsDoesNotRetryTerminalFailures(t *testing.T) {
 				t.Fatalf("terminal failure attempts=%d sleeps=%d", attempts, sleeps)
 			}
 			if test.wantCollision {
-				const want = `composition: target already exists: C:\destination`
+				const want = "composition: target already exists: " +
+					"C:" + `\destination`
 				if err == nil || err.Error() != want {
 					t.Fatalf("collision error = %v, want %q", err, want)
 				}

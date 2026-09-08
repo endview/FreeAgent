@@ -51,10 +51,23 @@ public static class PublicStagingGeneratorNativeStreams
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FindClose(IntPtr findFile);
 
+    private static string ToNativePath(string path)
+    {
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            return path;
+        }
+        if (path.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return @"\\?\UNC\" + path.Substring(2);
+        }
+        return @"\\?\" + path;
+    }
+
     public static string[] Enumerate(string path)
     {
         Win32FindStreamData data;
-        IntPtr handle = FindFirstStreamW(path, 0, out data, 0);
+        IntPtr handle = FindFirstStreamW(ToNativePath(path), 0, out data, 0);
         if (handle == InvalidHandleValue)
         {
             int firstError = Marshal.GetLastWin32Error();
