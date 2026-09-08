@@ -131,6 +131,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $logPath = 'LOG_PATH'
+$expectedSelf = Join-Path $BaseRoot 'control/workflow-control.ps1'
+if (-not [string]::Equals(
+        $PSCommandPath,
+        $expectedSelf,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+    throw 'FAKE_CONTROL_WRONG_SELF'
+}
 function Append-Log([string]$Text) {
     [IO.File]::AppendAllText($logPath, $Text + "`n", [Text.UTF8Encoding]::new($false))
 }
@@ -150,8 +158,6 @@ if ($Prepare) {
     $manifest = Join-Path $artifact 'public-tree-manifest.v1.json'
     [IO.File]::WriteAllText($manifest, "{}`n", [Text.UTF8Encoding]::new($false))
     $control = Join-Path $BaseRoot 'control/workflow-control.ps1'
-    [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($control))
-    [IO.File]::WriteAllText($control, "# fake`n", [Text.UTF8Encoding]::new($false))
     $output = @(
         "base=$BaseRoot",
         "source=$source",
@@ -336,6 +342,24 @@ try {
         Assert-True -Name 'summary file exists' -Condition (
             [IO.File]::Exists((Join-Path $outputRoot 'developer-preview-release.json'))
         )
+        foreach ($targetName in @(
+            'windows-amd64',
+            'windows-arm64',
+            'linux-amd64',
+            'linux-arm64',
+            'darwin-amd64',
+            'darwin-arm64'
+        )) {
+            $snapshot = Join-Path $outputRoot (
+                "control/$targetName/control/workflow-control.ps1"
+            )
+            Assert-True -Name "$targetName control snapshot exists" -Condition (
+                [IO.File]::Exists($snapshot)
+            )
+            Assert-Equal -Name "$targetName control snapshot bytes" `
+                -Expected ([IO.File]::ReadAllText($controlPath)) `
+                -Actual ([IO.File]::ReadAllText($snapshot))
+        }
 
         [string[]]$controlLines = @(
             [IO.File]::ReadAllLines($controlLog)

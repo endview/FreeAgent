@@ -260,11 +260,19 @@ try {
     foreach ($target in $script:Targets) {
         $targetName = [string]$target.Target
         $baseRoot = Join-Path $controlParent $targetName
+        $baseControlDirectory = Join-Path $baseRoot 'control'
+        $baseControlPath = Join-Path $baseControlDirectory 'workflow-control.ps1'
         $prepareOutputPath = Join-Path $outputParentForFiles "$targetName.prepare.txt"
         $prepareEnvironmentPath = Join-Path $outputParentForFiles "$targetName.environment.txt"
         $finalizeOutputPath = Join-Path $outputParentForFiles "$targetName.finalize.txt"
 
-        & $control `
+        if (Test-Path -LiteralPath $baseRoot) {
+            Fail-DeveloperPreviewRelease -Code 'DPR_BASE_ROOT_EXISTS'
+        }
+        [void][IO.Directory]::CreateDirectory($baseControlDirectory)
+        [IO.File]::Copy($control, $baseControlPath, $false)
+
+        & $baseControlPath `
             -Prepare `
             -JobKind cross-build `
             -BaseRoot $baseRoot `
@@ -303,21 +311,21 @@ try {
         }
         $env:PATH = $goDirectory + [IO.Path]::PathSeparator + $savedPath
 
-        & $control `
+        & $baseControlPath `
             -Initialize `
             -JobKind cross-build `
             -BaseRoot $baseRoot `
             -TargetGoos ([string]$target.Goos) `
             -TargetGoarch ([string]$target.Goarch)
 
-        & $control `
+        & $baseControlPath `
             -Run `
             -JobKind cross-build `
             -BaseRoot $baseRoot `
             -TargetGoos ([string]$target.Goos) `
             -TargetGoarch ([string]$target.Goarch)
 
-        & $control `
+        & $baseControlPath `
             -Finalize `
             -JobKind cross-build `
             -BaseRoot $baseRoot `
@@ -345,7 +353,7 @@ try {
             Fail-DeveloperPreviewRelease -Code 'DPR_RUN_NOT_SUCCESSFUL'
         }
 
-        & $control `
+        & $baseControlPath `
             -Seal `
             -JobKind cross-build `
             -BaseRoot $baseRoot `
