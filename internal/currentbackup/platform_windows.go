@@ -7,9 +7,21 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
+
+const (
+	// Windows can report ERROR_ACCESS_DENIED while another process briefly
+	// holds a file below a directory being renamed. These six waits bound that
+	// transient window to 630ms without changing the no-replace operation.
+	currentBackupWindowsPublishRetryCount        = 6
+	currentBackupWindowsPublishInitialRetryDelay = 10 * time.Millisecond
+)
+
+type currentBackupWindowsMoveFileEx func(*uint16, *uint16, uint32) error
+type currentBackupWindowsSleep func(time.Duration)
 
 type offlineFence struct {
 	file       *os.File
@@ -89,6 +101,20 @@ func rejectSafeTreeFilesystemBoundary(os.FileInfo, os.FileInfo) error {
 }
 
 func publishNoReplace(source, destination string) error {
+	return publishNoReplaceWindows(
+		source,
+		destination,
+		windows.MoveFileEx,
+		time.Sleep,
+	)
+}
+
+func publishNoReplaceWindows(
+	source string,
+	destination string,
+	moveFileEx currentBackupWindowsMoveFileEx,
+	sleep currentBackupWindowsSleep,
+) error {
 	sourcePointer, err := windows.UTF16PtrFromString(source)
 	if err != nil {
 		return err
@@ -97,18 +123,26 @@ func publishNoReplace(source, destination string) error {
 	if err != nil {
 		return err
 	}
-	if err := windows.MoveFileEx(
-		sourcePointer,
-		destinationPointer,
-		windows.MOVEFILE_WRITE_THROUGH,
-	); err != nil {
+	for retry := 0; ; retry++ {
+		err := moveFileEx(
+			sourcePointer,
+			destinationPointer,
+			windows.MOVEFILE_WRITE_THROUGH,
+		)
+		if err == nil {
+			return nil
+		}
 		if errors.Is(err, windows.ERROR_ALREADY_EXISTS) ||
 			errors.Is(err, windows.ERROR_FILE_EXISTS) {
 			return fmt.Errorf("%w: %s", ErrTargetExists, destination)
 		}
-		return err
+		if retry >= currentBackupWindowsPublishRetryCount ||
+			(!errors.Is(err, windows.ERROR_ACCESS_DENIED) &&
+				!errors.Is(err, windows.ERROR_SHARING_VIOLATION)) {
+			return err
+		}
+		sleep(currentBackupWindowsPublishInitialRetryDelay << retry)
 	}
-	return nil
 }
 
 // Windows does not expose a portable directory fsync. MoveFileEx with

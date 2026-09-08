@@ -342,6 +342,24 @@ func (service *ChatService) Chat(
 		result.ConversationRevision =
 			conversationTurn.ExpectedConversationRevision + 1
 	}
+	if found {
+		terminal, terminalErr := service.store.GetTerminalRunResult(
+			ctx,
+			admission.RunID,
+		)
+		if terminalErr == nil {
+			if err := service.applyTerminalResult(
+				&result,
+				terminal,
+			); err != nil {
+				return result, err
+			}
+			return result, nil
+		}
+		if !errors.Is(terminalErr, currentstore.ErrTerminalRunUnavailable) {
+			return result, terminalErr
+		}
+	}
 	maxSteps := uint32(chatPureLoopMaxSteps)
 	if !isNilChatDependency(service.actionMaterializer) {
 		// An Action-enabled service must reserve model-1 + action-1 before
@@ -374,10 +392,36 @@ func (service *ChatService) Chat(
 	if err != nil {
 		return result, err
 	}
-	if terminal.RunID != admission.RunID {
-		return result, fmt.Errorf(
+	return result, service.applyTerminalResult(&result, terminal)
+}
+
+func (service *ChatService) applyTerminalResult(
+	result *ChatResult,
+	terminal currentstore.TerminalRunResult,
+) error {
+	if service == nil || service.store == nil {
+		return fmt.Errorf(
+			"%w: ChatService is not initialized",
+			ErrInvalidChat,
+		)
+	}
+	if result == nil || terminal.RunID != result.RunID {
+		return fmt.Errorf(
 			"%w: terminal result belongs to another Run",
 			ErrChatIntegrity,
+		)
+	}
+	result.LoopResult = loopapi.RunResult{
+		RunID:         terminal.RunID,
+		Disposition:   loopapi.DispositionTerminated,
+		FrameRevision: terminal.FrameRevision,
+		ReasonCode:    terminal.ReasonCode,
+	}
+	if err := result.LoopResult.Validate(); err != nil {
+		return fmt.Errorf(
+			"%w: terminal Loop projection: %v",
+			ErrChatIntegrity,
+			err,
 		)
 	}
 	result.TerminalResult = &terminal
@@ -386,7 +430,7 @@ func (service *ChatService) Chat(
 		// preserve the successful source-model fact while terminating the
 		// Run with a durable failure classification.
 		result.FailureCode = terminal.ErrorClassification
-		return result, nil
+		return nil
 	}
 	switch terminal.State {
 	case corecontract.ModelAttemptSucceeded:
@@ -394,13 +438,13 @@ func (service *ChatService) Chat(
 	case corecontract.ModelAttemptFailed:
 		result.FailureCode = terminal.ErrorClassification
 	default:
-		return result, fmt.Errorf(
+		return fmt.Errorf(
 			"%w: terminal result has model state %q",
 			ErrChatIntegrity,
 			terminal.State,
 		)
 	}
-	return result, nil
+	return nil
 }
 
 func (service *ChatService) freezeRequestIdentity(

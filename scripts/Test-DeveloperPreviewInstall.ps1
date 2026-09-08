@@ -379,7 +379,35 @@ function ConvertFrom-CommandJson {
     if ($null -eq $value -or $value -is [Array]) {
         Throw-Failed -Code 'COMMAND_JSON_SHAPE' -Message "$Label did not return one JSON object"
     }
-    return $value
+    return ,$value
+}
+
+function Get-DPIJsonField {
+    param(
+        [Parameter(Mandatory = $true)][AllowNull()]$Object,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [switch]$Required
+    )
+
+    if ($null -eq $Object) {
+        Throw-Failed -Code 'COMMAND_JSON_FIELD_MISSING' `
+            -Message "$Label omitted the $Name field"
+    }
+    $value = $null
+    $found = $false
+    foreach ($property in @($Object.PSObject.Properties)) {
+        if ($property.Name -ceq $Name) {
+            $value = $property.Value
+            $found = $true
+            break
+        }
+    }
+    if (-not $found -and $Required) {
+        Throw-Failed -Code 'COMMAND_JSON_FIELD_MISSING' `
+            -Message "$Label omitted the $Name field"
+    }
+    return ,$value
 }
 
 function Assert-DPIJsonElement {
@@ -457,19 +485,30 @@ function Assert-ChatResult {
         [AllowEmptyString()][string]$PreviousRun = ''
     )
 
-    Assert-StringEqual -Actual $Result.conversation_id -Expected $Conversation -Label 'chat conversation'
-    if ([string]$Result.reply -cne $Message) {
+    $resultConversation = Get-DPIJsonField -Object $Result -Name 'conversation_id' `
+        -Required -Label 'chat result'
+    $resultReply = Get-DPIJsonField -Object $Result -Name 'reply' `
+        -Required -Label 'chat result'
+    $resultDisposition = Get-DPIJsonField -Object $Result -Name 'disposition' `
+        -Required -Label 'chat result'
+    $resultRevision = Get-DPIJsonField -Object $Result -Name 'conversation_revision' `
+        -Required -Label 'chat result'
+    $resultRunID = Get-DPIJsonField -Object $Result -Name 'run_id' `
+        -Required -Label 'chat result'
+
+    Assert-StringEqual -Actual $resultConversation -Expected $Conversation -Label 'chat conversation'
+    if ([string]$resultReply -cne $Message) {
         Throw-Failed -Code 'CONTRACT_VALUE_MISMATCH' -Message (
             'offline echo reply did not match the fixed smoke message; ' +
-            'actual_length=' + ([string]$Result.reply).Length +
+            'actual_length=' + ([string]$resultReply).Length +
             ' expected_length=' + $Message.Length
         )
     }
-    Assert-StringEqual -Actual $Result.disposition -Expected 'TERMINATED' -Label 'chat disposition'
-    if ([long]$Result.conversation_revision -ne $Revision -or
-        [string]::IsNullOrWhiteSpace([string]$Result.run_id) -or
+    Assert-StringEqual -Actual $resultDisposition -Expected 'TERMINATED' -Label 'chat disposition'
+    if ([long]$resultRevision -ne $Revision -or
+        [string]::IsNullOrWhiteSpace([string]$resultRunID) -or
         (-not [string]::IsNullOrEmpty($PreviousRun) -and
-            [string]$Result.run_id -ceq $PreviousRun)) {
+            [string]$resultRunID -ceq $PreviousRun)) {
         Throw-Failed -Code 'CHAT_CONVERSATION_DRIFT' -Message 'chat did not advance the exact Conversation head once'
     }
 }
@@ -553,9 +592,11 @@ function Invoke-LoopbackHttp {
             }
         }
         if ($Method -ceq 'POST') {
-            $request.Content = [Net.Http.StringContent]::new(
-                $Body,
-                [Text.UTF8Encoding]::new($false),
+            $request.Content = [Net.Http.ByteArrayContent]::new(
+                [Text.UTF8Encoding]::new($false).GetBytes($Body)
+            )
+            $null = $request.Content.Headers.TryAddWithoutValidation(
+                'Content-Type',
                 'application/json'
             )
         }
@@ -675,6 +716,72 @@ function Remove-IsolatedWorkRoot {
     $script:WorkDirectoryRemoved = -not [IO.Directory]::Exists($full)
 }
 
+function Set-IsolatedWorkRootPrivate {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if ($IsWindows) {
+        try {
+            $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+            $current = [Security.Principal.SecurityIdentifier]$identity.User
+            $security = [System.Security.AccessControl.DirectorySecurity]::new()
+            $security.SetAccessRuleProtection($true, $false)
+            $inheritance =
+                [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+                [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+            $security.AddAccessRule(
+                [System.Security.AccessControl.FileSystemAccessRule]::new(
+                    $current,
+                    [System.Security.AccessControl.FileSystemRights]::FullControl,
+                    $inheritance,
+                    [System.Security.AccessControl.PropagationFlags]::None,
+                    [System.Security.AccessControl.AccessControlType]::Allow
+                )
+            )
+            [System.IO.FileSystemAclExtensions]::SetAccessControl(
+                [IO.DirectoryInfo]::new($Path),
+                $security
+            )
+        } catch {
+            Throw-Failed -Code 'WORK_ROOT_PRIVACY_FAILED' `
+                -Message 'the isolated validation WorkRoot could not be made private'
+        }
+        return
+    }
+
+    try {
+        [IO.File]::SetUnixFileMode(
+            $Path,
+            [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor
+                [IO.UnixFileMode]::UserExecute
+        )
+    } catch {
+        Throw-Failed -Code 'WORK_ROOT_PRIVACY_FAILED' `
+            -Message 'the isolated validation WorkRoot could not be made private'
+    }
+}
+
+function New-DefaultWorkParent {
+    $userProfile = [Environment]::GetFolderPath('UserProfile')
+    if ([string]::IsNullOrWhiteSpace($userProfile) -or
+        -not [IO.Directory]::Exists($userProfile)) {
+        Throw-Failed -Code 'WORK_PARENT_HOME_MISSING' `
+            -Message 'the user profile directory is unavailable for isolated validation state'
+    }
+
+    $cacheRoot = Join-Path $userProfile '.cache'
+    if (-not [IO.Directory]::Exists($cacheRoot)) {
+        $null = [IO.Directory]::CreateDirectory($cacheRoot)
+    }
+    $workParent = Join-Path (
+        Join-Path $cacheRoot 'freeagent'
+    ) 'developer-preview-install-validation'
+    if (-not [IO.Directory]::Exists($workParent)) {
+        $null = [IO.Directory]::CreateDirectory($workParent)
+    }
+    Set-IsolatedWorkRootPrivate -Path $workParent
+    return (Resolve-Path -LiteralPath $workParent).Path
+}
+
 $status = 'FAIL'
 $exitCode = 1
 $failureCode = ''
@@ -786,21 +893,33 @@ try {
     $seed = ConvertFrom-DPIStrictJson `
         -Text $seedRaw `
         -Code 'OFFLINE_SEED_INVALID'
-    if ($seed.schema_version -cne 'freeagent.bootstrap-seed/v1' -or
-        $seed.model_binding.config.provider -cne 'freeagent.local' -or
-        $seed.model_binding.config.model -cne 'freeagent-dev-echo' -or
-        $seed.module.module_id -cne 'freeagent.builtin.model.echo' -or
+    $seedSchema = Get-DPIJsonField -Object $seed -Name 'schema_version' `
+        -Required -Label 'offline bootstrap seed'
+    $seedModelBinding = Get-DPIJsonField -Object $seed -Name 'model_binding' `
+        -Required -Label 'offline bootstrap seed'
+    $seedModelConfig = Get-DPIJsonField -Object $seedModelBinding -Name 'config' `
+        -Required -Label 'offline bootstrap seed model binding'
+    $seedProvider = Get-DPIJsonField -Object $seedModelConfig -Name 'provider' `
+        -Required -Label 'offline bootstrap seed model config'
+    $seedModel = Get-DPIJsonField -Object $seedModelConfig -Name 'model' `
+        -Required -Label 'offline bootstrap seed model config'
+    $seedModule = Get-DPIJsonField -Object $seed -Name 'module' `
+        -Required -Label 'offline bootstrap seed'
+    $seedModuleID = Get-DPIJsonField -Object $seedModule -Name 'module_id' `
+        -Required -Label 'offline bootstrap seed module'
+    if ($seedSchema -cne 'freeagent.bootstrap-seed/v1' -or
+        $seedProvider -cne 'freeagent.local' -or
+        $seedModel -cne 'freeagent-dev-echo' -or
+        $seedModuleID -cne 'freeagent.builtin.model.echo' -or
         $seedRaw -match '(?i)https?://|deepseek|api[_-]?key|secret[_-]?ref') {
         Throw-Blocked -Code 'OFFLINE_ECHO_SEED_UNPROVEN' -Message 'the packaged seed is not the deterministic local Echo configuration'
     }
     Set-StepResult -Name offline_seed -Status PASS `
         -Evidence ('deterministic local Echo seed sha256=' + (Get-SHA256Hex -Bytes ([Text.UTF8Encoding]::new($false, $true).GetBytes($seedRaw))))
 
+    Enter-Step -Name init
     if ([string]::IsNullOrWhiteSpace($WorkParent)) {
-        $script:WorkParentPath = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd(
-            [IO.Path]::DirectorySeparatorChar,
-            [IO.Path]::AltDirectorySeparatorChar
-        )
+        $script:WorkParentPath = New-DefaultWorkParent
     } else {
         if (-not [IO.Directory]::Exists($WorkParent)) {
             Throw-Failed -Code 'WORK_PARENT_MISSING' -Message 'the requested work parent does not exist'
@@ -810,6 +929,7 @@ try {
     $script:WorkRoot = Join-Path $script:WorkParentPath `
         ('freeagent-developer-preview-' + [Guid]::NewGuid().ToString('N'))
     $null = New-Item -ItemType Directory -Path $script:WorkRoot
+    Set-IsolatedWorkRootPrivate -Path $script:WorkRoot
     $database = Join-Path $script:WorkRoot 'source.sqlite'
     $artifacts = Join-Path $script:WorkRoot 'source-artifacts'
     $bundle = Join-Path $script:WorkRoot 'backup-bundle'
@@ -818,7 +938,6 @@ try {
     $conversation = 'developer-preview-install-' + [Guid]::NewGuid().ToString('N')
     $deadline = [DateTime]::UtcNow.AddHours(4).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
 
-    Enter-Step -Name init
     $initResult = Invoke-ToolCommand -Arguments @(
         'init', '--db', $database, '--artifact-root', $artifacts,
         '--seed', $seedPath
@@ -834,8 +953,14 @@ try {
         'conversation-create', '--db', $database, '--conversation', $conversation
     )
     $created = ConvertFrom-CommandJson -Text $createdCommand.stdout -Label conversation_create
-    if (-not [bool]$created.created -or [long]$created.revision -ne 0 -or
-        -not [string]::IsNullOrEmpty([string]$created.head_run_id)) {
+    $createdCreated = Get-DPIJsonField -Object $created -Name 'created' `
+        -Required -Label 'conversation_create'
+    $createdRevision = Get-DPIJsonField -Object $created -Name 'revision' `
+        -Required -Label 'conversation_create'
+    $createdHeadRun = Get-DPIJsonField -Object $created -Name 'head_run_id' `
+        -Label 'conversation_create'
+    if (-not [bool]$createdCreated -or [long]$createdRevision -ne 0 -or
+        -not [string]::IsNullOrEmpty([string]$createdHeadRun)) {
         Throw-Failed -Code 'CONVERSATION_CREATE_INVALID' -Message 'conversation-create did not return a new revision-zero Conversation'
     }
     $initialGet = ConvertFrom-CommandJson -Text (
@@ -843,7 +968,11 @@ try {
             'conversation-get', '--db', $database, '--conversation', $conversation
         )
     ).stdout -Label conversation_get
-    if ([long]$initialGet.revision -ne 0 -or [bool]$initialGet.created) {
+    $initialRevision = Get-DPIJsonField -Object $initialGet -Name 'revision' `
+        -Required -Label 'conversation_get'
+    $initialCreated = Get-DPIJsonField -Object $initialGet -Name 'created' `
+        -Required -Label 'conversation_get'
+    if ([long]$initialRevision -ne 0 -or [bool]$initialCreated) {
         Throw-Failed -Code 'CONVERSATION_GET_INVALID' -Message 'conversation-get did not recover the new Conversation'
     }
     Set-StepResult -Name conversation_create_get -Status PASS -Evidence 'revision=0, head empty'
@@ -874,8 +1003,12 @@ try {
             'conversation-get', '--db', $database, '--conversation', $conversation
         )
     ).stdout -Label conversation_get_after_retry
-    if ([long]$afterRetryGet.revision -ne 1 -or
-        [string]$afterRetryGet.head_run_id -cne [string]$turn1.run_id) {
+    $afterRetryRevision = Get-DPIJsonField -Object $afterRetryGet -Name 'revision' `
+        -Required -Label 'conversation_get_after_retry'
+    $afterRetryHeadRun = Get-DPIJsonField -Object $afterRetryGet -Name 'head_run_id' `
+        -Required -Label 'conversation_get_after_retry'
+    if ([long]$afterRetryRevision -ne 1 -or
+        [string]$afterRetryHeadRun -cne [string]$turn1.run_id) {
         Throw-Failed -Code 'EXACT_RETRY_ADVANCED_CONVERSATION' -Message 'exact retry advanced the Conversation revision or head'
     }
     Set-StepResult -Name exact_retry_attempt_invariance -Status PASS `
@@ -902,8 +1035,12 @@ try {
         '--listen', '127.0.0.1:0'
     )
     try {
-        Assert-StringEqual -Actual $server1.ready.status -Expected 'ready' -Label 'serve status'
-        $origin1 = Test-LoopbackOrigin -Origin ('http://' + [string]$server1.ready.listen) `
+        $server1Status = Get-DPIJsonField -Object $server1.ready -Name 'status' `
+            -Required -Label 'serve readiness'
+        $server1Listen = Get-DPIJsonField -Object $server1.ready -Name 'listen' `
+            -Required -Label 'serve readiness'
+        Assert-StringEqual -Actual $server1Status -Expected 'ready' -Label 'serve status'
+        $origin1 = Test-LoopbackOrigin -Origin ('http://' + [string]$server1Listen) `
             -Label 'first Chat listener'
         $client1 = New-LoopbackHttpClient
         try {
@@ -919,7 +1056,9 @@ try {
         '--listen', '127.0.0.1:0'
     )
     try {
-        $origin2 = Test-LoopbackOrigin -Origin ('http://' + [string]$server2.ready.listen) `
+        $server2Listen = Get-DPIJsonField -Object $server2.ready -Name 'listen' `
+            -Required -Label 'serve readiness'
+        $origin2 = Test-LoopbackOrigin -Origin ('http://' + [string]$server2Listen) `
             -Label 'restarted Chat listener'
         $client2 = New-LoopbackHttpClient
         try {
@@ -978,8 +1117,12 @@ try {
             '--conversation', $conversation
         )
     ).stdout -Label restored_conversation_get
-    if ([long]$restoredGet.revision -ne 3 -or
-        [string]$restoredGet.head_run_id -cne [string]$turn3.run_id) {
+    $restoredRevision = Get-DPIJsonField -Object $restoredGet -Name 'revision' `
+        -Required -Label 'restored_conversation_get'
+    $restoredHeadRun = Get-DPIJsonField -Object $restoredGet -Name 'head_run_id' `
+        -Required -Label 'restored_conversation_get'
+    if ([long]$restoredRevision -ne 3 -or
+        [string]$restoredHeadRun -cne [string]$turn3.run_id) {
         Throw-Failed -Code 'RESTORED_CONVERSATION_DRIFT' -Message 'restore did not preserve the Conversation revision and head'
     }
     $turn4Message = 'developer-preview-offline-turn-after-restore'
@@ -1005,10 +1148,14 @@ try {
         '--control-handoff-path', $handoffPath
     )
     try {
-        Assert-StringEqual -Actual $controlServer.ready.control -Expected 'enabled' `
+        $controlReadiness = Get-DPIJsonField -Object $controlServer.ready -Name 'control' `
+            -Required -Label 'control-enabled serve readiness'
+        $controlListen = Get-DPIJsonField -Object $controlServer.ready -Name 'listen' `
+            -Required -Label 'control-enabled serve readiness'
+        Assert-StringEqual -Actual $controlReadiness -Expected 'enabled' `
             -Label 'explicit Control readiness'
         $chatOrigin = Test-LoopbackOrigin `
-            -Origin ('http://' + [string]$controlServer.ready.listen) `
+            -Origin ('http://' + [string]$controlListen) `
             -Label 'Control-enabled Chat listener'
         Wait-ForFile -Path $handoffPath -TimeoutSeconds $ServeStartupTimeoutSeconds
         $handoffRaw = [IO.File]::ReadAllText(
@@ -1019,12 +1166,18 @@ try {
             Throw-Failed -Code 'CONTROL_HANDOFF_OVERSIZE' -Message 'Control handoff exceeded 64 KiB'
         }
         $handoff = ConvertFrom-CommandJson -Text $handoffRaw -Label control_handoff
-        Assert-StringEqual -Actual $handoff.schema_version `
+        $handoffSchema = Get-DPIJsonField -Object $handoff -Name 'schema_version' `
+            -Required -Label 'control handoff'
+        $handoffCapability = Get-DPIJsonField -Object $handoff -Name 'capability' `
+            -Required -Label 'control handoff'
+        $handoffOrigin = Get-DPIJsonField -Object $handoff -Name 'origin' `
+            -Required -Label 'control handoff'
+        Assert-StringEqual -Actual $handoffSchema `
             -Expected 'freeagent.control-bootstrap-handoff/v1' -Label 'Control handoff schema'
-        if ([string]::IsNullOrWhiteSpace([string]$handoff.capability)) {
+        if ([string]::IsNullOrWhiteSpace([string]$handoffCapability)) {
             Throw-Failed -Code 'CONTROL_HANDOFF_INCOMPLETE' -Message 'Control handoff omitted its one-time capability'
         }
-        $controlOrigin = Test-LoopbackOrigin -Origin ([string]$handoff.origin) `
+        $controlOrigin = Test-LoopbackOrigin -Origin ([string]$handoffOrigin) `
             -Label 'Control listener'
         Set-StepResult -Name control_enable -Status PASS `
             -Evidence 'Control explicitly enabled with an owner handoff'
@@ -1041,13 +1194,28 @@ try {
             $ui = Invoke-LoopbackHttp -Client $controlClient -Method GET `
                 -Uri ($controlOrigin + '/control/ui/')
             if ($ui.status_code -ne 200 -or
-                $ui.body.IndexOf('Overview', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
-                $ui.body.IndexOf('Modules', [StringComparison]::OrdinalIgnoreCase) -lt 0) {
-                Throw-Failed -Code 'CONTROL_UI_INCOMPLETE' -Message 'Control Web shell did not expose Overview and Modules navigation'
+                -not ([string]$ui.content_type).StartsWith(
+                    'text/html', [StringComparison]::OrdinalIgnoreCase
+                ) -or
+                $ui.body.IndexOf('<div id="root"', [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+                $ui.body.IndexOf(
+                    '/control/ui/assets/app.js', [StringComparison]::OrdinalIgnoreCase
+                ) -lt 0) {
+                Throw-Failed -Code 'CONTROL_UI_INCOMPLETE' -Message 'Control Web shell omitted its root element and app bundle reference'
+            }
+            $uiScript = Invoke-LoopbackHttp -Client $controlClient -Method GET `
+                -Uri ($controlOrigin + '/control/ui/assets/app.js')
+            if ($uiScript.status_code -ne 200 -or
+                -not ([string]$uiScript.content_type).StartsWith(
+                    'text/javascript', [StringComparison]::OrdinalIgnoreCase
+                ) -or
+                $uiScript.body.IndexOf('Overview', [StringComparison]::Ordinal) -lt 0 -or
+                $uiScript.body.IndexOf('Modules', [StringComparison]::Ordinal) -lt 0) {
+                Throw-Failed -Code 'CONTROL_UI_INCOMPLETE' -Message 'Control Web app bundle did not expose Overview and Modules navigation'
             }
 
             $bootstrapBody = [ordered]@{
-                capability = [string]$handoff.capability
+                capability = [string]$handoffCapability
                 schema_version = 'control-bootstrap-exchange/v1'
             } | ConvertTo-Json -Compress
             $bootstrapResponse = Invoke-LoopbackHttp -Client $controlClient -Method POST `
@@ -1058,13 +1226,17 @@ try {
             }
             $bootstrap = ConvertFrom-CommandJson -Text $bootstrapResponse.body `
                 -Label control_bootstrap
-            Assert-StringEqual -Actual $bootstrap.schema_version `
+            $bootstrapSchema = Get-DPIJsonField -Object $bootstrap -Name 'schema_version' `
+                -Required -Label 'control bootstrap'
+            $bootstrapCSRF = Get-DPIJsonField -Object $bootstrap -Name 'csrf_token' `
+                -Required -Label 'control bootstrap'
+            Assert-StringEqual -Actual $bootstrapSchema `
                 -Expected 'control-bootstrap-session/v2' -Label 'Control bootstrap schema'
-            if ([string]::IsNullOrWhiteSpace([string]$bootstrap.csrf_token)) {
+            if ([string]::IsNullOrWhiteSpace([string]$bootstrapCSRF)) {
                 Throw-Failed -Code 'CONTROL_BOOTSTRAP_INCOMPLETE' -Message 'Control bootstrap omitted the process-local CSRF proof'
             }
             $headers = @{
-                'X-FreeAgent-CSRF' = [string]$bootstrap.csrf_token
+                'X-FreeAgent-CSRF' = [string]$bootstrapCSRF
                 'X-FreeAgent-Scope-Kind' = 'TENANT'
                 'X-FreeAgent-Tenant-ID' = 'default'
             }
@@ -1077,7 +1249,9 @@ try {
             }
             $overview = ConvertFrom-CommandJson -Text $overviewResponse.body `
                 -Label control_overview
-            Assert-StringEqual -Actual $overview.schema_version `
+            $overviewSchema = Get-DPIJsonField -Object $overview -Name 'schema_version' `
+                -Required -Label 'control overview'
+            Assert-StringEqual -Actual $overviewSchema `
                 -Expected 'control-http-overview/v1' -Label 'Control Overview schema'
             Set-StepResult -Name control_overview -Status PASS `
                 -Evidence 'authorized read-only Overview returned its exact schema'
@@ -1090,13 +1264,17 @@ try {
             }
             $modules = ConvertFrom-CommandJson -Text $modulesResponse.body `
                 -Label control_modules
-            Assert-StringEqual -Actual $modules.schema_version `
+            $modulesSchema = Get-DPIJsonField -Object $modules -Name 'schema_version' `
+                -Required -Label 'control modules'
+            $modulesItems = Get-DPIJsonField -Object $modules -Name 'items' `
+                -Required -Label 'control modules'
+            Assert-StringEqual -Actual $modulesSchema `
                 -Expected 'control-http-modules-page/v1' -Label 'Control Modules schema'
-            if ($null -eq $modules.items) {
+            if ($null -eq $modulesItems) {
                 Throw-Failed -Code 'CONTROL_MODULES_SHAPE' -Message 'Control Modules omitted its items array'
             }
             Set-StepResult -Name control_modules -Status PASS `
-                -Evidence ('authorized Modules page returned items=' + @($modules.items).Count)
+                -Evidence ('authorized Modules page returned items=' + @($modulesItems).Count)
 
         } finally { $controlClient.Dispose() }
     } finally { Stop-ToolServer -Server $controlServer }

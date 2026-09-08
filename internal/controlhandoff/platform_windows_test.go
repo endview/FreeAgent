@@ -42,7 +42,44 @@ func TestWindowsPrivilegeDecisionFailsClosedV1(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "administrator SID including deny-only",
+			name: "filtered administrator SID is deny-only",
+			evidence: windowsPrivilegeEvidenceV1{
+				elevationVerified:          true,
+				elevationTypeVerified:      true,
+				elevationType:              windowsElevationTypeLimitedV1,
+				administratorGroupVerified: true,
+				administratorGroupPresent:  true,
+				administratorGroupDenyOnly: true,
+				userVerified:               true,
+			},
+		},
+		{
+			name: "limited token even if group evidence omits administrator",
+			evidence: windowsPrivilegeEvidenceV1{
+				elevationVerified:          true,
+				elevationTypeVerified:      true,
+				elevationType:              windowsElevationTypeLimitedV1,
+				administratorGroupVerified: true,
+				userVerified:               true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "limited token with enabled administrator SID",
+			evidence: windowsPrivilegeEvidenceV1{
+				elevationVerified:          true,
+				elevationTypeVerified:      true,
+				elevationType:              windowsElevationTypeLimitedV1,
+				administratorGroupVerified: true,
+				administratorGroupPresent:  true,
+				administratorGroupEnabled:  true,
+				administratorGroupDenyOnly: true,
+				userVerified:               true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "limited token with administrator SID not marked deny-only",
 			evidence: windowsPrivilegeEvidenceV1{
 				elevationVerified:          true,
 				elevationTypeVerified:      true,
@@ -54,12 +91,14 @@ func TestWindowsPrivilegeDecisionFailsClosedV1(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "limited token even if group evidence omits administrator",
+			name: "default token with administrator SID",
 			evidence: windowsPrivilegeEvidenceV1{
 				elevationVerified:          true,
 				elevationTypeVerified:      true,
-				elevationType:              windowsElevationTypeLimitedV1,
+				elevationType:              windowsElevationTypeDefaultV1,
 				administratorGroupVerified: true,
+				administratorGroupPresent:  true,
+				administratorGroupDenyOnly: true,
 				userVerified:               true,
 			},
 			wantErr: true,
@@ -149,18 +188,24 @@ func TestWindowsAdministratorGroupInspectionIncludesDenyOnlyV1(t *testing.T) {
 		Sid:        administrators,
 		Attributes: windows.SE_GROUP_USE_FOR_DENY_ONLY,
 	}
-	verified, present := inspectWindowsAdministratorGroupV1(
+	denyOnly := inspectWindowsAdministratorGroupV1(
 		groups,
 		administrators,
 	)
-	if !verified || !present {
-		t.Fatalf("deny-only administrator group = verified %t, present %t", verified, present)
+	if !denyOnly.verified || !denyOnly.present || denyOnly.enabled || !denyOnly.denyOnly {
+		t.Fatalf("deny-only administrator group = %+v", denyOnly)
+	}
+
+	groups.Groups[0].Attributes = windows.SE_GROUP_ENABLED
+	enabled := inspectWindowsAdministratorGroupV1(groups, administrators)
+	if !enabled.verified || !enabled.present || !enabled.enabled || enabled.denyOnly {
+		t.Fatalf("enabled administrator group = %+v", enabled)
 	}
 
 	groups.Groups[0].Sid = nil
-	verified, present = inspectWindowsAdministratorGroupV1(groups, administrators)
-	if verified || present {
-		t.Fatalf("invalid group evidence = verified %t, present %t", verified, present)
+	invalid := inspectWindowsAdministratorGroupV1(groups, administrators)
+	if invalid.verified || invalid.present {
+		t.Fatalf("invalid group evidence = %+v", invalid)
 	}
 }
 
@@ -173,6 +218,11 @@ func TestWindowsCurrentTokenEvidenceIsReadableV1(t *testing.T) {
 	if evidence.elevationType < windowsElevationTypeDefaultV1 ||
 		evidence.elevationType > windowsElevationTypeLimitedV1 {
 		t.Fatalf("current token elevation type = %d", evidence.elevationType)
+	}
+	if evidence.elevationType == windowsElevationTypeLimitedV1 &&
+		(!evidence.administratorGroupPresent || evidence.administratorGroupEnabled ||
+			!evidence.administratorGroupDenyOnly) {
+		t.Fatalf("inconsistent limited-token evidence: %+v", evidence)
 	}
 }
 

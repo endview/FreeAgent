@@ -63,12 +63,12 @@ function Assert-ThrowsCode {
     Assert-True -Name "$Name throws" -Condition (
         -not [string]::IsNullOrWhiteSpace($message)
     )
-    Assert-True -Name "$Name exact code" -Condition (
-        $message.StartsWith(
+    if (-not $message.StartsWith(
             "DEVELOPER_PREVIEW_ARCHIVE_FAIL code=$Code",
             [StringComparison]::Ordinal
-        )
-    )
+        )) {
+        throw "ASSERT_FAIL $Name exact code actual=[$message]"
+    }
 }
 
 function Write-TestBytes {
@@ -193,6 +193,29 @@ function Write-TestJson {
     Write-TestText -Path $Path -Text (
         ($Value | ConvertTo-Json -Depth 30 -Compress) + "`n"
     )
+}
+
+function Update-TestArtifactSeals {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $checksumPath = Join-Path $Root 'supply-chain/checksums.sha256'
+    if ([IO.File]::Exists($checksumPath)) {
+        [IO.File]::Delete($checksumPath)
+    }
+    $records = Get-TestFileRecords -Root $Root
+    [string[]]$paths = @($records.Keys)
+    [Array]::Sort($paths, [StringComparer]::Ordinal)
+    $builder = New-Object Text.StringBuilder
+    foreach ($path in $paths) {
+        [void]$builder.Append($records[$path].Sha256)
+        [void]$builder.Append('  ')
+        [void]$builder.Append($path)
+        [void]$builder.Append("`n")
+    }
+    Write-TestText `
+        -Path $checksumPath `
+        -Text $builder.ToString()
+    return Get-TestArtifactSetSha256 -Root $Root
 }
 
 function New-TestArtifact {
@@ -775,6 +798,57 @@ try {
             }
         Assert-True -Name 'version output absent' -Condition (
             -not (Test-Path -LiteralPath $versionOutput)
+        )
+    }
+
+    Invoke-Case 'duplicate provenance JSON key is rejected before publication' {
+        $fixture = New-TestFixture -Container $suiteRoot -Name 'duplicate-json'
+        $root = $fixture.Artifacts[0].Root
+        $provenancePath = Join-Path $root 'supply-chain/provenance.unsigned.v1.json'
+        $text = [IO.File]::ReadAllText($provenancePath)
+        $needle = '"predicateType":"https://slsa.dev/provenance/v1"'
+        if (-not $text.Contains($needle)) {
+            throw 'provenance fixture predicate marker missing'
+        }
+        $text = $text.Replace(
+            $needle,
+            ($needle + ',' + $needle)
+        )
+        Write-TestText -Path $provenancePath -Text $text
+        $fixture.ArtifactSetSha256[0] = Update-TestArtifactSeals -Root $root
+        $output = Join-Path $fixture.Root 'output'
+        Assert-ThrowsCode `
+            -Name 'duplicate provenance key' `
+            -Code 'DPA_PROVENANCE_INVALID' `
+            -Body {
+                [void](Invoke-TestTool -Fixture $fixture -OutputRoot $output)
+            }
+        Assert-True -Name 'duplicate JSON output absent' -Condition (
+            -not (Test-Path -LiteralPath $output)
+        )
+    }
+
+    Invoke-Case 'non-array provenance subject is rejected before publication' {
+        $fixture = New-TestFixture -Container $suiteRoot -Name 'subject-object'
+        $root = $fixture.Artifacts[0].Root
+        $provenancePath = Join-Path $root 'supply-chain/provenance.unsigned.v1.json'
+        $text = [IO.File]::ReadAllText($provenancePath).TrimEnd()
+        $subjectIndex = $text.IndexOf('"subject":[')
+        if ($subjectIndex -lt 0 -or -not $text.EndsWith('}')) {
+            throw 'provenance fixture subject marker missing'
+        }
+        $text = $text.Substring(0, $subjectIndex) + '"subject":{}' + '}'
+        Write-TestText -Path $provenancePath -Text ($text + "`n")
+        $fixture.ArtifactSetSha256[0] = Update-TestArtifactSeals -Root $root
+        $output = Join-Path $fixture.Root 'output'
+        Assert-ThrowsCode `
+            -Name 'subject is not an array' `
+            -Code 'DPA_PROVENANCE_INVALID' `
+            -Body {
+                [void](Invoke-TestTool -Fixture $fixture -OutputRoot $output)
+            }
+        Assert-True -Name 'subject object output absent' -Condition (
+            -not (Test-Path -LiteralPath $output)
         )
     }
 

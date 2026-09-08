@@ -19,6 +19,10 @@ const (
 	cmdWindowsTestTempPrefixV1  = ".c-"
 )
 
+func privateWindowsTestTempParentPrefixV1(prefix string) string {
+	return prefix + "parent-"
+}
+
 // TestMain places all Go 1.26 testing.TempDir trees below a private, protected root.
 // Production artifact-root validation intentionally rejects the ordinary
 // shared Windows temp hierarchy because another local principal may have
@@ -51,9 +55,17 @@ func runWithPrivateWindowsTestTemp(m *testing.M) int {
 		present: outerGoTmpDirPresent,
 		value:   outerGoTmpDir,
 	}
-	home, err := os.UserCacheDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "resolve private test cache: %v\n", err)
+		fmt.Fprintf(os.Stderr, "resolve private test home: %v\n", err)
+		return 2
+	}
+	privateParent, err := os.MkdirTemp(
+		home,
+		privateWindowsTestTempParentPrefixV1(cmdWindowsTestTempPrefixV1),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create private Windows test parent: %v\n", err)
 		return 2
 	}
 	name := privateWindowsTestTempNameV1(
@@ -61,9 +73,10 @@ func runWithPrivateWindowsTestTemp(m *testing.M) int {
 		os.Getpid(),
 		time.Now().UnixNano(),
 	)
-	rootPath = filepath.Join(home, name)
-	if _, err := moduleartifactstore.ProvisionArtifactRootV1(home, name); err != nil {
+	rootPath = filepath.Join(privateParent, name)
+	if _, err := moduleartifactstore.ProvisionArtifactRootV1(privateParent, name); err != nil {
 		fmt.Fprintf(os.Stderr, "provision private Windows test temp: %v\n", err)
+		_ = os.RemoveAll(privateParent)
 		return 2
 	}
 	if err := commitPrivateWindowsTestTempEnvironmentV1(
@@ -72,12 +85,18 @@ func runWithPrivateWindowsTestTemp(m *testing.M) int {
 		os.Setenv,
 	); err != nil {
 		fmt.Fprintf(os.Stderr, "set private Windows test temp: %v\n", err)
-		_ = os.RemoveAll(rootPath)
+		_ = os.RemoveAll(privateParent)
 		return 2
 	}
 	code := m.Run()
 	if err := os.RemoveAll(rootPath); err != nil {
 		fmt.Fprintf(os.Stderr, "remove private Windows test temp: %v\n", err)
+		if code == 0 {
+			code = 2
+		}
+	}
+	if err := os.RemoveAll(privateParent); err != nil {
+		fmt.Fprintf(os.Stderr, "remove private Windows test parent: %v\n", err)
 		if code == 0 {
 			code = 2
 		}
@@ -136,16 +155,23 @@ func validateInheritedPrivateWindowsTestTempV1(
 			return fmt.Errorf("%s does not equal the inherited root marker", key)
 		}
 	}
-	home, err := os.UserCacheDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("resolve private test cache: %w", err)
+		return fmt.Errorf("resolve private test home: %w", err)
 	}
 	cleanHome := filepath.Clean(home)
 	if !filepath.IsAbs(home) || !strings.EqualFold(home, cleanHome) {
-		return fmt.Errorf("user cache directory is not a clean absolute path")
+		return fmt.Errorf("user home directory is not a clean absolute path")
 	}
-	if !strings.EqualFold(filepath.Clean(filepath.Dir(marker)), cleanHome) {
-		return fmt.Errorf("inherited root parent is not the user cache directory")
+	rootParent := filepath.Dir(marker)
+	if !strings.EqualFold(filepath.Clean(filepath.Dir(rootParent)), cleanHome) {
+		return fmt.Errorf("inherited root parent is not below the user home directory")
+	}
+	if !validPrivateWindowsTestParentNameV1(
+		filepath.Base(rootParent),
+		privateWindowsTestTempParentPrefixV1(prefix),
+	) {
+		return fmt.Errorf("inherited root parent name is invalid")
 	}
 	name := filepath.Base(marker)
 	if !validPrivateWindowsTestTempNameV1(name, prefix) {
@@ -187,6 +213,11 @@ func validPrivateWindowsTestTempNameV1(name, prefix string) bool {
 	return len(parts) == 2 &&
 		positiveCanonicalDecimalV1(parts[0]) &&
 		positiveCanonicalDecimalV1(parts[1])
+}
+
+func validPrivateWindowsTestParentNameV1(name, parentPrefix string) bool {
+	return strings.HasPrefix(name, parentPrefix) &&
+		positiveCanonicalDecimalV1(strings.TrimPrefix(name, parentPrefix))
 }
 
 func positiveCanonicalDecimalV1(value string) bool {

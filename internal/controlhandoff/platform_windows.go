@@ -35,7 +35,16 @@ type windowsPrivilegeEvidenceV1 struct {
 	elevationType              uint32
 	administratorGroupVerified bool
 	administratorGroupPresent  bool
+	administratorGroupEnabled  bool
+	administratorGroupDenyOnly bool
 	userVerified               bool
+}
+
+type windowsAdministratorGroupEvidenceV1 struct {
+	verified bool
+	present  bool
+	enabled  bool
+	denyOnly bool
 }
 
 func verifyNonElevatedPlatformV1() error {
@@ -59,11 +68,9 @@ func collectWindowsPrivilegeEvidenceV1(
 		windows.WinBuiltinAdministratorsSid,
 	)
 	groups, groupsErr := token.GetTokenGroups()
-	administratorGroupVerified := false
-	administratorGroupPresent := false
+	administratorGroup := windowsAdministratorGroupEvidenceV1{}
 	if administratorSIDErr == nil && groupsErr == nil {
-		administratorGroupVerified, administratorGroupPresent =
-			inspectWindowsAdministratorGroupV1(groups, administrators)
+		administratorGroup = inspectWindowsAdministratorGroupV1(groups, administrators)
 	}
 	user, userErr := token.GetTokenUser()
 	userVerified := userErr == nil && user != nil && user.User.Sid != nil &&
@@ -73,8 +80,10 @@ func collectWindowsPrivilegeEvidenceV1(
 		elevated:                   elevation != 0,
 		elevationTypeVerified:      elevationTypeVerified,
 		elevationType:              elevationType,
-		administratorGroupVerified: administratorGroupVerified,
-		administratorGroupPresent:  administratorGroupPresent,
+		administratorGroupVerified: administratorGroup.verified,
+		administratorGroupPresent:  administratorGroup.present,
+		administratorGroupEnabled:  administratorGroup.enabled,
+		administratorGroupDenyOnly: administratorGroup.denyOnly,
 		userVerified:               userVerified,
 	}
 }
@@ -98,37 +107,52 @@ func queryWindowsTokenUint32V1(
 func inspectWindowsAdministratorGroupV1(
 	groups *windows.Tokengroups,
 	administrators *windows.SID,
-) (verified bool, present bool) {
+) windowsAdministratorGroupEvidenceV1 {
 	if groups == nil || administrators == nil || !administrators.IsValid() ||
 		groups.GroupCount > maximumWindowsGroupsV1 {
-		return false, false
+		return windowsAdministratorGroupEvidenceV1{}
 	}
+	evidence := windowsAdministratorGroupEvidenceV1{verified: true}
 	for _, group := range groups.AllGroups() {
 		if group.Sid == nil || !group.Sid.IsValid() ||
 			group.Attributes & ^uint32(windows.SE_GROUP_VALID_ATTRIBUTES) != 0 {
-			return false, false
+			return windowsAdministratorGroupEvidenceV1{}
 		}
-		// Presence is decisive regardless of attributes. In particular, a
-		// filtered UAC administrator token carries this SID with
-		// SE_GROUP_USE_FOR_DENY_ONLY, for which Token.IsMember reports false.
 		if group.Sid.Equals(administrators) {
-			present = true
+			evidence.present = true
+			if group.Attributes&windows.SE_GROUP_ENABLED != 0 {
+				evidence.enabled = true
+			}
+			if group.Attributes&windows.SE_GROUP_USE_FOR_DENY_ONLY != 0 {
+				evidence.denyOnly = true
+			}
 		}
 	}
-	return true, present
+	return evidence
 }
 
 func decideWindowsPrivilegeV1(evidence windowsPrivilegeEvidenceV1) error {
 	if !evidence.elevationVerified || evidence.elevated ||
 		!evidence.elevationTypeVerified ||
 		!evidence.administratorGroupVerified ||
-		evidence.administratorGroupPresent || !evidence.userVerified {
+		!evidence.userVerified {
 		return ErrElevatedProcess
 	}
-	// Only a default token with no Administrators SID is demonstrably an
-	// ordinary user token. Full and Limited are the two halves of a split
-	// administrator token; unknown future values fail closed.
-	if evidence.elevationType != windowsElevationTypeDefaultV1 {
+	switch evidence.elevationType {
+	case windowsElevationTypeDefaultV1:
+		if evidence.administratorGroupPresent {
+			return ErrElevatedProcess
+		}
+	case windowsElevationTypeLimitedV1:
+		// A UAC-filtered administrator token is non-elevated only when the
+		// Administrators SID is present exclusively as deny-only evidence.
+		// Full tokens, enabled groups, and inconsistent evidence fail closed.
+		if !evidence.administratorGroupPresent ||
+			evidence.administratorGroupEnabled ||
+			!evidence.administratorGroupDenyOnly {
+			return ErrElevatedProcess
+		}
+	default:
 		return ErrElevatedProcess
 	}
 	return nil

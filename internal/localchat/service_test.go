@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -48,6 +49,10 @@ func TestChatServiceRunsStablePureChatAdmissionAndReusesTerminalRun(
 		t.Fatalf("first Chat adapter calls=%d want 1", got)
 	}
 
+	databaseBeforeRetry, err := os.ReadFile(fixture.databasePath)
+	if err != nil {
+		t.Fatalf("read Current Store before retry: %v", err)
+	}
 	second, err := fixture.service.Chat(context.Background(), input)
 	if err != nil {
 		t.Fatalf("retry Chat: %v", err)
@@ -60,6 +65,13 @@ func TestChatServiceRunsStablePureChatAdmissionAndReusesTerminalRun(
 	}
 	if got := fixture.invoker.callCount(); got != 1 {
 		t.Fatalf("retry replayed adapter: calls=%d want 1", got)
+	}
+	databaseAfterRetry, err := os.ReadFile(fixture.databasePath)
+	if err != nil {
+		t.Fatalf("read Current Store after retry: %v", err)
+	}
+	if !bytes.Equal(databaseBeforeRetry, databaseAfterRetry) {
+		t.Fatal("exact terminal retry mutated durable Current Store bytes")
 	}
 
 	requestCanonical := fixture.invoker.onlyInput(t)
@@ -455,14 +467,15 @@ func TestChatServiceAutoIdentityCanBeRetriedAndWaitingIsReturnedUnchanged(
 }
 
 type chatServiceFixture struct {
-	store       *currentstore.Store
-	loop        *coreloop.UniversalLoop
-	service     *ChatService
-	invoker     *recordingChatInvoker
-	tenantID    string
-	agentID     string
-	workspaceID string
-	profileID   string
+	store        *currentstore.Store
+	loop         *coreloop.UniversalLoop
+	service      *ChatService
+	invoker      *recordingChatInvoker
+	databasePath string
+	tenantID     string
+	agentID      string
+	workspaceID  string
+	profileID    string
 }
 
 func (fixture *chatServiceFixture) input(
@@ -708,14 +721,15 @@ func newChatServiceFixtureWithContextPolicy(
 		t.Fatalf("NewChatService: %v", err)
 	}
 	return &chatServiceFixture{
-		store:       store,
-		loop:        loop,
-		service:     service,
-		invoker:     invoker,
-		tenantID:    tenantID,
-		agentID:     agentID,
-		workspaceID: workspaceID,
-		profileID:   profileID,
+		store:        store,
+		loop:         loop,
+		service:      service,
+		invoker:      invoker,
+		databasePath: path,
+		tenantID:     tenantID,
+		agentID:      agentID,
+		workspaceID:  workspaceID,
+		profileID:    profileID,
 	}
 }
 

@@ -237,7 +237,9 @@ function New-FakeGoCommand {
 function New-FakeArchiveTool {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$LogPath
+        [Parameter(Mandatory = $true)][string]$LogPath,
+        [ValidateSet('valid', 'wrong-count')]
+        [string]$Mode = 'valid'
     )
 
     $source = @'
@@ -274,11 +276,12 @@ Write-Host 'FAKE_ARCHIVE_TOOL_PASS'
 [pscustomobject]@{
     OutputRoot = $OutputRoot
     ManifestPath = $manifestPath
-    ArchiveCount = 6
+    ArchiveCount = ARCHIVE_COUNT
     BuildOnly = [bool]$BuildOnly
 }
 '@
     $source = $source.Replace('LOG_PATH', $LogPath.Replace("'", "''"))
+    $source = $source.Replace('ARCHIVE_COUNT', $(if ($Mode -ceq 'wrong-count') { '5' } else { '6' }))
     Write-TestText -Path $Path -Text $source
 }
 
@@ -510,6 +513,56 @@ try {
                 -OutputRoot $outputRoot `
                 -GoCommand $goCommand
         }
+    }
+
+    Invoke-TestCase -Name 'non-git repository fails before output creation' -Body {
+        $caseRoot = Join-Path $suiteRoot 'non-git'
+        $repositoryRoot = Join-Path $caseRoot 'repository'
+        [void][IO.Directory]::CreateDirectory($repositoryRoot)
+        Write-TestText -Path (Join-Path $repositoryRoot 'README.md') -Text '# not git'
+        $outputRoot = Join-Path $caseRoot 'output'
+        $goCommand = Join-Path $caseRoot 'go.cmd'
+        New-FakeGoCommand -Path $goCommand
+        Assert-ThrowsCode -Name 'non-git repository' -Code 'DPR_GIT_STATUS_FAILED' -Body {
+            & $script:Tool `
+                -RepositoryRoot $repositoryRoot `
+                -Revision ('0' * 40) `
+                -Version 'v0.1.0-dev.1' `
+                -OutputRoot $outputRoot `
+                -GoCommand $goCommand
+        }
+        Assert-True -Name 'non-git output absent' -Condition (
+            -not (Test-Path -LiteralPath $outputRoot)
+        )
+    }
+
+    Invoke-TestCase -Name 'invalid archive result fails closed' -Body {
+        $caseRoot = Join-Path $suiteRoot 'invalid-archive-result'
+        $repositoryRoot = Join-Path $caseRoot 'repository'
+        $repository = New-TestRepository -Path $repositoryRoot
+        $controlPath = Join-Path $caseRoot 'fake-control.ps1'
+        $archiveToolPath = Join-Path $caseRoot 'fake-archive.ps1'
+        $controlLog = Join-Path $caseRoot 'control.log'
+        $archiveLog = Join-Path $caseRoot 'archive.log'
+        $outputRoot = Join-Path $caseRoot 'output'
+        $goCommand = Join-Path $caseRoot 'go.cmd'
+        New-FakeControl -Path $controlPath -LogPath $controlLog
+        New-FakeArchiveTool -Path $archiveToolPath -LogPath $archiveLog -Mode wrong-count
+        New-FakeGoCommand -Path $goCommand
+
+        Assert-ThrowsCode -Name 'wrong archive count' -Code 'DPR_ARCHIVE_OUTPUT_INVALID' -Body {
+            & $script:Tool `
+                -RepositoryRoot $repository.Path `
+                -Revision $repository.Revision `
+                -Version 'v0.1.0-dev.1' `
+                -OutputRoot $outputRoot `
+                -GoCommand $goCommand `
+                -ControlPath $controlPath `
+                -ArchiveToolPath $archiveToolPath
+        }
+        Assert-True -Name 'summary absent after invalid archive result' -Condition (
+            -not [IO.File]::Exists((Join-Path $outputRoot 'developer-preview-release.json'))
+        )
     }
 } finally {
     if ([IO.Directory]::Exists($suiteRoot)) {

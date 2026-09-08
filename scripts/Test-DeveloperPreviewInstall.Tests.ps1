@@ -279,13 +279,23 @@ function Invoke-Serve {
         $path = $context.Request.Url.AbsolutePath
         if ($context.Request.HttpMethod -ceq 'GET' -and $path -ceq '/control/ui/') {
             Write-HttpResponse -Context $context -Status 200 -ContentType 'text/html' `
-                -Body '<html><nav>Overview Modules</nav></html>'
+                -Body '<html><body><div id="root"></div><script src="/control/ui/assets/app.js"></script></body></html>'
+        } elseif ($context.Request.HttpMethod -ceq 'GET' -and
+            $path -ceq '/control/ui/assets/app.js') {
+            Write-HttpResponse -Context $context -Status 200 `
+                -ContentType 'text/javascript; charset=utf-8' `
+                -Body 'const navigation = ["Overview", "Modules"];'
         } elseif ($context.Request.HttpMethod -ceq 'POST' -and $path -ceq '/control/bootstrap') {
-            $null = Read-HttpBody -Request $context.Request
-            $response = '{"schema_version":"control-bootstrap-session/v2","csrf_' +
-                'token":"fixture-csrf-proof"}'
-            Write-HttpResponse -Context $context -Status 200 -ContentType 'application/json' `
-                -Body $response -SetCookie 'freeagent_control_session=fixture; Path=/; HttpOnly; SameSite=Strict'
+            if ([string]$context.Request.ContentType -cne 'application/json') {
+                Write-HttpResponse -Context $context -Status 400 `
+                    -ContentType 'application/json' -Body '{"error":"invalid content type"}'
+            } else {
+                $null = Read-HttpBody -Request $context.Request
+                $response = '{"schema_version":"control-bootstrap-session/v2","csrf_' +
+                    'token":"fixture-csrf-proof"}'
+                Write-HttpResponse -Context $context -Status 200 -ContentType 'application/json' `
+                    -Body $response -SetCookie 'freeagent_control_session=fixture; Path=/; HttpOnly; SameSite=Strict'
+            }
         } elseif ($context.Request.HttpMethod -ceq 'GET' -and
             $path -ceq '/control/api/v1/overview') {
             Write-HttpResponse -Context $context -Status 200 -ContentType 'application/json' `
@@ -335,15 +345,18 @@ switch ($command) {
         $state = Read-State -Path $database
         $state.conversation_id = Get-Option '--conversation'
         Write-State -Path $database -State $state
-        [Console]::Out.WriteLine('{"created":true,"revision":0,"head_run_id":""}')
+        [Console]::Out.WriteLine('{"created":true,"revision":0}')
     }
     'conversation-get' {
         $state = Read-State -Path (Get-Option '--db')
         $result = [ordered]@{
             created = $false
             revision = [long]$state.revision
-            head_run_id = [string]$state.head_run_id
-        } | ConvertTo-Json -Compress
+        }
+        if ([long]$state.revision -ne 0L) {
+            $result.head_run_id = [string]$state.head_run_id
+        }
+        $result = $result | ConvertTo-Json -Compress
         [Console]::Out.WriteLine($result)
     }
     'chat' {
@@ -417,7 +430,8 @@ switch ($command) {
 function Invoke-Validator {
     param(
         [Parameter(Mandatory = $true)]$Package,
-        [Parameter(Mandatory = $true)][string]$WorkParent
+        [Parameter(Mandatory = $true)][string]$WorkParent,
+        [switch]$KeepWorkDirectory
     )
 
     $savedOpenAI = [Environment]::GetEnvironmentVariable('OPENAI_API_KEY')
@@ -426,11 +440,17 @@ function Invoke-Validator {
             'OPENAI_API_KEY',
             'fixture-value-that-must-be-removed'
         )
-        $output = & $pwshPath -NoLogo -NoProfile -File $validator `
-            -PackageRoot $Package.root -TargetPlatform $Package.platform `
-            -ExecutableRelativePath $Package.launcher -WorkParent $WorkParent `
-            -CommandTimeoutSeconds 30 -ServeStartupTimeoutSeconds 15 `
-            -HttpTimeoutSeconds 10 -ShutdownTimeoutSeconds 5 2>&1
+        $validatorArguments = [string[]]@(
+            '-NoLogo', '-NoProfile', '-File', $validator,
+            '-PackageRoot', $Package.root, '-TargetPlatform', $Package.platform,
+            '-ExecutableRelativePath', $Package.launcher, '-WorkParent', $WorkParent,
+            '-CommandTimeoutSeconds', '30', '-ServeStartupTimeoutSeconds', '15',
+            '-HttpTimeoutSeconds', '10', '-ShutdownTimeoutSeconds', '5'
+        )
+        if ($KeepWorkDirectory) {
+            $validatorArguments += '-KeepWorkDirectory'
+        }
+        $output = & $pwshPath @validatorArguments 2>&1
         $exitCode = $LASTEXITCODE
     } finally {
         [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $savedOpenAI)
@@ -482,6 +502,67 @@ try {
             -Message 'packaged bootstrap seed contract missing'
         Assert-True -Condition (-not ($source -match '(?i)\bgo\s+run\b')) `
             -Message 'validator must not invoke source through go run'
+        Assert-True -Condition (-not ($source.Contains('[IO.Path]::GetTempPath()'))) `
+            -Message 'default WorkRoot must not use shared TEMP ancestry'
+        Assert-True -Condition ($source.Contains('New-DefaultWorkParent') -and
+            $source.Contains('developer-preview-install-validation')) `
+            -Message 'default WorkParent contract missing'
+    }
+
+    Invoke-TestCase -Name 'isolated WorkRoot is private' -Body {
+        $package = New-FakePackage -Name 'private-work-root-package'
+        $workParent = Join-Path $testRoot 'private-work-root'
+        $null = [IO.Directory]::CreateDirectory($workParent)
+        try {
+            $result = Invoke-Validator -Package $package -WorkParent $workParent `
+                -KeepWorkDirectory
+            $diagnostic = ($result.report | ConvertTo-Json -Depth 20 -Compress) +
+                ' output=' + [string]::Join(' | ', $result.output)
+            Assert-Equal -Actual $result.exit_code -Expected 0 `
+                -Message ('private WorkRoot workflow exit code report=' + $diagnostic)
+            $workRoots = @(
+                Get-ChildItem -LiteralPath $workParent -Directory -Force |
+                    Where-Object { $_.Name -like 'freeagent-developer-preview-*' }
+            )
+            Assert-Equal -Actual $workRoots.Count -Expected 1 `
+                -Message 'retained WorkRoot count'
+            $workRoot = $workRoots[0]
+            if ($IsWindows) {
+                $acl = Get-Acl -LiteralPath $workRoot.FullName
+                Assert-True -Condition ([bool]$acl.AreAccessRulesProtected) `
+                    -Message 'WorkRoot DACL must be protected'
+                $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+                $trusted = [string[]]@($identity.User.Value)
+                foreach ($rule in @($acl.Access)) {
+                    $principal = ''
+                    try {
+                        $principal = $rule.IdentityReference.Translate(
+                            [Security.Principal.SecurityIdentifier]
+                        ).Value
+                    } catch {
+                        $principal = $rule.IdentityReference.Value
+                    }
+                    if ($rule.AccessControlType -ceq 'Allow' -and
+                        (($rule.FileSystemRights -band
+                            [System.Security.AccessControl.FileSystemRights]::Write) -ne 0) -and
+                        $trusted -cnotcontains $principal) {
+                        throw 'WorkRoot granted write access to an untrusted principal'
+                    }
+                }
+            } else {
+                $mode = [IO.File]::GetUnixFileMode($workRoot.FullName)
+                $forbidden = [IO.UnixFileMode]::GroupRead -bor
+                    [IO.UnixFileMode]::GroupWrite -bor [IO.UnixFileMode]::GroupExecute -bor
+                    [IO.UnixFileMode]::OtherRead -bor [IO.UnixFileMode]::OtherWrite -bor
+                    [IO.UnixFileMode]::OtherExecute
+                Assert-Equal -Actual ([int]($mode -band $forbidden)) -Expected 0 `
+                    -Message 'WorkRoot Unix mode must be owner-only'
+            }
+        } finally {
+            if (Test-Path -LiteralPath $workParent) {
+                Remove-Item -LiteralPath $workParent -Recurse -Force
+            }
+        }
     }
 
     Invoke-TestCase -Name 'complete unpacked offline workflow passes' -Body {
