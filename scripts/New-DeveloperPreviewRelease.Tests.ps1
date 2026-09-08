@@ -462,13 +462,14 @@ try {
         $repositoryRoot = Join-Path $caseRoot 'repository'
         $repository = New-TestRepository -Path $repositoryRoot
         $outputRoot = Join-Path $caseRoot 'output'
+        $goCommand = Join-Path $caseRoot 'go.cmd'
         Assert-ThrowsCode -Name 'invalid version' -Code 'DPR_VERSION_INVALID' -Body {
             & $script:Tool `
                 -RepositoryRoot $repository.Path `
                 -Revision $repository.Revision `
                 -Version 'v0.1.0' `
                 -OutputRoot $outputRoot `
-                -GoCommand 'C:\go\go.exe'
+                -GoCommand $goCommand
         }
     }
 
