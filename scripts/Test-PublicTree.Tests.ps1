@@ -66,6 +66,8 @@ function New-CleanFixture {
     Write-TestText -Path (Join-Path $root 'go.mod') -Text "module github.com/endview/freeagent`n`ngo 1.22`n"
     Write-TestText -Path (Join-Path $root 'VERSION') -Text "v0.1.0-dev.1`n"
     Write-TestText -Path (Join-Path $root 'README.md') -Text "# Fixture`n`nGeneric Role, Persona, and optional modules may be discussed as extension boundaries.`n"
+    Write-TestText -Path (Join-Path $root 'README.zh-CN.md') -Text "# Fixture`n`n本地化入口。`n"
+    Write-TestText -Path (Join-Path $root 'README.zh-TW.md') -Text "# Fixture`n`n本地化入口。`n"
     Write-TestText -Path (Join-Path $root 'cmd/main.go') -Text "package main`n`nfunc main() {}`n"
     $sha = '1' * 40
     Write-TestText -Path (Join-Path $root '.github/workflows/gate.yml') -Text "name: gate`non: [push]`njobs:`n  test:`n    runs-on: ubuntu-latest`n    steps:`n      - uses: actions/checkout@$sha`n"

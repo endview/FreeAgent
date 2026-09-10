@@ -1119,6 +1119,26 @@ function Assert-ProjectLicense([string]$RepositoryRoot) {
             )
         },
         @{
+            Path = 'README.zh-CN.md'
+            LicenseIdentifier = 'AGPL-3.0-only'
+            Link = '](LICENSE)'
+            CanonicalPatterns = @(
+                '^[ \t]*Licensed as[ \t]+`AGPL-3\.0-only`;[ \t]+see[ \t]+\[LICENSE\]\(LICENSE\)\.[ \t]*$',
+                '^[ \t]*This project is licensed under[ \t]+`?AGPL-3\.0-only`?;[ \t]+see[ \t]+\[LICENSE\]\(LICENSE\)\.[ \t]*$',
+                '^[ \t]*\u672c\u9879\u76ee\u91c7\u7528[ \t]+`?AGPL-3\.0-only`?[ \t]+\u8bb8\u53ef\u8bc1\uff1b\u8be6\u89c1[ \t]+\[LICENSE\]\(LICENSE\)\u3002[ \t]*$'
+            )
+        },
+        @{
+            Path = 'README.zh-TW.md'
+            LicenseIdentifier = 'AGPL-3.0-only'
+            Link = '](LICENSE)'
+            CanonicalPatterns = @(
+                '^[ \t]*Licensed as[ \t]+`AGPL-3\.0-only`;[ \t]+see[ \t]+\[LICENSE\]\(LICENSE\)\.[ \t]*$',
+                '^[ \t]*This project is licensed under[ \t]+`?AGPL-3\.0-only`?;[ \t]+see[ \t]+\[LICENSE\]\(LICENSE\)\.[ \t]*$',
+                '^[ \t]*\u672c\u9879\u76ee\u91c7\u7528[ \t]+`?AGPL-3\.0-only`?[ \t]+\u8bb8\u53ef\u8bc1\uff1b\u8be6\u89c1[ \t]+\[LICENSE\]\(LICENSE\)\u3002[ \t]*$'
+            )
+        },
+        @{
             Path = 'CONTRIBUTING.md'
             LicenseIdentifier = 'AGPL-3.0-only'
             Link = $null

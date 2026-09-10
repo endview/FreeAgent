@@ -465,6 +465,8 @@ function New-ValidFixture {
     }
     [IO.File]::Copy((Join-Path $projectRoot 'LICENSE'), (Join-Path $root 'LICENSE'))
     Write-Utf8Canonical (Join-Path $root 'README.md') "# Fixture`n`nLicensed as ``AGPL-3.0-only``; see [LICENSE](LICENSE)."
+    Write-Utf8Canonical (Join-Path $root 'README.zh-CN.md') "# Fixture`n`nLicensed as ``AGPL-3.0-only``; see [LICENSE](LICENSE)."
+    Write-Utf8Canonical (Join-Path $root 'README.zh-TW.md') "# Fixture`n`nLicensed as ``AGPL-3.0-only``; see [LICENSE](LICENSE)."
     Write-Utf8Canonical (Join-Path $root 'CONTRIBUTING.md') 'Contributions use `AGPL-3.0-only`.'
     Write-Utf8Canonical (Join-Path $root 'docs/PRD.md') 'License: AGPL-3.0-only'
     Write-Utf8Canonical (Join-Path $root 'go.mod') "module github.com/endview/freeagent`n`ngo 1.26.5`n`nrequire example.org/dep v1.2.3"

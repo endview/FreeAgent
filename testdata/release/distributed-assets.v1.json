@@ -3,6 +3,18 @@
     "kind":  "freeagent-distributed-assets",
     "assets":  [
                    {
+                       "path":  "docs/assets/readme-badges.svg",
+                       "size":  2686,
+                       "sha256":  "b97b07b63e813e10ddb66718fbb2307613622012dbd556f1334c87784a4cbad3",
+                       "origin":  "project-owned",
+                       "source_url":  "project://github.com/endview/freeagent",
+                       "spdx_expression":  "AGPL-3.0-only",
+                       "notice_id":  "",
+                       "required_files":  [
+
+                                          ]
+                   },
+                   {
                        "path":  "examples/README.md",
                        "size":  11416,
                        "sha256":  "6aa67a5d14293fc9ba9b75fce8577e60ba9df9488a21d71c8cc73cfb4fe936c2",
@@ -768,10 +780,10 @@
 
                                           ]
                    },
-                   {
-                       "path":  "testdata/release/docs-maturity-claims.v1.json",
-                       "size":  38088,
-                       "sha256":  "c450b00b7b03bc96efbfe9d3fbf5b6b40501c2f170630006f80b972c4e02157f",
+                    {
+                        "path":  "testdata/release/docs-maturity-claims.v1.json",
+                        "size":  38101,
+                        "sha256":  "5ae319193a8ef83b59b96417ea811b642412be190a2a9c93c159b68ebd9ee508",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",

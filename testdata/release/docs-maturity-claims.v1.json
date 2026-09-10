@@ -2,17 +2,6 @@
     "schema_version":  "v1",
     "entries":  [
                     {
-                        "path":  "README.md",
-                        "line_sha256":  "737485a4c23ba5022fea82591ae5f364fade8bdf3f7573706a596a924e9d2941",
-                        "kind":  "POLICY",
-                        "claims":  [],
-                        "policy":  {
-                                       "syntax":  "NEGATION",
-                                       "subject":  "MATURITY"
-                                   },
-                        "reason":  "W2-R2 non-production maturity boundary"
-                    },
-                    {
                         "path":  "docs/CURRENT_CAPABILITIES.md",
                         "line_sha256":  "737485a4c23ba5022fea82591ae5f364fade8bdf3f7573706a596a924e9d2941",
                         "kind":  "POLICY",
@@ -36,6 +25,17 @@
                     },
                     {
                         "path":  "docs/PRD.md",
+                        "line_sha256":  "737485a4c23ba5022fea82591ae5f364fade8bdf3f7573706a596a924e9d2941",
+                        "kind":  "POLICY",
+                        "claims":  [],
+                        "policy":  {
+                                       "syntax":  "NEGATION",
+                                       "subject":  "MATURITY"
+                                   },
+                        "reason":  "W2-R2 non-production maturity boundary"
+                    },
+                    {
+                        "path":  "docs/PROJECT_STATUS.md",
                         "line_sha256":  "737485a4c23ba5022fea82591ae5f364fade8bdf3f7573706a596a924e9d2941",
                         "kind":  "POLICY",
                         "claims":  [],

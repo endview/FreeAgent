@@ -1947,6 +1947,8 @@ function Test-TopLevelEntry {
         'go.sum',
         'LICENSE',
         'README.md',
+        'README.zh-CN.md',
+        'README.zh-TW.md',
         'SECURITY.md',
         'THIRD_PARTY_NOTICES.md',
         'VERSION'
