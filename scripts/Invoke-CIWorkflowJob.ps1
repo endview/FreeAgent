@@ -654,6 +654,63 @@ function Get-CIWApplication {
     return [IO.Path]::GetFullPath($command.Source)
 }
 
+function New-CIWWindowsPrivateTestHome {
+    if (-not $script:IsWindowsPlatform) {
+        Fail-CIWorkflowJob -Code 'CIW_WINDOWS_TEST_HOME_PLATFORM_INVALID'
+    }
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        Fail-CIWorkflowJob -Code 'CIW_WINDOWS_TEST_HOME_MISSING'
+    }
+    $homePath = Get-CIWAbsolutePath `
+        -Value $env:USERPROFILE `
+        -Code 'CIW_WINDOWS_TEST_HOME_INVALID'
+    Assert-CIWNotFileSystemRoot `
+        -Path $homePath `
+        -Code 'CIW_WINDOWS_TEST_HOME_INVALID'
+    Assert-CIWNoReparseAncestry `
+        -Path $homePath `
+        -Code 'CIW_WINDOWS_TEST_HOME_INVALID'
+    if (-not (Test-Path -LiteralPath $homePath -PathType Container)) {
+        Fail-CIWorkflowJob -Code 'CIW_WINDOWS_TEST_HOME_INVALID'
+    }
+    $path = Join-Path $homePath (
+        '.freeagent-ci-home-' + [Guid]::NewGuid().ToString('N')
+    )
+    try {
+        [void][IO.Directory]::CreateDirectory($path)
+    } catch {
+        Fail-CIWorkflowJob -Code 'CIW_WINDOWS_TEST_HOME_CREATE_FAILED'
+    }
+    Assert-CIWNoReparseAncestry `
+        -Path $path `
+        -Code 'CIW_WINDOWS_TEST_HOME_CREATE_FAILED'
+    try {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $current = [Security.Principal.SecurityIdentifier]$identity.User
+        $security = [System.Security.AccessControl.DirectorySecurity]::new()
+        $security.SetAccessRuleProtection($true, $false)
+        $inheritance =
+            [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+            [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+        $security.AddAccessRule(
+            [System.Security.AccessControl.FileSystemAccessRule]::new(
+                $current,
+                [System.Security.AccessControl.FileSystemRights]::FullControl,
+                $inheritance,
+                [System.Security.AccessControl.PropagationFlags]::None,
+                [System.Security.AccessControl.AccessControlType]::Allow
+            )
+        )
+        [System.IO.FileSystemAclExtensions]::SetAccessControl(
+            [IO.DirectoryInfo]::new($path),
+            $security
+        )
+    } catch {
+        Fail-CIWorkflowJob -Code 'CIW_WINDOWS_TEST_HOME_PRIVACY_FAILED'
+    }
+    return $path
+}
+
 function Resolve-CIWTrustedLinuxSystemExecutable {
     param([Parameter(Mandatory = $true)][string]$Path)
     if ($script:IsWindowsPlatform) {
@@ -1091,6 +1148,10 @@ $stdoutPath = Join-Path $evidenceDirectory 'go-test.stdout.jsonl'
 $stderrPath = Join-Path $evidenceDirectory 'go-test.stderr.log'
 $exitPath = Join-Path $evidenceDirectory 'exit-code.txt'
 $goEnvironment = @{}
+if ($JobKind -ceq 'windows') {
+    $windowsTestHome = New-CIWWindowsPrivateTestHome
+    $goEnvironment.USERPROFILE = $windowsTestHome
+}
 if ($JobKind -ceq 'linux-race') {
     $gcc = Resolve-CIWTrustedLinuxSystemExecutable `
         -Path (Get-CIWApplication -Name 'gcc')

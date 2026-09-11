@@ -933,6 +933,21 @@ try {
         }
     }
 
+    Invoke-Case 'Windows workflow tests use a private user-profile home' {
+        $source = [IO.File]::ReadAllText(
+            $script:WorkflowJob,
+            $script:Utf8NoBom
+        )
+        Assert-True -Name 'workflow job defines private test-home creation' `
+            -Condition $source.Contains('function New-CIWWindowsPrivateTestHome')
+        Assert-True -Name 'private test home uses a protected DACL' `
+            -Condition $source.Contains('SetAccessRuleProtection($true, $false)')
+        Assert-True -Name 'Windows test environment uses the private home' `
+            -Condition $source.Contains('$goEnvironment.USERPROFILE = $windowsTestHome')
+        Assert-True -Name 'private test home remains outside runner temp' `
+            -Condition (-not $source.Contains('$goEnvironment.USERPROFILE = $executionTemp'))
+    }
+
     Invoke-Case 'dispatch selectors and seal pins require exact canonical text' {
         Assert-ThrowsPrefix `
             -Name 'case-variant job kind' `
