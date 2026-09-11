@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/endview/freeagent/internal/moduleartifactstore"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -37,6 +39,10 @@ func runWithPrivateWindowsTestTemp(m *testing.M) int {
 	// TestMain inventing ambient paths or credentials first.
 	if privateWindowsTestTempMCPHelperV1(os.Args) {
 		return m.Run()
+	}
+	if err := setWindowsProcessTokenOwnerToCurrentUserV1(); err != nil {
+		fmt.Fprintf(os.Stderr, "set Windows test object owner: %v\n", err)
+		return 2
 	}
 	rootPath, inherited, err := inheritedPrivateWindowsTestTempV1(
 		cmdWindowsTestTempRootEnvV1,
@@ -102,6 +108,38 @@ func runWithPrivateWindowsTestTemp(m *testing.M) int {
 		}
 	}
 	return code
+}
+
+type windowsTokenOwnerV1 struct {
+	Owner *windows.SID
+}
+
+func setWindowsProcessTokenOwnerToCurrentUserV1() error {
+	var token windows.Token
+	if err := windows.OpenProcessToken(
+		windows.CurrentProcess(),
+		windows.TOKEN_QUERY|windows.TOKEN_ADJUST_DEFAULT,
+		&token,
+	); err != nil {
+		return fmt.Errorf("open process token: %w", err)
+	}
+	defer func() {
+		_ = token.Close()
+	}()
+	user, err := token.GetTokenUser()
+	if err != nil || user == nil || user.User.Sid == nil {
+		return fmt.Errorf("current user SID: %v", err)
+	}
+	owner := windowsTokenOwnerV1{Owner: user.User.Sid}
+	if err := windows.SetTokenInformation(
+		token,
+		windows.TokenOwner,
+		(*byte)(unsafe.Pointer(&owner)),
+		uint32(unsafe.Sizeof(owner)),
+	); err != nil {
+		return fmt.Errorf("set default object owner: %w", err)
+	}
+	return nil
 }
 
 func privateWindowsTestTempMCPHelperV1(arguments []string) bool {
