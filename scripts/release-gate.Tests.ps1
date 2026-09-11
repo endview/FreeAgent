@@ -220,14 +220,14 @@ Assert-ContractCount -Name 'permanent job uses one immutable setup-node action' 
     -ExpectedCount 1
 foreach ($pattern in @(
     '(?m)^          node-version: 24\.19\.0\s*$',
-    '(?m)^          cache: false\s*$',
-    '(?m)^          check-latest: false\s*$'
+    '(?m)^          check-latest: false\s*$',
+    '(?m)^          package-manager-cache: false\s*$'
 )) {
     Assert-ContractCount -Name 'permanent setup-node is exact and cache-free' `
         -Source $nodeStep -Pattern $pattern -ExpectedCount 1
 }
-Assert-ContractNotPattern -Name 'permanent setup-node omits unsupported cache input' `
-    -Source $nodeStep -Pattern '(?m)^\s+package-manager-cache:'
+Assert-ContractNotPattern -Name 'permanent setup-node omits legacy cache input' `
+    -Source $nodeStep -Pattern '(?m)^\s+cache:'
 $npmStep = Get-WorkflowStepSource -JobSource $permanentJobSource -Id 'setup-npm'
 foreach ($literal in @(
     'https://registry.npmjs.org/npm/-/npm-12.0.2.tgz',
