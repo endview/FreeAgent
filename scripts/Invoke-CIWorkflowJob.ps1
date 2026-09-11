@@ -58,9 +58,9 @@ $script:ExactJobKinds = @(
 )
 $script:MaximumAuthenticatedScriptBytes = 4194304
 $script:PublicTreeGateSha256 =
-    '4702a81d6ba36cbdb7bd244424e3dfecc57645cd0979e3b3a8f5983fa1736c87'
+    'd37b15573d9f4c3692c5488d03fe4a0ef7481fe8f2b3e42921901fe5950e5cf9'
 $script:LicenseGateSha256 =
-    '6a4ac7c72ce2db82f17b85ae938022c63931a99bac7cd713dfa3a5236a244e3f'
+    '9bcdf09b55df7dbbbec06dfaa376dd57ac71a93360281f8482316423e78ee1e8'
 $script:DocsGateSha256 =
     '137db9d8155b7818ff784576e674961af1853582981e7eb519093961c7e8cf26'
 $script:BrandingGateSha256 =
