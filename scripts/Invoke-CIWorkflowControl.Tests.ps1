@@ -942,6 +942,8 @@ try {
             -Condition $source.Contains('function New-CIWWindowsPrivateTestHome')
         Assert-True -Name 'private test home uses a protected DACL' `
             -Condition $source.Contains('SetAccessRuleProtection($true, $false)')
+        Assert-True -Name 'private test home sets the current-user owner' `
+            -Condition $source.Contains('$security.SetOwner($current)')
         Assert-True -Name 'Windows test environment uses the private home' `
             -Condition $source.Contains('$goEnvironment.USERPROFILE = $windowsTestHome')
         Assert-True -Name 'private test home remains outside runner temp' `

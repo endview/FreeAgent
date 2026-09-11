@@ -688,6 +688,7 @@ function New-CIWWindowsPrivateTestHome {
         $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
         $current = [Security.Principal.SecurityIdentifier]$identity.User
         $security = [System.Security.AccessControl.DirectorySecurity]::new()
+        $security.SetOwner($current)
         $security.SetAccessRuleProtection($true, $false)
         $inheritance =
             [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
