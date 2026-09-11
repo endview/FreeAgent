@@ -125,24 +125,24 @@ W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT
 
 ## Download
 
-The current Developer Preview is **v0.1.0-dev.1**. It packages the existing
+The current Developer Preview is **v0.1.0-dev.2**. It packages the existing
 development slices and does not add a new runtime feature wave.
 
 | Target | Archive |
 | --- | --- |
-| Windows AMD64 | `freeagent-v0.1.0-dev.1-windows-amd64.zip` |
-| Windows ARM64 | `freeagent-v0.1.0-dev.1-windows-arm64.zip` |
-| Linux AMD64 | `freeagent-v0.1.0-dev.1-linux-amd64.tar.gz` |
-| Linux ARM64 | `freeagent-v0.1.0-dev.1-linux-arm64.tar.gz` |
-| Darwin AMD64, build-only | `freeagent-v0.1.0-dev.1-darwin-amd64-build-only.tar.gz` |
-| Darwin ARM64, build-only | `freeagent-v0.1.0-dev.1-darwin-arm64-build-only.tar.gz` |
+| Windows AMD64 | `freeagent-v0.1.0-dev.2-windows-amd64.zip` |
+| Windows ARM64 | `freeagent-v0.1.0-dev.2-windows-arm64.zip` |
+| Linux AMD64 | `freeagent-v0.1.0-dev.2-linux-amd64.tar.gz` |
+| Linux ARM64 | `freeagent-v0.1.0-dev.2-linux-arm64.tar.gz` |
+| Darwin AMD64, build-only | `freeagent-v0.1.0-dev.2-darwin-amd64-build-only.tar.gz` |
+| Darwin ARM64, build-only | `freeagent-v0.1.0-dev.2-darwin-arm64-build-only.tar.gz` |
 
 Download the archive and adjacent `SHA256SUMS` from
 [GitHub Releases](https://github.com/endview/FreeAgent/releases), verify the
 checksum, extract into a new directory, and confirm the version output before
-use. Windows and Linux packages have completed native install validation.
-Darwin packages are cross-built and are not claimed as native-validated in
-this preview.
+use. Windows and Linux AMD64 packages require native install validation.
+ARM64 packages are cross-built, and Darwin packages are not claimed as
+native-validated in this preview.
 
 See [INSTALL](docs/INSTALL.md) for the full installation and upgrade guidance.
 

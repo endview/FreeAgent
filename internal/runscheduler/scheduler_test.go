@@ -121,10 +121,10 @@ func TestSchedulerExecutionFailureTripsStableFatalLatch(t *testing.T) {
 	if claims, _ := store.counts(); claims != 1 {
 		t.Fatalf("fatal Scheduler claims=%d want 1", claims)
 	}
-	if got := time.Duration(observedClaimTTL.Load()); got != 2*time.Minute+30*time.Second ||
-		coreloop.RunLeaseTailGrace != 30*time.Second {
+	if got := time.Duration(observedClaimTTL.Load()); got != 2*time.Minute+40*time.Second ||
+		coreloop.RunLeaseTailGrace != 40*time.Second {
 		t.Fatalf(
-			"Scheduler claim TTL=%s tail=%s want=2m30s/30s",
+			"Scheduler claim TTL=%s tail=%s want=2m40s/40s",
 			got,
 			coreloop.RunLeaseTailGrace,
 		)

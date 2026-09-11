@@ -210,7 +210,7 @@ func TestVersionFileIsControlledReleaseVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read VERSION: %v", err)
 	}
-	if got, want := string(contents), "v0.1.0-dev.1\n"; got != want {
+	if got, want := string(contents), "v0.1.0-dev.2\n"; got != want {
 		t.Fatalf("VERSION = %q, want %q", got, want)
 	}
 	if !semanticVersionPattern.MatchString(strings.TrimSpace(string(contents))) {

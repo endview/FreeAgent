@@ -1,23 +1,23 @@
 # Install the Developer Preview
 
-This document applies to FreeAgent `v0.1.0-dev.1`. It is a Developer Preview,
+This document applies to FreeAgent `v0.1.0-dev.2`. It is a Developer Preview,
 not a production release.
 
 ## Choose a package
 
 Use the archive whose target matches the machine that will run it:
 
-- Windows: `freeagent-v0.1.0-dev.1-windows-amd64.zip` or
-  `freeagent-v0.1.0-dev.1-windows-arm64.zip`
-- Linux: `freeagent-v0.1.0-dev.1-linux-amd64.tar.gz` or
-  `freeagent-v0.1.0-dev.1-linux-arm64.tar.gz`
-- macOS build-only: `freeagent-v0.1.0-dev.1-darwin-amd64-build-only.tar.gz`
-  or `freeagent-v0.1.0-dev.1-darwin-arm64-build-only.tar.gz`
+- Windows: `freeagent-v0.1.0-dev.2-windows-amd64.zip` or
+  `freeagent-v0.1.0-dev.2-windows-arm64.zip`
+- Linux: `freeagent-v0.1.0-dev.2-linux-amd64.tar.gz` or
+  `freeagent-v0.1.0-dev.2-linux-arm64.tar.gz`
+- macOS build-only: `freeagent-v0.1.0-dev.2-darwin-amd64-build-only.tar.gz`
+  or `freeagent-v0.1.0-dev.2-darwin-arm64-build-only.tar.gz`
 
-Obtain the archive and the adjacent `SHA256SUMS` file from the local release
-output. Verify the archive before extracting it; see `VERIFY_CHECKSUMS.md` for
-exact commands. These checksums detect accidental or post-build changes but
-are not signatures.
+Obtain the archive and the adjacent `SHA256SUMS` file from GitHub Releases.
+Verify the archive before extracting it; see `VERIFY_CHECKSUMS.md` for exact
+commands. These checksums detect accidental or post-build changes but are not
+signatures.
 
 Extract into a new directory. Do not merge packages for different targets.
 Each archive has one top-level directory named after its version and target.
@@ -25,8 +25,8 @@ Each archive has one top-level directory named after its version and target.
 On Windows PowerShell:
 
 ```powershell
-Expand-Archive .\freeagent-v0.1.0-dev.1-windows-amd64.zip -DestinationPath .\freeagent-preview
-Set-Location .\freeagent-preview\freeagent-v0.1.0-dev.1-windows-amd64
+Expand-Archive .\freeagent-v0.1.0-dev.2-windows-amd64.zip -DestinationPath .\freeagent-preview
+Set-Location .\freeagent-preview\freeagent-v0.1.0-dev.2-windows-amd64
 .\bin\freeagent-windows-amd64.exe --version
 ```
 
@@ -34,12 +34,12 @@ On Linux or macOS:
 
 ```sh
 mkdir freeagent-preview
-tar -xzf freeagent-v0.1.0-dev.1-linux-amd64.tar.gz -C freeagent-preview
-cd freeagent-preview/freeagent-v0.1.0-dev.1-linux-amd64
+tar -xzf freeagent-v0.1.0-dev.2-linux-amd64.tar.gz -C freeagent-preview
+cd freeagent-preview/freeagent-v0.1.0-dev.2-linux-amd64
 ./bin/freeagent-linux-amd64 --version
 ```
 
-The version line must report `version=v0.1.0-dev.1`, the 40-character release
+The version line must report `version=v0.1.0-dev.2`, the 40-character release
 commit, and the selected target. A mismatch means the package must not be used.
 
 The package does not modify `PATH`, install a service, or write outside paths

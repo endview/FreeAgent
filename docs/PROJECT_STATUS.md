@@ -56,7 +56,7 @@ Beta 仍未完成。
 项目从未正式部署；所有 `accepted` 状态都只表示明确范围内的开发切片已验收，不等于可直接
 用于生产、公开 Beta、首次部署或 SLA，当前也未达到 `RELEASE_READY`。
 
-当前仓库正在准备 `v0.1.0-dev.1` 本地 Developer Preview 归档。该轨道只包装既有开发切片，
+当前仓库正在准备 `v0.1.0-dev.2` 本地 Developer Preview 归档。该轨道只包装既有开发切片，
 不新增 Runtime feature，也不代表已完成发布：它不是公开 Release、生产版本、公开 Beta 或
 `RELEASE_READY`。Windows/Linux amd64 必须通过真实本地安装验证；Darwin 输出仅 build-only。
 在本仓库内生成归档不执行 push、远程 tag、上传、签名、公证、公网下载入口或公开发布。

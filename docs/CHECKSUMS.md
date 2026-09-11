@@ -6,7 +6,7 @@ record for every archive. Verify it before extraction.
 PowerShell example:
 
 ```powershell
-$Archive = 'freeagent-v0.1.0-dev.1-windows-amd64.zip'
+$Archive = 'freeagent-v0.1.0-dev.2-windows-amd64.zip'
 $Expected = (Get-Content .\SHA256SUMS | Where-Object {
   $_ -match ('^[0-9a-f]{64}  ' + [regex]::Escape($Archive) + '$')
 }) -replace ('  ' + [regex]::Escape($Archive) + '$'), ''

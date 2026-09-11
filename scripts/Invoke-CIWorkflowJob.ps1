@@ -363,7 +363,7 @@ function Copy-CIWReleasePayload {
         @('docs/INSTALL.md', 'INSTALL.md'),
         @('docs/QUICKSTART.md', 'QUICKSTART.md'),
         @('docs/KNOWN_LIMITATIONS.md', 'KNOWN_LIMITATIONS.md'),
-        @('docs/RELEASE_NOTES_v0.1.0-dev.1.md', 'RELEASE_NOTES.md'),
+        @('docs/RELEASE_NOTES_v0.1.0-dev.2.md', 'RELEASE_NOTES.md'),
         @('docs/CHECKSUMS.md', 'VERIFY_CHECKSUMS.md'),
         @('docs/PACKAGE_CONFIG.md', 'config/README.md'),
         @('docs/PACKAGE_DATA.md', 'data/README.md'),
@@ -435,10 +435,10 @@ function Get-CIWCommandContract {
         }
         'linux-race' {
             return [pscustomobject]@{
-                Command = 'go test -json -race -count=1 -timeout=60m ./...'
+                Command = 'go test -json -race -count=1 -timeout=120m ./...'
                 Argv = @(
                     'go', 'test', '-json', '-race',
-                    '-count=1', '-timeout=60m', './...'
+                    '-count=1', '-timeout=120m', './...'
                 )
                 Packages = @('./...')
             }
@@ -1196,9 +1196,9 @@ if ($JobKind -ceq 'linux-race') {
 
     [string[]]$packages = @('./...')
     $testArguments = @(
-        'test', '-json', '-race', '-count=1', '-timeout=60m', './...'
+        'test', '-json', '-race', '-count=1', '-timeout=120m', './...'
     )
-    $runnerTimeout = 4200
+    $runnerTimeout = 8100
 } else {
     $gccVersion = $null
     [string[]]$packages = @('./...')

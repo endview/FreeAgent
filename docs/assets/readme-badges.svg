@@ -4,7 +4,7 @@
       <rect width="154" height="24" rx="5" fill="#111827"/>
       <text x="37" y="16" fill="#e5e7eb" text-anchor="middle">preview</text>
       <line x1="74" y1="0" x2="74" y2="24" stroke="#e5e7eb" stroke-opacity=".22"/>
-      <text x="114" y="16" fill="#fbbf24" text-anchor="middle">v0.1.0-dev.1</text>
+      <text x="114" y="16" fill="#fbbf24" text-anchor="middle">v0.1.0-dev.2</text>
     </g>
     <g transform="translate(174,10)">
       <rect width="96" height="24" rx="5" fill="#111827"/>

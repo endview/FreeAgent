@@ -1,6 +1,6 @@
 # Known limitations
 
-FreeAgent `v0.1.0-dev.1` is a Developer Preview for local evaluation.
+FreeAgent `v0.1.0-dev.2` is a Developer Preview for local evaluation.
 
 - There is no production support or availability, durability, compatibility,
   or upgrade SLA.

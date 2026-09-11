@@ -24,7 +24,7 @@ $script:SupplyChainRelativePaths = @(
     'supply-chain/provenance.unsigned.v1.json',
     'supply-chain/checksums.sha256'
 )
-$script:ReleaseVersion = 'v0.1.0-dev.1'
+$script:ReleaseVersion = 'v0.1.0-dev.2'
 $script:CrossBuildPayloadMap = [ordered]@{
     'VERSION' = 'VERSION'
     'LICENSE' = 'LICENSE'
@@ -32,7 +32,7 @@ $script:CrossBuildPayloadMap = [ordered]@{
     'docs/INSTALL.md' = 'INSTALL.md'
     'docs/QUICKSTART.md' = 'QUICKSTART.md'
     'docs/KNOWN_LIMITATIONS.md' = 'KNOWN_LIMITATIONS.md'
-    'docs/RELEASE_NOTES_v0.1.0-dev.1.md' = 'RELEASE_NOTES.md'
+    'docs/RELEASE_NOTES_v0.1.0-dev.2.md' = 'RELEASE_NOTES.md'
     'docs/CHECKSUMS.md' = 'VERIFY_CHECKSUMS.md'
     'docs/PACKAGE_CONFIG.md' = 'config/README.md'
     'docs/PACKAGE_DATA.md' = 'data/README.md'

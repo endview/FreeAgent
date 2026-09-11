@@ -14,13 +14,13 @@ $script:ControlWebGate = Join-Path $PSScriptRoot 'Test-ControlWeb.ps1'
 $script:Utf8NoBom = New-Object Text.UTF8Encoding($false)
 $script:ReleaseRevision = '0123456789abcdef0123456789abcdef01234567'
 $script:CrossBuildPayload = [ordered]@{
-    'VERSION' = "v0.1.0-dev.1`n"
+    'VERSION' = "v0.1.0-dev.2`n"
     'LICENSE' = "fixture project license`n"
     'THIRD_PARTY_NOTICES.md' = "fixture third-party notices`n"
     'docs/INSTALL.md' = "# Install`n"
     'docs/QUICKSTART.md' = "# Quickstart`n"
     'docs/KNOWN_LIMITATIONS.md' = "# Known limitations`n"
-    'docs/RELEASE_NOTES_v0.1.0-dev.1.md' = "# v0.1.0-dev.1`n"
+    'docs/RELEASE_NOTES_v0.1.0-dev.2.md' = "# v0.1.0-dev.2`n"
     'docs/CHECKSUMS.md' = "# Verify checksums`n"
     'docs/PACKAGE_CONFIG.md' = "# Package config`n"
     'docs/PACKAGE_DATA.md' = "# Package data`n"
@@ -42,7 +42,7 @@ $script:CrossBuildArtifactMap = [ordered]@{
     'docs/INSTALL.md' = 'INSTALL.md'
     'docs/QUICKSTART.md' = 'QUICKSTART.md'
     'docs/KNOWN_LIMITATIONS.md' = 'KNOWN_LIMITATIONS.md'
-    'docs/RELEASE_NOTES_v0.1.0-dev.1.md' = 'RELEASE_NOTES.md'
+    'docs/RELEASE_NOTES_v0.1.0-dev.2.md' = 'RELEASE_NOTES.md'
     'docs/CHECKSUMS.md' = 'VERIFY_CHECKSUMS.md'
     'docs/PACKAGE_CONFIG.md' = 'config/README.md'
     'docs/PACKAGE_DATA.md' = 'data/README.md'
@@ -289,21 +289,21 @@ Invoke-Case 'linux race proof binds the executed compiler to go env CC' {
 
 Invoke-Case 'linux race command contract uses the extended timeout' {
     $source = [IO.File]::ReadAllText($script:Job, $script:Utf8NoBom)
-    Assert-True -Name 'race evidence contract uses 60m' -Condition (
+    Assert-True -Name 'race evidence contract uses 120m' -Condition (
         $source.IndexOf(
-            "Command = 'go test -json -race -count=1 -timeout=60m ./...'",
+            "Command = 'go test -json -race -count=1 -timeout=120m ./...'",
             [StringComparison]::Ordinal
         ) -ge 0
     )
-    Assert-True -Name 'race executed argv uses 60m' -Condition (
+    Assert-True -Name 'race executed argv uses 120m' -Condition (
         $source.IndexOf(
-            "'test', '-json', '-race', '-count=1', '-timeout=60m', './...'",
+            "'test', '-json', '-race', '-count=1', '-timeout=120m', './...'",
             [StringComparison]::Ordinal
         ) -ge 0
     )
-    Assert-True -Name 'race runner allows ten-minute margin' -Condition (
+    Assert-True -Name 'race runner allows fifteen-minute margin' -Condition (
         $source.IndexOf(
-            '$runnerTimeout = 4200',
+            '$runnerTimeout = 8100',
             [StringComparison]::Ordinal
         ) -ge 0
     )
@@ -668,7 +668,7 @@ exit /b 0
                 '-trimpath',
                 '-ldflags',
                 '-buildid=',
-                '-X=main.buildVersion=v0.1.0-dev.1',
+                '-X=main.buildVersion=v0.1.0-dev.2',
                 "-X=main.buildCommit=$($script:ReleaseRevision)",
                 '-X=main.buildTarget=windows/amd64'
             )) {
@@ -703,7 +703,7 @@ exit /b 0
                     -Actual (Get-LowerSha256 -Path $artifactPath)
             }
             Assert-Equal -Name 'release VERSION exact bytes' `
-                -Expected "v0.1.0-dev.1`n" `
+                -Expected "v0.1.0-dev.2`n" `
                 -Actual ([IO.File]::ReadAllText(
                     (Join-Path $fixture.Artifact 'VERSION'),
                     $script:Utf8NoBom

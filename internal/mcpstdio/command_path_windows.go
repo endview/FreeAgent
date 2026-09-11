@@ -3,6 +3,8 @@
 package mcpstdio
 
 import (
+	"errors"
+	"fmt"
 	"path/filepath"
 
 	"golang.org/x/sys/windows"
@@ -35,21 +37,50 @@ func launchPath(path string) string {
 	if len(clean) < windowsMaxPath {
 		return clean
 	}
-	if short, ok := windowsShortPath(extendedPath(clean)); ok {
-		return short
-	}
 	return extendedPath(clean)
 }
 
-func launchDirPath(path string) string {
+func launchDir(path string) (string, bool) {
 	clean := filepath.Clean(path)
 	if len(clean) < windowsMaxPath {
-		return clean
+		return clean, true
 	}
 	if short, ok := windowsShortPath(extendedPath(clean)); ok {
-		return short
+		if len(short) < windowsMaxPath {
+			return short, true
+		}
 	}
-	return clean
+	return extendedPath(clean), false
+}
+
+func mapLongDir(path string) (string, func(), error) {
+	available, err := windows.GetLogicalDrives()
+	if err != nil {
+		return "", nil, fmt.Errorf("enumerate DOS devices: %w", err)
+	}
+	for index := 0; index < 26; index++ {
+		if available&(1<<uint(index)) != 0 {
+			continue
+		}
+		letter := rune('A' + index)
+		device := string(letter) + ":"
+		devicePtr, err := windows.UTF16PtrFromString(device)
+		if err != nil {
+			return "", nil, fmt.Errorf("encode DOS device name: %w", err)
+		}
+		targetPtr, err := windows.UTF16PtrFromString(extendedPath(path))
+		if err != nil {
+			return "", nil, fmt.Errorf("encode DOS device target: %w", err)
+		}
+		if err := windows.DefineDosDevice(0, devicePtr, targetPtr); err != nil {
+			continue
+		}
+		cleanup := func() {
+			_ = windows.DefineDosDevice(windows.DDD_REMOVE_DEFINITION, devicePtr, nil)
+		}
+		return string(letter) + `:\`, cleanup, nil
+	}
+	return "", nil, errors.New("no free DOS drive letters")
 }
 
 func windowsShortPath(path string) (string, bool) {

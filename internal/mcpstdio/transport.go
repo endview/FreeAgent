@@ -24,6 +24,8 @@ const (
 	stdioReadBufferSize   = 32 << 10
 )
 
+var longDirMu sync.Mutex
+
 var (
 	errEmptyFrame          = errors.New("mcp stdio: empty frame")
 	errFrameTooLarge       = errors.New("mcp stdio: frame exceeds configured limit")
@@ -117,7 +119,20 @@ func (t *commandTransport) Connect(ctx context.Context) (mcp.Connection, error) 
 	t.connected = true
 
 	cmd := exec.Command(launchPath(t.command), t.args...)
-	cmd.Dir = launchDirPath(t.dir)
+	dir, directDir := launchDir(t.dir)
+	var cleanupDir func()
+	if directDir {
+		cmd.Dir = dir
+	} else {
+		longDirMu.Lock()
+		mappedDir, cleanup, err := mapLongDir(t.dir)
+		longDirMu.Unlock()
+		if err != nil {
+			return nil, fmt.Errorf("mcp stdio: map working directory: %w", err)
+		}
+		cleanupDir = cleanup
+		cmd.Dir = mappedDir
+	}
 	// A non-nil empty slice is materially different from nil to os/exec: it
 	// means an empty environment rather than inheritance from the parent.
 	cmd.Env = append([]string{}, t.env...)
@@ -125,20 +140,32 @@ func (t *commandTransport) Connect(ctx context.Context) (mcp.Connection, error) 
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		if cleanupDir != nil {
+			cleanupDir()
+		}
 		return nil, fmt.Errorf("mcp stdio: create stdout pipe: %w", err)
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		if cleanupDir != nil {
+			cleanupDir()
+		}
 		_ = stdout.Close()
 		return nil, fmt.Errorf("mcp stdio: create stdin pipe: %w", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		if cleanupDir != nil {
+			cleanupDir()
+		}
 		_ = stdin.Close()
 		_ = stdout.Close()
 		return nil, fmt.Errorf("mcp stdio: create stderr pipe: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
+		if cleanupDir != nil {
+			cleanupDir()
+		}
 		_ = stderr.Close()
 		_ = stdin.Close()
 		_ = stdout.Close()
@@ -146,6 +173,9 @@ func (t *commandTransport) Connect(ctx context.Context) (mcp.Connection, error) 
 	}
 	processTree, err := attachManagedProcessTree(cmd)
 	if err != nil {
+		if cleanupDir != nil {
+			cleanupDir()
+		}
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		_ = stderr.Close()
@@ -165,6 +195,7 @@ func (t *commandTransport) Connect(ctx context.Context) (mcp.Connection, error) 
 		closing:         make(chan struct{}),
 		stderrDrainDone: make(chan struct{}),
 		processTree:     processTree,
+		cleanupDir:      cleanupDir,
 	}
 	t.connection = c
 	go c.drainStderr(stderr)
@@ -204,6 +235,7 @@ type commandConnection struct {
 	closing         chan struct{}
 	stderrDrainDone chan struct{}
 	processTree     managedProcessTree
+	cleanupDir      func()
 
 	readMu    sync.Mutex
 	writeMu   sync.Mutex
@@ -379,6 +411,9 @@ func (c *commandConnection) Close() error {
 		}
 		if err := c.processTree.close(); err != nil {
 			closeErrs = append(closeErrs, fmt.Errorf("mcp stdio: close managed process tree: %w", err))
+		}
+		if c.cleanupDir != nil {
+			c.cleanupDir()
 		}
 
 		// Wait normally closes the process pipes. Close both read ends explicitly
