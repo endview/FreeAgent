@@ -287,6 +287,28 @@ Invoke-Case 'linux race proof binds the executed compiler to go env CC' {
     )
 }
 
+Invoke-Case 'linux race command contract uses the extended timeout' {
+    $source = [IO.File]::ReadAllText($script:Job, $script:Utf8NoBom)
+    Assert-True -Name 'race evidence contract uses 60m' -Condition (
+        $source.IndexOf(
+            "Command = 'go test -json -race -count=1 -timeout=60m ./...'",
+            [StringComparison]::Ordinal
+        ) -ge 0
+    )
+    Assert-True -Name 'race executed argv uses 60m' -Condition (
+        $source.IndexOf(
+            "'test', '-json', '-race', '-count=1', '-timeout=60m', './...'",
+            [StringComparison]::Ordinal
+        ) -ge 0
+    )
+    Assert-True -Name 'race runner allows ten-minute margin' -Condition (
+        $source.IndexOf(
+            '$runnerTimeout = 4200',
+            [StringComparison]::Ordinal
+        ) -ge 0
+    )
+}
+
 Invoke-Case 'completed evidence records a flat executed argv' {
     $source = [IO.File]::ReadAllText($script:Job, $script:Utf8NoBom)
     Assert-True -Name 'executed argv concatenates scalar and argument arrays' `

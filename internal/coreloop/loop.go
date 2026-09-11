@@ -23,7 +23,7 @@ const (
 	pureChatLogicalStepID                = corecontract.PureChatModelLogicalStepIDV1
 	modelAttemptIDPrefix                 = "model-attempt-"
 	loopOwnerIDPrefix                    = "coreloop-"
-	persistenceGrace                     = 5 * time.Second
+	persistenceGrace                     = 10 * time.Second
 	compositeDecisionPersistenceGrace    = 15 * time.Second
 	compositeDecisionFinalizationMargin  = 5 * time.Second
 	compositeDecisionFinalizationReserve = 2*persistenceGrace + compositeDecisionFinalizationMargin

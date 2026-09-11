@@ -116,8 +116,8 @@ func (t *commandTransport) Connect(ctx context.Context) (mcp.Connection, error) 
 	// become a mutable retry boundary for the same transport value.
 	t.connected = true
 
-	cmd := exec.Command(t.command, t.args...)
-	cmd.Dir = t.dir
+	cmd := exec.Command(launchPath(t.command), t.args...)
+	cmd.Dir = launchDirPath(t.dir)
 	// A non-nil empty slice is materially different from nil to os/exec: it
 	// means an empty environment rather than inheritance from the parent.
 	cmd.Env = append([]string{}, t.env...)

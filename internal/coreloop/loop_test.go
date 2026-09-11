@@ -133,11 +133,11 @@ func TestUniversalLoopRunClaimedConsumesFairSchedulerLease(t *testing.T) {
 
 func assertPersistenceBudgetsAndLeaseWindow(t *testing.T) {
 	t.Helper()
-	if persistenceGrace != 5*time.Second ||
+	if persistenceGrace != 10*time.Second ||
 		compositeDecisionPersistenceGrace != 15*time.Second ||
 		compositeDecisionFinalizationMargin != 5*time.Second ||
-		compositeDecisionFinalizationReserve != 15*time.Second ||
-		RunLeaseTailGrace != 30*time.Second ||
+		compositeDecisionFinalizationReserve != 25*time.Second ||
+		RunLeaseTailGrace != 40*time.Second ||
 		leaseTailGrace != RunLeaseTailGrace {
 		t.Fatalf(
 			"persistence budgets generic=%s composite=%s margin=%s reserve=%s tail=%s alias=%s",
@@ -184,7 +184,7 @@ func assertPersistenceBudgetsAndLeaseWindow(t *testing.T) {
 		t.Fatalf("Composite decision persistence remaining=%s", remaining)
 	}
 	t0 := time.Date(2026, 8, 21, 11, 0, 0, 0, time.UTC)
-	clampedExpiry := t0.Add(24 * time.Second)
+	clampedExpiry := t0.Add(compositeDecisionFinalizationReserve + 9*time.Second)
 	clampedDeadline, err := compositeDecisionPersistenceDeadline(t0, clampedExpiry)
 	if err != nil || clampedDeadline != t0.Add(9*time.Second) {
 		t.Fatalf(
@@ -194,10 +194,15 @@ func assertPersistenceBudgetsAndLeaseWindow(t *testing.T) {
 			t0.Add(9*time.Second),
 		)
 	}
-	virtualCompletion := t0.Add(6 * time.Second)
+	virtualExpiry := t0.Add(compositeDecisionFinalizationReserve + 24*time.Second)
+	virtualDeadline, err := compositeDecisionPersistenceDeadline(t0, virtualExpiry)
+	if err != nil {
+		t.Fatalf("virtual composite deadline: %v", err)
+	}
+	virtualCompletion := t0.Add(persistenceGrace + 3*time.Second)
 	if !virtualCompletion.After(t0.Add(persistenceGrace)) ||
-		!virtualCompletion.Before(clampedDeadline) {
-		t.Fatalf("virtual composite completion=%s deadline=%s", virtualCompletion, clampedDeadline)
+		!virtualCompletion.Before(virtualDeadline) {
+		t.Fatalf("virtual composite completion=%s deadline=%s", virtualCompletion, virtualDeadline)
 	}
 	fullDeadline, err := compositeDecisionPersistenceDeadline(
 		t0,
@@ -226,7 +231,7 @@ func assertPersistenceBudgetsAndLeaseWindow(t *testing.T) {
 		)
 		composite, cancelComposite, err := compositeDecisionPersistenceContext(
 			parent,
-			start.Add(24*time.Second),
+			start.Add(compositeDecisionFinalizationReserve+9*time.Second),
 		)
 		if err != nil {
 			t.Fatalf("synctest composite context: %v", err)

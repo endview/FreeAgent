@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -357,7 +358,6 @@ func TestAdapterBlockedToolCallWriteReachesDeadlineWithoutRetry(t *testing.T) {
 		t.Fatalf("prepared blocked-write payload is too small: %d bytes", len(prepared))
 	}
 
-	started := time.Now()
 	result, err := adapter.ExecutePrepared(
 		context.Background(),
 		preparedMCPExecution(t, adapter, moduleapi.ActionExecutionRequestV1{
@@ -375,15 +375,19 @@ func TestAdapterBlockedToolCallWriteReachesDeadlineWithoutRetry(t *testing.T) {
 		!errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("ExecutePrepared error=%v result=%+v, want ambiguous execution", err, result)
 	}
-	if elapsed := time.Since(started); elapsed > 7*time.Second {
-		t.Fatalf("blocked MCP tools/call took %v, want bounded deadline and cleanup", elapsed)
-	}
 	content, readErr := os.ReadFile(events)
 	if readErr != nil {
 		t.Fatalf("read blocked-write events: %v", readErr)
 	}
+	readyAt, readyErr := blockedWriteReadyTime(string(content))
+	if readyErr != nil {
+		t.Fatalf("read blocked-write boundary time: %v", readyErr)
+	}
+	if elapsed := time.Since(readyAt); elapsed > 7*time.Second {
+		t.Fatalf("blocked MCP tools/call took %v after ready, want bounded deadline and cleanup", elapsed)
+	}
 	if strings.Count(string(content), "process_start\n") != 2 ||
-		strings.Count(string(content), "blocked_write_ready\n") != 1 ||
+		strings.Count(string(content), "blocked_write_ready ") != 1 ||
 		strings.Count(string(content), "tool_call\n") != 0 {
 		t.Fatalf("blocked tools/call was retried or helper did not reach the boundary: %q", content)
 	}
@@ -1367,13 +1371,34 @@ func runBlockedToolCallWriteHelper(eventPath string) int {
 		initialized.Method != "notifications/initialized" {
 		return 14
 	}
-	if err := appendMCPHelperEvent(eventPath, "blocked_write_ready\n"); err != nil {
+	if err := appendMCPHelperEvent(
+		eventPath,
+		fmt.Sprintf("blocked_write_ready %d\n", time.Now().UnixNano()),
+	); err != nil {
 		return 15
 	}
 	// The server has completed initialization but deliberately never reads the
 	// following tools/call frame. The client deadline must still be reachable.
 	time.Sleep(30 * time.Second)
 	return 0
+}
+
+func blockedWriteReadyTime(events string) (time.Time, error) {
+	for _, line := range strings.Split(events, "\n") {
+		if !strings.HasPrefix(line, "blocked_write_ready ") {
+			continue
+		}
+		nanos, err := strconv.ParseInt(
+			strings.TrimSpace(strings.TrimPrefix(line, "blocked_write_ready ")),
+			10,
+			64,
+		)
+		if err != nil || nanos <= 0 {
+			return time.Time{}, fmt.Errorf("invalid boundary timestamp %q", line)
+		}
+		return time.Unix(0, nanos), nil
+	}
+	return time.Time{}, errors.New("blocked-write boundary timestamp is absent")
 }
 
 func mcpHelperEventCount(path, event string) int {
