@@ -138,7 +138,7 @@ development slices and does not add a new runtime feature wave.
 | Darwin ARM64, build-only | `freeagent-v0.1.0-dev.1-darwin-arm64-build-only.tar.gz` |
 
 Download the archive and adjacent `SHA256SUMS` from
-[GitHub Releases](https://github.com/endview/freeagent/releases), verify the
+[GitHub Releases](https://github.com/endview/FreeAgent/releases), verify the
 checksum, extract into a new directory, and confirm the version output before
 use. Windows and Linux packages have completed native install validation.
 Darwin packages are cross-built and are not claimed as native-validated in

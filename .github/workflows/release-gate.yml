@@ -140,7 +140,7 @@ jobs:
         id: setup-node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: ${{ steps.prepare.outputs.stage }}/internal/controlweb/.node-version
+          node-version: 24.19.0
           cache: false
           check-latest: false
           package-manager-cache: false
@@ -660,9 +660,73 @@ jobs:
           cache: false
           check-latest: false
 
+      - name: Resolve Windows Go toolchain without reparse ancestors
+        id: canonicalize
+        if: ${{ steps.setup.outcome == 'success' }}
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          [object[]]$commands = @(Get-Command go -CommandType Application -ErrorAction Stop)
+          if ($commands.Count -ne 1) { throw 'Go command is ambiguous or missing.' }
+          $current = [IO.Path]::GetFullPath($commands[0].Source)
+          for ($hop = 0; $hop -lt 16; $hop++) {
+            $resolved = $false
+            $probe = [IO.Path]::GetDirectoryName($current)
+            while (-not [string]::IsNullOrWhiteSpace($probe)) {
+              $item = Get-Item -LiteralPath $probe -Force
+              if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                $targetProperty = $item.PSObject.Properties['Target']
+                if ($null -eq $targetProperty) {
+                  throw 'Go toolchain link target is unavailable.'
+                }
+                [string[]]$targets = @($targetProperty.Value)
+                if ($targets.Count -ne 1 -or [string]::IsNullOrWhiteSpace($targets[0])) {
+                  throw 'Go toolchain link target is invalid.'
+                }
+                $target = $targets[0]
+                if (-not [IO.Path]::IsPathRooted($target)) {
+                  $target = Join-Path ([IO.Path]::GetDirectoryName($probe)) $target
+                }
+                $relative = [IO.Path]::GetRelativePath($probe, $current)
+                if ([IO.Path]::IsPathRooted($relative) -or
+                    $relative -eq '..' -or
+                    $relative.StartsWith('../', [StringComparison]::Ordinal) -or
+                    $relative.StartsWith('..\', [StringComparison]::Ordinal)) {
+                  throw 'Go toolchain link escapes its source directory.'
+                }
+                $current = [IO.Path]::GetFullPath((Join-Path $target $relative))
+                $resolved = $true
+                break
+              }
+              $probe = [IO.Path]::GetDirectoryName($probe)
+            }
+            if (-not $resolved) { break }
+          }
+          if (-not (Test-Path -LiteralPath $current -PathType Leaf)) {
+            throw 'Resolved Go executable is missing.'
+          }
+          $probe = $current
+          while (-not [string]::IsNullOrWhiteSpace($probe)) {
+            if (Test-Path -LiteralPath $probe) {
+              $item = Get-Item -LiteralPath $probe -Force
+              if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'Resolved Go executable still has a reparse ancestor.'
+              }
+            }
+            $probe = [IO.Path]::GetDirectoryName($probe)
+          }
+          $bin = [IO.Path]::GetDirectoryName($current)
+          $root = [IO.Path]::GetDirectoryName($bin)
+          $utf8 = New-Object Text.UTF8Encoding($false)
+          [IO.File]::AppendAllText($env:GITHUB_PATH, "$bin`n", $utf8)
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "GOROOT=$root`n", $utf8)
+          Write-Host "CI_GO_CANONICALIZED path=$current"
+
       - name: Run authenticated Windows job
         id: run
-        if: ${{ !cancelled() && steps.initialize.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.initialize.outcome == 'success' && steps.setup.outcome == 'success' && steps.canonicalize.outcome == 'success' }}
         shell: pwsh
         env:
           CIWC_CONTROL_PATH: ${{ steps.prepare.outputs.control }}

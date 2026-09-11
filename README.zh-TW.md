@@ -93,7 +93,7 @@ FreeAgent 仍處於早期 Developer Preview。已驗收的開發切片見
 | Darwin AMD64，僅建置 | `freeagent-v0.1.0-dev.1-darwin-amd64-build-only.tar.gz` |
 | Darwin ARM64，僅建置 | `freeagent-v0.1.0-dev.1-darwin-arm64-build-only.tar.gz` |
 
-請從 [GitHub Releases](https://github.com/endview/freeagent/releases) 下載封存檔與
+請從 [GitHub Releases](https://github.com/endview/FreeAgent/releases) 下載封存檔與
 相鄰的 `SHA256SUMS`，先驗證 checksum，再解壓縮到新目錄，並在使用前確認版本輸出。
 Windows 與 Linux 封存檔已完成真實本機安裝驗證；Darwin 封存檔為交叉建置產物，
 本 Preview 不宣稱已通過原生 macOS 安裝驗證。

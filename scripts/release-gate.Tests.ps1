@@ -219,7 +219,7 @@ Assert-ContractCount -Name 'permanent job uses one immutable setup-node action' 
     -Pattern '(?m)^        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7\.0\.0\s*$' `
     -ExpectedCount 1
 foreach ($pattern in @(
-    '(?m)^          node-version-file: \$\{\{ steps\.prepare\.outputs\.stage \}\}/internal/controlweb/\.node-version\s*$',
+    '(?m)^          node-version: 24\.19\.0\s*$',
     '(?m)^          cache: false\s*$',
     '(?m)^          check-latest: false\s*$',
     '(?m)^          package-manager-cache: false\s*$'
@@ -399,7 +399,7 @@ if ($controlStepCount -ne 24) {
 $expectedStepIds = [ordered]@{
     'permanent-gates' = @('prepare', 'initialize', 'setup', 'run', 'finalize')
     'linux-quality' = @('prepare', 'initialize', 'setup', 'run', 'finalize', 'upload', 'seal')
-    'windows' = @('prepare', 'initialize', 'setup', 'run', 'finalize', 'upload', 'seal')
+    'windows' = @('prepare', 'initialize', 'setup', 'canonicalize', 'run', 'finalize', 'upload', 'seal')
     'linux-race' = @('prepare', 'initialize', 'setup', 'gcc', 'run', 'finalize', 'upload', 'seal')
     'cross-build' = @('prepare', 'initialize', 'setup', 'run', 'finalize', 'upload', 'seal')
 }
@@ -415,6 +415,8 @@ foreach ($jobName in $expectedStepIds.Keys) {
     $runStep = Get-WorkflowStepSource -JobSource $jobSources[$jobName] -Id 'run'
     $runConditionPattern = if ($jobName -ceq 'permanent-gates') {
         "(?m)^        if: \$\{\{ !cancelled\(\) && steps\.initialize\.outcome == 'success' && steps\.setup\.outcome == 'success' && steps\.setup-node\.outcome == 'success' && steps\.setup-npm\.outcome == 'success' \}\}\s*$"
+    } elseif ($jobName -ceq 'windows') {
+        "(?m)^        if: \$\{\{ !cancelled\(\) && steps\.initialize\.outcome == 'success' && steps\.setup\.outcome == 'success' && steps\.canonicalize\.outcome == 'success' \}\}\s*$"
     } else {
         "(?m)^        if: \$\{\{ !cancelled\(\) && steps\.initialize\.outcome == 'success' \}\}\s*$"
     }
@@ -428,6 +430,24 @@ foreach ($jobName in $expectedStepIds.Keys) {
         -Pattern "(?m)^        if: \$\{\{ always\(\) && steps\.prepare\.outcome == 'success' && steps\.initialize\.outcome == 'success' && \(steps\.run\.outcome == 'success' \|\| steps\.run\.outcome == 'failure'\) \}\}\s*$" `
         -ExpectedCount 1
 }
+
+$windowsCanonicalizeStep = Get-WorkflowStepSource `
+    -JobSource $jobSources['windows'] -Id 'canonicalize'
+Assert-ContractPattern -Name 'Windows canonicalization follows setup success' `
+    -Source $windowsCanonicalizeStep `
+    -Pattern "(?m)^        if: \$\{\{ steps\.setup\.outcome == 'success' \}\}\s*$"
+Assert-ContractPattern -Name 'Windows canonicalization resolves tool-cache links' `
+    -Source $windowsCanonicalizeStep `
+    -Pattern '\[IO\.Path\]::GetRelativePath\('
+Assert-ContractPattern -Name 'Windows canonicalization prepends the real Go bin directory' `
+    -Source $windowsCanonicalizeStep `
+    -Pattern '\[IO\.File\]::AppendAllText\(\$env:GITHUB_PATH'
+Assert-ContractPattern -Name 'Windows canonicalization pins the real Go root' `
+    -Source $windowsCanonicalizeStep `
+    -Pattern 'GOROOT=\$root'
+Assert-ContractNotPattern -Name 'Windows canonicalization does not relax reparse checks' `
+    -Source $windowsCanonicalizeStep `
+    -Pattern 'continue-on-error|Assert-CICNoReparseAncestry'
 
 foreach ($proofJobName in $proofJobNames) {
     Assert-ContractCount -Name "$proofJobName exports its finalizer proof bit" `
