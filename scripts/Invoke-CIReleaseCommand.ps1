@@ -9,7 +9,7 @@ param(
     [Parameter(Mandatory = $true)][string]$StandardOutputPath,
     [Parameter(Mandatory = $true)][string]$StandardErrorPath,
     [Parameter(Mandatory = $true)][string]$PrivateTempRoot,
-    [ValidateRange(1, 7200)]
+    [ValidateRange(1, 7800)]
     [int]$TimeoutSeconds = 1800,
     [ValidateRange(1, 268435456)]
     [int64]$MaximumStandardOutputBytes = 67108864,

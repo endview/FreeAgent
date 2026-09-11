@@ -301,9 +301,9 @@ Invoke-Case 'linux race command contract uses the extended timeout' {
             [StringComparison]::Ordinal
         ) -ge 0
     )
-    Assert-True -Name 'race runner allows fifteen-minute margin' -Condition (
+    Assert-True -Name 'race runner allows ten-minute margin' -Condition (
         $source.IndexOf(
-            '$runnerTimeout = 8100',
+            '$runnerTimeout = 7800',
             [StringComparison]::Ordinal
         ) -ge 0
     )

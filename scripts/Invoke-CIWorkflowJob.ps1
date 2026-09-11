@@ -1198,7 +1198,7 @@ if ($JobKind -ceq 'linux-race') {
     $testArguments = @(
         'test', '-json', '-race', '-count=1', '-timeout=120m', './...'
     )
-    $runnerTimeout = 8100
+    $runnerTimeout = 7800
 } else {
     $gccVersion = $null
     [string[]]$packages = @('./...')

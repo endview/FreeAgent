@@ -83,9 +83,9 @@ $script:GeneratorSha256 =
 $script:VerifierSha256 =
     '3acf389912dab063f2817f3ad36293bdc2cfe403ada9f0b82d01fbb90b57bb44'
 $script:CommandRunnerSha256 =
-    'bad861d4b929076af0c60d9c66ec28a461d74607649fe73a95c8c8308957668b'
+    'aa39a67f54cf618aedcace59078b11a9e42c61019faa1b0c7439bed82435149f'
 $script:WorkflowJobSha256 =
-    'dc6512c4286f863a8463aa6be8019504ffbee79a37016d1dbe962cddd729dc0e'
+    'abb2d8e8cced0f0c43114971d0c001259f3c8d4170d9a14ef7be7bba1fab08f0'
 $script:MaximumScriptBytes = 4194304
 $script:ExactJobKinds = @(
     'permanent',
