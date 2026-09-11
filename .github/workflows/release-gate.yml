@@ -143,7 +143,6 @@ jobs:
           node-version: 24.19.0
           cache: false
           check-latest: false
-          package-manager-cache: false
 
       - name: Authenticate external npm 12 tool
         id: setup-npm
@@ -668,8 +667,8 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          [object[]]$commands = @(Get-Command go -CommandType Application -ErrorAction Stop)
-          if ($commands.Count -ne 1) { throw 'Go command is ambiguous or missing.' }
+          [object[]]$commands = @(Get-Command go -CommandType Application -All -ErrorAction Stop)
+          if ($commands.Count -lt 1) { throw 'Go command is missing.' }
           $current = [IO.Path]::GetFullPath($commands[0].Source)
           for ($hop = 0; $hop -lt 16; $hop++) {
             $resolved = $false

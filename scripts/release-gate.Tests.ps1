@@ -221,12 +221,13 @@ Assert-ContractCount -Name 'permanent job uses one immutable setup-node action' 
 foreach ($pattern in @(
     '(?m)^          node-version: 24\.19\.0\s*$',
     '(?m)^          cache: false\s*$',
-    '(?m)^          check-latest: false\s*$',
-    '(?m)^          package-manager-cache: false\s*$'
+    '(?m)^          check-latest: false\s*$'
 )) {
     Assert-ContractCount -Name 'permanent setup-node is exact and cache-free' `
         -Source $nodeStep -Pattern $pattern -ExpectedCount 1
 }
+Assert-ContractNotPattern -Name 'permanent setup-node omits unsupported cache input' `
+    -Source $nodeStep -Pattern '(?m)^\s+package-manager-cache:'
 $npmStep = Get-WorkflowStepSource -JobSource $permanentJobSource -Id 'setup-npm'
 foreach ($literal in @(
     'https://registry.npmjs.org/npm/-/npm-12.0.2.tgz',
@@ -436,6 +437,12 @@ $windowsCanonicalizeStep = Get-WorkflowStepSource `
 Assert-ContractPattern -Name 'Windows canonicalization follows setup success' `
     -Source $windowsCanonicalizeStep `
     -Pattern "(?m)^        if: \$\{\{ steps\.setup\.outcome == 'success' \}\}\s*$"
+Assert-ContractPattern -Name 'Windows canonicalization selects the first Go candidate' `
+    -Source $windowsCanonicalizeStep `
+    -Pattern 'Get-Command go -CommandType Application -All'
+Assert-ContractPattern -Name 'Windows canonicalization accepts multiple preinstalled Go commands' `
+    -Source $windowsCanonicalizeStep `
+    -Pattern '\$commands\.Count -lt 1'
 Assert-ContractPattern -Name 'Windows canonicalization resolves tool-cache links' `
     -Source $windowsCanonicalizeStep `
     -Pattern '\[IO\.Path\]::GetRelativePath\('
