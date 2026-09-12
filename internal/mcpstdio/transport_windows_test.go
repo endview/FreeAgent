@@ -12,8 +12,12 @@ import (
 )
 
 func TestLongPathLaunchFallbackUsesExtendedPaths(t *testing.T) {
+	volume := filepath.VolumeName(os.TempDir())
+	if volume == "" {
+		t.Fatal("test environment has no Windows volume")
+	}
 	longPath := filepath.Join(
-		`C:\`,
+		volume,
 		strings.Repeat(`a\`, 160),
 		"helper.exe",
 	)

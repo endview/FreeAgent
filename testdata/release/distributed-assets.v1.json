@@ -5,7 +5,7 @@
                    {
                        "path":  "docs/assets/readme-badges.svg",
                        "size":  2686,
-                       "sha256":  "b97b07b63e813e10ddb66718fbb2307613622012dbd556f1334c87784a4cbad3",
+                       "sha256":  "9cb4ba5bb5ad84cd64dc3ab264af2e6f62548567f29e51609c21e8f36364aade",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
