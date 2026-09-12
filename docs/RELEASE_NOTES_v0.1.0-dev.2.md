@@ -10,8 +10,8 @@ Release-readiness changes:
 - support Windows long executable and working-directory paths when starting
   MCP stdio subprocesses, including a temporary DOS-device mapping when short
   paths are unavailable;
-- extend the Linux race-test timeout to 120 minutes with 130-minute command
-  runner and 140-minute workflow budgets;
+- extend the Linux race-test timeout to 240 minutes with 250-minute command
+  runner and 260-minute workflow budgets;
 - refresh authenticated workflow-controller pins for the updated job script.
 
 Windows and Linux AMD64 packages require native install validation before they
