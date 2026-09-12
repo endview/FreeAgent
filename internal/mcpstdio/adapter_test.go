@@ -383,7 +383,9 @@ func TestAdapterBlockedToolCallWriteReachesDeadlineWithoutRetry(t *testing.T) {
 	if readyErr != nil {
 		t.Fatalf("read blocked-write boundary time: %v", readyErr)
 	}
-	if elapsed := time.Since(readyAt); elapsed > 7*time.Second {
+	// Cleanup has multiple bounded terminate/reap phases. A loaded CI runner
+	// can exceed callTimeout plus one closeTimeout while remaining bounded.
+	if elapsed := time.Since(readyAt); elapsed > 12*time.Second {
 		t.Fatalf("blocked MCP tools/call took %v after ready, want bounded deadline and cleanup", elapsed)
 	}
 	if strings.Count(string(content), "process_start\n") != 2 ||

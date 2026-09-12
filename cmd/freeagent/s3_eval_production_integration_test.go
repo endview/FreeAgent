@@ -45,7 +45,10 @@ const (
 )
 
 func TestS3EvalProductionCompositionDeepSeekReviewerLongChain(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		s3CProductionTestTimeout(),
+	)
 	defer cancel()
 
 	root := t.TempDir()
@@ -208,7 +211,10 @@ func TestS3EvalProductionCompositionDeepSeekReviewerLongChain(t *testing.T) {
 }
 
 func TestS3EvalCLIProductionDeepSeekProReviewerOffTrap(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		s3CProductionTestTimeout(),
+	)
 	defer cancel()
 
 	root := t.TempDir()

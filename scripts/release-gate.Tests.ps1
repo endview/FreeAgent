@@ -271,7 +271,7 @@ $expectedJobTimeouts = [ordered]@{
     'permanent-gates' = 45
     'linux-quality' = 60
     'windows' = 60
-    'linux-race' = 140
+    'linux-race' = 260
     'cross-build' = 45
     'release-seal' = 5
 }

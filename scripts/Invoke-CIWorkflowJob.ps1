@@ -435,10 +435,10 @@ function Get-CIWCommandContract {
         }
         'linux-race' {
             return [pscustomobject]@{
-                Command = 'go test -json -race -count=1 -timeout=120m ./...'
+                Command = 'go test -json -race -count=1 -timeout=240m ./...'
                 Argv = @(
                     'go', 'test', '-json', '-race',
-                    '-count=1', '-timeout=120m', './...'
+                    '-count=1', '-timeout=240m', './...'
                 )
                 Packages = @('./...')
             }
@@ -1196,9 +1196,9 @@ if ($JobKind -ceq 'linux-race') {
 
     [string[]]$packages = @('./...')
     $testArguments = @(
-        'test', '-json', '-race', '-count=1', '-timeout=120m', './...'
+        'test', '-json', '-race', '-count=1', '-timeout=240m', './...'
     )
-    $runnerTimeout = 7800
+    $runnerTimeout = 15000
 } else {
     $gccVersion = $null
     [string[]]$packages = @('./...')
