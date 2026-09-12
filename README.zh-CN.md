@@ -81,22 +81,22 @@ FreeAgent 仍处于早期 Developer Preview。已验收的开发切片见
 
 ## 下载
 
-当前 Developer Preview 为 **v0.1.0-dev.1**。它只包装既有开发切片，
+当前 Developer Preview 为 **v0.1.0-dev.2**。它只包装既有开发切片，
 不新增新的 Runtime 功能波次。
 
 | 目标平台 | 归档 |
 | --- | --- |
-| Windows AMD64 | `freeagent-v0.1.0-dev.1-windows-amd64.zip` |
-| Windows ARM64 | `freeagent-v0.1.0-dev.1-windows-arm64.zip` |
-| Linux AMD64 | `freeagent-v0.1.0-dev.1-linux-amd64.tar.gz` |
-| Linux ARM64 | `freeagent-v0.1.0-dev.1-linux-arm64.tar.gz` |
-| Darwin AMD64，仅构建 | `freeagent-v0.1.0-dev.1-darwin-amd64-build-only.tar.gz` |
-| Darwin ARM64，仅构建 | `freeagent-v0.1.0-dev.1-darwin-arm64-build-only.tar.gz` |
+| Windows AMD64 | `freeagent-v0.1.0-dev.2-windows-amd64.zip` |
+| Windows ARM64 | `freeagent-v0.1.0-dev.2-windows-arm64.zip` |
+| Linux AMD64 | `freeagent-v0.1.0-dev.2-linux-amd64.tar.gz` |
+| Linux ARM64 | `freeagent-v0.1.0-dev.2-linux-arm64.tar.gz` |
+| Darwin AMD64，仅构建 | `freeagent-v0.1.0-dev.2-darwin-amd64-build-only.tar.gz` |
+| Darwin ARM64，仅构建 | `freeagent-v0.1.0-dev.2-darwin-arm64-build-only.tar.gz` |
 
 请从 [GitHub Releases](https://github.com/endview/FreeAgent/releases) 下载归档和
 相邻的 `SHA256SUMS`，先校验 checksum，再解压到新目录，并在使用前确认版本输出。
-Windows 与 Linux 包已完成真实本地安装验证；Darwin 包为交叉构建产物，
-本 Preview 不声明已通过原生 macOS 安装验证。
+Windows 与 Linux AMD64 包需要真实本地安装验证。ARM64 包为交叉构建，
+Darwin 包在本 Preview 中不声明已通过原生 macOS 安装验证。
 
 完整安装与升级说明见 [INSTALL](docs/INSTALL.md)。
 
