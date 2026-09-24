@@ -36,16 +36,14 @@ W2-R2 WASM Host 尚未生产可用。
 [`generated/runtime-facts.json`](generated/runtime-facts.json)。生成器只投影本清单中人工审定的
 能力状态，不自动判断成熟度，也不改写历史验收记录。
 
-当前仓库正在准备 `v0.1.0-dev.2` 本地 Developer Preview 候选。该轨道只包装既有
-开发切片，不新增 Runtime feature，也不改变任何 `accepted/planned` 状态；它不是
-公开 Release、生产版本、公开 Beta 或 `RELEASE_READY`。功能基线 `ecb5a12`
-已生成六平台本地归档及供应链文件（Darwin build-only），Windows/Linux AMD64
-原生离线安装和打包后备份/恢复预检通过。Linux 全仓 race 已在 ext4 干净源码上以
-exit code 0 完成，53 个 package result、5,166 个测试 PASS、stderr 为空；最终文档
-提交后的六平台归档和 Windows/Linux AMD64 原生复验也已通过。此前 Windows 全仓、
-vet、module、事实、文档、许可证、公开树、金额禁入、能力矩阵、前端静态门禁、
-真实浏览器管理面和 Linux 受影响 race 已通过。未 push、tag、上传、签名或公开发布。
-完整证据见 [`RELEASE_CANDIDATE_2026-09-23`](RELEASE_CANDIDATE_2026-09-23.md)。
+当前源码树对应已发布的 `v0.1.1` Developer Preview，Release 已推送、打 tag 并上传到
+[GitHub Releases](https://github.com/endview/FreeAgent/releases/tag/v0.1.1)。六平台归档、
+外层 `SHA256SUMS`、供应链文件和版本/revision 绑定均已通过最终校验；Windows/Linux
+AMD64 已完成原生离线安装及打包后备份/恢复复验，ARM64 为交叉构建，Darwin 为
+build-only。该版本仍是本地评估用早期 Developer Preview，不等于生产支持、公开 Beta、
+SLA 或 `RELEASE_READY`。旧的 `v0.1.0-dev.2` 候选证据仍作为历史记录保留，详见
+[`RELEASE_CANDIDATE_2026-09-23`](RELEASE_CANDIDATE_2026-09-23.md)；当前变更记录见
+[`RELEASE_NOTES_v0.1.1`](RELEASE_NOTES_v0.1.1.md)。
 
 [`RELEASE_MATURITY`](RELEASE_MATURITY.md) 和
 [`capabilities.v1.json`](../testdata/release/capabilities.v1.json) 是旧架构的历史归档，继续保持

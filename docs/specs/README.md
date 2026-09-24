@@ -8,7 +8,9 @@ Only these files are current long-lived coding specifications:
   `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE /
   W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE /
   P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE /
-  P3_SECOND_PROVIDER_NEXT`
+  P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE /
+  P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE /
+  P5_BETA_GATE`
 
 W6-1 means only a default-off dual-listener path, process-local bootstrap/session,
 scope-filtered Modules list/detail, and an effect-free `MODULE_DISABLE` Dry-run with a
@@ -101,12 +103,16 @@ Its immutable bootstrap is `0001_current.sql` (149,239 bytes /
 Review migration is `0002_server_owned_review.sql` (7,173 bytes /
 `3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`).
 `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` is the historical W6-5 marker; the current next
-marker is `P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_NEXT`.
+marker is `P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`.
 
 The accepted W6.6 atom consumes only Store-owned Admission/Artifact data. It persists
 Review/Decision with exact retry, rejects caller-provided artifact path/URL/signature bytes/
 target facts, and fails closed on tenant, stale-basis, physical-tamper or integrity conflicts.
 It does not Install, Activate, Bind, Grant, Apply, Execute, call a Provider, or add a UI route.
+
+The current next gate is `P5_BETA_GATE`. P3's exact `zhipu` / `glm-4.5` Provider and
+P4's read-only management projections are accepted development slices; neither grants
+production support or lifecycle mutation authority.
 
 One-time stop, rebuild, recovery, and release gates are maintained in
 [`CUTOVER_ACCEPTANCE`](../CUTOVER_ACCEPTANCE.md); it is an acceptance checklist,

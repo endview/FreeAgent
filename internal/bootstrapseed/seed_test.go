@@ -36,7 +36,7 @@ func TestExampleSeedImportsThroughNormalAPIsAndIsIdempotent(t *testing.T) {
 	if assertion.ModuleID != "freeagent.builtin.model.echo" ||
 		assertion.ExactVersion != "2.0.0" ||
 		assertion.ArtifactDigest == "" ||
-		assertion.ArtifactSizeBytes != 36863 ||
+		assertion.ArtifactSizeBytes != 36191 ||
 		assertion.ArtifactDirectory == "" ||
 		assertion.ExpectedAdapterIdentity != localEchoAdapterIdentity {
 		t.Fatalf("ModelAssertion() = %+v", assertion)
@@ -328,7 +328,7 @@ func TestPrepareRejectsNoncanonicalUnknownSecretAndArtifactDrift(t *testing.T) {
 	}
 	seedHash := sha256.Sum256(canonical)
 	if got, want := hex.EncodeToString(seedHash[:]),
-		"ac2dd68e0ec8514c043a98db1356a964c89e25db727af618e1d13ff67c06255d"; got != want {
+		"d62acae19712ac02cab5d760456c3515dfc0befed8775e6469b01870956506ac"; got != want {
 		t.Fatalf("canonical example seed SHA-256 = %s, want %s", got, want)
 	}
 	artifactBase := filepath.Dir(seedPath)

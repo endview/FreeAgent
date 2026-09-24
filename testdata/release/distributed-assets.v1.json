@@ -677,7 +677,7 @@
                    {
                        "path":  "examples/current-v1.action.bootstrap.seed.json",
                        "size":  3791,
-                       "sha256":  "943cb3f98f2cd1acbbdfe97d4a8f204b318f758fde3cd42a83289c211d03ed61",
+                       "sha256":  "cc2ca766ed6e32a6664917e680d83d4b073fdc8eed4b5d3768e326a9719443c3",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -689,7 +689,7 @@
                    {
                        "path":  "examples/current-v1.bootstrap.seed.json",
                        "size":  2703,
-                       "sha256":  "ac2dd68e0ec8514c043a98db1356a964c89e25db727af618e1d13ff67c06255d",
+                       "sha256":  "d62acae19712ac02cab5d760456c3515dfc0befed8775e6469b01870956506ac",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -701,7 +701,7 @@
                    {
                        "path":  "examples/current-v1.deepseek.bootstrap.seed.json",
                        "size":  2076,
-                       "sha256":  "1b96925cb1e9daf244035ae045694a906ce7ca8010281499f839d4c094229c99",
+                       "sha256":  "c4420be8fc6e5805ab8169f5e6c55f17b5a75f59a2378e370effe29b067917b5",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -713,7 +713,7 @@
                    {
                        "path":  "examples/current-v1.memory.bootstrap.seed.json",
                        "size":  4323,
-                       "sha256":  "2b8d97c64e5df7a8e2a13fe2fcec62e3d2069cdbf72561b48d8abb7c4d0c3592",
+                       "sha256":  "fe02fd543124419baa634fe747c0003b7ff66479a1207a8cf0d5bf3551b918ea",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -725,7 +725,7 @@
                    {
                        "path":  "examples/current-v1.rag.bootstrap.seed.json",
                        "size":  4103,
-                       "sha256":  "21424da4caa74979e9d3a83c74eae7786600405e825fdf460e8d9e710ddbe70b",
+                       "sha256":  "059fdcee4abdc4969db4254d9f2608011491c1acfbe793733ec3985032f7d09a",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -737,7 +737,7 @@
                    {
                        "path":  "examples/current-v1.zhipu.bootstrap.seed.json",
                        "size":  2013,
-                       "sha256":  "a251038bb05dcf0fa0b565980358297b46b2375db62e5d04c5b26dc743da620d",
+                       "sha256":  "d8111029c25b26e02d59e449737507517499dfa2849455d432d82e545d2fefc7",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -785,7 +785,7 @@
                    {
                        "path":  "examples/s3c-deepseek-v4-flash-reviewer-off.bootstrap.seed.json",
                        "size":  4790,
-                       "sha256":  "2608967b9403f21272c0299f1efff3639d3b3c0fd1c4c4b7e1a99d8dc0a73900",
+                       "sha256":  "0809d98f066c64590869c7aee154d6cd8df04128911887c828a4824e9df0b5e1",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -797,7 +797,7 @@
                    {
                        "path":  "examples/s3c-deepseek-v4-flash-reviewer-on.bootstrap.seed.json",
                        "size":  5288,
-                       "sha256":  "83d50753f9aa9047d2829b54433e819477dd3f848f914a4b77ef6865ad535336",
+                       "sha256":  "41230ffa7cc55c31dfe0fdddd17f715b257b3145b26a9323e690aa6c0b1766df",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -809,7 +809,7 @@
                    {
                        "path":  "examples/s3c-deepseek-v4-pro-reviewer-off.bootstrap.seed.json",
                        "size":  4776,
-                       "sha256":  "7bc278b6fb32d3f720546ec2251b3e14b1e27f570bb9932bc3dfe69e6b03329a",
+                       "sha256":  "558301007e10fd8313714640a983eb5ef88d4268b79b981980a8153f5b8bb01c",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",
@@ -821,7 +821,7 @@
                    {
                        "path":  "examples/s3c-deepseek-v4-pro-reviewer-on.bootstrap.seed.json",
                        "size":  5274,
-                       "sha256":  "b1909f07188d5457c206246f7daadfea5a8021ef8619fce84ea53a11157b12ba",
+                       "sha256":  "3b50869ade2cea5a63a5a9c88a323b7f65e27a2aea6f5cfe567473fd05768271",
                        "origin":  "project-owned",
                        "source_url":  "project://github.com/endview/freeagent",
                        "spdx_expression":  "AGPL-3.0-only",

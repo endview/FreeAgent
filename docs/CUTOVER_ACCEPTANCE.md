@@ -32,8 +32,9 @@ W6-5 server-owned module artifact ingress status: `W6_5_SERVER_OWNED_MODULE_ARTI
 W6.6 server-owned Upgrade Review status: `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE`
 Historical next entry at W6-5 close: `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`
 P2 Control UI i18n status: `P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE`
-Current next entry: `P3_SECOND_PROVIDER_NEXT`
-P3 contract preparation: `P3_PROVIDER_CONTRACT_FROZEN_DEVELOPMENT_SLICE`; second Provider implementation and real acceptance remain pending.
+Current next entry: `P5_BETA_GATE`
+P3 exact `zhipu` / `glm-4.5` Provider and P4 read-only management UI are accepted development slices;
+the published `v0.1.1` Developer Preview does not imply public Beta or `RELEASE_READY`.
 W4 Learning status: `W4_L4_LEARNING_CYCLE_ACCEPTED_DEVELOPMENT_SLICE / W4_COMPLETE_ACCEPTED_DEVELOPMENT_SLICE / W5_NEXT`  
 W5 Collaboration status: `W5_F1_COLLABORATION_STABILITY_ACCEPTED_DEVELOPMENT_SLICE / W5_COMPLETE_ACCEPTED_DEVELOPMENT_SLICE / W6_NEXT`  
 性质：旧 Store/Runtime 到 Current Store/Universal Loop 的一次性切换清单

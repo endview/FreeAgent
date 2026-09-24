@@ -17,7 +17,7 @@ func TestZhipuGLMSeedImportsExactProviderClosure(t *testing.T) {
 		t.Fatalf("PrepareFile: %v", err)
 	}
 	model := prepared.ModelAssertion()
-	if model.ModuleID != "freeagent.builtin.model.zhipu" || model.ExactVersion != "2.0.0" || model.ArtifactDigest != "4b0d3296f467d36b198f8f22cb22cceef57e5605b3af52d5c45d8694cd693dc8" || model.ArtifactSizeBytes != 2135 || model.ExpectedExecutionClass != moduleapi.ExecutionTrustedInProcess || model.ExpectedAdapterIdentity != "freeagent.adapter.model.zhipu/v1" {
+	if model.ModuleID != "freeagent.builtin.model.zhipu" || model.ExactVersion != "2.0.0" || model.ArtifactDigest != "ee7cc5bf3d5bcb003219b83c2367601a122cfcfc4abcb25065f1de15212bfcfa" || model.ArtifactSizeBytes != 2124 || model.ExpectedExecutionClass != moduleapi.ExecutionTrustedInProcess || model.ExpectedAdapterIdentity != "freeagent.adapter.model.zhipu/v1" {
 		t.Fatalf("model assertion=%+v", model)
 	}
 	store := newStore(t)

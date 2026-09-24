@@ -59,18 +59,16 @@ Install、Activate、Bind、grant、Review 或 execute。W6.6 随后从 Store-ow
 
 P4 已完成两批只读管理能力收口：统一 application/control service、tenant/workspace-scoped Review/Decision/Artifact 与 UNKNOWN list/detail、Store verification、Backup constraints、Artifact Admission 查询、双语 `#upgrade-reviews` 管理展示、bounded query、projection digest、strong ETag 和 fail-closed 边界测试均已接入。UNKNOWN 只能查询原 Attempt 的证据和对账状态，禁止 resend、replay、换 Provider 或隐式 retry；Backup UI 不在线创建或恢复，Restore 仍是离线 staging + atomic publish；UI 不接受服务器路径、Secret、请求体、签名材料或 replay material。P4 不开放审核或 Decision mutation，也不提供 Install、Activate、Bind、Grant、Apply 或 Execute。
 项目从未正式部署；所有 `accepted` 状态都只表示明确范围内的开发切片已验收，不等于可直接
-用于生产、公开 Beta、首次部署或 SLA，当前也未达到 `RELEASE_READY`。
+用于生产、公开 Beta、首次部署或 SLA。`v0.1.1` 已作为早期 Developer Preview 发布，
+但仍不代表生产支持或 `RELEASE_READY`。
 
-当前仓库正在准备 `v0.1.0-dev.2` 本地 Developer Preview 候选。该轨道只包装既有
-开发切片，不新增 Runtime feature，也不是公开 Release、生产版本、公开 Beta 或
-`RELEASE_READY`。功能基线 `ecb5a12` 已完成六平台归档和供应链文件（Darwin
-build-only），Windows/Linux AMD64 原生离线安装及打包后 backup/verify/restore/continue
-通过。Linux 全仓 race 已在 ext4 干净源码上以 exit code 0 完成，53 个 package
-result、5,166 个测试 PASS、stderr 为空；最终文档提交后的重打包和原生复验也已通过。
-此前 Windows 全仓、vet、module、事实、文档、
-许可证、公开树、金额禁入、能力矩阵、前端门禁、真实浏览器及 Linux 受影响 race
-已通过。候选不执行 push、tag、上传、签名、公证或公开发布。
-完整证据见 [`RELEASE_CANDIDATE_2026-09-23`](RELEASE_CANDIDATE_2026-09-23.md)。
+当前源码树对应已发布的 `v0.1.1` Developer Preview。六平台归档、外层
+`SHA256SUMS`、供应链文件和版本/revision 绑定已通过最终校验；Windows/Linux AMD64
+原生离线安装及打包后 backup/verify/restore/continue 已复验，ARM64 为交叉构建，
+Darwin 为 build-only。Release 详情和完整变更记录见
+[`RELEASE_NOTES_v0.1.1`](RELEASE_NOTES_v0.1.1.md) 及
+[GitHub Release](https://github.com/endview/FreeAgent/releases/tag/v0.1.1)。
+旧的 `v0.1.0-dev.2` 候选材料仍保留为历史证据，不能作为当前版本状态。
 
 W2-R2 WASM Host 尚未生产可用。
 
@@ -1241,8 +1239,8 @@ RAG、Memory、Action、MCP、Channel 与 Composite 的 S2 历史静止树已重
 UNKNOWN 零重放、Reviewer-disabled bytes 和完整 backup/restore。W1 的真实 DeepSeek 50 轮、
 恢复、精确重入、Usage 与清理已经验收；W3-M0/M1/M2 与 K0/K1/K2A/K2B/K3 已通过 Windows
 全仓测试、vet、`go mod verify`、备份恢复和独立复审的集中门禁。上述均为开发验收证据。
-六平台构建、Public Stage 和最终 seal 已有本地候选材料；当前仍未 push、tag、上传、
-签名或公开发布。更早批次仍只能作为对应历史树的记录。
+六平台构建、Public Stage 和最终 seal 已完成并用于 `v0.1.1` Release；归档、SBOM、
+checksum 与 unsigned provenance 仍未签名。更早批次仍只能作为对应历史树的记录。
 由于项目从未正式部署，本轮生产切换为
 `NOT_APPLICABLE`，而不是伪造一次 GO/NO-GO；首次生产部署仍未批准，详见
 [`CUTOVER_ACCEPTANCE`](CUTOVER_ACCEPTANCE.md)。CI 还包含

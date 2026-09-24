@@ -1,8 +1,8 @@
 # FreeAgent Module Development v1
 
-> Current phase override (2026-09-22): P2 Control UI i18n is accepted; the next entry is `P3_SECOND_PROVIDER_NEXT`. Older `P2_CONTROL_UI_I18N_NEXT` mentions below are historical handoff markers.
+> Current phase override (2026-09-24): P2 Control UI i18n, the exact `zhipu` / `glm-4.5` Provider, and the read-only P4 management UI are accepted development slices; the current next gate is `P5_BETA_GATE`. Older `P2_CONTROL_UI_I18N_NEXT` mentions below are historical handoff markers.
 
-> 状态：`EXPERIMENTAL` 的模块作者与离线包验证合同。当前阶段标记是 `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_NEXT`；W6-5 只新增默认关闭的可信本地 Operator CLI，把 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` exact entry 对应的已验证包持久复制为 server-owned、content-addressed、inert Artifact，并记录 append-only Admission。W6.6 只从该 Admission 读取服务端持有的 Artifact，持久化 Review/Decision 并复用 W2-U3 evaluator；调用方不能提供 package path、URL、signature bytes 或 target facts，且审核不自动 Install/Activate/Bind/grant/Apply/execute。不提升 Module Conformance、Operator Module Apply 或广义在线控制面的成熟度；没有 HTTP/upload、UI、SSE 或后台 worker。W6-0、W6-1、W6-2、W6-3、W6-4、U4 与 U3 的历史收口继续保留，旧 NEXT marker 只作为历史边界。W2-R3 的窄边界保持不变。
+> 状态：`EXPERIMENTAL` 的模块作者与离线包验证合同。当前阶段标记是 `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`；W6-5 只新增默认关闭的可信本地 Operator CLI，把 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` exact entry 对应的已验证包持久复制为 server-owned、content-addressed、inert Artifact，并记录 append-only Admission。W6.6 只从该 Admission 读取服务端持有的 Artifact，持久化 Review/Decision 并复用 W2-U3 evaluator；调用方不能提供 package path、URL、signature bytes 或 target facts，且审核不自动 Install/Activate/Bind/grant/Apply/execute。不提升 Module Conformance、Operator Module Apply 或广义在线控制面的成熟度；没有 HTTP/upload、UI、SSE 或后台 worker。W6-0、W6-1、W6-2、W6-3、W6-4、U4 与 U3 的历史收口继续保留，旧 NEXT marker 只作为历史边界。W2-R3 的窄边界保持不变。
 >
 > W2-U2 历史状态：`W2_U2_DISCOVERY_SNAPSHOT_ACCEPTED_DEVELOPMENT_SLICE`。
 >
@@ -1118,7 +1118,7 @@ W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。
   `d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`；`0002` 为 7,173 bytes /
   SHA-256 `3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`。W6-5 收口时的
   `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` 是历史 marker；W6.6 已完成，当前下一入口为
-  `P2_CONTROL_UI_I18N_NEXT`。
+  `P2_CONTROL_UI_I18N_NEXT`。P2、P3 与 P4 已在当前发布线收口，当前后续入口为 `P5_BETA_GATE`。
 
 ### W6.6 server-owned Upgrade Review 对模块作者的当前边界
 

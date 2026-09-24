@@ -15,7 +15,7 @@ import (
 
 const (
 	deepSeekAdapterIdentity = "freeagent.adapter.model.deepseek/v1"
-	deepSeekSeedSHA256      = "1b96925cb1e9daf244035ae045694a906ce7ca8010281499f839d4c094229c99"
+	deepSeekSeedSHA256      = "c4420be8fc6e5805ab8169f5e6c55f17b5a75f59a2378e370effe29b067917b5"
 )
 
 func TestDeepSeekPureChatSeedImportsExactSingleProviderClosure(t *testing.T) {
@@ -52,8 +52,8 @@ func TestDeepSeekPureChatSeedImportsExactSingleProviderClosure(t *testing.T) {
 	if model != prepared.ModelAssertion() ||
 		model.ModuleID != "freeagent.builtin.model.deepseek" ||
 		model.ExactVersion != "2.0.0" ||
-		model.ArtifactDigest != "ebef19d2fd153773f11e331d219edd4a414af069101f9f834fdd6ecf85dce3e2" ||
-		model.ArtifactSizeBytes != 2771 ||
+		model.ArtifactDigest != "ca4c08b5070f006652df78863c86285d4c6f842c623fa9408acd173754f89d71" ||
+		model.ArtifactSizeBytes != 2762 ||
 		model.InstanceID != "model-deepseek-v4-flash" ||
 		model.ExpectedExecutionClass != moduleapi.ExecutionTrustedInProcess ||
 		model.ExpectedAdapterIdentity != deepSeekAdapterIdentity {

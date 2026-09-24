@@ -1,8 +1,17 @@
 # FreeAgent 产品需求文档
 
-> 当前阶段校准（2026-09-22）：P2 Control UI i18n 已完成，当前下一入口为 `P3_SECOND_PROVIDER_NEXT`。下文仍保留的 `P2_CONTROL_UI_I18N_NEXT` 仅作为历史交接 marker。
+> 当前阶段校准（2026-09-24）：W6.6、P2、P3、P4 已完成，`v0.1.1` 已作为早期
+> Developer Preview 发布。下文保留的 `P2_CONTROL_UI_I18N_NEXT` 等旧状态仅是
+> 历史交接 marker；当前能力与成熟度以 [`CURRENT_CAPABILITIES`](CURRENT_CAPABILITIES.md)
+> 和 [`PROJECT_STATUS`](PROJECT_STATUS.md) 为准。发布不代表公开 Beta、生产支持或
+> `RELEASE_READY`。
 
-状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_PROVIDER_CONTRACT_FROZEN_DEVELOPMENT_SLICE`；W6-1/W6-2 的默认关闭 Control、bootstrap/session、Modules read/Dry-run、窄 `MODULE_DISABLE` confirmation/mutate、durable receipt 与 APPLIED 同事务 publication 保持不变。W6-3 exact Overview 与 W6-4 strict Modules UI 继续作为历史 accepted 切片。W6-5 只新增默认关闭的可信本地 Operator CLI `module-artifact-ingress`：source/artifact roots 是瞬时可信输入，调用方只选择 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` 的 exact entry；无 HTTP/upload、caller package path、URL、signature 或 UI。构件先以 content-addressed、durable、no-replace 方式发布，随后唯一 Current Store 在同一事务写入 inert Artifact 与 append-only Admission；不 Install、Activate、Bind、grant、Review 或 execute。W6.6 再从 Admission 消费服务端持有的 Artifact，持久化 Review/Decision 并复用 W2-U3 evaluator；不接受 artifact path、URL、signature bytes 或 target facts，不自动执行生命周期操作。P2 只完成现有 Control UI 的双语 catalog、静态门禁和 locale runtime，不新增业务页面或 mutation。P3 目前只冻结 Provider-neutral stream/UNKNOWN/Secret contract，尚未接入第二 Provider、真实实验或 fallback。Backup closure 是 installation ∪ ingress，并支持 Source 离线、零 Installation 的恢复。当前 FAC2 为 UserVersion 2、42 tables / 26 explicit indexes / 64 triggers，fingerprint `d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`，`0002` 为 7,173 bytes / SHA-256 `3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`；前序 W2/W5/W6 历史边界、未正式部署和非生产成熟度判断均不变。<br>
+当前状态：`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`。
+P3 只接入默认关闭的 exact `zhipu` / `glm-4.5` Provider；P4 只读管理面不增加
+Install、Activate、Bind、Grant、Apply 或 Execute authority。W6.6 仍只从服务端持有的
+Artifact 产生持久 Review/Decision，不自动执行生命周期操作。当前 FAC2 Store 为
+UserVersion 2、42 tables / 26 explicit indexes / 64 triggers；前序 W2/W5/W6
+历史边界及未正式部署的事实不变。<br>
 W2-U2 历史状态：`W2_U2_DISCOVERY_SNAPSHOT_ACCEPTED_DEVELOPMENT_SLICE`  
 Reviewer status：`S3_COMPOSITE_REVIEW_GATE_ACCEPTED_DEVELOPMENT_SLICE`  
 Conversation status：`W1_COMPLETE_REAL_DEEPSEEK_50`  
@@ -12,9 +21,9 @@ Collaboration status：`W5_F1_COLLABORATION_STABILITY_ACCEPTED_DEVELOPMENT_SLICE
 W6-0 historical Control API contract status：`W6_0_CONTROL_API_CONTRACT_ACCEPTED_DEVELOPMENT_SLICE / W6_1_APPLICATION_SERVICES_READ_API_NEXT`  
 W6-1 historical Control Application Services status：`W6_1_APPLICATION_SERVICES_READ_API_ACCEPTED_DEVELOPMENT_SLICE / W6_2_CONTROLLED_MUTATIONS_AUDIT_NEXT`  
 W6-4 historical close：`W6_4_MODULES_CONFIGURATION_UI_ACCEPTED_DEVELOPMENT_SLICE / W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT`  
-Current incremental status：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_NEXT`
+Current incremental status：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`
 W6-2 historical close：`W6_2_MODULE_DISABLE_MUTATION_WIRING_ACCEPTED_DEVELOPMENT_SLICE / W6_3_WEB_SHELL_READ_ONLY_OVERVIEW_NEXT`  
-日期：2026-08-17  
+日期：2026-09-24
 许可证：AGPL-3.0-only
 
 > 金额边界：`P0_MONEY_BUDGET_REMOVED_FAC2_BASELINE`；当前运行路径已删除 BudgetPolicy、CostPolicy、PriceSnapshot、费用估算与金额对账，只保留 token usage、输出上限、deadline、权限、UNKNOWN 对账与 exact retry。Current Store 家族改为 FAC2（`github.com/endview/freeagent/current-store-v2`），新运行时只读拒绝 FAC1 旧库，不迁移也不修改。本文件中出现的 `CNY`、估算费用与 PriceSnapshot 字样一律是删除前 FAC1 时期的冻结历史验收证据，不描述当前运行语义；冻结记录见 [`P0_BASELINE_FREEZE`](P0_BASELINE_FREEZE.md)
@@ -37,10 +46,10 @@ Action HTTP Host 的开发切片；它不代表真实公网 HTTPS 第三方互�
 验收 exact WASM Action Host，W2-R3 只在该 Host 上增加第三方纯计算授权与停机撤权；二者都不代表
 任意 WASM、OS/container、生产恶意多租户隔离、供应链或公开发布已经完成。
 
-当前仓库正在准备 `v0.1.0-dev.2` 本地 Developer Preview 归档。该轨道只包装既有开发切片，
-不新增 Runtime feature，也不把项目提升为公开 Release、生产版本、公开 Beta 或
-`RELEASE_READY`。Windows/Linux amd64 必须通过真实本地安装验证，Darwin 输出仅 build-only；
-生成归档不执行 push、远程 tag、上传、签名、公证、公网下载入口或公开发布。
+当前源码树对应已发布的 `v0.1.1` Developer Preview。它不把项目提升为生产版本、
+公开 Beta 或 `RELEASE_READY`。Windows/Linux AMD64 已通过原生本地安装验证，
+Darwin 输出仅 build-only；六平台归档及相邻 `SHA256SUMS` 见
+[GitHub Release](https://github.com/endview/FreeAgent/releases/tag/v0.1.1)。
 
 当前架构已完成 S0，并验收可运行的 S1 开发基线。当前权威是
 [`CORE_RUNTIME_V1`](specs/CORE_RUNTIME_V1.md)、
@@ -139,7 +148,8 @@ W5-X1 未新增表，只在现有 Content Store 增加两个 Transfer ContentKin
 `9941c957b0e6a1a1e1770b38cd06605025d12df30067d1271fe8f7b30f2f0518`、44,138 bytes、
 `4cf260d368fb7b69e0a86dad99ff593bea216e9d0da341f607d000999e076be4`，以及 W4-L3 22 表和
 更早 19/20/21 表旧 hash 仅证明对应历史切片，
-S3-D 全仓 Release、六平台构建与 Public Stage 尚未执行。
+此前 S3-D 的全仓 Release、六平台构建与 Public Stage 尚未执行；
+`v0.1.1` Developer Preview 已完成相应发布门禁，公开 Beta 和首次生产部署仍未批准。
 
 ## 1. 产品定义
 

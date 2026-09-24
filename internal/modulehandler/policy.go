@@ -27,7 +27,7 @@ import (
 const (
 	DeepSeekModuleIDV1        = "freeagent.builtin.model.deepseek"
 	DeepSeekVersionV1         = "2.0.0"
-	DeepSeekArtifactDigestV1  = "ebef19d2fd153773f11e331d219edd4a414af069101f9f834fdd6ecf85dce3e2"
+	DeepSeekArtifactDigestV1  = "ca4c08b5070f006652df78863c86285d4c6f842c623fa9408acd173754f89d71"
 	DeepSeekFlashBuildV1      = "deepseek-v4-flash/public-alias-observed-2026-08-04"
 	DeepSeekProBuildV1        = "deepseek-v4-pro/public-alias-observed-2026-08-04"
 	DeepSeekProviderNameV1    = "deepseek"

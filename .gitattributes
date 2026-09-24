@@ -1,5 +1,7 @@
 docs/architecture/specs/*.md text eol=lf
+docs/specs/*.md text eol=lf
 docs/*.md text eol=lf
+internal/currentstore/migrations/fac2/*.sql text eol=lf
 *.ps1 text eol=lf
 .github/workflows/*.yml text eol=lf
 THIRD_PARTY_NOTICES.md text eol=lf
@@ -27,4 +29,6 @@ examples/*.json text eol=lf
 examples/**/*.md text eol=lf
 examples/**/*.json text eol=lf
 examples/**/LICENSE text eol=lf
+examples/bootstrap-artifacts/**/module.yaml text eol=lf
+docs/assets/*.svg text eol=lf
 schemas/config/v1alpha1/*.json text eol=lf

@@ -4,16 +4,16 @@
 > 证明。当前编码边界只由 `CORE_RUNTIME_V1` 与 `CURRENT_STORE_V1` 定义；实际切换
 > 状态只由 `CUTOVER_ACCEPTANCE` 判定。
 
-## 当前候选边界
+## 当前发布边界
 
-`v0.1.0-dev.2` 只作为本地 Developer Preview 候选，不代表公开 Release、
-生产版本、公开 Beta 或 `RELEASE_READY`。截至 2026-09-23，功能基线 `ecb5a12`
-的六平台归档（Darwin build-only）、SPDX SBOM、checksum、unsigned provenance
-和外层 `SHA256SUMS` 已在本地生成并验证；Windows/Linux AMD64 已在原生系统上
-完成离线 package smoke 与 backup/verify/restore/continue。Linux 全仓 race 已在
-ext4 干净源码上以 exit code 0 完成（53 个 package result、5,166 个测试 PASS、
-stderr 为空）。最终文档提交后的六平台归档和 Windows/Linux AMD64 原生复验也已
-通过。没有上传、签名或公开发布。精确状态与外部证据位置见
+`v0.1.1` 已作为早期 Developer Preview 发布。六平台归档（Darwin build-only）、
+SPDX SBOM、checksum、unsigned provenance 和外层 `SHA256SUMS` 已生成、验证并上传到
+[GitHub Release](https://github.com/endview/FreeAgent/releases/tag/v0.1.1)；
+Windows/Linux AMD64 已完成原生系统上的离线 package smoke 与
+backup/verify/restore/continue。发布归档对应提交 `67d305316204f7dd77f51bc905ea863ec181fced`，
+版本/revision 与供应链集合已在发布前复核。归档、SBOM、provenance 和 checksum
+manifest 仍未签名，且该 Developer Preview 不代表生产支持、公开 Beta 或 `RELEASE_READY`。
+旧的 `v0.1.0-dev.2` 候选记录仅用于历史证据，见
 [`RELEASE_CANDIDATE_2026-09-23`](RELEASE_CANDIDATE_2026-09-23.md)。
 
 当前 P4 管理面只提供 bounded read models：UNKNOWN、Store Verify、Backup constraints、

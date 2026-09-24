@@ -14,9 +14,9 @@ Use the archive whose target matches the machine that will run it:
 - macOS build-only: `freeagent-v0.1.1-darwin-amd64-build-only.tar.gz`
   or `freeagent-v0.1.1-darwin-arm64-build-only.tar.gz`
 
-For the local candidate, use the archive and adjacent `SHA256SUMS` from the
-operator-held release output. If a release is later approved and uploaded,
-obtain both files from the same published release.
+Obtain the archive and adjacent `SHA256SUMS` from the same
+[v0.1.1 GitHub Release](https://github.com/endview/FreeAgent/releases/tag/v0.1.1).
+Do not mix files from different releases or local build directories.
 Verify the archive before extracting it; see `VERIFY_CHECKSUMS.md` for exact
 commands. These checksums detect accidental or post-build changes but are not
 signatures.

@@ -1,8 +1,8 @@
 # CONTROL_API_V1
 
-> Current phase override (2026-09-22): P2 Control UI i18n is accepted; the next entry is `P3_SECOND_PROVIDER_NEXT`.
+> Current phase override (2026-09-24): P2 Control UI i18n, the exact `zhipu` / `glm-4.5` Provider, and the read-only P4 management UI are accepted development slices; the current next gate is `P5_BETA_GATE`. `v0.1.1` is a published Developer Preview, not production support or a public Beta.
 
-状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_NEXT`；W6-4 的默认关闭 Control/Web Shell、strict Modules list/detail 与唯一 `MODULE_DISABLE` UI 继续作为历史 accepted 边界。W6-5 不新增任何 Control operation、HTTP route、upload、UI、listener、Application Service 或在线 authority；它只新增独立、默认关闭的可信本地 Operator CLI，接纳 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` exact entry 为 server-owned inert Artifact。W6.6 只从该 Artifact/Admission 生成持久 Review/Decision，调用方不提供 artifact path、URL、signature bytes 或 target facts；不自动 Install、Activate、Bind、Grant、Apply、Execute，也不调用 Provider。W6-2/W6-3 的 confirmation、durable receipt、同事务 publication 与 read-only Overview 边界保持不变；无其他 mutation、SSE、后台 worker或第二 Store/writer。
+状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`；W6-4 的默认关闭 Control/Web Shell、strict Modules list/detail 与唯一 `MODULE_DISABLE` UI 继续作为历史 accepted 边界。W6-5 不新增任何 Control operation、HTTP route、upload、UI、listener、Application Service 或在线 authority；它只新增独立、默认关闭的可信本地 Operator CLI，接纳 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` exact entry 为 server-owned inert Artifact。W6.6 只从该 Artifact/Admission 生成持久 Review/Decision，调用方不提供 artifact path、URL、signature bytes 或 target facts；不自动 Install、Activate、Bind、Grant、Apply、Execute，也不调用 Provider。W6-2/W6-3 的 confirmation、durable receipt、同事务 publication 与 read-only Overview 边界保持不变；无其他 mutation、SSE、后台 worker或第二 Store/writer。
 规范词：本文中的“必须”“不得”“应当”均为实现约束。
 
 ## 1. 目标与边界
@@ -887,7 +887,9 @@ MIGRATION_SHA256 = 6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419c
 ~~~text
 W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE
 → P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE
-→ P3_SECOND_PROVIDER_NEXT
+→ P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE
+→ P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE
+→ P5_BETA_GATE
 CONTROL_HTTP_UPGRADE_REVIEW = NONE
 REVIEW_ENTRY = TRUSTED_LOCAL_OPERATOR_CLI_DEFAULT_OFF
 CALLER_ARTIFACT_PATH_URL_SIGNATURE_TARGET_FACTS = NONE
@@ -1043,5 +1045,5 @@ Review/Decision 持久化并按 content identity exact retry；跨 Tenant、stal
 integrity 与不合格 Decision 均失败关闭。该切片没有 HTTP/upload/UI/SSE/worker，不自动 Install、Activate、
 Bind、Grant、Apply、Execute，不调用 Provider，也不创建 Runtime/Attempt/Usage/Effect。
 
-Control UI 的 P2 i18n 已完成，下一入口是 `P3_SECOND_PROVIDER_NEXT`。P2 只国际化现有页面，不因 W6.6 已验收而开放
+Control UI 的 P2 i18n、P3 第二 Provider 与 P4 只读管理面已完成，当前下一入口是 `P5_BETA_GATE`。P2 只国际化现有页面，不因 W6.6 已验收而开放
 Upgrade Review mutation；Review/Decision 与 Artifact UI 仍由 P4 在统一 application/control service 之上单独验收。

@@ -1,8 +1,8 @@
 # CORE_RUNTIME_V1
 
-> Current phase override (2026-09-22): P2 Control UI i18n and the P3 Provider contract freeze are accepted development slices; the next entry is `P3_SECOND_PROVIDER_NEXT`. See [`P3_PROVIDER_CONTRACT_V1`](../P3_PROVIDER_CONTRACT_V1.md).
+> Current phase override (2026-09-24): W6.6, P2, the exact `zhipu` / `glm-4.5` P3 Provider, and the read-only P4 management UI are accepted development slices. `v0.1.1` is a published Developer Preview, not production support or a public Beta. See [`CURRENT_CAPABILITIES`](../CURRENT_CAPABILITIES.md) for the current status and [`P3_PROVIDER_CONTRACT_V1`](../P3_PROVIDER_CONTRACT_V1.md) for the Provider boundary.
 
-状态：S1–W5 已验收开发基线，以及 W2-D 本地显式装配 v1、W2-E2 受信 `text.stats` 统一 Apply、W2-E3 Workspace Channel Apply、W2-E4 DeepSeek Model replacement、W2-E5-A Requires/permission grant、W2-E5-B Document Insight 双 Port、W2-R1 窄 REMOTE Action Host、W2-R2 窄 WASM Action Host、W2-R3 第三方纯计算/停机撤权、W2-U2 Source/Snapshot observation、W2-U3 Upgrade Review、W2-U4 approved Declarative Profile Context replacement、W6-0 控制 API 纯合同、W6-1 Application Services / Read API、W6-2 confirmation/durable receipt/MODULE_DISABLE wiring、W6-3 Web Shell/read-only Overview、W6-4 Modules configuration UI、W6-5 server-owned module artifact ingress 与 W6.6 server-owned Upgrade Review、P2 Control UI i18n、P3 Provider contract freeze 已验收开发切片；当前下一入口为 `P3_SECOND_PROVIDER_NEXT`。W6.6 只消费 Store-owned Admission/Artifact 生成持久 Review/Decision，不自动 Install、Activate、Bind、Grant、Apply、Execute 或调用 Provider；P3 contract freeze 不代表第二 Provider 已接入。
+状态：S1–W5 已验收开发基线，以及 W2-D 本地显式装配 v1、W2-E2 受信 `text.stats` 统一 Apply、W2-E3 Workspace Channel Apply、W2-E4 DeepSeek Model replacement、W2-E5-A Requires/permission grant、W2-E5-B Document Insight 双 Port、W2-R1 窄 REMOTE Action Host、W2-R2 窄 WASM Action Host、W2-R3 第三方纯计算/停机撤权、W2-U2 Source/Snapshot observation、W2-U3 Upgrade Review、W2-U4 approved Declarative Profile Context replacement、W6-0 控制 API 纯合同、W6-1 Application Services / Read API、W6-2 confirmation/durable receipt/MODULE_DISABLE wiring、W6-3 Web Shell/read-only Overview、W6-4 Modules configuration UI、W6-5 server-owned module artifact ingress 与 W6.6 server-owned Upgrade Review、P2 Control UI i18n、P3 第二 Provider、P4 只读模块管理 UI 已验收开发切片；当前下一入口为 `P5_BETA_GATE`。W6.6 只消费 Store-owned Admission/Artifact 生成持久 Review/Decision，不自动 Install、Activate、Bind、Grant、Apply、Execute 或调用 Provider；P3 仍不提供自动选模或跨 Provider fallback。
 Machine status: `S1_ACCEPTED_DEVELOPMENT_BASELINE`  
 S2.1 status: `S2.1_CONTEXT_COMPILER_ACCEPTED_DEVELOPMENT_SLICE`  
 ModelProfile status: `S2_MODEL_PROFILE_ACCEPTED_DEVELOPMENT_SLICE`  
@@ -36,7 +36,7 @@ W6-2 MODULE_DISABLE mutation wiring historical status: `W6_2_MODULE_DISABLE_MUTA
 W6-3 Web Shell/read-only Overview historical status: `W6_3_WEB_SHELL_READ_ONLY_OVERVIEW_ACCEPTED_DEVELOPMENT_SLICE / W6_4_MODULES_CONFIGURATION_UI_NEXT`  
 W6-4 Modules configuration UI historical status: `W6_4_MODULES_CONFIGURATION_UI_ACCEPTED_DEVELOPMENT_SLICE / W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT`  
 W6-5 server-owned module artifact ingress status: `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`（历史 marker）
-W6.6 server-owned Upgrade Review status: `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_NEXT`
+W6.6 server-owned Upgrade Review status: `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`
 适用范围：FreeAgent Core Runtime、W2-D 本地显式装配 v1、W2-E2/E3/E4/E5-A/E5-B/R1/R2/R3/U2/U3/U4 窄增量、W6-0 纯控制 API 合同、W6-1 默认关闭的本地双 listener/bootstrap/session/Modules read/Disable Dry-run、W6-2 stable confirmation/evaluation、process-local proof authority、durable receipt Schema/NO_CHANGE Store seam、窄 MODULE_DISABLE confirmation/mutate 与同事务 APPLIED publication、W6-3 scope-filtered read-only Overview observation/application/HTTP/Web Shell、W6-4 对同一现有 Modules/Application/HTTP surface 的严格浏览器 consumer，以及 W6-5 默认关闭的可信本地 Operator CLI、server-owned inert artifact publication/Admission 与 Backup closure、S1–W4 开发切片、W5 单 repair round Decision family、同 Tenant 跨 Workspace Transfer 及 F1 公平/取消/恢复稳定性  
 规范词：本文中的“必须”“不得”“应当”均为实现约束
 
@@ -4590,7 +4590,7 @@ W6-4 没有 artifact ingress、staging/install/activation、grant、其他 mutat
 
 W6-5 收口时状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE /
 W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`；W6.6 已在本节后收口，当前下一入口为
-`P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE`；当前下一入口为 `P3_SECOND_PROVIDER_NEXT`。
+`P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE`；当前下一入口为 `P5_BETA_GATE`。
 
 W6-5 不新增在线 Runtime route、Control operation、listener、Provider、Gateway、Adapter loader、scheduler、
 worker 或 dispatch。唯一 composition 是默认关闭的可信本地 Operator CLI `module-artifact-ingress`；只有显式
@@ -4637,4 +4637,4 @@ URL、signature bytes 或 target facts；跨 tenant、stale basis、物理篡改
 当前 FAC2 为 UserVersion 2、42 tables / 26 explicit indexes / 64 triggers，fingerprint
 `d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`；`0002_server_owned_review.sql` 为
 7,173 bytes / `3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`。W6.6 已验收，当前下一阶段
-为 `P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_NEXT`；Review/Decision 仍不属于 Control UI mutation。
+为 `P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`；Review/Decision 仍不属于 Control UI mutation。
