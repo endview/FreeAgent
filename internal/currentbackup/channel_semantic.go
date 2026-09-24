@@ -74,7 +74,7 @@ type inspectedChannelRuntimeProjection struct {
 	logicalOperationKey string
 	proposalRef         string
 	resultRef           string
-	budgetStateRef      string
+	usageLedgerRef      string
 	state               string
 	frameRevision       int64
 	updatedAt           int64
@@ -740,7 +740,7 @@ func inspectOneChannelSend(
 	var (
 		logicalOperationKey, runID, memberID, logicalStepID string
 		sourceModelID, memberDigest, endpointID, ingressKey string
-		proposalRef, effectClass, budgetStateRef, state     string
+		proposalRef, effectClass, usageLedgerRef, state     string
 		bindingCanonical                                    []byte
 		bindingIndex, frameRevision, maxResultBytes         int64
 		deadline, revision, createdAt, updatedAt            int64
@@ -757,7 +757,7 @@ func inspectOneChannelSend(
 			public_action_id, provider_action_id, definition_digest,
 			proposal_ref, channel_endpoint_id, channel_ingress_key,
 			channel_proposal_ref, effect_class, max_result_bytes,
-			deadline, budget_state_ref, state, external_operation_id,
+			deadline, usage_ledger_ref, state, external_operation_id,
 			provider_receipt_ref, result_ref, error_classification,
 			reconciliation_evidence_ref, unknown_reason,
 			revision, created_at, updated_at
@@ -784,7 +784,7 @@ func inspectOneChannelSend(
 		&effectClass,
 		&maxResultBytes,
 		&deadline,
-		&budgetStateRef,
+		&usageLedgerRef,
 		&state,
 		&externalOperation,
 		&receiptRef,
@@ -811,8 +811,8 @@ func inspectOneChannelSend(
 	if err != nil || wantOperation != logicalOperationKey {
 		return channelIntegrity("CHANNEL_SEND logical operation key differs")
 	}
-	if _, err := corecontract.ParseBudgetStateRefV1(budgetStateRef, runID); err != nil {
-		return channelIntegrity("CHANNEL_SEND BudgetStateRef differs")
+	if _, err := corecontract.ParseUsageLedgerRefV1(usageLedgerRef, runID); err != nil {
+		return channelIntegrity("CHANNEL_SEND UsageLedgerRef differs")
 	}
 	closure, found := accepted[runID]
 	if !found || closure.receipt.endpointID != endpointID ||
@@ -968,7 +968,7 @@ func inspectOneChannelSend(
 			logicalOperationKey: logicalOperationKey,
 			proposalRef:         proposalRef,
 			resultRef:           resultRef.String,
-			budgetStateRef:      budgetStateRef,
+			usageLedgerRef:      usageLedgerRef,
 			state:               state,
 			frameRevision:       frameRevision,
 			updatedAt:           updatedAt,
@@ -1143,7 +1143,7 @@ func inspectChannelRuntimeProjection(
 	)
 	if err := database.QueryRowContext(ctx, `
 		SELECT r.state, r.disposition, r.revision, r.updated_at,
-		       f.frame_revision, f.step, f.budget_state_ref, f.continuation,
+		       f.frame_revision, f.step, f.usage_ledger_ref, f.continuation,
 		       f.pending_attempt_id, f.pending_dispatch_attempt_id,
 		       f.waiting_reason, f.last_authoritative_event
 		FROM runs AS r
@@ -1170,7 +1170,7 @@ func inspectChannelRuntimeProjection(
 		continued.AttemptKind != corecontract.AttemptKindChannel ||
 		continued.AttemptID != projection.attemptID ||
 		continued.LogicalStepID != projection.logicalStepID ||
-		frameBudget != projection.budgetStateRef ||
+		frameBudget != projection.usageLedgerRef ||
 		frameRevision <= projection.frameRevision ||
 		runRevision <= 0 || lastEvent <= 0 ||
 		runUpdatedAt != projection.updatedAt {
@@ -1184,7 +1184,7 @@ func inspectChannelRuntimeProjection(
 			lastEvent,
 			frameStep,
 			continued,
-			frameBudget == projection.budgetStateRef,
+			frameBudget == projection.usageLedgerRef,
 			runUpdatedAt,
 			projection.updatedAt,
 		))

@@ -155,7 +155,7 @@ func TestModuleApplyGovernedKnowledgeDryRunApplyAndRuntimeShareShape(
 	artifactRoot := filepath.Join(root, "artifacts")
 	initializePureChatForModuleApplyV1(t, databasePath, artifactRoot)
 
-	fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "1.1.0")
+	fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "2.0.0")
 	planCanonical := newEnabledModuleApplyKnowledgePlanV1(
 		t,
 		fixture,
@@ -441,7 +441,7 @@ func writeKnowledgeManifestShapeFixtureV1(
 		filepath.Dir(exampleSeedPath(t)),
 		"bootstrap-artifacts",
 		"freeagent.example.knowledge.shared",
-		"1.1.0",
+		"2.0.0",
 		"content",
 		"source.json",
 	)

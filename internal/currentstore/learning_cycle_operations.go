@@ -14,21 +14,21 @@ import (
 
 const maxLearningCycleOperationTasks = learningcontract.MaxLearningCycleReportEntriesV1
 
-// LearningCycleReconciliationStatus is the closed, non-executing disposition
+// LearningCycleUsageStatus is the closed, non-executing disposition
 // of one task observed by ReconcileLearningCycleTasks.
-type LearningCycleReconciliationStatus string
+type LearningCycleUsageStatus string
 
 const (
-	LearningCycleReconciliationPendingUnadmitted LearningCycleReconciliationStatus = "PENDING_UNADMITTED"
-	LearningCycleReconciliationOpenNotReady      LearningCycleReconciliationStatus = "OPEN_NOT_READY"
-	LearningCycleReconciliationFinalized         LearningCycleReconciliationStatus = "FINALIZED"
-	LearningCycleReconciliationExactTerminal     LearningCycleReconciliationStatus = "EXACT_TERMINAL"
+	LearningCycleReconciliationPendingUnadmitted LearningCycleUsageStatus = "PENDING_UNADMITTED"
+	LearningCycleReconciliationOpenNotReady      LearningCycleUsageStatus = "OPEN_NOT_READY"
+	LearningCycleReconciliationFinalized         LearningCycleUsageStatus = "FINALIZED"
+	LearningCycleReconciliationExactTerminal     LearningCycleUsageStatus = "EXACT_TERMINAL"
 )
 
 // LearningCycleReconciliationEntry reports the final Store observation for
 // one bounded task. Task records are ordered by logical window then TaskID.
 type LearningCycleReconciliationEntry struct {
-	Status LearningCycleReconciliationStatus
+	Status LearningCycleUsageStatus
 	Task   LearningCycleTaskRecord
 }
 

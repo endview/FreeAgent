@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
@@ -92,82 +91,6 @@ func TestRestoreModuleApplyPlanV1ModelReplacementBoundaries(t *testing.T) {
 	}
 }
 
-func TestModuleApplyDeepSeekModelMissingPriceFailsBeforeStoreWrites(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	databasePath := filepath.Join(root, "current.sqlite")
-	artifactRoot := filepath.Join(root, "artifacts")
-	seedPath := filepath.Join(
-		filepath.Dir(exampleSeedPath(t)),
-		"current-v1.deepseek.bootstrap.seed.json",
-	)
-	if _, err := initializeProductionData(ctx, initInput{
-		DatabasePath: databasePath,
-		SeedPath:     seedPath,
-		ArtifactRoot: artifactRoot,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	beforeRows := moduleApplyMutationRowCountsV1(t, databasePath)
-	store, err := currentstore.OpenExistingCurrentStore(ctx, databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	basisBefore, _, _, err := store.LoadPublishedBasis(ctx, defaultTenantID)
-	closeErr := store.Close()
-	if err != nil || closeErr != nil {
-		t.Fatal(errors.Join(err, closeErr))
-	}
-	config := moduleApplyModelConfigV1(
-		t,
-		deepseekmodel.ModelV4Pro,
-		localDeepSeekProBuild,
-		"price-that-does-not-exist",
-		json.RawMessage(`{}`),
-	)
-	canonical := moduleApplyModelPlanV1(
-		t,
-		basisBefore.PointerRevision,
-		config,
-		moduleApplyModelAuthorityV1(t),
-	)
-	plan, frozen, digest, err := restoreModuleApplyPlanV1(canonical)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = applyModulePlanV1(ctx, moduleApplyCommandInputV1{
-		DatabasePath:                  databasePath,
-		ArtifactRoot:                  artifactRoot,
-		ArtifactDirectory:             filepath.Join(filepath.Dir(seedPath), "bootstrap-artifacts", localDeepSeekModuleID, localDeepSeekVersion),
-		TrustedInProcessArtifactGrant: localDeepSeekDigest,
-		ModelSecretRefGrant:           moduleApplyModelSecretRefV1,
-		Plan:                          plan,
-		PlanCanonical:                 frozen,
-		PlanDigest:                    digest,
-	})
-	if err == nil || moduleApplyFailureCodeOfV1(err) != moduleApplyFailureTarget {
-		t.Fatalf("missing PriceSnapshot error=%v", err)
-	}
-	afterRows := moduleApplyMutationRowCountsV1(t, databasePath)
-	store, openErr := currentstore.OpenExistingCurrentStore(ctx, databasePath)
-	if openErr != nil {
-		t.Fatal(openErr)
-	}
-	basisAfter, _, _, readErr := store.LoadPublishedBasis(ctx, defaultTenantID)
-	closeErr = store.Close()
-	if readErr != nil || closeErr != nil || basisAfter != basisBefore ||
-		!reflect.DeepEqual(afterRows, beforeRows) {
-		t.Fatalf(
-			"missing price changed Store: basis=%+v/%+v rows=%v/%v errors=%v",
-			basisBefore,
-			basisAfter,
-			beforeRows,
-			afterRows,
-			errors.Join(readErr, closeErr),
-		)
-	}
-}
-
 func TestModuleApplyDeepSeekModelReplacementDryRunRetryRollbackAndOldRunFreeze(
 	t *testing.T,
 ) {
@@ -196,10 +119,6 @@ func TestModuleApplyDeepSeekModelReplacementDryRunRetryRollbackAndOldRunFreeze(
 	store, err := currentstore.OpenExistingCurrentStore(ctx, databasePath)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := store.PutModelPriceSnapshot(ctx, moduleApplyProPriceV1()); err != nil {
-		_ = store.Close()
-		t.Fatalf("put Pro PriceSnapshot: %v", err)
 	}
 	basisBefore, controlBefore, catalogBefore, err := store.LoadPublishedBasis(
 		ctx,
@@ -441,19 +360,17 @@ func moduleApplyModelConfigV1(
 	t *testing.T,
 	model string,
 	build string,
-	priceID string,
+	_ string,
 	parameters json.RawMessage,
 ) []byte {
 	t.Helper()
-	_, canonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        deepseekmodel.ProviderNameV1,
-			Model:           model,
-			ModelBuildID:    build,
-			BillingVersion:  "deepseek-public-price-2026-08-04",
-			PriceSnapshotID: priceID,
-			Parameters:      parameters,
+	_, canonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      deepseekmodel.ProviderNameV1,
+			Model:         model,
+			ModelBuildID:  build,
+			Parameters:    parameters,
 		},
 	)
 	if err != nil {
@@ -477,21 +394,6 @@ func moduleApplyModelAuthorityV1(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return canonical
-}
-
-func moduleApplyProPriceV1() corecontract.ModelPriceSnapshotV1 {
-	return corecontract.ModelPriceSnapshotV1{
-		SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-		PriceSnapshotID: "price-deepseek-v4-pro-module-apply",
-		Provider:        deepseekmodel.ProviderNameV1,
-		Model:           deepseekmodel.ModelV4Pro,
-		BillingVersion:  "deepseek-public-price-2026-08-04",
-		Currency:        "CNY",
-		PricingStatus:   corecontract.PricingKnown,
-		Pricing: json.RawMessage(
-			`{"cached_input_per_million_microunits":20000,"output_per_million_microunits":2000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":1000000}`,
-		),
-	}
 }
 
 func moduleApplyExactModelBindingV1(

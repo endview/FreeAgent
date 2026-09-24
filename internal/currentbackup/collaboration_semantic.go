@@ -430,8 +430,6 @@ func inspectCollaborationChildIdentity(
 		child.manifest.TenantID != root.manifest.TenantID ||
 		child.manifest.Workspace != expectedWorkspace ||
 		child.member.Workspace != expectedWorkspace ||
-		(planned.Transfer == nil &&
-			child.manifest.BudgetPolicy != root.manifest.BudgetPolicy) ||
 		!child.manifest.Deadline.Equal(root.manifest.Deadline) ||
 		child.manifest.ConversationTurn != nil ||
 		child.manifest.CancellationScope != corecontract.CancellationScopeInheritedV1 ||
@@ -479,7 +477,6 @@ func inspectCollaborationReviewerIdentity(
 		reviewer.manifest.TaskInputRef != root.manifest.TaskInputRef ||
 		reviewer.manifest.TenantID != root.manifest.TenantID ||
 		reviewer.manifest.Workspace != root.manifest.Workspace ||
-		reviewer.manifest.BudgetPolicy != root.manifest.BudgetPolicy ||
 		!reviewer.manifest.Deadline.Equal(root.manifest.Deadline) ||
 		reviewer.manifest.ConversationTurn != nil ||
 		reviewer.manifest.CancellationScope != corecontract.CancellationScopeInheritedV1 ||

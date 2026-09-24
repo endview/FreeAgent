@@ -14,7 +14,6 @@ func TestW5F1WorkspaceTransferResultsKeepPlanOrderAcrossReverseCompletionAndReop
 	t *testing.T,
 ) {
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 
 	// Complete the physical Specialists in the opposite order. Store consumers
 	// must still project results by the frozen plan, never by completion time or
@@ -131,8 +130,6 @@ func TestW5F1FamilyCancellationCrossesWorkspaceBeforeAnyTransferEffect(
 			wantPhysical,
 		)
 	}
-
-	putCompositeModelPrice(t, fixture.store)
 	beginInput := newCompositeChildBeginInput(
 		t,
 		fixture.compositeAdmissionFixture,

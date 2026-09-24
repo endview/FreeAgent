@@ -538,16 +538,12 @@ func recoverStartupModelPending(
 		uncached      sql.NullInt64
 		outputTokens  sql.NullInt64
 		reasoning     sql.NullInt64
-		estimated     sql.NullString
-		providerCost  sql.NullString
-		reconciled    sql.NullString
 		rawReceipt    sql.NullString
 	)
 	if err := connection.QueryRowContext(ctx, `
-		SELECT revision, reconciliation_status, ledger_sequence,
+		SELECT revision, usage_status, ledger_sequence,
 			input_tokens, cached_input_tokens, uncached_input_tokens,
-			output_tokens, reasoning_tokens, estimated_cost,
-			provider_reported_cost, reconciled_cost, raw_receipt_ref
+			output_tokens, reasoning_tokens, raw_receipt_ref
 		FROM model_usage
 		WHERE attempt_id=? AND run_id=?
 	`, input.AttemptID, input.Lease.RunID).Scan(
@@ -559,9 +555,6 @@ func recoverStartupModelPending(
 		&uncached,
 		&outputTokens,
 		&reasoning,
-		&estimated,
-		&providerCost,
-		&reconciled,
 		&rawReceipt,
 	); err != nil {
 		return nil, "", fmt.Errorf(
@@ -572,8 +565,7 @@ func recoverStartupModelPending(
 	}
 	if usageRevision < 0 || usageStatus != modelUsageStatusPending ||
 		ledger.Valid || inputTokens.Valid || cachedTokens.Valid || uncached.Valid ||
-		outputTokens.Valid || reasoning.Valid || estimated.Valid ||
-		providerCost.Valid || reconciled.Valid || rawReceipt.Valid {
+		outputTokens.Valid || reasoning.Valid || rawReceipt.Valid {
 		return nil, "", fmt.Errorf(
 			"%w: PENDING model Usage contains post-call facts",
 			ErrStartupRecoveryIntegrity,
@@ -620,13 +612,13 @@ func recoverStartupModelPending(
 	}
 	usageUpdate, err := connection.ExecContext(ctx, `
 		UPDATE model_usage
-		SET revision=?, reconciliation_status=?,
+		SET revision=?, usage_status=?,
 			overview_observation_sequence=overview_observation_sequence+1
 		WHERE attempt_id=? AND run_id=? AND revision=?
-		  AND reconciliation_status=?
+		  AND usage_status=?
 	`,
 		int64(nextUsageRevision),
-		modelUsageStatusReconciliation,
+		modelUsageStatusReconciliationPending,
 		input.AttemptID,
 		input.Lease.RunID,
 		usageRevision,
@@ -664,7 +656,7 @@ func recoverStartupModelPending(
 		"",
 		ModelUsageRecord{
 			AttemptID: input.AttemptID, RunID: input.Lease.RunID,
-			Revision: nextUsageRevision, ReconciliationStatus: modelUsageStatusReconciliation,
+			Revision: nextUsageRevision, UsageStatus: modelUsageStatusReconciliationPending,
 		},
 		corecontract.DispatchTransitionStartupRecoveryV1,
 		resourceSemanticDigest,

@@ -26,8 +26,8 @@ type moduleApplyProtocolHandlerKindV1 = modulehandler.KindV1
 
 const (
 	localDocumentInsightModuleID = moduleapi.DocumentInsightModuleIDV1
-	localDocumentInsightVersion  = moduleapi.DocumentInsightVersionV1
-	localDocumentInsightDigest   = moduleapi.DocumentInsightArtifactDigestV1
+	localDocumentInsightVersion  = moduleapi.DocumentInsightVersionV2
+	localDocumentInsightDigest   = moduleapi.DocumentInsightArtifactDigestV2
 
 	moduleApplyHandlerDeclarativeContextV1 = modulehandler.HandlerDeclarativeContextV1
 	moduleApplyHandlerKnowledgeContextV1   = modulehandler.HandlerKnowledgeContextV1
@@ -453,7 +453,7 @@ func validateModuleApplyPortV1(port moduleapi.PortRef) error {
 		return nil
 	default:
 		return errors.New(
-			"only model.generate/v1, action.provider/v1, context.provide/v1, and channel.transport/v1 are supported",
+			"only model.generate/v2, action.provider/v1, context.provide/v1, and channel.transport/v1 are supported",
 		)
 	}
 }

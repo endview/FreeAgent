@@ -79,7 +79,7 @@ func TestMemberSnapshotFailsClosedOnMissingOrDuplicateModelPlan(t *testing.T) {
 	input := validMemberSnapshotInput()
 	input.PortPlans = nil
 	if _, _, err := NewMemberExecutionSnapshot(input); err == nil {
-		t.Fatal("snapshot without model.generate/v1 was accepted")
+		t.Fatal("snapshot without model.generate/v2 was accepted")
 	}
 
 	input = validMemberSnapshotInput()
@@ -102,7 +102,7 @@ func TestMemberSnapshotOptionallyFreezesModelProfileWithoutChangingNilWire(
 		bytes.Contains(baselineCanonical, []byte(`"actions"`)) {
 		t.Fatalf("nil ModelProfile entered the canonical wire: %s", baselineCanonical)
 	}
-	const legacyNoActionDigest = "7ddb95723826e3b35040a2293a2506aba9186dfbf2033625c74f3c76eb81772f"
+	const legacyNoActionDigest = "ea2fd5a5d12d4bbc22a58a4ea44f8925623bfcd9c277fd72d00d8d5bbe4f848c"
 	if baseline.MemberSnapshotDigest != legacyNoActionDigest {
 		t.Fatalf(
 			"no-Action member snapshot identity changed: %s",
@@ -320,7 +320,7 @@ func TestRunManifestNormalizesDeadlineAndBindsMember(t *testing.T) {
 		bytes.Contains(canonical, []byte(`"composite"`)) {
 		t.Fatalf("Pure Chat manifest contains Composite-only fields: %s", canonical)
 	}
-	const pureChatManifestGoldenDigest = "5641b2c8eb85bd04342d2abf22f25bb28d6cf6c3476c369ce60228f7da26863d"
+	const pureChatManifestGoldenDigest = "859dbeb1ba990c299a9768a8fa0c987b135e0fc99082f4097018e227a0a1afa3"
 	if manifest.ManifestDigest != pureChatManifestGoldenDigest {
 		t.Fatalf(
 			"Pure Chat manifest digest=%q want golden %q",
@@ -361,8 +361,8 @@ func TestRunManifestRejectsParentWithoutCompositeAndReferenceDrift(t *testing.T)
 func validMemberSnapshotInput() MemberExecutionSnapshot {
 	digests := func(character string) string { return strings.Repeat(character, 64) }
 	return MemberExecutionSnapshot{
-		SchemaVersion:   MemberExecutionSnapshotSchemaVersionV1,
-		CompilerVersion: AssemblyCompilerVersionV1,
+		SchemaVersion:   MemberExecutionSnapshotSchemaVersionV2,
+		CompilerVersion: AssemblyCompilerVersionV2,
 		Catalog: CatalogSnapshotRef{
 			ID: "runtime-catalog", Version: "1", Digest: digests("1"),
 		},
@@ -374,7 +374,7 @@ func validMemberSnapshotInput() MemberExecutionSnapshot {
 			{
 				Port: moduleapi.PortRef{
 					Name:         moduleapi.PortNameModelGenerate,
-					ExactVersion: moduleapi.PortVersionV1,
+					ExactVersion: moduleapi.PortVersionV2,
 				},
 				Bindings: []moduleapi.PortBinding{
 					validSnapshotBinding(
@@ -388,9 +388,6 @@ func validMemberSnapshotInput() MemberExecutionSnapshot {
 		ContextPolicy: PolicyRef{
 			ID: "policy.context", Version: "1", Digest: digests("8"),
 		},
-		CostPolicy: PolicyRef{
-			ID: "policy.cost", Version: "1", Digest: digests("9"),
-		},
 		SchedulingPolicy: PolicyRef{
 			ID: "policy.scheduling", Version: "1", Digest: digests("a"),
 		},
@@ -400,8 +397,8 @@ func validMemberSnapshotInput() MemberExecutionSnapshot {
 func validRunManifestInput(member MemberExecutionSnapshot) RunManifest {
 	digest := func(character string) string { return strings.Repeat(character, 64) }
 	return RunManifest{
-		SchemaVersion:         RunManifestSchemaVersionV1,
-		CoreRuntimeVersion:    CoreRuntimeVersionV1,
+		SchemaVersion:         RunManifestSchemaVersionV2,
+		CoreRuntimeVersion:    CoreRuntimeVersionV2,
 		AdmissionKey:          "admission-1",
 		AdmissionIntentDigest: digest("b"),
 		RunID:                 "run-1",
@@ -414,7 +411,6 @@ func validRunManifestInput(member MemberExecutionSnapshot) RunManifest {
 		PrimaryMemberID:   member.MemberID,
 		TaskInputRef:      digest("c"),
 		TaskInputDigest:   digest("c"),
-		BudgetPolicy:      member.CostPolicy,
 		CancellationScope: "run",
 		Deadline:          time.Date(2026, time.July, 30, 3, 12, 13, 0, time.UTC),
 		RecoveryRootRef:   "recovery/run-1",

@@ -619,13 +619,13 @@ func loadOverviewUsageV1(
 		items = append(items, controloverview.UsageV1{
 			AttemptID: s.ResourceID, RunID: s.SubjectRun.RunID, TenantID: s.TenantID,
 			WorkspaceID: s.WorkspaceID, Revision: *s.UsageRevision,
-			InputTokens:          cloneOverviewTokenV1(s.InputTokens),
-			CachedInputTokens:    cloneOverviewTokenV1(s.CachedInputTokens),
-			UncachedInputTokens:  cloneOverviewTokenV1(s.UncachedInputTokens),
-			OutputTokens:         cloneOverviewTokenV1(s.OutputTokens),
-			ReasoningTokens:      cloneOverviewTokenV1(s.ReasoningTokens),
-			ReconciliationStatus: s.UsageStatus,
-			UpdatedAtUnixMicros:  s.UpdatedAtUnixMicros,
+			InputTokens:         cloneOverviewTokenV1(s.InputTokens),
+			CachedInputTokens:   cloneOverviewTokenV1(s.CachedInputTokens),
+			UncachedInputTokens: cloneOverviewTokenV1(s.UncachedInputTokens),
+			OutputTokens:        cloneOverviewTokenV1(s.OutputTokens),
+			ReasoningTokens:     cloneOverviewTokenV1(s.ReasoningTokens),
+			UsageStatus:         s.UsageStatus,
+			UpdatedAtUnixMicros: s.UpdatedAtUnixMicros,
 		})
 	}
 	items, truncated := trimOverviewPageV1(items, limit)
@@ -634,7 +634,7 @@ func loadOverviewUsageV1(
 func validOverviewUsageStatusStoreV1(value string) bool {
 	switch value {
 	case modelUsageStatusPending, modelUsageStatusReported,
-		modelUsageStatusNoReport, modelUsageStatusReconciliation:
+		modelUsageStatusNoReport, modelUsageStatusReconciliationPending:
 		return true
 	default:
 		return false

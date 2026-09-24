@@ -15,6 +15,9 @@ const files = [
   "src/contracts.ts",
   "src/main.tsx",
   "src/modules-ui.tsx",
+  "src/upgrade-reviews-ui.tsx",
+  "src/management-ui.tsx",
+  "src/management.ts",
   "src/modules.ts",
   "src/overview.ts",
   "src/session.ts",
@@ -23,6 +26,59 @@ const files = [
 ];
 const sources = new Map(files.map((path) => [path, readFileSync(path, "utf8")]));
 const source = [...sources.values()].join("\n");
+
+const readCatalog = (path) => {
+  const text = sources.get(path) ?? "";
+  const entries = new Map();
+  for (const match of text.matchAll(/"([^"\n]+)":\s*"((?:[^"\\]|\\.)*)"/gu)) {
+    entries.set(match[1], match[2]);
+  }
+  if (entries.size === 0) throw new Error(`[I18N_CATALOG_EMPTY] ${path}`);
+  return entries;
+};
+
+const interpolationNames = (template) => [...new Set(
+  [...template.matchAll(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/gu)].map((match) => match[1])
+)].sort();
+
+const fallbackCatalog = readCatalog("src/i18n/catalogs/en-US.ts");
+const zhCatalog = readCatalog("src/i18n/catalogs/zh-CN.ts");
+if (
+  fallbackCatalog.size !== zhCatalog.size ||
+  [...fallbackCatalog.keys()].some((key) => !zhCatalog.has(key)) ||
+  [...zhCatalog.keys()].some((key) => !fallbackCatalog.has(key))
+) {
+  throw new Error("[I18N_CATALOG_KEYS_MISMATCH] en-US and zh-CN must expose the same keys");
+}
+for (const [key, template] of fallbackCatalog) {
+  const expected = interpolationNames(template);
+  const actual = interpolationNames(zhCatalog.get(key));
+  if (expected.join("\n") !== actual.join("\n")) {
+    throw new Error(`[I18N_CATALOG_PARAMETERS_MISMATCH] ${key}`);
+  }
+}
+
+const translationCallFiles = ["src/app.tsx", "src/ui.tsx", "src/modules-ui.tsx", "src/upgrade-reviews-ui.tsx", "src/management-ui.tsx", "src/overview.ts"];
+for (const path of translationCallFiles) {
+  const text = sources.get(path) ?? "";
+  for (const match of text.matchAll(/\bt\(\s*["']([^"']+)["']/gu)) {
+    if (!fallbackCatalog.has(match[1])) {
+      throw new Error(`[I18N_KEY_MISSING] ${path}:${match[1]}`);
+    }
+  }
+}
+
+for (const path of ["src/app.tsx", "src/ui.tsx", "src/modules-ui.tsx", "src/upgrade-reviews-ui.tsx", "src/management-ui.tsx"]) {
+  const text = sources.get(path) ?? "";
+  for (const match of text.matchAll(/<(?:p|h[1-6]|span|strong|small|dt|dd|button|a|label|option)[^>]*>\s*([A-Za-z][^<{]*?)\s*<\/(?:p|h[1-6]|span|strong|small|dt|dd|button|a|label|option)>/gu)) {
+    if (match[1].trim() !== "F") {
+      throw new Error(`[I18N_HARDCODED_JSX_TEXT] ${path}:${match[1].trim()}`);
+    }
+  }
+  if (/\b(?:aria-label|placeholder|title)\s*=\s*["'][^"']+["']/u.test(text)) {
+    throw new Error(`[I18N_HARDCODED_ATTRIBUTE] ${path}`);
+  }
+}
 
 const occurrences = (text, pattern) => [...text.matchAll(pattern)].length;
 const requireCount = (path, label, pattern, expected) => {
@@ -85,10 +141,15 @@ if (!/\bsessionStorage\b/u.test(sources.get("src/session.ts") ?? "")) {
 const expectedAPIPathsByFile = new Map([
   ["src/overview.ts", ["/control/api/v1/overview"]],
   ["src/modules.ts", [
+    "/control/api/v1/module-upgrade-reviews",
     "/control/api/v1/modules",
     "/control/api/v1/modules/disable/confirmation",
     "/control/api/v1/modules/disable/dry-run",
     "/control/api/v1/modules/disable/mutate"
+  ]],
+  ["src/management.ts", [
+    "/control/api/v1/store-management",
+    "/control/api/v1/unknown-outcomes"
   ]]
 ]);
 for (const [path, text] of sources) {
@@ -122,7 +183,9 @@ const methodPolicy = new Map([
   ["src/contracts.ts", { GET: 0, POST: 0 }],
   ["src/main.tsx", { GET: 0, POST: 0 }],
   ["src/modules-ui.tsx", { GET: 0, POST: 0 }],
-  ["src/modules.ts", { GET: 2, POST: 3 }],
+  ["src/management-ui.tsx", { GET: 0, POST: 0 }],
+  ["src/management.ts", { GET: 1, POST: 0 }],
+  ["src/modules.ts", { GET: 4, POST: 3 }],
   ["src/overview.ts", { GET: 1, POST: 0 }],
   ["src/session.ts", { GET: 0, POST: 2 }],
   ["src/ui.tsx", { GET: 0, POST: 0 }]
@@ -146,6 +209,7 @@ for (const path of [
   "src/contracts.ts",
   "src/main.tsx",
   "src/modules-ui.tsx",
+  "src/management-ui.tsx",
   "src/ui.tsx",
   ...i18nFiles
 ]) {

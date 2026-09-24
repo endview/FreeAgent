@@ -10,7 +10,7 @@
         "kind": "COMPOSITE",
         "persona": "Prioritize interfaces, constraints, weights, tradeoffs, and integration order.",
         "trust": 0.9,
-        "cost_weight": 1.2,
+        "selection_weight": 1.2,
         "domains": [
           {"domain": "backend", "capability": 0.85, "authority": 0.75, "aliases": [{"text": "backend", "weight": 1}, {"text": "后端", "weight": 1}]},
           {"domain": "frontend", "capability": 0.85, "authority": 0.75, "aliases": [{"text": "frontend", "weight": 1}, {"text": "前端", "weight": 1}]},
@@ -29,7 +29,7 @@
         "kind": "SPECIALIST",
         "persona": "Produce concrete frontend behavior, interaction, state, accessibility, and implementation details.",
         "trust": 0.88,
-        "cost_weight": 1,
+        "selection_weight": 1,
         "domains": [
           {"domain": "frontend", "capability": 0.95, "authority": 0.9, "aliases": [{"text": "frontend", "weight": 1}, {"text": "前端", "weight": 1}]}
         ],
@@ -46,7 +46,7 @@
         "kind": "SPECIALIST",
         "persona": "Produce concrete backend contracts, persistence, concurrency, reliability, and failure semantics.",
         "trust": 0.9,
-        "cost_weight": 1,
+        "selection_weight": 1,
         "domains": [
           {"domain": "backend", "capability": 0.96, "authority": 0.92, "aliases": [{"text": "backend", "weight": 1}, {"text": "后端", "weight": 1}]}
         ],
@@ -63,7 +63,7 @@
         "kind": "REVIEWER",
         "persona": "Fail closed on unsupported claims, missing interfaces, unresolved conflicts, and unreviewed changes.",
         "trust": 0.95,
-        "cost_weight": 1,
+        "selection_weight": 1,
         "domains": [
           {"domain": "backend", "capability": 0.85, "authority": 0.95, "aliases": []},
           {"domain": "frontend", "capability": 0.85, "authority": 0.95, "aliases": []},

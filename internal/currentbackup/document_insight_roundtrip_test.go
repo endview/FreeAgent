@@ -195,7 +195,7 @@ func TestW2E5BDocumentInsightBackupSemanticTamperingFailsClosed(t *testing.T) {
 					manifest.Requires = nil
 				})
 			},
-			wantDetail: "must require only exact model.generate/v1",
+			wantDetail: "must require only exact model.generate/v2",
 		},
 		{
 			name: "Manifest missing knowledge permission",
@@ -317,7 +317,7 @@ func newDocumentInsightBackupFixture(t *testing.T) documentInsightBackupFixture 
 		filepath.Dir(exampleSeedPath(t)),
 		"bootstrap-artifacts",
 		"freeagent.builtin.document-insight",
-		"1.0.0",
+		"2.0.0",
 	)
 	manifestBytes, err := os.ReadFile(filepath.Join(
 		artifactDirectory,

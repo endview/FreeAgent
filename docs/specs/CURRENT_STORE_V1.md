@@ -1,6 +1,8 @@
 # CURRENT_STORE_V1
 
-状态：**S1 Schema Draft / S1–W5 已验收开发基线 + W2-D 本地显式装配 v1、W2-E2 受信 `text.stats` 统一 Apply、W2-E3 Workspace Channel Apply、W2-E4 DeepSeek Model replacement、W2-E5-A Requires/permission grant、W2-E5-B Document Insight 双 Port、W2-R1 窄 REMOTE Action Host、W2-R2 窄 WASM Action Host、W2-R3 第三方纯计算/停机撤权、W2-U2 Source/Snapshot observation、W2-U3 Upgrade Review、W2-U4 approved Declarative Profile Context replacement、W6-0 控制 API 纯合同、W6-1 Application Services / Read API、W6-2 confirmation/durable receipt/MODULE_DISABLE wiring、W6-3 Web Shell/read-only Overview、W6-4 Modules configuration UI 与 W6-5 server-owned module artifact ingress 已验收开发切片；`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`（首次公开发布前可显式重建）**  
+> Current phase override (2026-09-22): P2 Control UI i18n and the P3 Provider contract freeze are accepted development slices; the next entry is `P3_SECOND_PROVIDER_NEXT`. See [`P3_PROVIDER_CONTRACT_V1`](../P3_PROVIDER_CONTRACT_V1.md).
+
+状态：**S1 Schema Draft / S1–W5 已验收开发基线 + W2-D 本地显式装配 v1、W2-E2 受信 `text.stats` 统一 Apply、W2-E3 Workspace Channel Apply、W2-E4 DeepSeek Model replacement、W2-E5-A Requires/permission grant、W2-E5-B Document Insight 双 Port、W2-R1 窄 REMOTE Action Host、W2-R2 窄 WASM Action Host、W2-R3 第三方纯计算/停机撤权、W2-U2 Source/Snapshot observation、W2-U3 Upgrade Review、W2-U4 approved Declarative Profile Context replacement、W6-0 控制 API 纯合同、W6-1 Application Services / Read API、W6-2 confirmation/durable receipt/MODULE_DISABLE wiring、W6-3 Web Shell/read-only Overview、W6-4 Modules configuration UI、W6-5 server-owned module artifact ingress 与 W6.6 server-owned Upgrade Review、P2 Control UI i18n、P3 Provider contract freeze 已验收开发切片；当前下一入口为 `P3_SECOND_PROVIDER_NEXT`。P3 不新增 Store 表或 writer。FAC2 当前 UserVersion 为 2；首次公开发布前仍可显式重建**
 Machine status: `S1_SCHEMA_DRAFT_DEVELOPMENT_BASELINE_ACCEPTED`  
 Schema status: `S1_SCHEMA_DRAFT`  
 S2.1 status: `S2.1_CONTEXT_COMPILER_ACCEPTED_DEVELOPMENT_SLICE`  
@@ -35,10 +37,13 @@ W6-2 durable receipt Schema status: `W6_2_DURABLE_RECEIPT_SCHEMA_ACCEPTED_DEVELO
 W6-2 MODULE_DISABLE mutation wiring historical status: `W6_2_MODULE_DISABLE_MUTATION_WIRING_ACCEPTED_DEVELOPMENT_SLICE / W6_3_WEB_SHELL_READ_ONLY_OVERVIEW_NEXT`  
 W6-3 Web Shell/read-only Overview historical status: `W6_3_WEB_SHELL_READ_ONLY_OVERVIEW_ACCEPTED_DEVELOPMENT_SLICE / W6_4_MODULES_CONFIGURATION_UI_NEXT`  
 W6-4 Modules configuration UI historical status: `W6_4_MODULES_CONFIGURATION_UI_ACCEPTED_DEVELOPMENT_SLICE / W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT`  
-W6-5 server-owned module artifact ingress status: `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`  
+W6-5 server-owned module artifact ingress status: `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`（历史 marker）
+W6.6 server-owned Upgrade Review status: `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_NEXT`
 Implementation status: `S1_ACCEPTED_DEVELOPMENT_BASELINE / S2.1_CONTEXT_COMPILER_ACCEPTED_DEVELOPMENT_SLICE / S2_MODEL_PROFILE_ACCEPTED_DEVELOPMENT_SLICE / S2_RAG_ACCEPTED_DEVELOPMENT_SLICE / S2_MEMORY_ACCEPTED_DEVELOPMENT_SLICE / S2_ACTION_GATEWAY_ACCEPTED_DEVELOPMENT_SLICE / S2_MCP_LOCAL_PROCESS_STDIO_TOOL_ACCEPTED_DEVELOPMENT_SLICE / S2_CHANNEL_ACCEPTED_DEVELOPMENT_SLICE / S2_PARENT_CHILD_COMPOSITE_ACCEPTED_DEVELOPMENT_SLICE / S3_FAIR_SCHEDULER_ACCEPTED_DEVELOPMENT_SLICE / S3_COMPOSITE_REVIEW_GATE_ACCEPTED_DEVELOPMENT_SLICE / W2_D_LOCAL_ASSEMBLY_ACCEPTED_DEVELOPMENT_SLICE / W2_E2_TRUSTED_TEXT_STATS_APPLY_ACCEPTED_DEVELOPMENT_SLICE / W2_E3_WORKSPACE_CHANNEL_APPLY_ACCEPTED_DEVELOPMENT_SLICE / W2_E4_DEEPSEEK_MODEL_REPLACEMENT_ACCEPTED_DEVELOPMENT_SLICE / W2_E5_A_REQUIRES_PERMISSION_GRANT_ACCEPTED_DEVELOPMENT_SLICE / W2_E5_B_DOCUMENT_INSIGHT_DUAL_PORT_ACCEPTED_DEVELOPMENT_SLICE / W2_R1_REMOTE_ACTION_HOST_ACCEPTED_DEVELOPMENT_SLICE / W2_R2_WASM_HOST_ACCEPTED_DEVELOPMENT_SLICE / W2_R3_UNTRUSTED_MODULE_ISOLATION_ACCEPTED_DEVELOPMENT_SLICE / W2_U2_DISCOVERY_SNAPSHOT_ACCEPTED_DEVELOPMENT_SLICE / W2_U3_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / W2_U4_OPERATOR_APPLY_ACCEPTED_DEVELOPMENT_SLICE / W1_COMPLETE_REAL_DEEPSEEK_50 / W4_L1A_KNOWLEDGE_PROPOSAL_STORE_ACCEPTED_DEVELOPMENT_SLICE / W4_L1B_STATIC_SKILL_PROPOSAL_STORE_ACCEPTED_DEVELOPMENT_SLICE / W4_L2_LEARNING_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / W4_L3_LEARNING_VERSION_ACCEPTED_DEVELOPMENT_SLICE / W4_L4_LEARNING_CYCLE_ACCEPTED_DEVELOPMENT_SLICE / W4_COMPLETE_ACCEPTED_DEVELOPMENT_SLICE / W5_X1_WORKSPACE_TRANSFER_ACCEPTED_DEVELOPMENT_SLICE / W5_F1_COLLABORATION_STABILITY_ACCEPTED_DEVELOPMENT_SLICE / W5_COMPLETE_ACCEPTED_DEVELOPMENT_SLICE / W6_1_APPLICATION_SERVICES_READ_API_ACCEPTED_DEVELOPMENT_SLICE / W6_2_CONFIRMATION_CONTRACT_ACCEPTED_DEVELOPMENT_SLICE / W6_2_DURABLE_RECEIPT_SCHEMA_ACCEPTED_DEVELOPMENT_SLICE / W6_2_MODULE_DISABLE_MUTATION_WIRING_ACCEPTED_DEVELOPMENT_SLICE / W6_3_WEB_SHELL_READ_ONLY_OVERVIEW_ACCEPTED_DEVELOPMENT_SLICE / W6_4_MODULES_CONFIGURATION_UI_ACCEPTED_DEVELOPMENT_SLICE / W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE`  
-适用范围：FreeAgent Current Store、W2-D 本地显式装配 v1、W2-E2/E3/E4/E5-A/E5-B/R1/R2/R3/U2/U3/U4 窄增量、Pure Chat/Context/ModelProfile/RAG/Memory/Action/窄 MCP 本地 Tool/窄 REMOTE Action/窄 WASM Action/显式 Source/Snapshot observation/离线 Upgrade Review/approved Declarative Profile Context replacement/可选 Channel、Parent/Child + Composite、默认关闭的公平 Scheduler、可选 Reviewer、W5 单轮 repair Decision family、同 Tenant 跨 Workspace Transfer 及其 F1 公平/取消/恢复稳定性、W1 Conversation、W4 Learning 开发切片、W6-1 默认关闭的只读/Dry-run Control consumer、W6-2 process-local confirmation authority、durable receipt Schema、MODULE_DISABLE operation commit、NO_CHANGE/APPLIED 同事务 publication、W6-3 Overview observation closure、W6-4 对既有 Modules/Disable surface 的浏览器 consumer、W6-5 server-owned inert Artifact/append-only Admission 与 installation∪ingress Backup closure，以及一次性干净切换  
+适用范围：FreeAgent Current Store、W2-D 本地显式装配 v1、W2-E2/E3/E4/E5-A/E5-B/R1/R2/R3/U2/U3/U4 窄增量、Pure Chat/Context/ModelProfile/RAG/Memory/Action/窄 MCP 本地 Tool/窄 REMOTE Action/窄 WASM Action/显式 Source/Snapshot observation/离线 Upgrade Review/approved Declarative Profile Context replacement/可选 Channel、Parent/Child + Composite、默认关闭的公平 Scheduler、可选 Reviewer、W5 单轮 repair Decision family、同 Tenant 跨 Workspace Transfer 及其 F1 公平/取消/恢复稳定性、W1 Conversation、W4 Learning 开发切片、W6-1 默认关闭的只读/Dry-run Control consumer、W6-2 process-local confirmation authority、durable receipt Schema、MODULE_DISABLE operation commit、NO_CHANGE/APPLIED 同事务 publication、W6-3 Overview observation closure、W6-4 对既有 Modules/Disable surface 的浏览器 consumer、W6-5 server-owned inert Artifact/append-only Admission 与 installation∪ingress Backup closure、W6.6 server-owned Review/Decision closure，以及一次性干净切换
 配套规格：`CORE_RUNTIME_V1`、`CUTOVER_ACCEPTANCE`
+
+> 金额边界：`P0_MONEY_BUDGET_REMOVED_FAC2_BASELINE`；当前 Store 语义已删除 `model_price_snapshots` 表、`BudgetPolicy`/`CostPolicy` 与全部金额列，`LoopFrame` 只保留 `UsageLedgerRef`。本文件中出现的 `CNY`、估算费用与 PriceSnapshot 字样一律是删除前 FAC1 时期的冻结历史验收证据，不描述当前运行语义；冻结记录见 [`P0_BASELINE_FREEZE`](../P0_BASELINE_FREEZE.md)
 
 本文中的“必须”“不得”“应当”均为实现约束。
 
@@ -172,7 +177,7 @@ REMOTE、完整 MCP 或 WASM。
 
 ## 3. Store identity
 
-### 3.1 S1 identity
+### 3.1 S1 historical identity
 
 S1 已冻结并实现下列身份：
 
@@ -186,6 +191,26 @@ S1 已冻结并实现下列身份：
 
 `application_id`、`user_version`、`schema_identity`、`schema_fingerprint` 和
 `generator_id` 必须同时匹配。只匹配其中一项不能视为 Current Store。
+
+### 3.1.1 Current FAC2 identity
+
+P0 金额退场建立 FAC2，W6.6 通过显式前向 migration 将其推进到 UserVersion 2：
+
+| 字段 | 当前值 |
+|---|---|
+| `schema_identity` | `github.com/endview/freeagent/current-store-v2` |
+| SQLite `application_id` | `0x46414332`，十进制 `1178682162`，ASCII `FAC2` |
+| SQLite `user_version` | `2` |
+| `generator_id` | `freeagent-current-store-v2` |
+| migration 文件 | `0001_current.sql`（字节冻结）与 `0002_server_owned_review.sql` |
+| 当前 schema fingerprint | `d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e` |
+
+当前 FAC2 为 42 ordinary tables、26 explicit indexes、64 triggers。`0001_current.sql` 的
+bootstrap digest 为 `dbc3e724a1f7c030677c84a77a317f69ef2fe246985cc749559a9f3dd5a6dc5a`
+（149,239 bytes）；`0002_server_owned_review.sql` 为 7,173 bytes，digest 为
+`3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`。普通 Runtime open 不执行
+migration；v1→v2 只允许在 offline owner lease 下先完成并验证 backup，再执行连续前向步骤，失败关闭。
+未知或未来 UserVersion、非 FAC2 application_id 与任何 fingerprint drift 均拒绝。
 
 ### 3.2 初始化与打开
 
@@ -209,7 +234,7 @@ currentbackup.VerifyCurrentStoreSemanticClosure
 - `OpenExistingCurrentStore` 只验证并打开完全匹配的新 Store，不执行 migration、
   seed、repair 或 recovery mutation。
 - `VerifyCurrentStoreReadOnly` 使用只读连接，不能经过会写入的普通启动路径。
-- `PrepareClosedCurrentStoreForPublication` 只把已经关闭且已验证的 FAC1 Store
+- `PrepareClosedCurrentStoreForPublication` 只把已经关闭且已验证的 FAC2 Store
   整理为可原子发布的单文件；它不导入 seed，也不启动 Runtime。
 - `VerifyCurrentStoreSemanticClosure` 使用只读连接执行与完整 bundle 相同的数据库语义
   闭包检查，不加载 artifact、Adapter 或 Secret；显式 Channel composition 在启动恢复后、
@@ -221,7 +246,8 @@ currentbackup.VerifyCurrentStoreSemanticClosure
 `OpenExistingCurrentStore` 遇到缺失数据库时都必须失败，不能隐式初始化。
 
 任何不匹配的新旧数据库都返回结构化 identity 错误。新二进制不得探测旧版本后
-选择 decoder，也不得把其他 `application_id` 改写为 `FAC1`。
+选择 decoder，也不得把其他 `application_id` 改写为 `FAC2`。FAC1 数据库不迁移、不修改，
+由旧版本或外部 operator-held archive 保全。
 
 ### 3.3 Schema fingerprint
 
@@ -244,37 +270,42 @@ currentbackup.VerifyCurrentStoreSemanticClosure
 - 备份 manifest；
 - 架构验收 golden file。
 
-当前 FAC1 Store 为 43 张 ordinary table、25 个 explicit indexes 与 64 个 triggers。W6-3 在 W6-2 的 33 表上
+FAC1 历史 Store 为 43 张 ordinary table、25 个 explicit indexes 与 64 个 triggers。W6-3 在 W6-2 的 33 表上
 增加 `run_observation_heads`、`run_observation_snapshots` 及六张 `overview_basis_*` /
 `overview_resource_*` observation 表；W6-5 再增加 `module_artifacts` 与 append-only
 `module_artifact_admissions`；W6-2 则曾在 W2-U3 的 32 表上只增加 append-only
 `control_operation_receipts`。W2-U2 在 R2 的 24 表上增加 Publisher Key、Source、Snapshot、全局
 ModuleRef→ArtifactDigest 与 Snapshot Entry 五张 observation fact 表，U3 再增加全局 Candidate、
 Tenant-scoped Review 与 exact-Review terminal Decision 三张不可变 fact 表；没有新增第二 Store、Gateway、
-Catalog pointer、handler registry 或效果账本。当前 `0001_current.sql` 对应的 schema
+Catalog pointer、handler registry 或效果账本。FAC1 历史 `0001_current.sql` 对应的 schema
 fingerprint 为：
 
 ```text
 47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d
 ```
 
-该值是二进制中的只读常量 `ExpectedSchemaFingerprint`。运行时计算值、二进制
+该值是 FAC1 历史二进制中的只读常量。当前 FAC2 的 `ExpectedSchemaFingerprint` 为
+`d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`；运行时计算值、二进制
 预期值、`store_meta` 值和备份 manifest 中的值任一不一致时均拒绝打开或恢复。
 `TestSchemaFingerprintIsFrozenAndDetectsDrift` 固定该 golden，并证明新增 schema
 对象会改变 fingerprint；迁移内容变化时必须先更新 fingerprint，再按 Draft
 重建流程重新验收。
 
-当前 `0001_current.sql` 文件 SHA-256 同时冻结为：
+FAC1 历史 `0001_current.sql` 文件 SHA-256 为：
 
 ```text
 6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86
 ```
 
-当前迁移构件大小为 `150301` bytes。该文件摘要记录迁移构件本身；它不能替代从实际 SQLite schema 重算的上述
-`schema_fingerprint`，二者均须独立匹配。
+FAC1 历史迁移构件大小为 `150301` bytes。当前 FAC2 `0001_current.sql` 为 149,239 bytes /
+`dbc3e724a1f7c030677c84a77a317f69ef2fe246985cc749559a9f3dd5a6dc5a`，`0002_server_owned_review.sql`
+为 7,173 bytes / `3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`。每个文件摘要记录
+迁移构件本身；它不能替代从实际 SQLite schema 重算的 `schema_fingerprint`，二者均须独立匹配。
 
-上述 fingerprint、migration SHA-256 与 size 对应当前 **43-table / 25-explicit-index / 64-trigger W6-5
-server-owned module artifact ingress accepted development schema**。W6-3/W6-4 的历史 41 表 identity
+上述第一组 fingerprint、migration SHA-256 与 size 对应 **43-table / 25-explicit-index / 64-trigger
+FAC1 W6-5 server-owned module artifact ingress historical schema**。当前 FAC2 W6.6 schema 为
+**42-table / 26-explicit-index / 64-trigger / UserVersion 2**，并通过 `0002_server_owned_review.sql`
+加入 Review 的 Admission/operator/request-digest 关系投影。W6-3/W6-4 的历史 41 表 identity
 `87d63a2e468ee27ee2c0e1918a92e580532825bde85dbb872b9c795bf577f2c1`、migration `143588` bytes /
 SHA-256 `5bd9743e988b82750f785c015f07c11fbcf6025da70148405aec11106b4efb22` 只表示对应历史切片。
 W6-2 durable receipt Schema 的历史 33 表 identity
@@ -316,8 +347,8 @@ L1B 的 fingerprint
 当前数值包含 §23.6 的 W4-L4 能力、§24 的 W5-X1 ContentKind 约束、§25 的 F1 稳定性合同、
 §26 的 REMOTE Activation、§27 的 WASM Activation execution-class 约束、§30 的 U2 observation facts
 与 §31 的 U3 review facts、W6-3 的 Run/resource/basis observation closure，以及 W6-5 的 inert Artifact/Admission；F1、R1 和 R2 均未新增表。
-该数值不表示后台 Worker、自动 Review/Materialize/Apply、主动外部检索、W2 通用装配总工作包、W6-6/W7
-或生产部署已经实现。
+该数值不表示后台 Worker、自动 Materialize/Apply、主动外部检索、W2 通用装配总工作包、P2/P3/P4/P5
+或生产部署已经实现；W6.6 的 Review/Decision 也不自动产生生命周期外部效果。
 
 ## 4. 数据编码约定
 
@@ -329,7 +360,6 @@ L1B 的 fingerprint
 | Canonical JSON | UTF-8 `BLOB`，写入前完成规范化与摘要校验 |
 | Digest | 64 字符小写十六进制 `TEXT` |
 | Token | 非负 `INTEGER`；未知为 `NULL` |
-| 金额 | 规范非负 decimal 字符串；`0` 或无前导零的非零整数，可带非空且无尾零的小数部分；禁止 SQLite `REAL` |
 | Secret | 只保存 `SecretRef` 身份，禁止保存明文 Secret |
 
 所有连接必须启用并验证：
@@ -369,9 +399,12 @@ Instance ID 和 revision。Run deadline、模型 deadline 等由业务契约明�
 备份恢复必须原样保留 `store_instance_id` 和运行元数据；seed 重建必须生成新的
 `store_instance_id` 和初始化时间。两种流程不得使用同一套“字节一致”比较标准。
 
-## 5. `0001_current.sql`：当前最小表集
+## 5. FAC2 当前最小表集与迁移后投影
 
-当前 Draft 固定为 **43 张 ordinary table**。前 20 张构成已验收的 S1–S3 历史基线：
+FAC1 的 `0001_current.sql` 43 表谱系只作为历史记录。当前 FAC2 固定为 **42 张 ordinary table**；
+`0001_current.sql` 提供 UserVersion 1 的 42 表 bootstrap，`0002_server_owned_review.sql` 将 UserVersion
+推进到 2，并只为 `module_upgrade_reviews` 增加 server-owned Admission/operator/request-digest 投影列和
+查询索引，不增加 ordinary table。前 20 张构成已验收的 S1–S3 历史基线：
 Memory、Action/Gateway、Channel 和公平 Scheduler 各只在有真实消费者时加入一张必要表。
 W1 第一开发切片加入 `conversations`；W4-L1A/L1B 当前开发切片只再加入并复用
 `learning_proposals`，W4-L2 Review 与 W4-L3 Version 继续复用该表；W4-L4 只新增 Schedule 与
@@ -379,7 +412,7 @@ Task 两张窄表。W5-D1/X1 继续保持当时的 24 表，只复用 family Run
 `content_records`；W2-U2 再增加五张 Source/Snapshot observation fact 表；W2-U3 增加三张不可变
 Candidate/Review/Decision fact 表；W6-2 durable receipt Schema 只增加第 33 张 append-only
 `control_operation_receipts`；W6-3 再增加第 34–41 张 Run/resource/basis observation closure 表；W6-5 增加
-第 42 张 immutable `module_artifacts` 与第 43 张 append-only `module_artifact_admissions`。没有 Session、
+当前第 41 张 immutable `module_artifacts` 与第 42 张 append-only `module_artifact_admissions`。没有 Session、
 conversation history/summary/usage 第二表族、
 ActionProposal 专表、Scheduler job/queue 表、Channel Outbox 专表、Learning Review/
 Version/report/queue/worker 专表、Upgrade queue/reservation/stage/downloader/Apply 专表、兼容表、shadow 表
@@ -396,10 +429,14 @@ S3-B 保持 20 表。W1 当时新增第 21 张 `conversations`，W4-L1A 新增�
 ModuleRef 与 ordered entry observation fact 表；W2-U3 新增第 30–32 张 Candidate、Review 与 Decision 表。
 W6-2 receipt Schema 新增第 33 张 `control_operation_receipts`；W6-3 新增第 34–41 张 observation 表；W6-5
 新增第 42、43 张 Artifact/Admission 表。
+上述 19→43 的表数谱系属于金额退场前的 FAC1 历史，只证明 FAC1 各切片当时的事实。
+FAC2 基线在 `P0_MONEY_BUDGET_REMOVED_FAC2_BASELINE` 中删除 `model_price_snapshots`，
+当前 ordinary table 总数为 **42**；FAC1 的 43 表数值不再是当前门禁值。
 当前 fingerprint、migration digest 与大小已经按 §3.3 重算并冻结；
 S2/S3 的 19/20 表及 W1 的 21 表数值只作对应历史验收证据保留。
-下表编号按能力首次引入的历史顺序给出，不是 SQL `CREATE TABLE` 的物理排列顺序；
-表名集合必须与 migration 的 43 张 ordinary table 完全一致；当前 identity 以 §3.3 为准。
+下表编号是当前 FAC2 42 表集合的呈现序号，大体沿用能力首次引入顺序，
+既不是 SQL `CREATE TABLE` 的物理排列顺序，也不再等同于 FAC1 的历史引入编号；
+表名集合必须与 migration 的 42 张 ordinary table 完全一致；当前 identity 以 §3.3 为准。
 
 | # | 表 | 权威事实 | 最小键与重要字段 |
 |---:|---|---|---|
@@ -413,39 +450,38 @@ S2/S3 的 19/20 表及 W1 的 21 表数值只作对应历史验收证据保留�
 | 8 | `member_execution_snapshots` | Run 成员的冻结 PortPlan 与授予结果 | `(run ID, member ID)` 主键、Agent/Workspace/Profile refs、control/catalog refs、canonical JSON、digest |
 | 9 | `runs` | Admission 幂等映射、nullable Conversation/family 投影与 Run 生命周期当前状态 | run ID、tenant/workspace IDs、admission key/intent digest、state/disposition/revision；含 Conversation ID/turn/predecessor 三列与 parent run/manifest/slot、cancel request ref |
 | 10 | `run_manifests` | Run 的不可变恢复根 | run ID PK、canonical JSON、digest、published at |
-| 11 | `loop_frames` | Run 当前续跑位置与 owner fencing | run ID PK、frame revision、step、budget state ref、continuation、model/action 两个互斥 pending refs、waiting reason、last authoritative event、lease owner/epoch/expiry |
+| 11 | `loop_frames` | Run 当前续跑位置与 owner fencing | run ID PK、frame revision、step、usage ledger ref、continuation、model/action 两个互斥 pending refs、waiting reason、last authoritative event、lease owner/epoch/expiry |
 | 12 | `run_events` | 仅追加的权威状态变更审计序列 | run ID + event sequence、event kind、from/to revision、payload ref/digest、created at |
-| 13 | `model_price_snapshots` | 模型调用采用的不可变价格语义 | price snapshot ID、provider/model/billing version、currency、pricing status/JSON、digest |
-| 14 | `model_dispatch_attempts` | 一次冻结模型调用及其对账状态 | attempt ID、logical operation key、run/member/frame refs、binding/request/price refs、state、provider request/result/error/evidence refs、revision |
-| 15 | `model_usage` | Attempt 的规范化 Usage 与成本 | attempt ID PK、run ID、ledger sequence、revision、token 字段、估算/上报/对账成本、状态、raw receipt ref |
-| 16 | `history_entries` | 已提交给 Run 的规范消息历史 | run ID + history sequence、member/role、content ref/digest、source attempt ref、created at |
-| 17 | `agent_memory_revisions` | Agent 轻量记忆的不可变 revision 链 | tenant ID + stable agent ID + revision、snapshot ref、source attempt ref、created at |
-| 18 | `dispatch_attempts` | Action 与 Channel 外部效果执行及对账的唯一账本 | dispatch kind、attempt/logical operation、run/member/frame、冻结 binding、按 kind 互斥的 action/channel proposal 字段、effect、state/result/receipt/evidence、revision |
-| 19 | `channel_ingress_receipts` | Workspace-scoped Cursor revision、入站 Event 去重及 Channel Admission 映射 | tenant/workspace/endpoint/scope/revision、before/after Cursor refs、binding digest、disposition、Ingress/Event/Envelope identity、Principal/ACL/Admission/Run refs |
-| 20 | `workspace_scheduler_state` | 每个 Tenant/Workspace 的重启安全公平服务计数 | `(tenant_id, workspace_id)` 主键、served units、revision、updated at；不保存 runnable、permit 或结果 |
-| 21 | `conversations` | Conversation 固定五元组、当前 head 与 CAS revision | conversation ID PK、tenant/principal/workspace/agent/profile IDs、nullable unique head run ID、revision、created/updated at |
-| 22 | `learning_proposals` | W4-L1A/L1B 的不可变 Knowledge/静态 Skill 候选、去重投影与精确 proposer lineage；W4-L2 审核状态；W4-L3 无权限不可变 Version | Proposal ID PK、tenant/kind、source/content/draft fingerprints、target ref、Proposal/Draft canonical bytes、proposer Run/Manifest/Member/Attempt/Result refs、nullable unique `review_run_id`/`reviewer_attempt_id`、state/revision；all-or-none Version canonical/size/ID、ArtifactDigest/size、APPROVE Verdict digest、materialized at；created/updated at |
-| 23 | `learning_cycle_schedules` | 默认关闭的不可变周期策略与 Store-owned enablement/watermark | `(tenant_id, schedule_id)` PK、Schedule canonical/digest、enabled、revision、nullable last scheduled、next due、created/updated at |
-| 24 | `learning_cycle_tasks` | 每个逻辑到期窗口的不可变 request、普通 Run/Attempt/Result/Proposal 投影与终态 | TaskID PK、tenant/schedule/digest、scheduled for、request canonical/digest、state/revision、nullable unique Run/Attempt、Result/Proposal refs、created/updated at；每 Schedule 同时最多一个 open Task |
-| 25 | `module_publisher_keys` | Operator 导入的 exact Publisher Key 与全局不可逆 current revocation | PublisherKeyID PK、canonical bytes、revision、imported/revoked at；revocation 不改写历史 Snapshot |
-| 26 | `module_sources` | SourceID 的 current Source Policy 与 observation head | SourceID PK、Policy ID/canonical、Kind、OriginDigest、nullable PublisherKeyID、policy/observation revision、nullable current Snapshot、registered/updated at；Kind/OriginDigest 不可改绑 |
-| 27 | `module_discovery_snapshots` | 一次不可变 Source observation 的完整 parent closure | SnapshotID PK、Source/Policy/Index IDs 与 canonical bytes、Policy/Key/observation revisions、observed at；不保存路径或 URL 明文 |
-| 28 | `module_discovery_module_refs` | 全局 `ModuleID + opaque exact Version → ArtifactDigest` 冲突门禁 | ModuleRef PK、ArtifactDigest、首次 Source/Snapshot；与 Installation/materialized Learning Version 双向闭合 |
-| 29 | `module_discovery_entries` | Snapshot 的有序 authority-free Index entries | SnapshotID+ordinal PK、ModuleRef、ArtifactDigest/size、package path、nullable SignatureID；只作 observation，不是 Candidate 或安装授权 |
-| 30 | `module_upgrade_candidates` | 全局不可变 exact-version supply Candidate | CandidateID PK、canonical bytes、stable ReviewKey、Source/Snapshot、current/target ModuleRef 与 ArtifactDigest、admitted at；不含 Tenant、scope、路径或 authority |
-| 31 | `module_upgrade_reviews` | Tenant/scope 的不可变 Upgrade Review | ReviewID PK、canonical bytes、Candidate/ReviewKey、PROFILE 或 WORKSPACE_CHANNEL_ENDPOINT、current/target Instance、target Manifest content ref、exact Installation/Activation revision、PublishedBasis、结论、created at |
-| 32 | `module_candidate_decisions` | 绑定 exact Review 的终态 Operator Decision | ReviewID PK、DecisionID/canonical、Tenant、Candidate/ReviewKey、APPROVE/REJECT、decided at；partial unique Tenant-wide REJECT `(tenant_id, review_key)` |
-| 33 | `control_operation_receipts` | `MODULE_DISABLE` 的 append-only durable Control receipt | receipt digest PK；Tenant、唯一 principal/scope/operation/idempotency identity；auth revision/scope-set audit；Request/input/evaluation/Control receipt/pre-post basis canonical+digest；nullable APPLIED domain receipt；Control/Catalog parent IDs与 canonical size caps |
-| 34 | `run_observation_snapshots` | 每次 Run 生命周期变化的不可变 Overview 投影 | Run ID + observation sequence；state/disposition/revision、scope、更新时间、前序与 snapshot digests |
-| 35 | `run_observation_heads` | 每个 Run 的当前 observation head | Run ID PK；最新 sequence/digest 与精确 Run 当前投影；只允许相邻 CAS 推进 |
-| 36 | `overview_resource_snapshots` | Model/Action/Channel/Learning/Module Review 的不可变有界投影 | resource kind + ID + sequence；scope/state/revision/time、causal Run observation 与 previous digest |
-| 37 | `overview_resource_heads` | 每个 Overview resource 的当前 head | resource kind + ID；最新 sequence/digest、scope/state/revision/time 与 source identity |
-| 38 | `overview_resource_transition_carriers` | mutation-time exact resource snapshot carrier | 与 resource snapshot 同一四元组；绑定当次 head/source，append-only 且不可更新/替换/删除 |
-| 39 | `overview_basis_snapshots` | Control/Catalog PublishedBasis 的不可变 Overview 投影 | projection digest；Tenant、Control/Catalog exact refs、pointer revision、source time 与 workspace count |
-| 40 | `overview_basis_workspaces` | basis snapshot 的有序 Workspace refs | projection digest + ordinal；Workspace exact ID/version/digest，连续且有界 |
-| 41 | `overview_basis_heads` | 每个 Tenant 当前 basis observation head | Tenant PK；snapshot/catalog/pointer exact tuple、projection digest、source time 与 workspace count |
-| 42 | `module_artifacts` | server-owned、content-addressed、inert module artifact 事实 | ArtifactDigest PK；exact ModuleRef、Manifest content ref、artifact size、covered file count、ingressed at；不可替换或删除 |
-| 43 | `module_artifact_admissions` | exact supply observation 到 Artifact 的 append-only Admission | AdmissionID PK；canonical record、Source/Policy revision、Snapshot/observation/entry ordinal、ArtifactDigest、admitted at；不授予 install/activate/bind/grant/review/execute |
+| 13 | `model_dispatch_attempts` | 一次冻结模型调用及其对账状态 | attempt ID、logical operation key、run/member/frame refs、binding/request refs、state、provider request/result/error/evidence refs、revision |
+| 14 | `model_usage` | Attempt 的规范化 token Usage | attempt ID PK、run ID、ledger sequence、revision、token 字段、usage 状态、raw receipt ref |
+| 15 | `history_entries` | 已提交给 Run 的规范消息历史 | run ID + history sequence、member/role、content ref/digest、source attempt ref、created at |
+| 16 | `agent_memory_revisions` | Agent 轻量记忆的不可变 revision 链 | tenant ID + stable agent ID + revision、snapshot ref、source attempt ref、created at |
+| 17 | `dispatch_attempts` | Action 与 Channel 外部效果执行及对账的唯一账本 | dispatch kind、attempt/logical operation、run/member/frame、冻结 binding、按 kind 互斥的 action/channel proposal 字段、effect、state/result/receipt/evidence、revision |
+| 18 | `channel_ingress_receipts` | Workspace-scoped Cursor revision、入站 Event 去重及 Channel Admission 映射 | tenant/workspace/endpoint/scope/revision、before/after Cursor refs、binding digest、disposition、Ingress/Event/Envelope identity、Principal/ACL/Admission/Run refs |
+| 19 | `workspace_scheduler_state` | 每个 Tenant/Workspace 的重启安全公平服务计数 | `(tenant_id, workspace_id)` 主键、served units、revision、updated at；不保存 runnable、permit 或结果 |
+| 20 | `conversations` | Conversation 固定五元组、当前 head 与 CAS revision | conversation ID PK、tenant/principal/workspace/agent/profile IDs、nullable unique head run ID、revision、created/updated at |
+| 21 | `learning_proposals` | W4-L1A/L1B 的不可变 Knowledge/静态 Skill 候选、去重投影与精确 proposer lineage；W4-L2 审核状态；W4-L3 无权限不可变 Version | Proposal ID PK、tenant/kind、source/content/draft fingerprints、target ref、Proposal/Draft canonical bytes、proposer Run/Manifest/Member/Attempt/Result refs、nullable unique `review_run_id`/`reviewer_attempt_id`、state/revision；all-or-none Version canonical/size/ID、ArtifactDigest/size、APPROVE Verdict digest、materialized at；created/updated at |
+| 22 | `learning_cycle_schedules` | 默认关闭的不可变周期策略与 Store-owned enablement/watermark | `(tenant_id, schedule_id)` PK、Schedule canonical/digest、enabled、revision、nullable last scheduled、next due、created/updated at |
+| 23 | `learning_cycle_tasks` | 每个逻辑到期窗口的不可变 request、普通 Run/Attempt/Result/Proposal 投影与终态 | TaskID PK、tenant/schedule/digest、scheduled for、request canonical/digest、state/revision、nullable unique Run/Attempt、Result/Proposal refs、created/updated at；每 Schedule 同时最多一个 open Task |
+| 24 | `module_publisher_keys` | Operator 导入的 exact Publisher Key 与全局不可逆 current revocation | PublisherKeyID PK、canonical bytes、revision、imported/revoked at；revocation 不改写历史 Snapshot |
+| 25 | `module_sources` | SourceID 的 current Source Policy 与 observation head | SourceID PK、Policy ID/canonical、Kind、OriginDigest、nullable PublisherKeyID、policy/observation revision、nullable current Snapshot、registered/updated at；Kind/OriginDigest 不可改绑 |
+| 26 | `module_discovery_snapshots` | 一次不可变 Source observation 的完整 parent closure | SnapshotID PK、Source/Policy/Index IDs 与 canonical bytes、Policy/Key/observation revisions、observed at；不保存路径或 URL 明文 |
+| 27 | `module_discovery_module_refs` | 全局 `ModuleID + opaque exact Version → ArtifactDigest` 冲突门禁 | ModuleRef PK、ArtifactDigest、首次 Source/Snapshot；与 Installation/materialized Learning Version 双向闭合 |
+| 28 | `module_discovery_entries` | Snapshot 的有序 authority-free Index entries | SnapshotID+ordinal PK、ModuleRef、ArtifactDigest/size、package path、nullable SignatureID；只作 observation，不是 Candidate 或安装授权 |
+| 29 | `module_upgrade_candidates` | 全局不可变 exact-version supply Candidate | CandidateID PK、canonical bytes、stable ReviewKey、Source/Snapshot、current/target ModuleRef 与 ArtifactDigest、admitted at；不含 Tenant、scope、路径或 authority |
+| 30 | `module_upgrade_reviews` | Tenant/scope 的不可变 Upgrade Review | ReviewID PK、canonical bytes、Candidate/ReviewKey、PROFILE 或 WORKSPACE_CHANNEL_ENDPOINT、current/target Instance、target Manifest content ref、exact Installation/Activation revision、PublishedBasis、结论、created at |
+| 31 | `module_candidate_decisions` | 绑定 exact Review 的终态 Operator Decision | ReviewID PK、DecisionID/canonical、Tenant、Candidate/ReviewKey、APPROVE/REJECT、decided at；partial unique Tenant-wide REJECT `(tenant_id, review_key)` |
+| 32 | `control_operation_receipts` | `MODULE_DISABLE` 的 append-only durable Control receipt | receipt digest PK；Tenant、唯一 principal/scope/operation/idempotency identity；auth revision/scope-set audit；Request/input/evaluation/Control receipt/pre-post basis canonical+digest；nullable APPLIED domain receipt；Control/Catalog parent IDs与 canonical size caps |
+| 33 | `run_observation_snapshots` | 每次 Run 生命周期变化的不可变 Overview 投影 | Run ID + observation sequence；state/disposition/revision、scope、更新时间、前序与 snapshot digests |
+| 34 | `run_observation_heads` | 每个 Run 的当前 observation head | Run ID PK；最新 sequence/digest 与精确 Run 当前投影；只允许相邻 CAS 推进 |
+| 35 | `overview_resource_snapshots` | Model/Action/Channel/Learning/Module Review 的不可变有界投影 | resource kind + ID + sequence；scope/state/revision/time、causal Run observation 与 previous digest |
+| 36 | `overview_resource_heads` | 每个 Overview resource 的当前 head | resource kind + ID；最新 sequence/digest、scope/state/revision/time 与 source identity |
+| 37 | `overview_resource_transition_carriers` | mutation-time exact resource snapshot carrier | 与 resource snapshot 同一四元组；绑定当次 head/source，append-only 且不可更新/替换/删除 |
+| 38 | `overview_basis_snapshots` | Control/Catalog PublishedBasis 的不可变 Overview 投影 | projection digest；Tenant、Control/Catalog exact refs、pointer revision、source time 与 workspace count |
+| 39 | `overview_basis_workspaces` | basis snapshot 的有序 Workspace refs | projection digest + ordinal；Workspace exact ID/version/digest，连续且有界 |
+| 40 | `overview_basis_heads` | 每个 Tenant 当前 basis observation head | Tenant PK；snapshot/catalog/pointer exact tuple、projection digest、source time 与 workspace count |
+| 41 | `module_artifacts` | server-owned、content-addressed、inert module artifact 事实 | ArtifactDigest PK；exact ModuleRef、Manifest content ref、artifact size、covered file count、ingressed at；不可替换或删除 |
+| 42 | `module_artifact_admissions` | exact supply observation 到 Artifact 的 append-only Admission | AdmissionID PK；canonical record、Source/Policy revision、Snapshot/observation/entry ordinal、ArtifactDigest、admitted at；不授予 install/activate/bind/grant/review/execute |
 
 #### W1 Conversation 已实现 Schema 锁
 
@@ -513,7 +549,7 @@ Attempt/request 精确匹配的单一编译记录。
 画像与模型 Binding config 都复用 `CONFIG/application-json`，其唯一恢复边由
 `MemberExecutionSnapshot.ModelProfile` 的可选内容摘要给出；不保存“当前画像”指针、
 选择回执或 Provider 元数据副本。
-`model-binding-config/v1` 同时在本次发布前基线中新增必填 `model_build_id`，因此 seed
+模型 Binding config schema 同时在本次发布前基线中新增必填 `model_build_id`，因此 seed
 和相关 CONFIG digest 会改变；方案 A 下通过显式重建开发库收口，不增加兼容 decoder，
 也不改变当时的 16 表 schema/fingerprint；Memory 切片因真实可变状态消费者把 Draft
 改为 17 表，Action 工作包再因真实 Gateway 消费者改为 18 表并重算 fingerprint。
@@ -594,7 +630,7 @@ identity。StaticContextRefs 仅允许用于 `context.provide/v1`，必须是无
 `module_installations`，不能只检查 InstanceID 存在。
 
 Control Profile 可以显式携带一个可选 `ModelProfileRef`。发布时必须严格恢复该
-`CONFIG` 为 `model-profile/v1`，再与唯一 `model.generate/v1` Binding 的 CONFIG、
+`CONFIG` 为 `model-profile/v1`，再与唯一 `model.generate/v2` Binding 的 CONFIG、
 provider/model/model build、ArtifactDigest、AdapterIdentity 和 ContextPolicy 逐项
 核对；缺失、类型错误或收紧后不能容纳 reserved output 时整次发布回滚。
 
@@ -688,7 +724,7 @@ WORKSPACE_TRANSFER_ENVELOPE
   等于该 ContentDigest；alias 不能作为恢复引用。
 - `CONFIG` 仍是通用内容 kind，但使用方必须按冻结引用要求的精确 schema 严格恢复。
   `ModelProfileRef` 只能引用 canonical `model-profile/v1`；模型 Binding 的 `ConfigRef`
-  只能引用 canonical `model-binding-config/v1`。两者互换、未知字段或仅摘要形状相似
+  只能引用 canonical `model-binding-config/v2`。两者互换、未知字段或仅摘要形状相似
   均必须失败关闭。
   ModelProfile CONFIG 上限为 64 KiB；开放的 Provider generation parameters 仍必须
   通过 Activated Provider 的精确 schema allowlist，已知凭据/endpoint 键族由通用
@@ -910,7 +946,7 @@ SHA256(
   `(run_id, member_id, logical_step_id)` 最多一条 Attempt，使用同 key 提交不同
   RequestDigest 必须 fail-closed。
 - Attempt 冻结 `MemberSnapshotDigest`、精确 model Binding、RequestRef/Digest、
-  provider、model、参数、deadline、预算、billing version 和 price snapshot。
+  provider、model、参数和 deadline。
 - `MODEL_UNKNOWN` 不得转回 `PENDING`。
 - 对账必须更新原 Attempt；不得为相同 `LogicalOperationKey` 插入新 Attempt。
 - MODEL_UNKNOWN 不得通过自动创建新 Run、Child Run 或新 logical step 绕过；
@@ -928,7 +964,7 @@ SHA256(
 `dispatch_attempts` 是唯一外部效果账本，`dispatch_kind` 只允许
 `ACTION|CHANNEL_SEND`。表级共同字段包括 Attempt/LogicalOperation、Run/Member/Frame、
 唯一 `source_model_attempt_id`、MemberSnapshotDigest、BindingIndex/Binding、Effect、
-`max_result_bytes`（数据库硬上限 64 KiB）、deadline、BudgetStateRef、四态状态、
+`max_result_bytes`（数据库硬上限 64 KiB）、deadline、UsageLedgerRef、四态状态、
 external operation、result/receipt/reconciliation evidence、revision 与时间。具体
 Provider/Binding 的更低结果上限仍由冻结快照和 Store API 校验，不能借数据库硬上限扩权。
 
@@ -978,8 +1014,8 @@ UNKNOWN → SUCCEEDED | FAILED  # 仅有可靠证据更新原 Attempt
   `MODEL_READY_AFTER_ACTION` 创建的模型二 Attempt 可以非空，且必须唯一指向同 Run、
   同 Member 的 SUCCEEDED ACTION Attempt。模型一、Pure Chat 与 Channel 最终模型 Attempt
   必须为空；Channel send 反向以 `source_model_attempt_id` 绑定最终模型结果。
-- 首个 `text.stats` 是本地无计费 Built-in，首个 loopback Channel 也没有独立计费合同，
-  因此不伪造 Usage 行；任何计费/远程外部效果在激活前必须先冻结真实 Usage 与成本合同，
+- 首个 `text.stats` 是本地 Built-in，首个 loopback Channel 也没有独立 Usage 合同，
+  因此不伪造 Usage 行；任何远程外部效果在激活前必须先冻结真实 Usage 合同，
   不得把缺失值写成零。
 - MCP Tool 继续以 ACTION kind 复用本表；MCP request ID、短生命周期 process 或 stdio
   session 都不是新的业务身份，不建专用账本。CHANNEL_SEND 同样不建物理
@@ -989,42 +1025,35 @@ UNKNOWN → SUCCEEDED | FAILED  # 仅有可靠证据更新原 Attempt
 
 - 每个 Attempt 在创建 `PENDING` 时同时创建一行 `model_usage`，revision 从 0
   开始，未知字段和 `ledger_sequence` 保持 `NULL`。
-- 首次提交可计入预算的 Usage 时，在 Run 内分配单调且唯一的
-  `ledger_sequence`；`LoopFrame.BudgetStateRef` 指向
-  `(run_id, last_ledger_sequence)`，不复制一份“剩余预算”。
-- `BudgetStateRef` 的唯一 wire 格式为
+- 首次提交可计入用量账本的 Usage 时，在 Run 内分配单调且唯一的
+  `ledger_sequence`；`LoopFrame.UsageLedgerRef` 指向
+  `(run_id, last_ledger_sequence)`，不复制一份“剩余额度”。
+- `UsageLedgerRef` 的唯一 wire 格式为
   `usage-ledger/v1/<run_id>/<ledger_sequence>`；RunID 仍使用 256-byte opaque ID
   规则，sequence 不超过 SQLite `MaxInt64` 且不得有前导零。完整引用使用
   292-byte 专用上限，恢复时必须拒绝其他 Run 的引用。
-- token 与其他运行预算事实一旦随 Attempt 终态提交便不可改写。后续
-  provider-reported/reconciled cost 更新必须 CAS `model_usage.revision`；不得覆盖
-  token 事实，也不追溯改变已经执行的 Runtime BudgetState。
+- token 与其他运行用量事实一旦随 Attempt 终态提交便不可改写。后续任何 Usage
+  对账更新必须 CAS `model_usage.revision`；不得覆盖已提交的 token 事实，
+  也不追溯改变已经执行的 Runtime Usage Ledger 位置。
 - `input_tokens`、`cached_input_tokens`、`uncached_input_tokens`、
   `output_tokens`、`reasoning_tokens` 均为独立语义字段。
 - 仅当三个输入字段均已知时检查
   `input_tokens = cached_input_tokens + uncached_input_tokens`。
 - Provider 将 reasoning token 计入其他字段时，必须保留原始 receipt 和规范化
-  说明，避免重复计费。
-- `estimated_cost`、`provider_reported_cost` 和 `reconciled_cost` 独立保存，不能
-  相互覆盖；它们通过 Attempt 的唯一 `PriceSnapshotRef` 绑定币种和价格/计费
-  版本，`provider_reported_cost` 继承该快照的币种，`model_usage` 不复制第二个
-  价格引用。
-- 当前 DeepSeek 正常模型路径在提交成功终态时，以该 Attempt 冻结且身份闭合的
-  PriceSnapshot 和规范 token 事实派生 `estimated_cost`，并在同一终态事务中写入原
-  `model_usage`。计价所需价格或 token 缺失时该字段保持 `NULL`；reasoning token 作为
-  独立事实保存，但计算器不得把已包含于 output 的 reasoning 再次收费。Provider 没有
-  报告费用或尚无对账证据时，`provider_reported_cost` 与 `reconciled_cost` 仍为 `NULL`，
-  不得从估算值回填。
-- `model_price_snapshots.pricing_status=UNKNOWN` 时允许完成模型调用，但不得伪造
-  估算成本为零。
+  说明，避免重复计入。
+- `model_usage` 只保存 token 事实与 `usage_status`。FAC2 基线已删除
+  `model_price_snapshots` 表及 `estimated_cost`、`provider_reported_cost`、
+  `reconciled_cost`、`currency`、`billing_version`、`price_snapshot_id` 全部列；
+  不得以任何形式重新引入金额列、价格表、金额外键或永久为 `NULL` 的金额字段。
+- Usage 缺失时保持 `NULL/UNKNOWN`，不得伪造零值；显式零保持零。
 - Observer 只能读取或在独立派生库聚合，不能修改 `model_usage`。
 - Composite 的唯一 shared dispatch budget 是 Parent manifest 中静态
   `Composite.Plan.FamilyModelDispatchLimit`。W5 Decision family 含 N 个 Specialist 时必须精确为
   `2N+3`：初始 N 次、Reviewer0、最多 N 次 repair、Reviewer1 与 Root merge 各一个物理 slot。
   未启用 Decision 的历史 family 继续按其冻结 N+1/N+2 合同恢复，不能被当前规则改写。
   PENDING/MODEL_UNKNOWN 已消耗 slot，不退款、不替换。每个 Run 继续使用本节原
-  `model_usage`/Usage Ledger；family usage/cost 只能按 immutable family 图对这些相同行派生
-  聚合，UNKNOWN 仍为 UNKNOWN，不新增通用 currency pool、balance、reservation 或 family
+  `model_usage`/Usage Ledger；family token usage 只能按 immutable family 图对这些相同行派生
+  聚合，UNKNOWN 仍为 UNKNOWN，不新增通用 pool、balance、reservation 或 family
   usage 表。
 - 唯一只读投影 `GetCompositeFamilyUsageProjection(rootRunID)` 返回进程内 DTO
   `CompositeFamilyUsageProjectionV1`，其中包含 `CompositeFamilyRunUsageFactV1`、
@@ -1034,10 +1063,9 @@ UNKNOWN → SUCCEEDED | FAILED  # 仅有可靠证据更新原 Attempt
   Run 投影；dormant/skipped repair Run 保留且 `Attempt=nil`，无 Attempt 不合成零。subset/all
   repair 中实际存在的 Attempt 必须纳入 aggregate 与 cap。每个 token 字段只有在全部已用 slot 对应
   Usage 值均非 NULL 时才返回总和，否则保持 UNKNOWN；PENDING/MODEL_UNKNOWN 仍计入
-  `AttemptSlotsUsed`。estimated/provider-reported/reconciled cost 分别聚合，任一缺失保持
-  UNKNOWN；全已知但币种不同返回 `MIXED_CURRENCY + sorted currencies`，禁止换算或合并。
+  `AttemptSlotsUsed`。聚合只覆盖 token 字段，不存在第二类金额聚合。
   普通 Run、非 Root Run、repair round/Root/Parent/物理 slot、Admission、Member、Agent/Profile、
-  TaskInput、Assignment、logical step、Attempt/Usage/PriceSnapshot 或 dispatch cap 闭包损坏均
+  TaskInput、Assignment、logical step、Attempt/Usage 或 dispatch cap 闭包损坏均
   fail-closed。
 
 ## 6. 事实归属
@@ -1054,8 +1082,7 @@ UNKNOWN → SUCCEEDED | FAILED  # 仅有可靠证据更新原 Attempt
 | Action 定义与路由 | `member_execution_snapshots.Actions + 对应 PortPlan` | 模型请求只投影 PublicActionID/Description/InputSchema |
 | Channel Cursor 与入站去重 | `channel_ingress_receipts` 的 append-only revision/event 序列 | 当前 Cursor 是每个 Tenant/Endpoint/Scope 最大 revision 的 `cursor_after_ref` 投影 |
 | Action/Channel 外部效果执行与对账 | `dispatch_attempts`（`ACTION|CHANNEL_SEND`） | Frame 保存互斥的 pending dispatch ref；kind-specific Proposal/Result 是内容引用 |
-| 模型价格绑定 | `model_dispatch_attempts → model_price_snapshots` | Usage 不复制 PriceSnapshotRef |
-| 模型用量与成本 | `model_usage` | 报表仅派生；后续成本对账按 revision CAS |
+| 模型 token 用量 | `model_usage` | 报表仅派生；后续 Usage 对账按 revision CAS |
 | Composite family 图与取消 | Parent/Child `run_manifests` + `runs` 四个 nullable 投影列 | Frame/Event/compilation 只引用 exact immutable closure；family usage 是 `model_usage` 派生查询 |
 | Conversation 固定身份与当前 head | `conversations`（W1 开发切片已实现） | `runs` 只保存 turn index/predecessor 查询投影；Manifest 冻结 `ConversationTurnRefV1` |
 | 单 Run 回答历史 | `history_entries` | Conversation 历史由 predecessor Run 的 `TASK_INPUT + 最终 ASSISTANT` 派生，不复制旧行 |
@@ -1079,7 +1106,7 @@ InitFreshCurrentStore
   → 在目标同目录创建 0600 临时文件并使用 journal_mode=DELETE
   → 验证 application_id=0、user_version=0 且没有应用对象
   → BEGIN IMMEDIATE
-  → 执行且仅执行 0001_current.sql
+   → 依次执行冻结的 0001_current.sql 与连续 0002_server_owned_review.sql
   → 计算并校验 schema fingerprint
   → 写 store_meta 并设置 application_id/user_version
   → COMMIT
@@ -1170,7 +1197,7 @@ Operator-owned Endpoint route 和有界 canonical `cursor_seed`。Model Profile 
 完整目标状态中的可选 `model_profile`；提供时必须与目标 Model 精确闭合，省略时明确清除旧
 ModelProfile ref，而不是隐式沿用。`DISABLED` 禁止携带 artifact、
 runtime request、Binding、Endpoint 或 seed payload，只删除 tagged target 的精确 Binding/Endpoint。
-`model.generate/v1` 不接受 `DISABLED`，回滚必须提交新的 `ENABLED` Apply。
+`model.generate/v2` 不接受 `DISABLED`，回滚必须提交新的 `ENABLED` Apply。
 计划 digest 确定性派生下一 SnapshotID 与 GenerationID；Plan 不含时间戳、nonce、
 Trust、ExecutionClass、adapter identity、handler identity 或自动 fallback。
 
@@ -1305,7 +1332,7 @@ MemberSnapshot、Frame、ModelDispatchAttempt/Usage、History 与全部必需 Co
 `dispatch_attempts` 或 `channel_ingress_receipts` SQL。该 API
 校验 lease owner/epoch/Run revision/Frame
 revision/expiry、Frame 与未决 Attempt 的唯一对应、Attempt/Usage 一对一关系、
-BudgetStateRef 与连续 Usage ledger head、History 与成功 Attempt 的来源关系、
+UsageLedgerRef 与连续 Usage ledger head、History 与成功 Attempt 的来源关系、
 Event head 连续性及冻结内容闭包；READY/TERMINATED 不得隐藏 Model
 PENDING/MODEL_UNKNOWN 或 ACTION/CHANNEL_SEND PENDING/UNKNOWN，同一 Run 不得出现两个
 未决 Attempt。Channel-origin Run 还必须恢复唯一 ACCEPTED ingress、Envelope 与
@@ -1368,7 +1395,7 @@ Control/Catalog pointer revisions。Admission 原子写入：
 authority ceiling，并验证 S1 只有一个 Member、一个 Workspace、`ParentRunID`
 为空。`control_current` 在编译后发生变化时 Admission 失败并重新编译，不能偷偷
 发布旧新混合装配。
-TaskInputRef、BudgetPolicy、MemberSnapshot 内全部 PolicyRef、静态上下文、Config
+TaskInputRef、MemberSnapshot 内全部 PolicyRef、静态上下文、Config
 和 AuthorityCeiling 必须在提交前已存在，或由上述同一事务写入；每个 kind、bytes
 与 digest 必须匹配。其中静态上下文必须从冻结 PortBinding.StaticContextRefs
 枚举，不接受调用方另传的 ad-hoc required 列表。只保存 ref 而没有可恢复 bytes 的
@@ -1415,7 +1442,7 @@ Provider、Module Host 或其他外部服务。提交前必须额外证明：
 1. Root 从 exact Control 选择唯一 coordinator 配置；有 2..8 个唯一 slot，整数权重合计
    10000；所有 Run 同 Tenant/Workspace、每 Run 一个 Member、深度恰为 1，Child Agent/Profile
    可以不同但都在同一 PublishedBasis 可达。
-2. 整个 family 只含 `model.generate/v1`、声明式静态 Context 和已验收本地只读 RAG；任一
+2. 整个 family 只含 `model.generate/v2`、声明式静态 Context 和已验收本地只读 RAG；任一
    Member 含 Memory、Action、MCP、Channel、Effect、跨 Workspace、Reviewer/Learning 或
    其他 Port 时整笔零写入失败。
 3. Parent 与全部 Child 的 `TaskInputRef/Digest` 相同；Child assignment 逐项匹配 frozen
@@ -1451,7 +1478,7 @@ lease 未过期
 ```
 
 事务按需要原子写 History、Run/Event 与下一 LoopFrame。
-`LoopFrame.BudgetStateRef` 指向 Usage Ledger 的已提交 revision；
+`LoopFrame.UsageLedgerRef` 指向 Usage Ledger 的已提交 revision；
 `LastAuthoritativeEvent` 必须与本事务追加的最后 event sequence 一致。模型网络
 请求不允许包在 SQLite 事务中。
 
@@ -1494,13 +1521,12 @@ PENDING 提交失败时不得发出网络请求。
 Child terminal result 与 `context-compilation/v1.composite.child_results` 的 50% allocation/
 规范顺序；Child/Parent 已有一个相应模型 Attempt（包括 MODEL_UNKNOWN）即视为 dispatch
 slot 已消费，不得创建替代 Attempt 或退款。
-`BeginModelDispatch` 从冻结 Run 派生 Member、唯一 `model.generate/v1` Binding、
-Provider/Model、parameters 与 BudgetPolicy；调用方只能提供 Attempt/逻辑步骤、
+`BeginModelDispatch` 从冻结 Run 派生 Member、唯一 `model.generate/v2` Binding、
+Provider/Model 与 parameters；调用方只能提供 Attempt/逻辑步骤、
 规范请求、收窄后的 deadline，以及 Context Compiler 产生的可选
-`context-compilation/v1` canonical bytes；PriceSnapshotRef 必须从冻结 Binding Config
-派生。只有新建事务返回
+`context-compilation/v1` canonical bytes。只有新建事务返回
 `InvokeAllowed=true`；相同 Attempt 的精确重入返回原记录并强制
-`InvokeAllowed=false`，不同 RequestDigest、deadline、price 或 Attempt 身份
+`InvokeAllowed=false`，不同 RequestDigest、deadline 或 Attempt 身份
 fail-closed。这样提交响应丢失也不会成为再次发网的许可。
 
 Store 必须先从冻结成员闭包恢复基础 ContextPolicy，并在存在 ModelProfile 时应用
@@ -1539,11 +1565,6 @@ request 严格低于有效恢复水位。达到或超过
 只有成功消费该 permit 后才能授权 Adapter。permit 不序列化、不持久化，也不使用
 全局 Attempt map。
 
-`model_price_snapshots.canonical_json` 必须严格恢复
-`model-price-snapshot/v1`，所有投影字段与 canonical bytes 一致，digest 使用
-`freeagent.model-price-snapshot/v1` 域并排除自身。精确重复插入幂等，同 ID 不同
-定价语义为完整性冲突。
-
 模型二是唯一不重新运行 Context Compiler 的 Begin 形状：Frame 必须为
 `MODEL_READY_AFTER_ACTION` 并引用同 Run/Member 的 SUCCEEDED DispatchAttempt；Store
 恢复该 Action 的 source model Attempt、原 MODEL_REQUEST、ACTION_RESULT 与冻结
@@ -1566,13 +1587,13 @@ Memory、额外消息或第二 Action Attempt 均在 PENDING/Usage/Frame/Event �
 1. CAS 原 Attempt revision 和当前 Frame 的 `pending_attempt_id`。
 2. 写入 immutable result/receipt/evidence content。
 3. 更新原 Attempt 的状态与 ref。
-4. CAS 更新同一 Attempt 的 `model_usage`；存在可计费 Usage 时分配下一个
+4. CAS 更新同一 Attempt 的 `model_usage`；存在可计量 Usage 时分配下一个
    `ledger_sequence`。
 5. 最终 AssistantText 成功且 Run 装配 Memory 时，以当前最新 Agent revision 为 parent，用 Core 的有界
    确定性脚本合并 Workspace-local summary/category/term observation，插入一个
    `MEMORY_SNAPSHOT` 并追加唯一 `agent_memory_revisions` 行；
 6. 最终 AssistantText 成功时追加唯一 History entry。
-7. 更新 Run/LoopFrame 的 BudgetStateRef、WaitingReason、
+7. 更新 Run/LoopFrame 的 UsageLedgerRef、WaitingReason、
    LastAuthoritativeEvent，并追加 RunEvent。
 8. 提交。
 
@@ -1599,11 +1620,11 @@ BEGIN IMMEDIATE
   → CAS 原 Model PENDING、Run/Frame 与 lease
   → 写 MODEL_RESULT/Usage，将模型 Attempt 置为 SUCCEEDED；仅有可计量事实时按既有规则
     分配 ledger_sequence，否则 ledger head 保持原值
-  → 以 post-model BudgetStateRef 验证 Action 映射、Config/Authority、Proposal、
-    Effect、结果上限、预算、deadline 与撤权
+  → 以 post-model UsageLedgerRef 验证 Action 映射、Config/Authority、Proposal、
+    Effect、结果上限、deadline 与撤权
   → 写 ACTION_PROPOSAL
   → 插入 DispatchAttempt=PENDING
-  → 将同一 post-model BudgetStateRef 写入 DispatchAttempt/Frame，并把 pending_attempt_id
+  → 将同一 post-model UsageLedgerRef 写入 DispatchAttempt/Frame，并把 pending_attempt_id
     从 Model 原子切换为 pending_dispatch_attempt_id
   → Frame=ACTION_PENDING，追加 Event 并更新 LastAuthoritativeEvent
 COMMIT
@@ -1614,10 +1635,10 @@ COMMIT
 同一 logical step 还要跨两个 Attempt 表检查冲突。任何校验、写入或 COMMIT 失败都整笔
 回滚，executor 调用次数为零；原模型仍为 PENDING，重启只收口 MODEL_UNKNOWN。模型
 wire malformed 才允许把 Model Attempt 写为 FAILED。若 ModelGenerateOutput wire 合法，
-但输入非法、未知 Action、超出一动作上限、Prepare 确定失败、deadline 或 post-model
-预算不足，或 BudgetPolicy 所需 Usage 事实为 UNKNOWN，必须由单独权威事务保存
-MODEL_RESULT + Usage、提交 ModelAttempt=SUCCEEDED 并以明确 `BUDGET_UNKNOWN`/对应 Run
-原因终止；不创建 Action PENDING 或 permit。post-model BudgetStateRef 始终指向提交后
+但输入非法、未知 Action、超出一动作上限、Prepare 确定失败或 deadline 已过，必须由
+单独权威事务保存 MODEL_RESULT + Usage、提交 ModelAttempt=SUCCEEDED 并以对应
+`MODEL_ACTION_REJECTED` 原因终止；不创建 Action PENDING 或 permit。FAC2 已删除金额预算
+闸门，合法 wire 下不存在以金额事实为由的拒绝路径。post-model UsageLedgerRef 始终指向提交后
 的实际 ledger head（可能不变）。该终止事务失败时原模型仍为
 PENDING，恢复按 MODEL_UNKNOWN，不能在内存中把成功结果接到替代路径。
 
@@ -1794,7 +1815,7 @@ History
 ModelDispatchAttempt
 ACTION/CHANNEL_SEND DispatchAttempt（仅相应可选 Run）
 Channel ingress receipt/Envelope（仅 Channel-origin Run）
-ModelUsage / PriceSnapshot
+ModelUsage
 ContentRecord
 精确 Installation / Activation
 可选 Parent/Child manifests/snapshots/terminal results 与 RUN_CANCELLATION ref
@@ -1830,7 +1851,7 @@ Activation 执行 deny-only 撤权检查；它不得据此替换 Binding、重�
 或选择“最新版本”。缺少 artifact、digest 不匹配、continuation 版本未知或
 required Provider 不可用时 fail-closed。
 
-## 11. Usage、缓存与成本口径
+## 11. Usage 与缓存口径
 
 本 Store 只记录 Provider 返回或 Core 可证明的事实，不推测缺失 token：
 
@@ -1839,7 +1860,6 @@ required Provider 不可用时 fail-closed。
 | `cached_input_tokens` | Provider 未提供/无法确认 | 明确报告未命中 | 明确命中数量 |
 | `uncached_input_tokens` | Provider 未提供/无法确认 | 明确无未缓存输入 | 明确未缓存数量 |
 | `reasoning_tokens` | 未披露 | 明确为零 | 明确披露数量 |
-| cost | 无价格或未对账 | 明确零费用 | 对应状态下的金额 |
 
 建议派生指标，但不得回写 Ledger：
 
@@ -1849,22 +1869,17 @@ cache_hit_rate =
 
 known_input_coverage =
   count(input breakdown known) / count(all attempts)
-
-reconciliation_gap =
-  provider_reported_cost - estimated_cost
 ```
 
 当分母字段 UNKNOWN 时，指标也是 UNKNOWN，而不是 0%。缓存前缀优化、Judge payload
 稳定化等属于请求构建策略；Store 只记录精确 RequestDigest 和结果，不替 Runtime
 改变 prompt。
 
-W1 的“每轮统计”直接按 Conversation turn 对应的 Run 查询既有 Attempt、`model_usage`
-和 PriceSnapshot，不新增 Conversation Usage 表或费用账本。单字段缺失保持 NULL/UNKNOWN；
+W1 的“每轮统计”直接按 Conversation turn 对应的 Run 查询既有 Attempt 与 `model_usage`，
+不新增 Conversation Usage 表。单字段缺失保持 NULL/UNKNOWN；
 turn 或 Conversation 派生合计只要所需分量存在 UNKNOWN，对应合计也必须是 UNKNOWN，
-不得按 0 补齐。input/output/cache/reasoning token 与 estimated/provider-reported/reconciled
-cost 必须继续区分事实来源；W1 第一合同冻结不改变既有 Usage 字段语义。当前 DeepSeek
-`estimated_cost` 写入只是让原有冻结价格合同在正常 Usage 终态事务中落地，不新增表、
-第二 writer 或旁路费用账本。
+不得按 0 补齐。input/output/cache/reasoning token 必须继续区分事实来源；FAC2 基线下
+Usage 只有 token 事实与 `usage_status`，不存在第二个账本、金额派生指标或价格对账口径。
 
 ## 12. 备份
 
@@ -2158,8 +2173,9 @@ Assembly；`backup` 与 `backup-verify` 输出 bundle 绝对路径及完整 mani
 
 ## 14. 发布前开发库重建
 
-S1 Draft 变化不创建 `0012`，也不创建 `0002`。首次公开发布前只维护当前
-`0001_current.sql`，并按下列显式流程重建：
+FAC1/S1 至 W6-5 的 Draft 变化曾采用 Scheme A，不创建 `0012` 或 runtime migration；这些段落只描述
+历史重建纪律。当前 FAC2 已冻结 `0001_current.sql`，并由 W6.6 引入真实、连续的
+`0002_server_owned_review.sql`；后续 schema 变化不得修改 `0001`，必须按显式 offline migration 流程追加：
 
 首个 MCP 切片已采用 Scheme A（方案 A）：只扩展
 `module_activations.execution_class CHECK` 以接受 `LOCAL_PROCESS`，保持 18 表及全部既有
@@ -2213,7 +2229,7 @@ SecretRef identity，但禁止 Secret value/bytes。
    - artifact 的规范相对路径、digest 和字节数；
    - 稳定的 InstanceID、ActivationRevision；
    - 期望 `ExecutionClass` 与 `AdapterIdentity`，仅作为 Core 重算后的校验断言；
-   - Operator 控制的权限、成本、Effect 和配置策略输入及 SecretRef，不含 Secret
+   - Operator 控制的权限、Effect 和配置策略输入及 SecretRef，不含 Secret
      明文；seed 内的 policy alias 只是导入请求，不是最终 `PolicyRef`。
 
    seed 不含 Run、History、Attempt、Usage，也不能携带由 Module Manifest 自授的
@@ -2237,8 +2253,8 @@ Seed rebuild 不是 backup restore。它必须生成新的 `store_instance_id` �
 - 稳定业务 ID/version/revision；
 - 精确模块锁与 artifact digest；
 - 规范化 Control/Catalog bytes 和 digest；
-- 使用固定 AdmissionKey、AdmissionIntentDigest、RunID、TaskInput、deadline、
-  BudgetPolicyRef 时生成的 Snapshot/Manifest bytes 和 digest。
+- 使用固定 AdmissionKey、AdmissionIntentDigest、RunID、TaskInput 与 deadline
+  时生成的 Snapshot/Manifest bytes 和 digest。
 
 S2 在首次公开发布前加入真实能力时，可以继续修改 Draft 的
 `0001_current.sql`，但每次仍执行上述完整重建。Action/Channel 启用后还必须：
@@ -2383,7 +2399,7 @@ Channel `UNKNOWN` 的 exact duplicate 都不二次发送，一个 Endpoint 的�
 ### 15.6 W2-E4 DeepSeek Model replacement publication 闭包
 
 `W2_E4_DEEPSEEK_MODEL_REPLACEMENT_ACCEPTED_DEVELOPMENT_SLICE / W2_E5_NEXT` 复用现有
-Content、Control/Catalog publication、Model PriceSnapshot、Run snapshot 与 Backup 关系，不新增
+Content、Control/Catalog publication、Run snapshot 与 Backup 关系，不新增
 Store Schema/migration、表、pointer、Runtime 或账本。第七个 exact handler 只能把目标 Profile 中同一
 DeepSeek Instance 的 Model Binding 在 Flash/Pro 之间替换；`DISABLED` 必须在 Store 写入前
 拒绝。
@@ -2394,24 +2410,23 @@ Profile 时，publication 必须证明它与新 Binding 的 provider/model/build
 adapter 精确匹配，并且不扩张 ContextPolicy。旧 Control/Catalog 和已冻结 Run 不回写；
 只有 publication 后的新 Run 冻结新闭包。
 
-Model CONFIG 引用的 PriceSnapshot 必须在 publication 前已存在，且 provider/model/
-billing 三者精确匹配。Model Authority 只允许 strict `model-authority-ceiling/v1`；历史
+Model Authority 只允许 strict `model-authority-ceiling/v1`；历史
 bootstrap 只保留 exact byte-equal deny-all Authority 兼容身份，其他未知 Schema/字节全部
 fail-closed。新 Authority 的 SecretRef 必须与本地 transient grant 精确一致；grant 不持久化。
 
 `VerifyPublishedControlCatalogClosureV1` 在 Backup verify/restore 语义门禁中重放当前
 publication，因此即使当前 Model Binding 尚未产生 Run，也必须重验 Config、
-Authority、PriceSnapshot 和 optional ModelProfile 的完整闭包。原 `MODEL_UNKNOWN` 只保留
+Authority 和 optional ModelProfile 的完整闭包。原 `MODEL_UNKNOWN` 只保留
 原 Attempt/permit/Usage 事实；replacement、rollback 和 exact retry 不得新建 Attempt、调用新
 Provider、fallback 或语义重放。
 
 关键 Store 负例是
-`TestPublishControlCatalogRejectsUnknownModelAuthoritySchemaWithoutWrites` 和
-`TestPublishControlCatalogRejectsModelPriceSnapshotClosureWithoutWrites`；无 Run 当前闭包、Profile 清除与
+`TestPublishControlCatalogRejectsUnknownModelAuthoritySchemaWithoutWrites`；Profile 清除与
 Backup/Restore 由
-`TestModuleApplyDeepSeekModelBackupGateRejectsCurrentMissingPriceWithoutRun`、
 `TestModuleApplyDeepSeekModelProfileCanBeClearedByExplicitReplacement` 和
 `TestModuleApplyDeepSeekModelProfileBackupRestoreExactClosure` 覆盖。完整
+FAC2 基线删除金额体系后，原 PriceSnapshot publication 闭包负例与缺价 Backup gate 一并退役，
+不再有等价断言需要保留。完整
 `internal/currentstore` 与 `internal/currentbackup` 包测试分别以 84.252s 和 89.202s 通过。
 
 ### 15.7 W2-E5-A governed Knowledge publication 闭包
@@ -2429,7 +2444,7 @@ Manifest 的 identity、runtime 与 Provides 必须闭合相同 Catalog/Binding�
 Control/Catalog 的表面事实绕过 immutable module facts。
 
 共享 `moduleapi` classifier 只允许 Knowledge Manifest 的两个 exact 形状：legacy 零 Requires/零
-permission，或 governed 的唯一 `model.generate/v1` Require 与唯一 `knowledge.read` 请求。Store
+permission，或 governed 的唯一 `model.generate/v2` Require 与唯一 `knowledge.read` 请求。Store
 publication、exact retry、公开 `VerifyPublishedControlCatalogClosureV1` 与 Backup semantic gate
 均使用该 classifier；permission-only、require-only、重复、额外值和其他部分形状都拒绝，避免
 Apply/Runtime/Backup 对同一 Manifest 得出不同结论。
@@ -2550,7 +2565,7 @@ observation closure 表，以及 W6-5 两张 inert Artifact/append-only Admissio
 | RAG 远程/计费检索 | 出现首个远程或计费 Provider 时 | Retrieval Attempt、UNKNOWN、Usage、对账与恢复 |
 | MCP 超出首个本地 Tool 切片的能力 | 出现 Secret、REMOTE/HTTP、Resource/Prompt、自动发现或动态订阅消费者时 | 独立权限/Secret/传输合同、相应 Attempt/Usage、UNKNOWN、恢复与撤权 |
 | 通用动态任务图与多轮返工 | 超出 W5-D1 已冻结的 depth-1、单 repair round 图时 | 动态 authority、图 revision、更高循环上限、lease/fencing、UNKNOWN 与恢复 |
-| Learning 后台调度、自动 Review/Apply 与主动外部检索 | 出现首个后台 Worker、自动治理或主动检索消费者时 | 独立权限/成本/停止边界；复用唯一 Run/Attempt/UNKNOWN，不得把 W4-L4 显式 Tick 或 Store-only reconcile 解释为后台执行授权 |
+| Learning 后台调度、自动 Review/Apply 与主动外部检索 | 出现首个后台 Worker、自动治理或主动检索消费者时 | 独立权限/资源/停止边界；复用唯一 Run/Attempt/UNKNOWN，不得把 W4-L4 显式 Tick 或 Store-only reconcile 解释为后台执行授权 |
 
 新增能力必须复用本规格的 identity、Store owner、CAS、Attempt 和备份协议。无状态
 模块无需为“看起来完整”而建表。
@@ -2641,7 +2656,7 @@ Memory 完整备份继续使用同一 SQLite snapshot 与 bundle manifest，不�
   `context-compilation/v1` 的 exact result evidence。
 - 用取消覆盖 PENDING/MODEL_UNKNOWN/UNKNOWN、向上/横向传播 inherited cancel，或把
   UNKNOWN dispatch slot 退款后重放。
-- 新建 family currency/balance/usage pool，或以派生聚合替代每 Run 的原 `model_usage`。
+- 新建 family balance/usage pool，或以派生聚合替代每 Run 的原 `model_usage`。
 - 在迁移、fingerprint、实现、故障恢复与完整 backup/restore 门禁齐备前把
   Parent/Child + Composite 标记为 accepted。
 
@@ -2668,7 +2683,7 @@ Memory 完整备份继续使用同一 SQLite snapshot 与 bundle manifest，不�
    返回同一 Run，相同 key + 不同 digest fail-closed。
 8. 相同编译输入生成字节一致的 Snapshot、Manifest 和 digest。
 9. stale revision、stale lease owner 与 stale epoch 均不能推进 Loop；Usage
-   成本对账也必须按 revision CAS。
+   对账也必须按 revision CAS。
 10. 实际网络调用前可以证明 PENDING 与 Usage 占位行已经提交；已过期 deadline
     可以证明直接 FAILED、无 permit 且模型调用次数为零。
 11. 在“调用前、调用后、终态事务前、终态事务中”注入崩溃，均恢复到唯一原
@@ -2744,11 +2759,11 @@ Memory 完整备份继续使用同一 SQLite snapshot 与 bundle manifest，不�
 38. ACTION_PROPOSAL 的 snapshot/public+provider action/definition/input/payload 由 Store
     从冻结 closure 重算唯一 ContentDigest；任一篡改在 DispatchAttempt/permit/executor
     前 fail-closed。
-39. 模型一 SUCCEEDED/Usage、post-model BudgetStateRef、Proposal、
+39. 模型一 SUCCEEDED/Usage、post-model UsageLedgerRef、Proposal、
     DispatchAttempt=PENDING、互斥 Frame 指针和 Event 在单一事务提交；失败全回滚，
     permit 只产生一次且 executor 零调用，串行事务与冻结状态机证明首片每 Run/Member
     最多一条而不永久锁死未来多轮 Action。
-40. Gateway 消费 permit 前复核 lease/fencing、Binding、撤权、Authority、Effect、预算
+40. Gateway 消费 permit 前复核 lease/fencing、Binding、撤权、Authority、Effect
     与 deadline；外部效果前可证明 PENDING 已提交，Loop/SDK/模型无法访问 executor。
 41. SUCCEEDED/FAILED/UNKNOWN 只由唯一 Action 终态 API 写入；严格 execution-result wire、
     身份或真实回执错配均拒绝，receipt 可空且不伪造；已确认 SUCCEEDED 的非 canonical/
@@ -2923,7 +2938,7 @@ CREATE TABLE workspace_scheduler_state (
 
 生产行延迟到该 Workspace 第一次成功 claim 时创建，首值为 `served_units=1, revision=1`；
 零值只用于缺行时的选择计算。`served_units` 是成功取得一次符合条件 Run lease 的累计
-调度量子，不是 token、费用、终态成功数或运行时长。执行机会授予后，即使 Provider 后续
+调度量子，不是 token、终态成功数或运行时长。执行机会授予后，即使 Provider 后续
 FAILED/UNKNOWN 也不回退；无 runnable、容量不足和事务回滚不递增。两个计数达到 SQLite
 INTEGER 上限时 fail closed，不回绕、不自动归一化；`updated_at` 只用于观测，禁止参与公平
 排序。
@@ -3211,7 +3226,6 @@ CLI/HTTP 和 backup/verify/restore 已按下列不变量闭合：
 | backup/restore 与语义篡改拒绝 | `TestConversationBundleRoundTripPreservesLinearClosureWithoutExecution`、`TestConversationSemanticVerifierRejectsBrokenClosure` |
 | 50 轮本地长链 | `TestRunConversationFiftyTurnsAcrossReentryBackupRestore`：50 Run/Attempt/Usage，turn 25 backup→verify→restore 后续聊，turn 25/50 exact retry，最终 bundle，Action/Memory/Channel 零访问；Windows `21.964s`、WSL `15.594s` |
 | 正常 OS 进程退出/重启 | `TestRunConversationFiftyTurnsAcrossNormalProcessRestart`：两个独立进程顺序完成 25+25 轮，最终 50 Run/Attempt/Usage，Action/Memory/Channel 零访问 |
-| DeepSeek 估算费用原子写入 | `TestCommitModelDispatchOutcomePersistsFrozenDeepSeekEstimatedCost`、`TestCommitModelDispatchOutcomePreservesUnknownFrozenCostAsNull`：冻结价格与完整 token 才产生估算，未知保持 NULL |
 
 CLI 已支持 `conversation-create`、`conversation-get` 和显式 revision/head 续转；loopback
 `POST /v1/conversations` 只创建固定 scope 的 revision 0 Conversation，首次返回 201，
@@ -3224,7 +3238,7 @@ CLI 已支持 `conversation-create`、`conversation-get` 和显式 revision/head
 Conversation 没有得到本切片的成熟性声明。W1 全工作包验收需在真实 50 轮及对应
 长链数据完成后另行裁决。
 
-上述 HTTP、正常进程恢复与成本落账均复用现有 Store API、Conversation CAS、Usage 行和
+上述 HTTP 与正常进程恢复均复用现有 Store API、Conversation CAS、Usage 行和
 唯一 writer；没有新增 Session、第二 Store/Loop/History/Usage，也没有让未装配的
 Role/RAG/Memory/Skill/MCP/Action/Channel/Team 进入 Pure Chat。因此最初的轻量模块化设计
 保持不变。
@@ -3338,7 +3352,7 @@ fingerprint、DraftDigest、固定 `PROPOSAL_GATE` 规则、固定模型指令�
 Reviewer 必须由受信 Operator/Control 显式选择。它与 proposer 必须同 Tenant、同 exact
 Workspace，但 Reviewer RunID、Member、Agent logical ID 和 Profile logical ID 均不同；只改
 version 或 digest 不能绕过独立性检查。Reviewer 是一个普通、非 Conversation、非 Composite、
-非 Channel 的 one-Member Run，只允许一个 required `model.generate/v1` Binding，无 Action，
+非 Channel 的 one-Member Run，只允许一个 required `model.generate/v2` Binding，无 Action，
 冻结参数必须显式满足 `1 <= max_tokens <= 1024`。跨 Workspace 审核、自动选模、动态 RAG/
 Memory、Action 或其他副作用 Port 均不属于 L2。
 
@@ -3509,7 +3523,7 @@ Store open、Backup/Restore、启动和关停恢复不会自动扫描 Schedule�
 普通 Run 发布和 `PENDING/0 → RUN_ADMITTED/1` 位于另一原子 Admission 事务。
 
 v1 proposer 是 standalone、single-member、非 Conversation/Composite/Channel 的普通 model-only
-Run，只允许一个 required `model.generate/v1`，固定一次有界模型步骤；Action、MCP、Channel、
+Run，只允许一个 required `model.generate/v2`，固定一次有界模型步骤；Action、MCP、Channel、
 动态 RAG/Memory 与其他 Port 均禁止。模型结果只接受严格且恰好五字段的
 `learning-cycle-result/v1`：`PROPOSE|NO_CHANGE` 必须精确绑定 request digest，Knowledge 与 Skill
 两个 union arm 的未使用字段仍必须显式为空。模型不能自报 Tenant、Workspace、Agent、Profile、
@@ -3543,7 +3557,7 @@ CLI 已提供 `learning-cycle-schedule-create/get/enable/disable`、显式
 `learning-cycle-tick`、Store-only `learning-cycle-reconcile` 与只读 `learning-cycle-report`。
 只有 Tick 构造 production composition；其余命令只打开 Current Store。Tick/reconcile 输出脱敏
 Schedule/Task/Run/Attempt/Proposal 引用和可用的同 Attempt Usage，不输出 objective、request/result
-或模型正文；未知 token/费用继续编码为 JSON `null`。
+或模型正文；未知 token 继续编码为 JSON `null`。
 
 完整 Backup create→verify→restore→reopen 已覆盖 Schedule enabled/revision/水位、开放、完成、失败、
 INVALID 与 UNKNOWN Task、普通 Run/Attempt/Usage/Result/Proposal closure。Restore/Open 不隐式 Tick；
@@ -4577,7 +4591,7 @@ Installation 且 Source 已移除的对象仍必须完全离线 round-trip；同
 一份 bytes。恢复不得重读 Source、联网、Install、Activate 或 execute；临时 SQLite、bundle 与 restore tree 只能在
 可信私有 staging 中创建，copy 从 held handles 读取，publish/rename/cleanup 后同步受影响 parents。
 
-当前 Store identity 为：
+FAC1 W6-5 历史 Store identity 为：
 
 ```text
 ordinary tables = 43
@@ -4588,5 +4602,32 @@ migration bytes = 150301
 migration SHA-256 = 6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86
 ```
 
-`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` 只授权下一原子设计读取这些 inert facts；W6-5 不创建
-Upgrade Review/Decision，也不 Install、Activate、Bind、grant、Apply 或 execute。
+`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` 是 W6-5 收口时的历史 marker；它只授权下一原子设计
+读取这些 inert facts，W6-5 不创建 Upgrade Review/Decision，也不 Install、Activate、Bind、grant、Apply 或 execute。
+
+## 41. W6.6 server-owned Upgrade Review 当前 Store 边界
+
+当前状态为 `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_NEXT`。
+W6.6 不新增第二 Store、writer、HTTP route、UI、SSE、worker、Provider 或执行路径。两个默认关闭的可信
+Operator CLI 只接受 Tenant、scope、Admission/Review identity、operator principal、request digest 与
+Decision reason；artifact path、URL、signature bytes 和 caller-supplied current/target facts 一律不是 authority
+输入。服务端从 `module_artifact_admissions` 读取 Admission，复验 Artifact/Manifest/Source/Snapshot/Installation/
+Binding/Activation/Catalog/Control closure 与物理 digest/size/file-count/mode，再复用 W2-U3 evaluator。
+
+`ReviewV1` 的 canonical 与 SQL projection 同时绑定 `ArtifactAdmissionID`、`OperatorPrincipalID` 和
+`ReviewRequestDigest`。Review/Decision 使用 content identity exact retry；同一请求返回原持久事实，冲突、跨 Tenant、
+stale basis、物理篡改、Review integrity 或不合格 Decision 均失败关闭。备份 Create/Verify/Restore 必须同时保留
+Admission、Artifact 与 Review/Decision closure；恢复后 reopen 结果不改变。W6.6 Review/Decision 只产生 inert
+审核事实，不 Install、Activate、Bind、Grant、Apply、Execute，不调用 Provider，不创建 Runtime/Attempt/Usage/Effect。
+
+当前 FAC2 identity 为：
+
+```text
+UserVersion = 2
+ordinary tables = 42
+explicit indexes = 26
+triggers = 64
+schema fingerprint = d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e
+0001_current.sql = 149239 bytes / dbc3e724a1f7c030677c84a77a317f69ef2fe246985cc749559a9f3dd5a6dc5a
+0002_server_owned_review.sql = 7173 bytes / 3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb
+```

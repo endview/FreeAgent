@@ -1,5 +1,5 @@
 // Package deepseekmodel implements the trusted in-process DeepSeek
-// model.generate/v1 adapter. It owns no Store, scheduler, retry loop, or
+// model.generate/v2 adapter. It owns no Store, scheduler, retry loop, or
 // credential value. The trusted composition boundary injects one exact
 // provider identity, a bounded model-build allowlist, a credential resolver,
 // and (optionally) an HTTP client.
@@ -44,7 +44,7 @@ var (
 
 var modelGeneratePortV1 = moduleapi.PortRef{
 	Name:         moduleapi.PortNameModelGenerate,
-	ExactVersion: moduleapi.PortVersionV1,
+	ExactVersion: moduleapi.PortVersionV2,
 }
 
 // APIKeyIdentity contains only frozen, non-secret model identity. A resolver
@@ -100,9 +100,9 @@ type Adapter struct {
 // ValidateBindingConfigV1 applies the exact provider, model-build and
 // generation-parameter checks used by the trusted adapter without resolving a
 // credential or performing network I/O. Control-plane candidates use it
-// before publishing a model.generate/v1 Binding.
+// before publishing a model.generate/v2 Binding.
 func ValidateBindingConfigV1(
-	config moduleapi.ModelBindingConfigV1,
+	config moduleapi.ModelBindingConfigV2,
 	allowedModelBuildIDs map[string]string,
 ) error {
 	if config.Provider != ProviderNameV1 {
@@ -327,34 +327,34 @@ func (adapter *Adapter) prepareInvocation(
 	prepared modulehost.PreparedInvocation,
 ) (
 	moduleapi.ActivatedModuleRef,
-	moduleapi.ModelBindingConfigV1,
+	moduleapi.ModelBindingConfigV2,
 	moduleapi.ModelGenerateRequestV1,
 	validatedParameters,
 	error,
 ) {
 	if adapter == nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: adapter is nil", ErrInvocation)
 	}
 	if ctx == nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: context is nil", ErrInvocation)
 	}
 	if err := ctx.Err(); err != nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: context: %w", ErrInvocation, err)
 	}
 	if prepared.Invocation.Port != modelGeneratePortV1 {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
-			fmt.Errorf("%w: Port must be model.generate/v1", ErrInvocation)
+			fmt.Errorf("%w: Port must be model.generate/v2", ErrInvocation)
 	}
 	plan, err := moduleapi.NewPortPlan(moduleapi.PortPlan{
 		Port:     modelGeneratePortV1,
@@ -362,29 +362,29 @@ func (adapter *Adapter) prepareInvocation(
 	})
 	if err != nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: frozen Binding: %v", ErrInvocation, err)
 	}
 	provider := plan.Bindings[0].Provider
 	if !adapter.provider.matches(provider) {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: Provider does not match adapter", ErrInvocation)
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		append([]byte(nil), prepared.ConfigCanonical...),
 	)
 	if err != nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: restore model Binding config: %v", ErrInvocation, err)
 	}
 	if err := adapter.validateModelConfig(modelConfig); err != nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: %v", ErrInvocation, err)
 	}
@@ -393,27 +393,27 @@ func (adapter *Adapter) prepareInvocation(
 	)
 	if err != nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: restore request: %v", ErrInvocation, err)
 	}
 	if len(request.Actions) != 0 {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: Actions are not supported by adapter v1", ErrInvocation)
 	}
 	configParameters, err := validateDeepSeekParameters(modelConfig.Parameters)
 	if err != nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: frozen model parameters: %v", ErrInvocation, err)
 	}
 	requestParameters, err := validateDeepSeekParameters(request.Parameters)
 	if err != nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: request parameters: %v", ErrInvocation, err)
 	}
@@ -422,7 +422,7 @@ func (adapter *Adapter) prepareInvocation(
 		requestParameters,
 	); err != nil {
 		return moduleapi.ActivatedModuleRef{},
-			moduleapi.ModelBindingConfigV1{},
+			moduleapi.ModelBindingConfigV2{},
 			moduleapi.ModelGenerateRequestV1{}, nil,
 			fmt.Errorf("%w: request parameters: %v", ErrInvocation, err)
 	}
@@ -430,7 +430,7 @@ func (adapter *Adapter) prepareInvocation(
 }
 
 func (adapter *Adapter) validateModelConfig(
-	config moduleapi.ModelBindingConfigV1,
+	config moduleapi.ModelBindingConfigV2,
 ) error {
 	if config.Provider != ProviderNameV1 {
 		return fmt.Errorf("provider must be %q", ProviderNameV1)
@@ -491,16 +491,14 @@ func freezeAllowedModelBuildIDs(
 		default:
 			return nil, fmt.Errorf("unsupported model alias %q", model)
 		}
-		candidate := moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        ProviderNameV1,
-			Model:           model,
-			ModelBuildID:    buildID,
-			BillingVersion:  "validation-only",
-			PriceSnapshotID: "validation-only",
-			Parameters:      json.RawMessage(`{}`),
+		candidate := moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      ProviderNameV1,
+			Model:         model,
+			ModelBuildID:  buildID,
+			Parameters:    json.RawMessage(`{}`),
 		}
-		if _, _, err := moduleapi.NewModelBindingConfigV1(candidate); err != nil {
+		if _, _, err := moduleapi.NewModelBindingConfigV2(candidate); err != nil {
 			return nil, fmt.Errorf("invalid model-build allowlist entry: %v", err)
 		}
 		frozen[model] = buildID

@@ -452,12 +452,6 @@ func completeConversationRunSuccessfully(
 	runID string,
 ) {
 	t.Helper()
-	if _, err := fixture.store.PutModelPriceSnapshot(
-		context.Background(),
-		testModelPriceSnapshot(),
-	); err != nil {
-		t.Fatal(err)
-	}
 	lease, err := fixture.store.AcquireRunLease(
 		context.Background(),
 		AcquireRunLeaseInput{

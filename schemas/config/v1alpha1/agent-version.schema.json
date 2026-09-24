@@ -13,7 +13,7 @@
     "type_labels",
     "routing",
     "trust",
-    "cost_weight",
+    "selection_weight",
     "bindings",
     "policy",
     "hash"
@@ -49,7 +49,7 @@
       "minimum": 0,
       "maximum": 1
     },
-    "cost_weight": {
+    "selection_weight": {
       "type": "number",
       "exclusiveMinimum": 0
     },

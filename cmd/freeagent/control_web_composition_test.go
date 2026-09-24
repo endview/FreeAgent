@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/endview/freeagent/internal/controlapp"
@@ -81,5 +82,30 @@ func TestProductionControlOverviewReaderMapsPrivateErrorsV1(t *testing.T) {
 	}
 	if got := mapControlOverviewStoreErrorV1(nil); got != nil {
 		t.Fatalf("map(nil)=%v", got)
+	}
+}
+
+func TestProductionControlManagementReaderAcceptsPageLookaheadV1(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "current.sqlite")
+	if _, err := currentstore.InitFreshCurrentStore(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	store, err := currentstore.OpenExistingCurrentStore(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	reader := productionControlManagementReaderV1{store: store}
+	if records, more, err := reader.ListUnknownAttempts(
+		ctx, defaultTenantID, "", 101,
+	); err != nil || len(records) != 0 || more {
+		t.Fatalf("UNKNOWN lookahead: records=%d more=%t err=%v", len(records), more, err)
+	}
+	if records, more, err := reader.ListArtifactAdmissions(
+		ctx, defaultTenantID, "", 101,
+	); err != nil || len(records) != 0 || more {
+		t.Fatalf("Artifact lookahead: records=%d more=%t err=%v", len(records), more, err)
 	}
 }

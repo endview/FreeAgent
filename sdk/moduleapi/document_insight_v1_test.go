@@ -79,7 +79,7 @@ func TestClassifyExactDocumentInsightManifestV1(t *testing.T) {
 			mutate: func(value *ModuleManifestV1) {
 				value.Requires = nil
 			},
-			wantDetail: "require only exact model.generate/v1",
+			wantDetail: "require only exact model.generate/v2",
 		},
 		{
 			name: "extra model dependency",
@@ -88,7 +88,7 @@ func TestClassifyExactDocumentInsightManifestV1(t *testing.T) {
 					Name: PortNameChannelTransport, ExactVersion: PortVersionV1,
 				})
 			},
-			wantDetail: "require only exact model.generate/v1",
+			wantDetail: "require only exact model.generate/v2",
 		},
 		{
 			name: "missing knowledge permission",
@@ -153,8 +153,8 @@ func TestExactDocumentInsightProvidesV1ReturnsDefensiveOrder(t *testing.T) {
 func TestClassifyExactDocumentInsightProviderV1(t *testing.T) {
 	exact := ActivatedModuleRef{
 		ModuleID:           DocumentInsightModuleIDV1,
-		Version:            DocumentInsightVersionV1,
-		ArtifactDigest:     DocumentInsightArtifactDigestV1,
+		Version:            DocumentInsightVersionV2,
+		ArtifactDigest:     DocumentInsightArtifactDigestV2,
 		InstanceID:         "document-insight-main",
 		ExecutionClass:     ExecutionTrustedInProcess,
 		AdapterIdentity:    DocumentInsightAdapterIdentityV1,

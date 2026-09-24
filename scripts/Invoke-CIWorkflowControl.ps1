@@ -85,7 +85,7 @@ $script:VerifierSha256 =
 $script:CommandRunnerSha256 =
     'edec08adf204604729bcda5074ad3f7eade6e3b332da9730a7771bcb7e97f7e2'
 $script:WorkflowJobSha256 =
-    '7e405e7cb9f033c67f4653848d0174166e30ea381636c7097ce2982201b0a830'
+    'ce6e0b0a134012058d11a15e46998d7b935e9ee2b5391070928e88014c12fa88'
 $script:MaximumScriptBytes = 4194304
 $script:ExactJobKinds = @(
     'permanent',
@@ -617,11 +617,11 @@ function Get-CIWCArtifactContract {
                 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml',
                 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md',
                 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json',
-                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE',
-                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml',
-                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md',
-                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json',
-                'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json'
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/LICENSE',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.yaml',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/README.md',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/implementation/adapter.json',
+                'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/schemas/config.schema.json'
             )) {
                 [void]$required.Add($path)
             }

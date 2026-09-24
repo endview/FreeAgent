@@ -1198,7 +1198,6 @@ func assertCompositeMemberContractEqual(
 		!reflect.DeepEqual(before.PortPlans, after.PortPlans) ||
 		!reflect.DeepEqual(before.Actions, after.Actions) ||
 		before.ContextPolicy != after.ContextPolicy ||
-		before.CostPolicy != after.CostPolicy ||
 		before.SchedulingPolicy != after.SchedulingPolicy {
 		t.Fatalf("Decision opt-in rewrote initial member contract:\nbefore=%+v\nafter=%+v", before, after)
 	}
@@ -1345,7 +1344,6 @@ func compositeInputWithWorkspaceTransfer(
 					Version: "1",
 					Digest:  hash("f"),
 				},
-				BudgetPolicy: policy("policy.budget.specialist", "0"),
 			}
 			rootGrant := compositeWorkspaceTransferGrant(
 				"grant-root-specialist",

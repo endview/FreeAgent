@@ -510,7 +510,7 @@ func verifyProspectiveLearningReviewer(
 			ErrInvalidLearningReview,
 		)
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(modelConfig.CanonicalBytes)
+	config, err := moduleapi.RestoreModelBindingConfigV2(modelConfig.CanonicalBytes)
 	if err != nil {
 		return fmt.Errorf("%w: Reviewer model config: %v", ErrInvalidLearningReview, err)
 	}
@@ -647,7 +647,7 @@ func loadLearningReviewerClosure(
 			err,
 		)
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(configContent.CanonicalBytes)
+	config, err := moduleapi.RestoreModelBindingConfigV2(configContent.CanonicalBytes)
 	if err != nil {
 		return learningReviewerClosure{}, fmt.Errorf(
 			"%w: restore Reviewer model config: %v",
@@ -692,7 +692,7 @@ func validateLearningReviewerFacts(
 	manifest corecontract.RunManifest,
 	member corecontract.MemberExecutionSnapshot,
 	request learningcontract.ReviewRequestV1,
-	config moduleapi.ModelBindingConfigV1,
+	config moduleapi.ModelBindingConfigV2,
 ) error {
 	if manifest.RunID == proposal.Proposal.ProposerRunID ||
 		member.MemberID == proposal.Proposal.ProposerMember.MemberID ||
@@ -713,11 +713,11 @@ func validateLearningReviewerFacts(
 	}
 	plan := member.PortPlans[0]
 	if plan.Port.Name != moduleapi.PortNameModelGenerate ||
-		plan.Port.ExactVersion != moduleapi.PortVersionV1 ||
+		plan.Port.ExactVersion != moduleapi.PortVersionV2 ||
 		len(plan.Bindings) != 1 ||
 		plan.Bindings[0].FailurePolicy != moduleapi.FailureRequired {
 		return fmt.Errorf(
-			"%w: Reviewer must contain exactly one required model.generate/v1 Binding",
+			"%w: Reviewer must contain exactly one required model.generate/v2 Binding",
 			ErrLearningReviewLineage,
 		)
 	}

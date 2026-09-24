@@ -13,7 +13,7 @@ import (
 
 // validateGovernedKnowledgeApplyClosureV1 is the shared pre-publication gate
 // for the E5-A Knowledge provider and the Context side of exact Document
-// Insight. The proposed Binding does not alter model.generate/v1, so its
+// Insight. The proposed Binding does not alter model.generate/v2, so its
 // candidate dependency is the exact Model Binding already frozen in the same
 // target Profile and Catalog. The function derives no second graph or grant.
 func validateGovernedKnowledgeApplyClosureV1(
@@ -64,18 +64,18 @@ func validateGovernedKnowledgeApplyClosureV1(
 			for _, binding := range other.Bindings {
 				if binding.Port == productionModelPort {
 					return errors.New(
-						"governed Knowledge has a cross-Profile Require for model.generate/v1",
+						"governed Knowledge has a cross-Profile Require for model.generate/v2",
 					)
 				}
 			}
 		}
 		return errors.New(
-			"governed Knowledge is missing exact same-Profile Require model.generate/v1",
+			"governed Knowledge is missing exact same-Profile Require model.generate/v2",
 		)
 	case 1:
 	default:
 		return fmt.Errorf(
-			"governed Knowledge has ambiguous exact same-Profile Require model.generate/v1 (%d Bindings)",
+			"governed Knowledge has ambiguous exact same-Profile Require model.generate/v2 (%d Bindings)",
 			len(modelBindings),
 		)
 	}
@@ -85,7 +85,7 @@ func validateGovernedKnowledgeApplyClosureV1(
 		productionModelPort,
 	); err != nil {
 		return fmt.Errorf(
-			"governed Knowledge model.generate/v1 dependency PortPlan: %w",
+			"governed Knowledge model.generate/v2 dependency PortPlan: %w",
 			err,
 		)
 	}
@@ -94,7 +94,7 @@ func validateGovernedKnowledgeApplyClosureV1(
 	if !found || entry.Activation.InstanceID != modelBinding.InstanceID ||
 		len(entry.Provides) != 1 || entry.Provides[0] != productionModelPort {
 		return errors.New(
-			"governed Knowledge model.generate/v1 dependency does not close one exact Catalog provider",
+			"governed Knowledge model.generate/v2 dependency does not close one exact Catalog provider",
 		)
 	}
 	activation, err := view.GetModuleActivationByIdentity(
@@ -105,7 +105,7 @@ func validateGovernedKnowledgeApplyClosureV1(
 	)
 	if err != nil {
 		return fmt.Errorf(
-			"governed Knowledge model.generate/v1 dependency Activation: %w",
+			"governed Knowledge model.generate/v2 dependency Activation: %w",
 			err,
 		)
 	}
@@ -115,7 +115,7 @@ func validateGovernedKnowledgeApplyClosureV1(
 		activation.ExecutionClass != entry.Activation.ExecutionClass ||
 		activation.AdapterIdentity != entry.Activation.AdapterIdentity {
 		return errors.New(
-			"governed Knowledge model.generate/v1 Catalog and exact Activation differ",
+			"governed Knowledge model.generate/v2 Catalog and exact Activation differ",
 		)
 	}
 	installation, err := view.GetModuleInstallationByIdentity(
@@ -125,7 +125,7 @@ func validateGovernedKnowledgeApplyClosureV1(
 	)
 	if err != nil {
 		return fmt.Errorf(
-			"governed Knowledge model.generate/v1 dependency Installation: %w",
+			"governed Knowledge model.generate/v2 dependency Installation: %w",
 			err,
 		)
 	}
@@ -134,7 +134,7 @@ func validateGovernedKnowledgeApplyClosureV1(
 		installation.ExactVersion != entry.Activation.Version ||
 		installation.ArtifactDigest != entry.Activation.ArtifactDigest {
 		return errors.New(
-			"governed Knowledge model.generate/v1 Activation and Installation differ",
+			"governed Knowledge model.generate/v2 Activation and Installation differ",
 		)
 	}
 	manifest, canonical, err := moduleapi.ParseModuleManifestV1(
@@ -150,7 +150,7 @@ func validateGovernedKnowledgeApplyClosureV1(
 			manifest.Runtime.Mode,
 		) {
 		return fmt.Errorf(
-			"governed Knowledge model.generate/v1 installed Manifest closure: %w",
+			"governed Knowledge model.generate/v2 installed Manifest closure: %w",
 			errors.Join(err, errors.New("identity, runtime, or Provides differ")),
 		)
 	}

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -29,14 +28,12 @@ func TestBeginModelDispatchCommitsPreNetworkBoundary(t *testing.T) {
 		result.Lease.FrameRevision != lease.FrameRevision+1 {
 		t.Fatalf("result=%+v", result)
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		result.Attempt.ModelConfigCanonical,
 	)
 	if err != nil ||
 		modelConfig.Provider != result.Attempt.Provider ||
-		modelConfig.Model != result.Attempt.Model ||
-		modelConfig.BillingVersion != result.Attempt.BillingVersion ||
-		modelConfig.PriceSnapshotID != result.Attempt.PriceSnapshotID {
+		modelConfig.Model != result.Attempt.Model {
 		t.Fatalf(
 			"transient model config=%+v error=%v",
 			modelConfig,
@@ -65,7 +62,7 @@ func TestBeginModelDispatchCommitsPreNetworkBoundary(t *testing.T) {
 			usage.ledger_sequence,
 			usage.input_tokens,
 			usage.output_tokens,
-			usage.reconciliation_status
+			usage.usage_status
 		FROM model_dispatch_attempts AS attempt
 		JOIN loop_frames AS frame ON frame.run_id=attempt.run_id
 		JOIN model_usage AS usage ON usage.attempt_id=attempt.attempt_id
@@ -127,7 +124,7 @@ func TestBeginModelDispatchCommitsPreNetworkBoundary(t *testing.T) {
 		len(run.ModelDispatches) != 1 ||
 		run.ModelDispatches[0].Attempt.State !=
 			corecontract.ModelAttemptPending ||
-		run.ModelDispatches[0].Usage.ReconciliationStatus !=
+		run.ModelDispatches[0].Usage.UsageStatus !=
 			modelUsageStatusPending {
 		t.Fatalf("loaded frame=%+v", run.Frame)
 	}
@@ -305,7 +302,7 @@ func TestBeginModelDispatchExpiredBeforeDispatchCommitsDirectTerminal(
 		len(loaded.ModelDispatches) != 1 ||
 		loaded.ModelDispatches[0].Attempt.State !=
 			corecontract.ModelAttemptFailed ||
-		loaded.ModelDispatches[0].Usage.ReconciliationStatus !=
+		loaded.ModelDispatches[0].Usage.UsageStatus !=
 			modelUsageStatusNoReport ||
 		loaded.ModelDispatches[0].Usage.LedgerSequence != nil ||
 		len(loaded.History) != 0 {
@@ -351,7 +348,7 @@ func TestBeginModelDispatchExpiredBeforeDispatchCommitsDirectTerminal(
 			a.revision,
 			u.ledger_sequence,
 			u.revision,
-			u.reconciliation_status,
+			u.usage_status,
 			r.state,
 			r.disposition,
 			r.revision,
@@ -586,7 +583,7 @@ func TestBeginModelDispatchRetryRevalidatesUsagePlaceholder(
 		[]string{"model_usage_observation_update_guard"},
 		`
 		UPDATE model_usage
-		SET reconciliation_status='CORRUPTED'
+		SET usage_status='CORRUPTED'
 		WHERE attempt_id=?
 	`,
 		input.AttemptID,
@@ -652,21 +649,6 @@ func TestBeginModelDispatchFailureLeavesNoPartialAttempt(t *testing.T) {
 			corecontract.RunManifest,
 		)
 	}{
-		{
-			name: "missing price",
-			mutate: func(
-				fixture *admissionCommitFixture,
-				_ *BeginModelDispatchInput,
-				_ corecontract.RunManifest,
-			) {
-				if _, err := fixture.store.db.Exec(`
-					DELETE FROM model_price_snapshots
-					WHERE price_snapshot_id='price-deepseek-v4'
-				`); err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
 		{
 			name: "deadline exceeds manifest",
 			mutate: func(
@@ -854,7 +836,7 @@ func TestBeginModelDispatchRevocationDoesNotReplayHistoricalPending(
 	}
 }
 
-func TestBeginModelDispatchUsesFrozenBindingAndPrice(t *testing.T) {
+func TestBeginModelDispatchUsesFrozenBinding(t *testing.T) {
 	fixture, _, input := newModelDispatchFixture(t)
 	result, err := fixture.store.BeginModelDispatch(
 		context.Background(),
@@ -871,8 +853,7 @@ func TestBeginModelDispatchUsesFrozenBindingAndPrice(t *testing.T) {
 	}
 	if result.Attempt.Binding.Provider != wantBinding.Provider ||
 		result.Attempt.Provider != "deepseek" ||
-		result.Attempt.Model != "deepseek-v4-pro" ||
-		result.Attempt.BillingVersion != "2026-07" {
+		result.Attempt.Model != "deepseek-v4-pro" {
 		t.Fatalf("attempt=%+v", result.Attempt)
 	}
 	result.Attempt.Binding.StaticContextRefs = append(
@@ -893,70 +874,18 @@ func TestBeginModelDispatchUsesFrozenBindingAndPrice(t *testing.T) {
 	}
 }
 
-func TestModelBudgetAcceptsMaximumLengthBudgetStateRefV1(t *testing.T) {
-	fixture := newAdmissionCommitFixture(t)
-	manifest, err := corecontract.RestoreRunManifest(
-		fixture.input.RunManifestCanonical,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	runID := strings.Repeat("r", 256)
-	reference, err := corecontract.NewBudgetStateRefV1(runID, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	canonical, err := canonicalModelBudget(
-		manifest.BudgetPolicy,
-		runID,
-		reference,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored, err := restoreModelBudget(canonical, runID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if restored.BudgetStateRef != reference ||
-		restored.BudgetPolicy != manifest.BudgetPolicy ||
-		restored.LedgerSequence != 0 {
-		t.Fatalf("restored=%+v", restored)
-	}
-}
-
 func newModelDispatchFixture(
 	t *testing.T,
 ) (*admissionCommitFixture, RunLease, BeginModelDispatchInput) {
-	return newModelDispatchFixtureWithModelProfileAndPrice(
-		t,
-		0,
-		testModelPriceSnapshot(),
-	)
+	return newModelDispatchFixtureWithModelProfile(t, 0)
 }
 
 func newModelDispatchFixtureWithModelProfile(
 	t *testing.T,
 	contextWindowTokens uint64,
 ) (*admissionCommitFixture, RunLease, BeginModelDispatchInput) {
-	return newModelDispatchFixtureWithModelProfileAndPrice(
-		t,
-		contextWindowTokens,
-		testModelPriceSnapshot(),
-	)
-}
-
-func newModelDispatchFixtureWithModelProfileAndPrice(
-	t *testing.T,
-	contextWindowTokens uint64,
-	price corecontract.ModelPriceSnapshotV1,
-) (*admissionCommitFixture, RunLease, BeginModelDispatchInput) {
 	t.Helper()
-	fixture := newAdmissionCommitFixtureWithModelProfileAndPrice(
-		t,
-		contextWindowTokens,
-		price,
-	)
+	fixture := newAdmissionCommitFixtureWithModelProfile(t, contextWindowTokens)
 	fixture.intent.Deadline = time.Now().
 		UTC().
 		Add(2 * time.Hour).
@@ -1010,7 +939,7 @@ func newModelDispatchFixtureWithModelProfileAndPrice(
 					Content: "Say hello.",
 				},
 			},
-			Parameters: json.RawMessage(`{"temperature":0}`),
+			Parameters: json.RawMessage(`{"max_tokens":64,"temperature":0}`),
 		},
 	)
 	if err != nil {

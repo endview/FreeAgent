@@ -1161,7 +1161,7 @@ func modelOutcomeFromInvocation(
 	}
 	usageValid := true
 	if len(result.UsageReceipt) != 0 {
-		_, err := moduleapi.RestoreModelUsageReceiptV1(result.UsageReceipt)
+		_, err := moduleapi.RestoreModelUsageReceiptV2(result.UsageReceipt)
 		usageValid = err == nil
 	}
 	switch result.Outcome {

@@ -104,6 +104,10 @@ func run(
 		return runModulePublisherKeyRevoke(ctx, args[1:], stdout, stderr)
 	case "module-upgrade-review":
 		return runModuleUpgradeReview(ctx, args[1:], stdout, stderr)
+	case "module-upgrade-review-server-owned":
+		return runModuleUpgradeReviewServerOwned(ctx, args[1:], stdout, stderr)
+	case "module-upgrade-decide-server-owned":
+		return runModuleUpgradeDecisionServerOwned(ctx, args[1:], stdout, stderr)
 	case "module-upgrade-decide":
 		return runModuleUpgradeDecide(ctx, args[1:], stdout, stderr)
 	case "module-upgrade-apply":
@@ -132,6 +136,8 @@ func run(
 		return runBackupVerify(ctx, args[1:], stdout, stderr)
 	case "restore":
 		return runRestore(ctx, args[1:], stdout, stderr)
+	case "migrate":
+		return runMigrate(ctx, args[1:], stdout, stderr)
 	default:
 		return fmt.Errorf("freeagent: unknown command %q; %w", args[0], commandUsageError())
 	}
@@ -139,7 +145,7 @@ func run(
 
 func commandUsageError() error {
 	return errors.New(
-		"usage: freeagent --version | freeagent <init|conversation-create|conversation-get|chat|module-verify|module-list|module-history|module-inspect|module-dry-run|module-apply|module-disable|module-source-register|module-source-refresh|module-artifact-ingress|module-publisher-key-revoke|module-upgrade-review|module-upgrade-decide|module-upgrade-apply|learning-materialize|learning-cycle-schedule-create|learning-cycle-schedule-get|learning-cycle-schedule-enable|learning-cycle-schedule-disable|learning-cycle-tick|learning-cycle-reconcile|learning-cycle-report|s3-eval|s3-store-audit|s3-cell-audit|serve|backup|backup-verify|restore> [flags]",
+		"usage: freeagent --version | freeagent <init|conversation-create|conversation-get|chat|module-verify|module-list|module-history|module-inspect|module-dry-run|module-apply|module-disable|module-source-register|module-source-refresh|module-artifact-ingress|module-publisher-key-revoke|module-upgrade-review|module-upgrade-review-server-owned|module-upgrade-decide|module-upgrade-decide-server-owned|module-upgrade-apply|learning-materialize|learning-cycle-schedule-create|learning-cycle-schedule-get|learning-cycle-schedule-enable|learning-cycle-schedule-disable|learning-cycle-tick|learning-cycle-reconcile|learning-cycle-report|s3-eval|s3-store-audit|s3-cell-audit|serve|backup|backup-verify|restore|migrate> [flags]",
 	)
 }
 
@@ -293,6 +299,7 @@ func runChat(
 	)
 	schedulerFlags := bindFairSchedulerFlags(flags)
 	deepSeekFlags := bindDeepSeekRuntimeFlags(flags)
+	zhipuFlags := bindZhipuRuntimeFlags(flags)
 	remoteActionFlags := bindRemoteActionRuntimeFlags(flags)
 	wasmActionFlags := bindWASMActionRuntimeFlags(flags)
 	if err := flags.Parse(args); err != nil {
@@ -319,6 +326,10 @@ func runChat(
 	if err != nil {
 		return fmt.Errorf("freeagent chat: %w", err)
 	}
+	zhipuConfig, err := zhipuFlags.config(flags)
+	if err != nil {
+		return fmt.Errorf("freeagent chat: %w", err)
+	}
 	remoteActionConfig, err := remoteActionFlags.config(flags)
 	if err != nil {
 		return fmt.Errorf("freeagent chat: %w", err)
@@ -336,6 +347,7 @@ func runChat(
 		productionCompositionOptions{
 			FairScheduler: schedulerConfig,
 			DeepSeek:      deepSeekConfig,
+			Zhipu:         zhipuConfig,
 			RemoteAction:  remoteActionConfig,
 			WASMAction:    wasmActionConfig,
 		},
@@ -426,6 +438,7 @@ func runServe(
 	)
 	schedulerFlags := bindFairSchedulerFlags(flags)
 	deepSeekFlags := bindDeepSeekRuntimeFlags(flags)
+	zhipuFlags := bindZhipuRuntimeFlags(flags)
 	remoteActionFlags := bindRemoteActionRuntimeFlags(flags)
 	wasmActionFlags := bindWASMActionRuntimeFlags(flags)
 	if err := flags.Parse(args); err != nil {
@@ -448,6 +461,10 @@ func runServe(
 		return fmt.Errorf("freeagent serve: %w", err)
 	}
 	deepSeekConfig, err := deepSeekFlags.config(flags)
+	if err != nil {
+		return fmt.Errorf("freeagent serve: %w", err)
+	}
+	zhipuConfig, err := zhipuFlags.config(flags)
 	if err != nil {
 		return fmt.Errorf("freeagent serve: %w", err)
 	}
@@ -498,6 +515,7 @@ func runServe(
 			},
 			productionCompositionOptions{
 				DeepSeek:     deepSeekConfig,
+				Zhipu:        zhipuConfig,
 				RemoteAction: remoteActionConfig,
 				WASMAction:   wasmActionConfig,
 			},
@@ -511,6 +529,7 @@ func runServe(
 			productionCompositionOptions{
 				FairScheduler: schedulerConfig,
 				DeepSeek:      deepSeekConfig,
+				Zhipu:         zhipuConfig,
 				RemoteAction:  remoteActionConfig,
 				WASMAction:    wasmActionConfig,
 			},
@@ -535,12 +554,16 @@ func runServe(
 	var rootHandler http.Handler = handler
 	ready := map[string]string{
 		"deepseek_adapter": "disabled",
+		"zhipu_adapter":    "disabled",
 		"fair_scheduler":   "disabled",
 		"listen":           "",
 		"status":           "ready",
 	}
 	if deepSeekConfig != nil {
 		ready["deepseek_adapter"] = "enabled"
+	}
+	if zhipuConfig != nil {
+		ready["zhipu_adapter"] = "enabled"
 	}
 	if schedulerConfig != nil {
 		ready["fair_scheduler"] = "enabled"
@@ -588,9 +611,19 @@ func runServe(
 	if err != nil {
 		return fmt.Errorf("freeagent serve: listen: %w", err)
 	}
+	authority, err := localchat.CanonicalAuthority(listener.Addr())
+	if err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("freeagent serve: %w", err)
+	}
+	securedHandler, err := localchat.NewAuthorityGuard(rootHandler, authority)
+	if err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("freeagent serve: %w", err)
+	}
 	requestContext, cancelRequests := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelRequests()
-	trackedHandler := &drainingHTTPHandler{next: rootHandler}
+	trackedHandler := &drainingHTTPHandler{next: securedHandler}
 	server := &http.Server{
 		Handler:           trackedHandler,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -739,6 +772,68 @@ func runRestore(
 		DatabasePath:    database,
 		ArtifactRoot:    artifacts,
 		StoreInstanceID: verification.StoreInstanceID,
+	})
+}
+
+func runMigrate(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
+	flags := newFlagSet("migrate", stderr)
+	databasePath := flags.String("db", "", "closed Current Store database path")
+	artifactRoot := flags.String("artifact-root", "", "content-addressed artifact root")
+	backupDestination := flags.String("backup-out", "", "new mandatory pre-migration backup bundle")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || strings.TrimSpace(*databasePath) == "" ||
+		strings.TrimSpace(*backupDestination) == "" {
+		return errors.New("freeagent migrate: --db and --backup-out are required")
+	}
+	resolvedArtifacts := resolvedArtifactRoot(*databasePath, *artifactRoot)
+	var manifest currentbackup.Manifest
+	var migration currentstore.MigrationResult
+	err := currentstore.WithOfflineLease(
+		ctx,
+		*databasePath,
+		func(lease *currentstore.OfflineLease) error {
+			var err error
+			manifest, err = currentbackup.CreateBundleFromOfflineLease(
+				ctx,
+				lease,
+				resolvedArtifacts,
+				*backupDestination,
+				backupToolVersion,
+			)
+			if err != nil {
+				return err
+			}
+			migration, err = currentstore.MigrateOfflineCurrentStore(ctx, lease)
+			return err
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("freeagent migrate: %w", err)
+	}
+	backupPath, err := filepath.Abs(*backupDestination)
+	if err != nil {
+		return fmt.Errorf("freeagent migrate: resolve backup: %w", err)
+	}
+	database, err := filepath.Abs(*databasePath)
+	if err != nil {
+		return fmt.Errorf("freeagent migrate: resolve database: %w", err)
+	}
+	return writeCommandJSON(stdout, migrateCommandResult{
+		DatabasePath:      database,
+		BackupBundle:      backupPath,
+		BackupManifest:    manifest,
+		FromVersion:       migration.FromVersion,
+		ToVersion:         migration.ToVersion,
+		AppliedVersions:   migration.AppliedVersions,
+		StoreInstanceID:   migration.Verification.StoreInstanceID,
+		SchemaFingerprint: migration.Verification.SchemaFingerprint,
 	})
 }
 
@@ -913,20 +1008,15 @@ type chatCommandResult struct {
 }
 
 // chatCommandUsage is a read-only CLI projection of one terminal model
-// Attempt's authoritative Usage and frozen price identity. Nil token and cost
-// fields deliberately encode as JSON null: UNKNOWN is never rewritten to 0.
+// Attempt's authoritative Usage. Nil token fields encode as JSON null:
+// UNKNOWN is never rewritten to 0.
 type chatCommandUsage struct {
-	InputTokens          *uint64 `json:"input_tokens"`
-	CachedInputTokens    *uint64 `json:"cached_input_tokens"`
-	UncachedInputTokens  *uint64 `json:"uncached_input_tokens"`
-	OutputTokens         *uint64 `json:"output_tokens"`
-	ReasoningTokens      *uint64 `json:"reasoning_tokens"`
-	EstimatedCost        *string `json:"estimated_cost"`
-	ProviderReportedCost *string `json:"provider_reported_cost"`
-	ReconciledCost       *string `json:"reconciled_cost"`
-	Status               string  `json:"status"`
-	PriceSnapshotID      string  `json:"price_snapshot_id"`
-	Currency             string  `json:"currency"`
+	InputTokens         *uint64 `json:"input_tokens"`
+	CachedInputTokens   *uint64 `json:"cached_input_tokens"`
+	UncachedInputTokens *uint64 `json:"uncached_input_tokens"`
+	OutputTokens        *uint64 `json:"output_tokens"`
+	ReasoningTokens     *uint64 `json:"reasoning_tokens"`
+	Status              string  `json:"status"`
 }
 
 type conversationCommandResult struct {
@@ -978,6 +1068,17 @@ type restoreCommandResult struct {
 	StoreInstanceID string `json:"store_instance_id"`
 }
 
+type migrateCommandResult struct {
+	DatabasePath      string                 `json:"database_path"`
+	BackupBundle      string                 `json:"backup_bundle"`
+	BackupManifest    currentbackup.Manifest `json:"backup_manifest"`
+	FromVersion       int                    `json:"from_version"`
+	ToVersion         int                    `json:"to_version"`
+	AppliedVersions   []int                  `json:"applied_versions"`
+	StoreInstanceID   string                 `json:"store_instance_id"`
+	SchemaFingerprint string                 `json:"schema_fingerprint"`
+}
+
 func newChatCommandResult(result localchat.ChatResult) chatCommandResult {
 	return chatCommandResult{
 		RequestID:            result.RequestID,
@@ -1015,25 +1116,13 @@ func readChatCommandUsage(
 		record.Attempt.AttemptID != result.TerminalResult.AttemptID {
 		return nil, errors.New("terminal model Attempt identity drift")
 	}
-	price, err := store.GetModelPriceSnapshot(
-		ctx,
-		record.Attempt.PriceSnapshotID,
-	)
-	if err != nil {
-		return nil, err
-	}
 	return &chatCommandUsage{
-		InputTokens:          record.Usage.Tokens.Input,
-		CachedInputTokens:    record.Usage.Tokens.CachedInput,
-		UncachedInputTokens:  record.Usage.Tokens.UncachedInput,
-		OutputTokens:         record.Usage.Tokens.Output,
-		ReasoningTokens:      record.Usage.Tokens.Reasoning,
-		EstimatedCost:        record.Usage.EstimatedCost,
-		ProviderReportedCost: record.Usage.ProviderReportedCost,
-		ReconciledCost:       record.Usage.ReconciledCost,
-		Status:               record.Usage.ReconciliationStatus,
-		PriceSnapshotID:      record.Attempt.PriceSnapshotID,
-		Currency:             price.Snapshot.Currency,
+		InputTokens:         record.Usage.Tokens.Input,
+		CachedInputTokens:   record.Usage.Tokens.CachedInput,
+		UncachedInputTokens: record.Usage.Tokens.UncachedInput,
+		OutputTokens:        record.Usage.Tokens.Output,
+		ReasoningTokens:     record.Usage.Tokens.Reasoning,
+		Status:              record.Usage.UsageStatus,
 	}, nil
 }
 

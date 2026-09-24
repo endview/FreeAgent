@@ -144,7 +144,7 @@ func TestDetachModuleUpgradeApplyApprovalDeepCopiesControlCatalogBothDirections(
 				Activation: moduleapi.ActivatedModuleRef{InstanceID: "catalog-instance-one"},
 				Provides: []moduleapi.PortRef{{
 					Name:         moduleapi.PortNameModelGenerate,
-					ExactVersion: moduleapi.PortVersionV1,
+					ExactVersion: moduleapi.PortVersionV2,
 				}},
 			}},
 		},

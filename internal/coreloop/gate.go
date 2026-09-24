@@ -44,7 +44,7 @@ var (
 
 var modelGeneratePortV1 = moduleapi.PortRef{
 	Name:         moduleapi.PortNameModelGenerate,
-	ExactVersion: moduleapi.PortVersionV1,
+	ExactVersion: moduleapi.PortVersionV2,
 }
 
 var contextProvidePortV1 = moduleapi.PortRef{
@@ -157,7 +157,7 @@ func ArmInvocationGate(
 			ErrInvalidInvocationGrant,
 		)
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		attempt.ModelConfigCanonical,
 	)
 	modelConfigDigest, digestErr := currentstore.ComputeContentDigest(
@@ -169,9 +169,7 @@ func ArmInvocationGate(
 		digestErr != nil ||
 		modelConfigDigest != plan.Bindings[0].ConfigRef ||
 		modelConfig.Provider != attempt.Provider ||
-		modelConfig.Model != attempt.Model ||
-		modelConfig.BillingVersion != attempt.BillingVersion ||
-		modelConfig.PriceSnapshotID != attempt.PriceSnapshotID {
+		modelConfig.Model != attempt.Model {
 		return nil, fmt.Errorf(
 			"%w: model Binding config does not close the Attempt",
 			ErrInvalidInvocationGrant,

@@ -8,7 +8,7 @@ import (
 
 func TestS1PortRefsAreExactAndReturnedAsCopy(t *testing.T) {
 	want := []PortRef{
-		{Name: PortNameModelGenerate, ExactVersion: PortVersionV1},
+		{Name: PortNameModelGenerate, ExactVersion: PortVersionV2},
 		{Name: PortNameContextProvide, ExactVersion: PortVersionV1},
 		{Name: PortNameActionProvider, ExactVersion: PortVersionV1},
 		{Name: PortNameChannelTransport, ExactVersion: PortVersionV1},
@@ -102,7 +102,7 @@ func TestStaticContextRefsAreContextOnlyCanonicalAndUnique(t *testing.T) {
 	if _, err := NewPortPlan(PortPlan{
 		Port: PortRef{
 			Name:         PortNameModelGenerate,
-			ExactVersion: PortVersionV1,
+			ExactVersion: PortVersionV2,
 		},
 		Bindings: []PortBinding{modelBinding},
 	}); err == nil {
@@ -139,7 +139,7 @@ func TestStaticContextRefsAreContextOnlyCanonicalAndUnique(t *testing.T) {
 
 func TestModelGenerateRequiresExactlyOneRequiredBinding(t *testing.T) {
 	valid := PortPlan{
-		Port: PortRef{Name: PortNameModelGenerate, ExactVersion: PortVersionV1},
+		Port: PortRef{Name: PortNameModelGenerate, ExactVersion: PortVersionV2},
 		Bindings: []PortBinding{
 			validPortBinding("model.deepseek", "model-a", FailureRequired),
 		},
@@ -158,7 +158,7 @@ func TestModelGenerateRequiresExactlyOneRequiredBinding(t *testing.T) {
 	repeated := valid
 	repeated.Bindings = append(repeated.Bindings, valid.Bindings[0])
 	if _, err := NewPortPlan(repeated); err == nil {
-		t.Fatal("multiple model.generate/v1 bindings were accepted")
+		t.Fatal("multiple model.generate/v2 bindings were accepted")
 	}
 }
 
@@ -355,7 +355,7 @@ func TestNewPortPlanRejectsInvalidBindingFields(t *testing.T) {
 
 func TestNewPortPlanRejectsExternalExecutionClassesOnNonActionPorts(t *testing.T) {
 	for _, port := range []PortRef{
-		{Name: PortNameModelGenerate, ExactVersion: PortVersionV1},
+		{Name: PortNameModelGenerate, ExactVersion: PortVersionV2},
 		{Name: PortNameContextProvide, ExactVersion: PortVersionV1},
 		{Name: PortNameChannelTransport, ExactVersion: PortVersionV1},
 	} {

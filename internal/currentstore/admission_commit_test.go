@@ -492,20 +492,8 @@ func newAdmissionCommitFixtureWithModelProfile(
 	t *testing.T,
 	contextWindowTokens uint64,
 ) *admissionCommitFixture {
-	return newAdmissionCommitFixtureWithModelProfileAndPrice(
-		t,
-		contextWindowTokens,
-		testModelPriceSnapshot(),
-	)
-}
-
-func newAdmissionCommitFixtureWithModelProfileAndPrice(
-	t *testing.T,
-	contextWindowTokens uint64,
-	price corecontract.ModelPriceSnapshotV1,
-) *admissionCommitFixture {
 	t.Helper()
-	publication := newPublicationFixtureWithPrice(t, price)
+	publication := newPublicationFixture(t)
 	var modelProfile *corecontract.ModelProfileRef
 	if contextWindowTokens != 0 {
 		ref := putPublicationModelProfile(
@@ -551,12 +539,6 @@ func newAdmissionCommitFixtureWithModelProfileAndPrice(
 	); err != nil {
 		t.Fatalf("PutContent static context: %v", err)
 	}
-	budget := putPublicationPolicy(
-		t,
-		publication.store,
-		"budget-policy",
-		corecontract.PolicyCost,
-	)
 	agent := corecontract.AgentRef{
 		ID:      "agent-default",
 		Version: "v1",
@@ -652,19 +634,18 @@ func newAdmissionCommitFixtureWithModelProfileAndPrice(
 	)
 	_, controlRef, controlCanonical, err := controlcontract.NewControlSnapshot(
 		controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    "control-admission",
 			TenantID:      publication.tenantID,
 			Revision:      1,
 			Agents:        []corecontract.AgentRef{agent},
 			Workspaces: []controlcontract.WorkspaceDefinition{
-				{Workspace: workspace, BudgetPolicy: budget},
+				{Workspace: workspace},
 			},
 			Profiles: []controlcontract.ProfileDefinition{
 				{
 					Profile:          profile,
 					ContextPolicy:    publication.context,
-					CostPolicy:       publication.cost,
 					SchedulingPolicy: publication.scheduling,
 					ModelProfile:     modelProfile,
 					Bindings: []controlcontract.BindingSpec{

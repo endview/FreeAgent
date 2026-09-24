@@ -26,8 +26,8 @@ import (
 
 const (
 	DeepSeekModuleIDV1        = "freeagent.builtin.model.deepseek"
-	DeepSeekVersionV1         = "1.0.0"
-	DeepSeekArtifactDigestV1  = "e7864f4478a588dad4de9fff53b0c4dcecc17420e80420018bcc5fe5502887c3"
+	DeepSeekVersionV1         = "2.0.0"
+	DeepSeekArtifactDigestV1  = "ebef19d2fd153773f11e331d219edd4a414af069101f9f834fdd6ecf85dce3e2"
 	DeepSeekFlashBuildV1      = "deepseek-v4-flash/public-alias-observed-2026-08-04"
 	DeepSeekProBuildV1        = "deepseek-v4-pro/public-alias-observed-2026-08-04"
 	DeepSeekProviderNameV1    = "deepseek"
@@ -165,7 +165,7 @@ type GrantRequirementV1 struct {
 var ErrProtocolHandlerNotFoundV1 = errors.New("core protocol handler is not configured")
 
 func modelPortV1() moduleapi.PortRef {
-	return moduleapi.PortRef{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1}
+	return moduleapi.PortRef{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2}
 }
 
 func contextPortV1() moduleapi.PortRef {
@@ -188,7 +188,7 @@ func GenericTableV1() [9]PolicyV1 {
 			Port:                                  modelPortV1(),
 			RuntimeMode:                           moduleapi.RuntimeModeRequestTrustedInProcess,
 			RuntimeProtocol:                       moduleapi.RuntimeProtocolGoInProcessV1,
-			ConsumerSchema:                        moduleapi.ModelBindingConfigSchemaV1,
+			ConsumerSchema:                        moduleapi.ModelBindingConfigSchemaV2,
 			ModuleID:                              DeepSeekModuleIDV1,
 			ExactVersion:                          DeepSeekVersionV1,
 			ArtifactDigest:                        DeepSeekArtifactDigestV1,
@@ -287,8 +287,8 @@ func ExactSelectorTableV1() [2]PolicyV1 {
 			RuntimeProtocol:                       moduleapi.RuntimeProtocolGoInProcessV1,
 			ConsumerSchema:                        moduleapi.KnowledgeContextBindingSchemaV1,
 			ModuleID:                              moduleapi.DocumentInsightModuleIDV1,
-			ExactVersion:                          moduleapi.DocumentInsightVersionV1,
-			ArtifactDigest:                        moduleapi.DocumentInsightArtifactDigestV1,
+			ExactVersion:                          moduleapi.DocumentInsightVersionV2,
+			ArtifactDigest:                        moduleapi.DocumentInsightArtifactDigestV2,
 			ExecutionClass:                        moduleapi.ExecutionTrustedInProcess,
 			AdapterIdentity:                       DocumentInsightAdapterIdentityV1,
 			HandlerKind:                           HandlerDocumentInsightV1,
@@ -300,8 +300,8 @@ func ExactSelectorTableV1() [2]PolicyV1 {
 			RuntimeProtocol:                       moduleapi.RuntimeProtocolGoInProcessV1,
 			ConsumerSchema:                        moduleapi.ActionBindingConfigSchemaV1,
 			ModuleID:                              moduleapi.DocumentInsightModuleIDV1,
-			ExactVersion:                          moduleapi.DocumentInsightVersionV1,
-			ArtifactDigest:                        moduleapi.DocumentInsightArtifactDigestV1,
+			ExactVersion:                          moduleapi.DocumentInsightVersionV2,
+			ArtifactDigest:                        moduleapi.DocumentInsightArtifactDigestV2,
 			ExecutionClass:                        moduleapi.ExecutionTrustedInProcess,
 			AdapterIdentity:                       DocumentInsightAdapterIdentityV1,
 			HandlerKind:                           HandlerDocumentInsightV1,
@@ -646,10 +646,10 @@ func ValidateRuntimeRequestV1(request RuntimeRequestV1) error {
 func ConsumerSchemaV1(port moduleapi.PortRef, configCanonical []byte) (string, error) {
 	switch port {
 	case modelPortV1():
-		if _, err := moduleapi.RestoreModelBindingConfigV1(configCanonical); err != nil {
+		if _, err := moduleapi.RestoreModelBindingConfigV2(configCanonical); err != nil {
 			return "", fmt.Errorf("module apply plan Model config: %w", err)
 		}
-		return moduleapi.ModelBindingConfigSchemaV1, nil
+		return moduleapi.ModelBindingConfigSchemaV2, nil
 	case actionPortV1():
 		if _, err := moduleapi.RestoreActionBindingConfigV1(configCanonical); err != nil {
 			return "", fmt.Errorf("module apply plan Action config: %w", err)
@@ -787,7 +787,7 @@ func ValidateDeepSeekBindingCanonicalV1(
 	configCanonical []byte,
 	authorityCanonical []byte,
 ) error {
-	config, err := moduleapi.RestoreModelBindingConfigV1(configCanonical)
+	config, err := moduleapi.RestoreModelBindingConfigV2(configCanonical)
 	if err != nil {
 		return fmt.Errorf("module apply plan Model config: %w", err)
 	}
@@ -810,7 +810,7 @@ func ValidateDeepSeekBindingCanonicalV1(
 	return nil
 }
 
-func validateDeepSeekBindingConfigV1(config moduleapi.ModelBindingConfigV1) error {
+func validateDeepSeekBindingConfigV1(config moduleapi.ModelBindingConfigV2) error {
 	if config.Provider != DeepSeekProviderNameV1 {
 		return errors.New("provider is not DeepSeek")
 	}
@@ -1205,6 +1205,6 @@ func validatePortV1(port moduleapi.PortRef) error {
 	case modelPortV1(), actionPortV1(), contextPortV1(), channelPortV1():
 		return nil
 	default:
-		return errors.New("only model.generate/v1, action.provider/v1, context.provide/v1, and channel.transport/v1 are supported")
+		return errors.New("only model.generate/v2, action.provider/v1, context.provide/v1, and channel.transport/v1 are supported")
 	}
 }

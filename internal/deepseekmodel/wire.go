@@ -171,9 +171,9 @@ func normalizeChatCompletionsResponse(
 	if err != nil {
 		return nil, nil, fmt.Errorf("construct safe provider receipt")
 	}
-	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV1,
+	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV2,
 			InputTokens:         cloneUint64(response.Usage.PromptTokens),
 			CachedInputTokens:   cloneUint64(response.Usage.PromptCacheHitTokens),
 			UncachedInputTokens: cloneUint64(response.Usage.PromptCacheMissTokens),

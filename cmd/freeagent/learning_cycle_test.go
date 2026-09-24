@@ -107,15 +107,13 @@ func TestLearningCycleCLIStoreAndLocalTickLongChain(t *testing.T) {
 	}, io.Discard, io.Discard); err != nil {
 		t.Fatalf("initialize Learning cycle CLI fixture: %v", err)
 	}
-	_, cycleConfigCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        "freeagent.local",
-			Model:           "freeagent-dev-echo",
-			ModelBuildID:    localEchoModuleID + "/" + localEchoModuleVersion,
-			BillingVersion:  "local-v1",
-			PriceSnapshotID: "price-local-echo-v1",
-			Parameters:      json.RawMessage(`{"max_tokens":256}`),
+	_, cycleConfigCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      "freeagent.local",
+			Model:         "freeagent-dev-echo",
+			ModelBuildID:  localEchoModuleID + "/" + localEchoModuleVersion,
+			Parameters:    json.RawMessage(`{"max_tokens":256}`),
 		},
 	)
 	if err != nil {
@@ -756,7 +754,7 @@ func mustMarshalLearningCycleSchedule(
 }
 
 // publishW4LearningCycleModelOnlyProfile publishes an independent Profile
-// whose sole Port is model.generate/v1. An optional exact Config replaces the
+// whose sole Port is model.generate/v2. An optional exact Config replaces the
 // source model Binding Config so the live test can freeze JSON-only output.
 // The helper never constructs a Provider or reads a credential.
 func publishW4LearningCycleModelOnlyProfile(

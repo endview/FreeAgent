@@ -87,16 +87,11 @@ func commitSecondModelDispatch(
 			ErrInvalidModelDispatch,
 		)
 	}
-	price, err := queryModelPriceSnapshot(ctx, connection, config.PriceSnapshotID)
-	if err != nil {
-		return BeginModelDispatchResult{}, err
-	}
-	if price.Snapshot.Provider != config.Provider ||
-		price.Snapshot.Model != config.Model ||
-		price.Snapshot.BillingVersion != config.BillingVersion {
+	if _, err := validateModelParametersForRun(run, []byte(request.Parameters)); err != nil {
 		return BeginModelDispatchResult{}, fmt.Errorf(
-			"%w: model-2 frozen model config does not match price snapshot",
-			ErrModelDispatchIntegrity,
+			"%w: model-2 parameters: %v",
+			ErrInvalidModelDispatch,
+			err,
 		)
 	}
 	logicalKey, err := corecontract.ModelLogicalOperationKey(
@@ -111,16 +106,8 @@ func commitSecondModelDispatch(
 			err,
 		)
 	}
-	budgetCanonical, err := canonicalModelBudget(
-		run.Manifest.BudgetPolicy,
-		run.RunID,
-		run.Frame.BudgetStateRef,
-	)
-	if err != nil {
-		return BeginModelDispatchResult{}, err
-	}
 	if deadline.UnixMicro() <= nowUnixMicro() {
-		return commitExpiredModelDispatchBeforeNetwork(
+		return commitModelDispatchBeforeNetwork(
 			ctx,
 			connection,
 			input,
@@ -130,12 +117,15 @@ func commitSecondModelDispatch(
 			run,
 			bindingCanonical,
 			request.Parameters,
-			price,
+			config.Provider,
+			config.Model,
 			logicalKey,
-			budgetCanonical,
 			source.action.Attempt.AttemptID,
 			corecontract.ModelReadyAfterActionLoopStep,
 			nil,
+			modelDeadlineExpiredBeforeDispatchClassification,
+			corecontract.DispatchTransitionExpiredBeforeNetworkV1,
+			overviewTransitionModelExpiredV1,
 		)
 	}
 	if err := checkCurrentActivation(
@@ -144,7 +134,7 @@ func commitSecondModelDispatch(
 		run.RunID,
 		moduleapi.PortRef{
 			Name:         moduleapi.PortNameModelGenerate,
-			ExactVersion: moduleapi.PortVersionV1,
+			ExactVersion: moduleapi.PortVersionV2,
 		},
 		binding.Provider,
 	); err != nil {
@@ -179,13 +169,13 @@ func commitSecondModelDispatch(
 			logical_step_id, frame_revision, member_snapshot_digest,
 			binding_json, context_compilation_ref, request_ref,
 			request_digest, provider, model, parameters_json, deadline,
-			budget_json, billing_version, price_snapshot_id,
+			usage_ledger_ref,
 			source_dispatch_attempt_id, state, provider_request_id,
 			provider_receipt_ref, result_ref, error_classification,
 			reconciliation_evidence_ref, unknown_reason, revision,
 			created_at, updated_at
 		) VALUES(
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?,
 			'PENDING', NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, ?
 		)
 	`,
@@ -201,13 +191,11 @@ func commitSecondModelDispatch(
 		bindingCanonical,
 		requestDigest,
 		requestDigest,
-		price.Snapshot.Provider,
-		price.Snapshot.Model,
+		config.Provider,
+		config.Model,
 		[]byte(request.Parameters),
 		deadline.UnixMicro(),
-		budgetCanonical,
-		price.Snapshot.BillingVersion,
-		price.Snapshot.PriceSnapshotID,
+		run.Frame.UsageLedgerRef,
 		source.action.Attempt.AttemptID,
 		createdAt,
 		createdAt,
@@ -222,12 +210,11 @@ func commitSecondModelDispatch(
 		INSERT INTO model_usage(
 			attempt_id, run_id, ledger_sequence, revision,
 			input_tokens, cached_input_tokens, uncached_input_tokens,
-			output_tokens, reasoning_tokens, estimated_cost,
-			provider_reported_cost, reconciled_cost,
-			reconciliation_status, raw_receipt_ref
+			output_tokens, reasoning_tokens,
+			usage_status, raw_receipt_ref
 		) VALUES(
 			?, ?, NULL, 0, NULL, NULL, NULL, NULL, NULL,
-			NULL, NULL, NULL, 'PENDING', NULL
+			'PENDING', NULL
 		)
 	`, input.AttemptID, run.RunID); err != nil {
 		return BeginModelDispatchResult{}, fmt.Errorf(
@@ -356,7 +343,7 @@ func commitSecondModelDispatch(
 			ErrModelDispatchIntegrity,
 		)
 	}
-	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV1(config)
+	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV2(config)
 	if err != nil {
 		return BeginModelDispatchResult{}, fmt.Errorf(
 			"%w: rebuild frozen model-2 Binding config: %v",
@@ -705,8 +692,6 @@ func reopenSecondModelDispatch(
 		existing.MemberSnapshotDigest != run.Member.MemberSnapshotDigest ||
 		!bytes.Equal(existing.BindingCanonical, bindingCanonical) ||
 		existing.Provider != config.Provider || existing.Model != config.Model ||
-		existing.BillingVersion != config.BillingVersion ||
-		existing.PriceSnapshotID != config.PriceSnapshotID ||
 		!bytes.Equal(existing.ParametersCanonical, config.Parameters) {
 		return BeginModelDispatchResult{}, fmt.Errorf(
 			"%w: existing model-2 is not closed by the frozen model Binding",

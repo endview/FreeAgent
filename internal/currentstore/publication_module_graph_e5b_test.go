@@ -229,7 +229,7 @@ func TestW2E5BActionOnlyCannotHidePartialDocumentInsightManifest(
 	}{
 		{
 			name:       "missing Require and permission",
-			wantDetail: "must require only exact model.generate/v1",
+			wantDetail: "must require only exact model.generate/v2",
 		},
 		{
 			name:       "missing permission",
@@ -628,7 +628,7 @@ func newE5BDocumentInsightFixture(t *testing.T) *e5BDocumentInsightFixture {
 	manifest := canonicalModuleManifest(
 		t,
 		moduleapi.DocumentInsightModuleIDV1,
-		moduleapi.DocumentInsightVersionV1,
+		moduleapi.DocumentInsightVersionV2,
 		moduleapi.RuntimeModeRequestTrustedInProcess,
 		map[string]any{
 			"provides":              moduleapi.ExactDocumentInsightProvidesV1(),
@@ -694,7 +694,7 @@ func installActivateExactDocumentInsightE5B(
 			t,
 			"installation-document-insight-e5b",
 			manifest,
-			moduleapi.DocumentInsightArtifactDigestV1,
+			moduleapi.DocumentInsightArtifactDigestV2,
 		),
 	)
 	if err != nil {

@@ -1,11 +1,8 @@
 package coreloop
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/endview/freeagent/internal/actiongateway"
@@ -185,14 +182,6 @@ func (loop *UniversalLoop) advanceActionReady(
 			currentstore.ModelActionRejectionPrepareFailed,
 		)
 	}
-	budgetDecision := frozenActionBudgetDecision(run)
-	if budgetDecision != currentstore.ActionBudgetAllow {
-		return loop.commitLegalActionRejection(
-			ctx,
-			modelOutcome,
-			currentstore.ModelActionRejectionBudgetUnknown,
-		)
-	}
 	if !time.Now().UTC().Before(actionDeadline) {
 		return loop.commitLegalActionRejection(
 			ctx,
@@ -224,7 +213,6 @@ func (loop *UniversalLoop) advanceActionReady(
 			DispatchAttemptID:            actionAttemptID,
 			ProposalCanonical:            proposalCanonical,
 			Deadline:                     actionDeadline,
-			BudgetDecision:               budgetDecision,
 		},
 	)
 	persistCancel()
@@ -713,53 +701,6 @@ func resolveFrozenActionRequest(
 			currentstore.ModelActionRejectionAuthorityDenied
 	}
 	return *definition, actionPlan.Bindings[definition.BindingIndex], ""
-}
-
-// frozenActionBudgetDecision is intentionally narrow while BudgetPolicy is
-// still a generic canonical object. An empty policy and the exact built-in
-// zero-cost-development schema have no unknown required cost fact; every
-// other configured rule fails closed as BUDGET_UNKNOWN.
-func frozenActionBudgetDecision(
-	run currentstore.RunForLoop,
-) currentstore.ActionBudgetDecision {
-	policy, found := run.FindContent(run.Manifest.BudgetPolicy.Digest)
-	if !found || policy.Kind != currentstore.ContentPolicy {
-		return currentstore.ActionBudgetUnknown
-	}
-	document, err := corecontract.RestorePolicyDocument(
-		policy.CanonicalBytes,
-		run.Manifest.BudgetPolicy,
-	)
-	if err != nil || document.PolicyType != corecontract.PolicyCost ||
-		!actionBudgetBodyHasNoUnknownCost(document.Body) {
-		return currentstore.ActionBudgetUnknown
-	}
-	return currentstore.ActionBudgetAllow
-}
-
-func actionBudgetBodyHasNoUnknownCost(body json.RawMessage) bool {
-	if bytes.Equal(body, []byte(`{}`)) {
-		return true
-	}
-	var zeroCost struct {
-		Currency             *string `json:"currency"`
-		MaxRunCostMicrounits *uint64 `json:"max_run_cost_microunits"`
-		PricingMode          *string `json:"pricing_mode"`
-	}
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&zeroCost); err != nil {
-		return false
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return false
-	}
-	return zeroCost.Currency != nil && *zeroCost.Currency == "USD" &&
-		zeroCost.MaxRunCostMicrounits != nil &&
-		*zeroCost.MaxRunCostMicrounits == 0 &&
-		zeroCost.PricingMode != nil &&
-		*zeroCost.PricingMode == "ZERO_COST_DEVELOPMENT"
 }
 
 func (loop *UniversalLoop) commitLegalActionRejection(

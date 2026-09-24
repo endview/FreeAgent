@@ -388,7 +388,7 @@ func validateModuleApplyPlanWireV1(
 	}
 	if wire.DesiredState == moduleApplyDisabledV1 && wire.Port == productionModelPort {
 		return moduleApplyPlanV1{}, errors.New(
-			"model.generate/v1 cannot be disabled; use ENABLED replacement",
+			"model.generate/v2 cannot be disabled; use ENABLED replacement",
 		)
 	}
 
@@ -515,7 +515,7 @@ func validateModuleApplyPlanWireV1(
 		}
 		if wire.Port == productionModelPort && bindingCopy.PortBindingIndex != 0 {
 			return moduleApplyPlanV1{}, errors.New(
-				"model.generate/v1 replacement requires port_binding_index zero",
+				"model.generate/v2 replacement requires port_binding_index zero",
 			)
 		}
 		if wire.Port == productionModelPort {
@@ -530,7 +530,7 @@ func validateModuleApplyPlanWireV1(
 			}
 		} else if hasModelProfile || wire.ModelProfile != nil {
 			return moduleApplyPlanV1{}, errors.New(
-				"model_profile is allowed only for model.generate/v1",
+				"model_profile is allowed only for model.generate/v2",
 			)
 		}
 		switch bindingTarget.Kind {

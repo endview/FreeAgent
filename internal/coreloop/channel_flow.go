@@ -157,7 +157,6 @@ func (loop *UniversalLoop) advanceFinalChannel(
 			DispatchAttemptID:            attemptID,
 			ProposalCanonical:            proposalCanonical,
 			Deadline:                     deadline,
-			BudgetDecision:               frozenChannelBudgetDecision(run),
 		},
 	)
 	persistCancel()
@@ -271,15 +270,6 @@ func exactChannelPreparationClosure(
 			fmt.Errorf("%w: Channel ingress envelope drift: %v", ErrUniversalLoopIntegrity, err)
 	}
 	return plan.Bindings[0], envelope, nil
-}
-
-func frozenChannelBudgetDecision(
-	run currentstore.RunForLoop,
-) currentstore.ChannelBudgetDecision {
-	if frozenActionBudgetDecision(run) == currentstore.ActionBudgetAllow {
-		return currentstore.ChannelBudgetAllow
-	}
-	return currentstore.ChannelBudgetUnknown
 }
 
 func (loop *UniversalLoop) recoverChannelPending(

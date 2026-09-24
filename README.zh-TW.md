@@ -81,17 +81,19 @@ FreeAgent 仍處於早期 Developer Preview。已驗收的開發切片見
 
 ## 下載
 
-目前 Developer Preview 為 **v0.1.0-dev.2**。它只包裝既有開發切片，
-不新增新的 Runtime 功能波次。
+目前發布版本為 **v0.1.1**，已發布到
+[GitHub Releases](https://github.com/endview/FreeAgent/releases)。它仍是用於
+本地評估的早期 Developer Preview，完整變更記錄見
+[`v0.1.1` 發布說明](docs/RELEASE_NOTES_v0.1.1.md)。
 
 | 目標平台 | 封存檔 |
 | --- | --- |
-| Windows AMD64 | `freeagent-v0.1.0-dev.2-windows-amd64.zip` |
-| Windows ARM64 | `freeagent-v0.1.0-dev.2-windows-arm64.zip` |
-| Linux AMD64 | `freeagent-v0.1.0-dev.2-linux-amd64.tar.gz` |
-| Linux ARM64 | `freeagent-v0.1.0-dev.2-linux-arm64.tar.gz` |
-| Darwin AMD64，僅建置 | `freeagent-v0.1.0-dev.2-darwin-amd64-build-only.tar.gz` |
-| Darwin ARM64，僅建置 | `freeagent-v0.1.0-dev.2-darwin-arm64-build-only.tar.gz` |
+| Windows AMD64 | `freeagent-v0.1.1-windows-amd64.zip` |
+| Windows ARM64 | `freeagent-v0.1.1-windows-arm64.zip` |
+| Linux AMD64 | `freeagent-v0.1.1-linux-amd64.tar.gz` |
+| Linux ARM64 | `freeagent-v0.1.1-linux-arm64.tar.gz` |
+| Darwin AMD64，僅建置 | `freeagent-v0.1.1-darwin-amd64-build-only.tar.gz` |
+| Darwin ARM64，僅建置 | `freeagent-v0.1.1-darwin-arm64-build-only.tar.gz` |
 
 請從 [GitHub Releases](https://github.com/endview/FreeAgent/releases) 下載封存檔與
 相鄰的 `SHA256SUMS`，先驗證 checksum，再解壓縮到新目錄，並在使用前確認版本輸出。

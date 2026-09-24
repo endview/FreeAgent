@@ -20,6 +20,7 @@ import (
 	"github.com/endview/freeagent/internal/controlmutation"
 	"github.com/endview/freeagent/internal/controlruntime"
 	"github.com/endview/freeagent/internal/controlsession"
+	"github.com/endview/freeagent/internal/localchat"
 )
 
 const controlAuthorizationRevisionV1 uint64 = 1
@@ -121,6 +122,18 @@ func runControlEnabledServeV1(input controlServeInputV1) (returnErr error) {
 	if err != nil {
 		return fmt.Errorf("Control Modules application service: %w", err)
 	}
+	moduleUpgradeReviews, err := controlapp.NewModuleUpgradeReviewServiceV1(
+		productionModuleUpgradeReviewReaderV1{store: input.Composition.store},
+	)
+	if err != nil {
+		return fmt.Errorf("Control Module Upgrade Review application service: %w", err)
+	}
+	controlManagement, err := controlapp.NewControlManagementServiceV1(
+		productionControlManagementReaderV1{store: input.Composition.store},
+	)
+	if err != nil {
+		return fmt.Errorf("Control management application service: %w", err)
+	}
 	overview, err := newControlOverviewServiceV1(input.Composition.store)
 	if err != nil {
 		return fmt.Errorf("Control Overview application service: %w", err)
@@ -148,6 +161,14 @@ func runControlEnabledServeV1(input controlServeInputV1) (returnErr error) {
 			)
 		}
 	}()
+	chatAuthority, err := localchat.CanonicalAuthority(chatListener.Addr())
+	if err != nil {
+		return fmt.Errorf("Control-enabled Chat authority: %w", err)
+	}
+	securedChat, err := localchat.NewAuthorityGuard(input.ChatHandler, chatAuthority)
+	if err != nil {
+		return fmt.Errorf("Control-enabled Chat authority guard: %w", err)
+	}
 
 	controlListener, err := net.ListenTCP(
 		"tcp4",
@@ -231,6 +252,8 @@ func runControlEnabledServeV1(input controlServeInputV1) (returnErr error) {
 		StaticAssets:              staticAssets,
 		Overview:                  overview,
 		Modules:                   modules,
+		ModuleUpgradeReviews:      moduleUpgradeReviews,
+		Management:                controlManagement,
 		ModuleDisableDryRun:       disableDryRun,
 		ModuleDisableConfirmation: moduleDisableMutation,
 		ModuleDisableMutation:     moduleDisableMutation,
@@ -239,7 +262,7 @@ func runControlEnabledServeV1(input controlServeInputV1) (returnErr error) {
 	if err != nil {
 		return fmt.Errorf("Control HTTP handler: %w", err)
 	}
-	chatAdmission, err := gate.Wrap(input.ChatHandler)
+	chatAdmission, err := gate.Wrap(securedChat)
 	if err != nil {
 		return fmt.Errorf("Control-enabled Chat admission: %w", err)
 	}

@@ -526,8 +526,7 @@ func verifyAdmissionControlMember(
 	}
 	workspace, found := control.FindWorkspace(member.Workspace.ID)
 	if !found ||
-		workspace.Workspace != member.Workspace ||
-		workspace.BudgetPolicy != manifest.BudgetPolicy {
+		workspace.Workspace != member.Workspace {
 		return fmt.Errorf(
 			"%w: member Workspace is absent from frozen Control",
 			ErrAdmissionIntegrity,
@@ -537,7 +536,6 @@ func verifyAdmissionControlMember(
 	if !found ||
 		profile.Profile != member.Profile ||
 		profile.ContextPolicy != member.ContextPolicy ||
-		profile.CostPolicy != member.CostPolicy ||
 		profile.SchedulingPolicy != member.SchedulingPolicy ||
 		!sameOptionalModelProfileRef(
 			profile.ModelProfile,
@@ -659,9 +657,7 @@ func verifyAdmissionContentClosure(
 		return err
 	}
 	for _, policy := range []corecontract.PolicyRef{
-		manifest.BudgetPolicy,
 		member.ContextPolicy,
-		member.CostPolicy,
 		member.SchedulingPolicy,
 	} {
 		record, err := requireAdmissionContentKind(
@@ -888,7 +884,7 @@ func verifyAdmissionFrameAndEvent(
 	err := queryer.QueryRowContext(ctx, `
 		SELECT
 			r.state, r.disposition,
-			f.frame_revision, f.step, f.budget_state_ref, f.continuation,
+			f.frame_revision, f.step, f.usage_ledger_ref, f.continuation,
 			f.pending_attempt_id, f.pending_dispatch_attempt_id,
 			f.waiting_reason, f.last_authoritative_event,
 			f.lease_owner, f.lease_epoch, f.lease_expiry

@@ -14,7 +14,6 @@ import (
 
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/internal/localchat"
 	"github.com/endview/freeagent/internal/s3eval"
 	"github.com/endview/freeagent/sdk/loopapi"
@@ -34,25 +33,6 @@ func (*s3EvalTestUsageReader) GetTerminalRunResult(
 	string,
 ) (currentstore.TerminalRunResult, error) {
 	return currentstore.TerminalRunResult{}, errors.New("terminal result unavailable")
-}
-
-type s3EvalTestPriceReader struct {
-	records map[string]currentstore.ModelPriceSnapshotRecord
-	err     error
-}
-
-func (reader *s3EvalTestPriceReader) GetModelPriceSnapshot(
-	_ context.Context,
-	priceSnapshotID string,
-) (currentstore.ModelPriceSnapshotRecord, error) {
-	if reader.err != nil {
-		return currentstore.ModelPriceSnapshotRecord{}, reader.err
-	}
-	record, ok := reader.records[priceSnapshotID]
-	if !ok {
-		return currentstore.ModelPriceSnapshotRecord{}, errors.New("unexpected price snapshot")
-	}
-	return record, nil
 }
 
 func TestS3EvalUsesOneInjectedCompositionAndDefaultsRemainOff(t *testing.T) {
@@ -151,7 +131,7 @@ func TestS3EvalUsesOneInjectedCompositionAndDefaultsRemainOff(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &report); err != nil {
 		t.Fatalf("decode report: %v\n%s", err, output.String())
 	}
-	if report.SchemaVersion != s3EvalReportSchemaVersionV1 ||
+	if report.SchemaVersion != s3EvalReportSchemaVersionV2 ||
 		report.Experiment.ID != "s3c-experiment" ||
 		report.Experiment.RepetitionsRequested != 2 ||
 		report.Experiment.RepetitionsAttempted != 2 ||
@@ -591,163 +571,6 @@ func TestS3EvalValidatesRepetitionAndScenarioFile(t *testing.T) {
 	if _, err := readS3EvalScenario(unknownPath); err == nil ||
 		!strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("unknown scenario field error=%v", err)
-	}
-}
-
-func TestDeriveS3EvalDeepSeekCostsSupportsMixedModelsPerAttempt(t *testing.T) {
-	flash, flashCanonical, err := corecontract.NewModelPriceSnapshotV1(
-		corecontract.ModelPriceSnapshotV1{
-			SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-			PriceSnapshotID: "price-deepseek-test",
-			Provider:        "deepseek",
-			Model:           "deepseek-v4-flash",
-			BillingVersion:  "deepseek-public-price-test",
-			Currency:        "CNY",
-			PricingStatus:   corecontract.PricingKnown,
-			Pricing: json.RawMessage(
-				`{"cached_input_per_million_microunits":20000,"output_per_million_microunits":2000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":1000000}`,
-			),
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pro, proCanonical, err := corecontract.NewModelPriceSnapshotV1(
-		corecontract.ModelPriceSnapshotV1{
-			SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-			PriceSnapshotID: "price-deepseek-pro-test",
-			Provider:        "deepseek",
-			Model:           "deepseek-v4-pro",
-			BillingVersion:  "deepseek-public-price-test",
-			Currency:        "CNY",
-			PricingStatus:   corecontract.PricingKnown,
-			Pricing: json.RawMessage(
-				`{"cached_input_per_million_microunits":25000,"output_per_million_microunits":6000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":3000000}`,
-			),
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	input := uint64(1500000)
-	cached := uint64(500000)
-	uncached := uint64(1000000)
-	output := uint64(250000)
-	reasoning := uint64(200000)
-	report := s3eval.ExperimentReport{Families: []s3eval.FamilyReport{{
-		WorkspaceID: "workspace-a",
-		RootRunID:   "root-a",
-		Tokens: s3eval.TokenReport{Totals: s3eval.TokenTotalsReport{
-			Input: &input, CachedInput: &cached, UncachedInput: &uncached,
-			Output: &output, Reasoning: &reasoning,
-		}},
-		Attempts: []s3eval.AttemptFact{
-			{
-				RunID: "child-a", Role: corecontract.CompositeRunRoleChildV1,
-				AttemptID: "attempt-flash", Provider: flash.Provider,
-				Model: flash.Model, PriceSnapshotID: flash.PriceSnapshotID,
-				PriceSnapshotDigest: flash.Digest, Currency: flash.Currency,
-				Tokens: corecontract.UsageTokens{
-					Input: &input, CachedInput: &cached, UncachedInput: &uncached,
-					Output: &output, Reasoning: &reasoning,
-				},
-			},
-			{
-				RunID: "root-a", Role: corecontract.CompositeRunRoleRootV1,
-				AttemptID: "attempt-pro", Provider: pro.Provider,
-				Model: pro.Model, PriceSnapshotID: pro.PriceSnapshotID,
-				PriceSnapshotDigest: pro.Digest, Currency: pro.Currency,
-				Tokens: corecontract.UsageTokens{
-					Input: &input, CachedInput: &cached, UncachedInput: &uncached,
-					Output: &output, Reasoning: &reasoning,
-				},
-			},
-		},
-	}}}
-	estimates, err := deriveS3EvalDeepSeekCosts(
-		context.Background(),
-		report,
-		&s3EvalTestPriceReader{records: map[string]currentstore.ModelPriceSnapshotRecord{
-			flash.PriceSnapshotID: {Snapshot: flash, CanonicalJSON: flashCanonical},
-			pro.PriceSnapshotID:   {Snapshot: pro, CanonicalJSON: proCanonical},
-		}},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(estimates) != 2 || estimates[0].Estimate.Value == nil ||
-		*estimates[0].Estimate.Value != "1.51" ||
-		estimates[0].Estimate.Currency != "CNY" ||
-		estimates[0].Model != "deepseek-v4-flash" ||
-		estimates[1].Estimate.Value == nil ||
-		*estimates[1].Estimate.Value != "4.5125" ||
-		estimates[1].Model != "deepseek-v4-pro" {
-		t.Fatalf("estimates=%+v", estimates)
-	}
-}
-
-func TestDeriveS3EvalDeepSeekCostsRetainsValidPartialEvidence(t *testing.T) {
-	snapshot, canonical, err := corecontract.NewModelPriceSnapshotV1(
-		corecontract.ModelPriceSnapshotV1{
-			SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-			PriceSnapshotID: "price-deepseek-partial-test",
-			Provider:        "deepseek",
-			Model:           "deepseek-v4-flash",
-			BillingVersion:  "deepseek-public-price-test",
-			Currency:        "CNY",
-			PricingStatus:   corecontract.PricingKnown,
-			Pricing: json.RawMessage(
-				`{"cached_input_per_million_microunits":20000,"output_per_million_microunits":2000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":1000000}`,
-			),
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	zero := uint64(0)
-	report := s3eval.ExperimentReport{Families: []s3eval.FamilyReport{{
-		WorkspaceID: "workspace-a",
-		RootRunID:   "root-a",
-		Attempts: []s3eval.AttemptFact{
-			{
-				AttemptID: "attempt-incomplete", Provider: "deepseek",
-				Model: snapshot.Model,
-			},
-			{
-				AttemptID: "attempt-unknown-usage", Provider: snapshot.Provider,
-				Model: snapshot.Model, PriceSnapshotID: snapshot.PriceSnapshotID,
-				PriceSnapshotDigest: snapshot.Digest, Currency: snapshot.Currency,
-			},
-			{
-				AttemptID: "attempt-known-zero", Provider: snapshot.Provider,
-				Model: snapshot.Model, PriceSnapshotID: snapshot.PriceSnapshotID,
-				PriceSnapshotDigest: snapshot.Digest, Currency: snapshot.Currency,
-				Tokens: corecontract.UsageTokens{
-					Input: &zero, CachedInput: &zero, UncachedInput: &zero,
-					Output: &zero,
-				},
-			},
-		},
-	}}}
-	estimates, err := deriveS3EvalDeepSeekCosts(
-		context.Background(),
-		report,
-		&s3EvalTestPriceReader{records: map[string]currentstore.ModelPriceSnapshotRecord{
-			snapshot.PriceSnapshotID: {Snapshot: snapshot, CanonicalJSON: canonical},
-		}},
-	)
-	if err == nil || !strings.Contains(err.Error(), "attempt-incomplete") {
-		t.Fatalf("partial cost error=%v", err)
-	}
-	if len(estimates) != 2 ||
-		estimates[0].AttemptID != "attempt-unknown-usage" ||
-		estimates[0].Estimate.Status != deepseekcost.StatusUnknown ||
-		estimates[0].Estimate.Value != nil ||
-		estimates[1].AttemptID != "attempt-known-zero" ||
-		estimates[1].Estimate.Status != deepseekcost.StatusKnown ||
-		estimates[1].Estimate.Value == nil ||
-		*estimates[1].Estimate.Value != "0" {
-		t.Fatalf("partial estimates=%+v", estimates)
 	}
 }
 

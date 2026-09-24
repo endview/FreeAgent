@@ -22,7 +22,7 @@ func TestModuleApplyProtocolHandlerTableV1IsExactOrderedCorePolicy(t *testing.T)
 			Port:                                  productionModelPort,
 			RuntimeMode:                           moduleapi.RuntimeModeRequestTrustedInProcess,
 			RuntimeProtocol:                       moduleapi.RuntimeProtocolGoInProcessV1,
-			ConsumerSchema:                        moduleapi.ModelBindingConfigSchemaV1,
+			ConsumerSchema:                        moduleapi.ModelBindingConfigSchemaV2,
 			ModuleID:                              localDeepSeekModuleID,
 			ExactVersion:                          localDeepSeekVersion,
 			ArtifactDigest:                        localDeepSeekDigest,

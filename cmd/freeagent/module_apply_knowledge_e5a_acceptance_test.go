@@ -20,7 +20,7 @@ func TestW2E5AGovernedKnowledgeBackupDisableAndGrantNarrowing(
 	artifactRoot := filepath.Join(root, "artifacts")
 	initializePureChatForModuleApplyV1(t, databasePath, artifactRoot)
 
-	fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "1.1.0")
+	fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "2.0.0")
 	planPath := writeModuleApplyPlanFixtureV1(
 		t,
 		filepath.Join(root, "enable-governed-knowledge.json"),

@@ -176,7 +176,8 @@ const (
 func (origin DispatchTransitionOriginV1) Validate() error {
 	switch origin {
 	case DispatchTransitionBeginV1, DispatchTransitionOrdinaryOutcomeV1,
-		DispatchTransitionStartupRecoveryV1, DispatchTransitionExpiredBeforeNetworkV1:
+		DispatchTransitionStartupRecoveryV1,
+		DispatchTransitionExpiredBeforeNetworkV1:
 		return nil
 	default:
 		return fmt.Errorf("corecontract: invalid dispatch transition origin %q", origin)
@@ -185,17 +186,17 @@ func (origin DispatchTransitionOriginV1) Validate() error {
 
 // ModelUsageEventV1 freezes the bounded Overview-visible Usage projection and
 // a digest of the complete typed Usage record at the same terminal mutation.
-// The latter binds receipt and cost facts without copying them into RunEvent.
+// The latter binds receipt facts without copying them into RunEvent.
 type ModelUsageEventV1 struct {
-	Revision             uint64      `json:"revision"`
-	LedgerSequence       *uint64     `json:"ledger_sequence,omitempty"`
-	ReconciliationStatus string      `json:"reconciliation_status"`
-	Tokens               UsageTokens `json:"tokens"`
-	SemanticDigest       string      `json:"semantic_digest"`
+	Revision       uint64      `json:"revision"`
+	LedgerSequence *uint64     `json:"ledger_sequence,omitempty"`
+	UsageStatus    string      `json:"usage_status"`
+	Tokens         UsageTokens `json:"tokens"`
+	SemanticDigest string      `json:"semantic_digest"`
 }
 
 func (usage ModelUsageEventV1) Validate() error {
-	if usage.ReconciliationStatus == "" ||
+	if usage.UsageStatus == "" ||
 		!moduleapi.ValidSHA256(usage.SemanticDigest) || usage.Tokens.Validate() != nil ||
 		(usage.LedgerSequence != nil && *usage.LedgerSequence == 0) {
 		return fmt.Errorf("corecontract: invalid model Usage event")

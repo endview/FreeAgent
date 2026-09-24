@@ -1104,7 +1104,7 @@ func TestUniversalLoopMapsInvocationOutcomes(t *testing.T) {
 						corecontract.ModelAttemptUnknown ||
 					unsettled[0].Attempt.ResultRef != "" ||
 					unsettled[0].Attempt.ProviderReceiptRef != "" ||
-					unsettled[0].Usage.ReconciliationStatus !=
+					unsettled[0].Usage.UsageStatus !=
 						"PENDING_RECONCILIATION" {
 					t.Fatalf(
 						"unsettled=%+v scan error=%v",
@@ -1165,7 +1165,7 @@ func publishRevokedLoopCatalog(t *testing.T, store *currentstore.Store) {
 	t.Helper()
 	_, controlRef, controlCanonical, err :=
 		controlcontract.NewControlSnapshot(controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    "control-loop-revoked",
 			TenantID:      "tenant-loop",
 			Revision:      2,
@@ -1214,7 +1214,7 @@ func pureTaskRequestEstimate(t *testing.T, taskText string) uint64 {
 			Messages: []moduleapi.ModelMessageV1{{
 				Role: moduleapi.ModelRoleUser, Content: taskText,
 			}},
-			Parameters: json.RawMessage(`{"temperature":0}`),
+			Parameters: json.RawMessage(`{"max_tokens":512,"temperature":0}`),
 		},
 	)
 	if err != nil {
@@ -1228,8 +1228,8 @@ func contextPolicyForInputBudget(
 ) corecontract.ContextPolicyV1 {
 	return corecontract.ContextPolicyV1{
 		SchemaVersion:        corecontract.ContextPolicySchemaVersionV1,
-		ContextWindowTokens:  inputBudget + 1,
-		ReservedOutputTokens: 1,
+		ContextWindowTokens:  inputBudget + 512,
+		ReservedOutputTokens: 512,
 		RecentHistoryTurns:   0,
 		EstimatorVersion: corecontract.
 			ContextEstimatorCanonicalJSONUTF8ByteUpperBoundV1,
@@ -1281,38 +1281,17 @@ func newLoopIntegrationFixtureWithDeadline(
 	}
 
 	const (
-		tenantID        = "tenant-loop"
-		providerName    = "test-provider"
-		modelName       = "test-model"
-		billingVersion  = "billing-v1"
-		priceSnapshotID = "price-test-v1"
+		tenantID     = "tenant-loop"
+		providerName = "test-provider"
+		modelName    = "test-model"
 	)
-	if _, err := store.PutModelPriceSnapshot(
-		ctx,
-		corecontract.ModelPriceSnapshotV1{
-			SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-			PriceSnapshotID: priceSnapshotID,
-			Provider:        providerName,
-			Model:           modelName,
-			BillingVersion:  billingVersion,
-			Currency:        "USD",
-			PricingStatus:   corecontract.PricingKnown,
-			Pricing: json.RawMessage(
-				`{"input_per_million":1,"output_per_million":2}`,
-			),
-		},
-	); err != nil {
-		t.Fatalf("PutModelPriceSnapshot: %v", err)
-	}
-	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        providerName,
-			Model:           modelName,
-			ModelBuildID:    "test-model-build-v1",
-			BillingVersion:  billingVersion,
-			PriceSnapshotID: priceSnapshotID,
-			Parameters:      json.RawMessage(`{"temperature":0}`),
+	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      providerName,
+			Model:         modelName,
+			ModelBuildID:  "test-model-build-v1",
+			Parameters:    json.RawMessage(`{"max_tokens":512,"temperature":0}`),
 		},
 	)
 	if err != nil {
@@ -1334,14 +1313,8 @@ func newLoopIntegrationFixtureWithDeadline(
 		t, store, "context-policy", corecontract.PolicyContext,
 		contextPolicies...,
 	)
-	costPolicy := putIntegrationPolicy(
-		t, store, "cost-policy", corecontract.PolicyCost,
-	)
 	schedulingPolicy := putIntegrationPolicy(
 		t, store, "scheduling-policy", corecontract.PolicyScheduling,
-	)
-	budgetPolicy := putIntegrationPolicy(
-		t, store, "budget-policy", corecontract.PolicyCost,
 	)
 
 	manifestBytes := integrationModuleManifest(t)
@@ -1397,7 +1370,7 @@ func newLoopIntegrationFixtureWithDeadline(
 	}
 	modelPort := moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}
 	agent := corecontract.AgentRef{
 		ID: "agent-loop", Version: "v1", Digest: strings.Repeat("2", 64),
@@ -1410,18 +1383,17 @@ func newLoopIntegrationFixtureWithDeadline(
 	}
 	_, controlRef, controlCanonical, err :=
 		controlcontract.NewControlSnapshot(controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    "control-loop",
 			TenantID:      tenantID,
 			Revision:      1,
 			Agents:        []corecontract.AgentRef{agent},
 			Workspaces: []controlcontract.WorkspaceDefinition{{
-				Workspace: workspace, BudgetPolicy: budgetPolicy,
+				Workspace: workspace,
 			}},
 			Profiles: []controlcontract.ProfileDefinition{{
 				Profile:          profile,
 				ContextPolicy:    contextPolicy,
-				CostPolicy:       costPolicy,
 				SchedulingPolicy: schedulingPolicy,
 				Bindings: []controlcontract.BindingSpec{{
 					Port:                modelPort,
@@ -1703,7 +1675,7 @@ func integrationModuleManifest(t *testing.T) []byte {
 		},
 		"provides": []any{map[string]any{
 			"name":          moduleapi.PortNameModelGenerate,
-			"exact_version": moduleapi.PortVersionV1,
+			"exact_version": moduleapi.PortVersionV2,
 		}},
 	})
 	if err != nil {

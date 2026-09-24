@@ -102,21 +102,21 @@ func TestGatewayExecuteRechecksPendingClosureBeforeExecutor(t *testing.T) {
 		{
 			name: "budget head drift",
 			mutate: func(t *testing.T, fixture *gatewayExecuteFixture) {
-				sequence, err := corecontract.ParseBudgetStateRefV1(
-					fixture.boundary.run.Frame.BudgetStateRef,
+				sequence, err := corecontract.ParseUsageLedgerRefV1(
+					fixture.boundary.run.Frame.UsageLedgerRef,
 					fixture.boundary.run.RunID,
 				)
 				if err != nil {
 					t.Fatal(err)
 				}
-				drifted, err := corecontract.NewBudgetStateRefV1(
+				drifted, err := corecontract.NewUsageLedgerRefV1(
 					fixture.boundary.run.RunID,
 					sequence+1,
 				)
 				if err != nil {
 					t.Fatal(err)
 				}
-				fixture.boundary.run.Frame.BudgetStateRef = drifted
+				fixture.boundary.run.Frame.UsageLedgerRef = drifted
 			},
 			wantClassification: classificationGatewayClosureDenied,
 		},
@@ -644,9 +644,9 @@ func newGatewayExecuteFixture(
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, usageReceipt, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion: moduleapi.ModelUsageReceiptSchemaV1,
+	_, usageReceipt, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion: moduleapi.ModelUsageReceiptSchemaV2,
 			RawReceipt:    json.RawMessage(`null`),
 		},
 	)
@@ -687,7 +687,6 @@ func newGatewayExecuteFixture(
 			ProposalCanonical:            proposal,
 			Deadline: time.Now().UTC().Add(30 * time.Minute).
 				Truncate(time.Microsecond),
-			BudgetDecision: currentstore.ActionBudgetAllow,
 		},
 	)
 	if err != nil {
@@ -723,7 +722,7 @@ func gatewayCompileModelOne(
 	t.Helper()
 	modelBinding := gatewayModelBinding(t, run)
 	modelConfigContent := gatewayContent(t, run, modelBinding.ConfigRef)
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		modelConfigContent.CanonicalBytes,
 	)
 	if err != nil {
@@ -801,12 +800,12 @@ func gatewayModelBinding(
 	t.Helper()
 	for _, plan := range run.Member.PortPlans {
 		if plan.Port.Name == moduleapi.PortNameModelGenerate &&
-			plan.Port.ExactVersion == moduleapi.PortVersionV1 &&
+			plan.Port.ExactVersion == moduleapi.PortVersionV2 &&
 			len(plan.Bindings) == 1 {
 			return plan.Bindings[0]
 		}
 	}
-	t.Fatal("exact model.generate/v1 Binding is absent")
+	t.Fatal("exact model.generate/v2 Binding is absent")
 	return moduleapi.PortBinding{}
 }
 

@@ -214,7 +214,7 @@ func TestValidateModelProfileBindingV1RequiresOneExactClosure(t *testing.T) {
 		name          string
 		mutateProfile func(*ModelProfileV1)
 		mutateBinding func(*moduleapi.PortBinding)
-		mutateConfig  func(*moduleapi.ModelBindingConfigV1)
+		mutateConfig  func(*moduleapi.ModelBindingConfigV2)
 	}{
 		{
 			name: "config ref",
@@ -323,18 +323,16 @@ func TestTightenContextPolicyV1ForModelProfileNeverExpands(t *testing.T) {
 
 func validModelProfileBindingV1(
 	t *testing.T,
-) (ModelProfileV1, moduleapi.PortBinding, moduleapi.ModelBindingConfigV1) {
+) (ModelProfileV1, moduleapi.PortBinding, moduleapi.ModelBindingConfigV2) {
 	t.Helper()
-	config := moduleapi.ModelBindingConfigV1{
-		SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-		Provider:        "provider-local",
-		Model:           "model-v1",
-		ModelBuildID:    "model-v1-build-2026-08-03",
-		BillingVersion:  "billing-v1",
-		PriceSnapshotID: "price-v1",
-		Parameters:      json.RawMessage(`{}`),
+	config := moduleapi.ModelBindingConfigV2{
+		SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+		Provider:      "provider-local",
+		Model:         "model-v1",
+		ModelBuildID:  "model-v1-build-2026-08-03",
+		Parameters:    json.RawMessage(`{}`),
 	}
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(config)
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(config)
 	if err != nil {
 		t.Fatal(err)
 	}

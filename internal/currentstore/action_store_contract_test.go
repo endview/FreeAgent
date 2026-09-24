@@ -121,12 +121,6 @@ func TestCommitModelActionAndBeginDispatchDenialsAreAtomic(t *testing.T) {
 			},
 		},
 		{
-			name: "budget unknown",
-			mutate: func(_ *testing.T, _ *actionStoreHarness, input *CommitModelActionAndBeginDispatchInput) {
-				input.BudgetDecision = ActionBudgetUnknown
-			},
-		},
-		{
 			name: "current activation revoked",
 			mutate: func(t *testing.T, harness *actionStoreHarness, _ *CommitModelActionAndBeginDispatchInput) {
 				publishEmptyCurrentCatalog(
@@ -867,7 +861,7 @@ func newActionStoreHarness(t *testing.T) *actionStoreHarness {
 		t,
 		store,
 		20_000,
-		0,
+		64,
 	)
 	for index := range control.Profiles {
 		if control.Profiles[index].Profile.ID != fixture.intent.ProfileID {
@@ -992,9 +986,6 @@ func newActionStoreHarness(t *testing.T) *actionStoreHarness {
 		},
 	)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.PutModelPriceSnapshot(ctx, testModelPriceSnapshot()); err != nil {
 		t.Fatal(err)
 	}
 	lease, err := store.AcquireRunLease(
@@ -1174,7 +1165,7 @@ func compileActionModelOne(
 	if err != nil {
 		t.Fatal(err)
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		modelConfigRecord.CanonicalBytes,
 	)
 	if err != nil {
@@ -1221,7 +1212,6 @@ func (harness *actionStoreHarness) actionBeginInput(
 		ProposalCanonical:            bytes.Clone(harness.proposal),
 		Deadline: time.Now().UTC().Add(30 * time.Minute).
 			Truncate(time.Microsecond),
-		BudgetDecision: ActionBudgetAllow,
 	}
 }
 

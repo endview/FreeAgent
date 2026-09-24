@@ -66,7 +66,7 @@ function New-FakePackage {
         'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.json') `
         -Content '{"module":"context"}'
     Write-Utf8File -Path (Join-Path $root `
-        'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.json') `
+        'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.json') `
         -Content '{"module":"echo"}'
     $seed = [ordered]@{
         schema_version = 'freeagent.bootstrap-seed/v1'
@@ -79,7 +79,7 @@ function New-FakePackage {
         }
         module = [ordered]@{
             module_id = 'freeagent.builtin.model.echo'
-            artifact_relative_path = 'bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0'
+            artifact_relative_path = 'bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0'
         }
     } | ConvertTo-Json -Depth 8 -Compress
     Write-Utf8File -Path (Join-Path $root 'config/current-v1.bootstrap.seed.json') `

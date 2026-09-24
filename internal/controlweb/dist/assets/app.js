@@ -1,4 +1,4 @@
-import { j as jsxRuntimeExports, r as reactExports, c as clientExports } from "./react.js";
+import { r as reactExports, j as jsxRuntimeExports, c as clientExports } from "./react.js";
 import { u as useQueryClient, a as useInfiniteQuery, b as useQuery, Q as QueryClient, c as QueryClientProvider } from "./tanstack-query.js";
 const HANDOFF_SCHEMA = "freeagent.control-bootstrap-handoff/v1";
 const BOOTSTRAP_RESPONSE_SCHEMA = "control-bootstrap-session/v2";
@@ -20,7 +20,7 @@ const CAPABILITIES = /* @__PURE__ */ new Set([
   "REVIEW_LEARNING",
   "RUN_LEARNING"
 ]);
-const isRecord$1 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord$2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 const exactKeys$1 = (value, required, optional = []) => {
   const allowed = /* @__PURE__ */ new Set([...required, ...optional]);
   const keys = Object.keys(value);
@@ -166,7 +166,7 @@ const parseJSONRecord$1 = (text, label) => {
     }
     throw new Error(`${label} is not valid JSON`);
   }
-  if (!isRecord$1(decoded)) throw new Error(`${label} must be one JSON object`);
+  if (!isRecord$2(decoded)) throw new Error(`${label} must be one JSON object`);
   return decoded;
 };
 const decodeHandoff = (text, nowUnixMicros = Date.now() * 1e3) => {
@@ -185,7 +185,7 @@ const decodeHandoff = (text, nowUnixMicros = Date.now() * 1e3) => {
   return value;
 };
 const decodeScope$1 = (value) => {
-  if (!isRecord$1(value)) throw new Error("authorized scope is not an object");
+  if (!isRecord$2(value)) throw new Error("authorized scope is not an object");
   if (value.schema_version !== SCOPE_SCHEMA || !opaque$1(value.tenant_id) || value.kind !== "TENANT" && value.kind !== "WORKSPACE") {
     throw new Error("authorized scope is invalid");
   }
@@ -229,7 +229,7 @@ const canonicalJSONString = (value) => {
   if (Array.isArray(value)) {
     return `[${value.map(canonicalJSONString).join(",")}]`;
   }
-  if (isRecord$1(value)) {
+  if (isRecord$2(value)) {
     return `{${Object.keys(value).sort().filter((key) => value[key] !== void 0).map((key) => `${JSON.stringify(key)}:${canonicalJSONString(value[key])}`).join(",")}}`;
   }
   throw new Error("canonical JSON contains an unsupported value");
@@ -244,7 +244,7 @@ const authorizedScopeSetDigest = async (scopes) => domainDigest(
   canonicalJSONString({ schema_version: "control-scope-set/v1", scopes })
 );
 const decodeSession = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, [
+  if (!isRecord$2(value) || !exactKeys$1(value, [
     "schema_version",
     "boot_id",
     "session_id",
@@ -294,13 +294,13 @@ const decodeSessionExchange = async (text, expectedSchema) => {
   };
 };
 const decodeDigestRef$1 = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, ["id", "revision", "digest"]) || !opaque$1(value.id) || !safeInteger$1(value.revision) || !digest$1(value.digest)) {
+  if (!isRecord$2(value) || !exactKeys$1(value, ["id", "revision", "digest"]) || !opaque$1(value.id) || !safeInteger$1(value.revision) || !digest$1(value.digest)) {
     throw new Error("revisioned digest reference is invalid");
   }
   return value;
 };
 const decodeBasis$1 = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, ["tenant_id", "pointer_revision", "control", "catalog"]) || !opaque$1(value.tenant_id) || !safeInteger$1(value.pointer_revision, true)) {
+  if (!isRecord$2(value) || !exactKeys$1(value, ["tenant_id", "pointer_revision", "control", "catalog"]) || !opaque$1(value.tenant_id) || !safeInteger$1(value.pointer_revision, true)) {
     throw new Error("published basis is invalid");
   }
   return {
@@ -311,19 +311,19 @@ const decodeBasis$1 = (value) => {
   };
 };
 const decodeExpectedRef$1 = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, ["kind", "resource_id", "revision", "digest"]) || !opaque$1(value.kind) || !opaque$1(value.resource_id) || !safeInteger$1(value.revision, true) || !digest$1(value.digest)) {
+  if (!isRecord$2(value) || !exactKeys$1(value, ["kind", "resource_id", "revision", "digest"]) || !opaque$1(value.kind) || !opaque$1(value.resource_id) || !safeInteger$1(value.revision, true) || !digest$1(value.digest)) {
     throw new Error("published pointer reference is invalid");
   }
   return value;
 };
 const decodeViewSection = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, ["kind", "source_revision", "source_digest", "item_count", "truncated"]) || !opaque$1(value.kind) || !safeInteger$1(value.source_revision, true) || !digest$1(value.source_digest) || !safeInteger$1(value.item_count) || typeof value.truncated !== "boolean") {
+  if (!isRecord$2(value) || !exactKeys$1(value, ["kind", "source_revision", "source_digest", "item_count", "truncated"]) || !opaque$1(value.kind) || !safeInteger$1(value.source_revision, true) || !digest$1(value.source_digest) || !safeInteger$1(value.item_count) || typeof value.truncated !== "boolean") {
     throw new Error("view section is invalid");
   }
   return value;
 };
 const decodeView$1 = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, [
+  if (!isRecord$2(value) || !exactKeys$1(value, [
     "schema_version",
     "scope",
     "scope_digest",
@@ -347,13 +347,13 @@ const decodeView$1 = (value) => {
   };
 };
 const decodeWorkspace = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, ["id", "version", "digest"]) || !opaque$1(value.id) || !opaque$1(value.version, 64) || !digest$1(value.digest)) {
+  if (!isRecord$2(value) || !exactKeys$1(value, ["id", "version", "digest"]) || !opaque$1(value.id) || !opaque$1(value.version, 64) || !digest$1(value.digest)) {
     throw new Error("workspace reference is invalid");
   }
   return value;
 };
 const decodeRun = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(
+  if (!isRecord$2(value) || !exactKeys$1(
     value,
     [
       "tenant_id",
@@ -368,8 +368,8 @@ const decodeRun = (value) => {
   ) || !opaque$1(value.tenant_id) || !opaque$1(value.workspace_id) || !opaque$1(value.run_id) || !opaque$1(value.state) || value.disposition !== void 0 && !opaque$1(value.disposition) || !safeInteger$1(value.revision) || !safeInteger$1(value.created_at_unix_micros, true) || !safeInteger$1(value.updated_at_unix_micros, true) || value.updated_at_unix_micros < value.created_at_unix_micros) throw new Error("run item is invalid");
   return value;
 };
-const decodeUnknown = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, [
+const decodeUnknown$1 = (value) => {
+  if (!isRecord$2(value) || !exactKeys$1(value, [
     "kind",
     "resource_id",
     "tenant_id",
@@ -381,7 +381,7 @@ const decodeUnknown = (value) => {
   return value;
 };
 const decodeLearning = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, [
+  if (!isRecord$2(value) || !exactKeys$1(value, [
     "proposal_id",
     "tenant_id",
     "workspace_id",
@@ -394,7 +394,7 @@ const decodeLearning = (value) => {
   return value;
 };
 const decodeCandidate = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(
+  if (!isRecord$2(value) || !exactKeys$1(
     value,
     [
       "review_id",
@@ -417,8 +417,8 @@ const decodeCandidate = (value) => {
   return value;
 };
 const nullableTokens = (value) => value === null || safeInteger$1(value);
-const decodeUsage = (value) => {
-  if (!isRecord$1(value) || !exactKeys$1(value, [
+const decodeUsage$1 = (value) => {
+  if (!isRecord$2(value) || !exactKeys$1(value, [
     "attempt_id",
     "run_id",
     "tenant_id",
@@ -602,13 +602,13 @@ const decodeOverview = (text, requestedScope) => {
     workspaces_truncated: false,
     runs: decodeBoundedArray(value.runs, MAX_OVERVIEW_ITEMS, decodeRun, "run"),
     runs_truncated: value.runs_truncated,
-    unknown: decodeBoundedArray(value.unknown, MAX_OVERVIEW_ITEMS, decodeUnknown, "unknown"),
+    unknown: decodeBoundedArray(value.unknown, MAX_OVERVIEW_ITEMS, decodeUnknown$1, "unknown"),
     unknown_truncated: value.unknown_truncated,
     learning: decodeBoundedArray(value.learning, MAX_OVERVIEW_ITEMS, decodeLearning, "learning"),
     learning_truncated: value.learning_truncated,
     module_candidates: decodeBoundedArray(value.module_candidates, MAX_OVERVIEW_ITEMS, decodeCandidate, "candidate"),
     module_candidates_truncated: value.module_candidates_truncated,
-    usage: decodeBoundedArray(value.usage, MAX_OVERVIEW_ITEMS, decodeUsage, "usage"),
+    usage: decodeBoundedArray(value.usage, MAX_OVERVIEW_ITEMS, decodeUsage$1, "usage"),
     usage_truncated: value.usage_truncated,
     projection_digest: value.projection_digest
   };
@@ -721,6 +721,848 @@ const decodeControlError = (text) => {
   ) || value.schema_version !== "control-error/v1" || !opaque$1(value.code) || !opaque$1(value.correlation_id) || !opaque$1(value.message, 1024) || value.retry_after_seconds !== void 0 && !safeInteger$1(value.retry_after_seconds)) return null;
   return value;
 };
+const SUPPORTED_LOCALES = ["en-US", "zh-CN"];
+const FALLBACK_LOCALE = "en-US";
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+function isSupportedLocale(value) {
+  return typeof value === "string" && SUPPORTED_LOCALES.some((locale) => locale === value);
+}
+function matchSupportedLocale(value) {
+  let canonical;
+  try {
+    [canonical] = Intl.getCanonicalLocales(value);
+  } catch {
+    return null;
+  }
+  if (canonical === "zh" || canonical.startsWith("zh-")) return "zh-CN";
+  if (canonical === "en" || canonical.startsWith("en-")) return "en-US";
+  return null;
+}
+function resolveLocale(candidates) {
+  for (const candidate of candidates) {
+    const locale = matchSupportedLocale(candidate);
+    if (locale !== null) return locale;
+  }
+  return FALLBACK_LOCALE;
+}
+function interpolateMessage(template, values = {}) {
+  return template.replace(
+    /\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/gu,
+    (placeholder, name) => hasOwn(values, name) ? String(values[name]) : placeholder
+  );
+}
+function interpolationParameterNames(template) {
+  return [...new Set(
+    [...template.matchAll(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/gu)].map((match) => match[1])
+  )].sort();
+}
+function assertCatalogCompatibility(catalogs, fallbackLocale = FALLBACK_LOCALE) {
+  const fallbackCatalog = catalogs[fallbackLocale];
+  if (fallbackCatalog === void 0) {
+    throw new Error(`i18n fallback catalog is missing: ${fallbackLocale}`);
+  }
+  const expectedKeys = Object.keys(fallbackCatalog).sort();
+  for (const locale of SUPPORTED_LOCALES) {
+    const catalog = catalogs[locale];
+    if (catalog === void 0) throw new Error(`i18n catalog is missing: ${locale}`);
+    const actualKeys = Object.keys(catalog).sort();
+    if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
+      throw new Error(`i18n catalog key mismatch: ${locale}`);
+    }
+    for (const key of expectedKeys) {
+      const expectedParameters = interpolationParameterNames(fallbackCatalog[key]);
+      const actualParameters = interpolationParameterNames(catalog[key]);
+      if (actualParameters.length !== expectedParameters.length || actualParameters.some((name, index) => name !== expectedParameters[index])) {
+        throw new Error(`i18n interpolation mismatch: ${locale}:${key}`);
+      }
+    }
+  }
+}
+const messageCandidates = (key, count, locale) => {
+  if (count === void 0) return [key];
+  const category = new Intl.PluralRules(locale).select(count);
+  return [`${key}_${category}`, `${key}_other`, key];
+};
+const findMessage = (catalog, candidates) => {
+  if (catalog === void 0) return null;
+  for (const candidate of candidates) {
+    if (hasOwn(catalog, candidate)) return catalog[candidate];
+  }
+  return null;
+};
+function translateMessage(catalogs, locale, fallbackLocale, key, options = {}, onMissingMessage) {
+  const localMessage = findMessage(
+    catalogs[locale],
+    messageCandidates(key, options.count, locale)
+  );
+  const fallbackMessage = localMessage === null && locale !== fallbackLocale ? findMessage(
+    catalogs[fallbackLocale],
+    messageCandidates(key, options.count, fallbackLocale)
+  ) : null;
+  const template = localMessage ?? fallbackMessage;
+  if (template === null) {
+    onMissingMessage?.({ fallbackLocale, key, locale });
+    return key;
+  }
+  const values = options.count === void 0 ? options.values : { ...options.values, count: options.count };
+  return interpolateMessage(template, values);
+}
+function createI18nRuntime(locale, catalogs, fallbackLocale = FALLBACK_LOCALE, onMissingMessage) {
+  const currency = (value, currencyCode, options) => new Intl.NumberFormat(locale, {
+    ...options,
+    currency: currencyCode,
+    style: "currency"
+  }).format(value);
+  return {
+    locale,
+    t: (key, options) => translateMessage(
+      catalogs,
+      locale,
+      fallbackLocale,
+      key,
+      options,
+      onMissingMessage
+    ),
+    formatNumber: (value, options) => new Intl.NumberFormat(locale, options).format(value),
+    formatCurrency: currency,
+    formatTokenCount: (value, options) => new Intl.NumberFormat(locale, options).format(value),
+    formatCost: currency,
+    formatDateTime: (value, options) => new Intl.DateTimeFormat(locale, options).format(
+      value instanceof Date ? value : new Date(value)
+    ),
+    formatRelativeTime: (value, unit, options) => new Intl.RelativeTimeFormat(locale, options).format(value, unit),
+    formatList: (values, options) => new Intl.ListFormat(locale, options).format([...values])
+  };
+}
+const enUSMessages = {
+  "app.title": "FreeAgent Control",
+  "brand.name": "FreeAgent Control",
+  "brand.overviewAria": "FreeAgent Control Overview",
+  "locale.selector.label": "Language",
+  "locale.name.en-US": "English",
+  "locale.name.zh-CN": "简体中文",
+  "session.open.eyebrow": "FreeAgent Control",
+  "session.open.title": "Open a Control session",
+  "session.open.description": "Select the short-lived handoff JSON created by this exact local Control process. The capability is exchanged once and is never retained by this page.",
+  "session.open.error": "Session could not be opened.",
+  "session.opening": "Opening session...",
+  "session.chooseHandoff": "Choose handoff JSON",
+  "session.security.authority": "Authority",
+  "session.security.authorityValue": "Only server-authorized scopes are selectable.",
+  "session.security.credentials": "Credentials",
+  "session.security.credentialsValue": "CSRF stays in memory; resume data stays in this tab session.",
+  "session.security.surface": "Surface",
+  "session.security.surfaceValue": "Overview stays read-only; Modules exposes only confirmed disable operations.",
+  "session.error.resume": "Stored session could not be resumed: {{message}}",
+  "session.error.handoffTooLarge": "The handoff file exceeds the 4 KiB limit.",
+  "session.error.storageWarning": "This browser could not retain a tab-scoped resume credential.",
+  "loading.brand": "FreeAgent Control",
+  "loading.overview": "Loading Overview...",
+  "loading.modules": "Loading Modules...",
+  "loading.checkingSession": "Checking this tab session...",
+  "loading.closingSession": "Closing an expired session...",
+  "loading.waiting": "Waiting for one bounded, authenticated response.",
+  "loading.waitingProjection": "Waiting for one bounded, authenticated projection.",
+  "permission.eyebrow": "Read-only access",
+  "permission.title": "Overview permission denied",
+  "permission.description": "Session principal {{principal}} does not currently hold the OBSERVE capability for this view. No Overview request was sent.",
+  "error.overview.eyebrow": "Read-only Overview",
+  "error.overview.scopeDenied": "Scope permission denied",
+  "error.overview.unavailable": "Overview unavailable",
+  "error.overview.correlation": "Correlation: {{id}}",
+  "error.overview.retry": "Retry read",
+  "common.correlation": "Correlation: {{id}}",
+  "common.cancel": "Cancel",
+  "common.close": "Close",
+  "common.retry": "Retry",
+  "common.none": "none",
+  "common.tenant": "Tenant",
+  "common.workspace": "Workspace",
+  "common.tenantLower": "tenant",
+  "common.workspaceLower": "workspace",
+  "common.expires": "Expires {{time}}",
+  "common.current": "Current",
+  "common.refreshing": "Refreshing",
+  "common.stale": "Stale",
+  "scope.tenant": "Tenant · {{tenant}}",
+  "scope.workspace": "Workspace · {{tenant}} / {{workspace}}",
+  "overview.nav.aria": "Control navigation",
+  "overview.nav.control": "Control",
+  "overview.nav.status": "Status",
+  "overview.nav.modules": "Modules",
+  "overview.nav.reviews": "Upgrade Reviews",
+  "overview.nav.management": "Store Management",
+  "overview.eyebrow": "Authorized read-only surface",
+  "overview.title": "Overview",
+  "overview.description": "A bounded projection of the current published basis and recent safe facts.",
+  "overview.refresh": "Refresh read",
+  "overview.reading": "Reading...",
+  "overview.controls.aria": "Overview controls",
+  "overview.scope": "Authorized scope",
+  "overview.search": "Search this response",
+  "overview.searchPlaceholder": "ID, state, kind, version...",
+  "overview.refreshFailed": "The last refresh failed.",
+  "overview.staleNotice": "{{message}} The prior verified response remains visible as stale.",
+  "overview.status.aria": "Overview status",
+  "overview.metric.pointerRevision": "Pointer revision",
+  "overview.metric.controlGeneration": "Control generation",
+  "overview.metric.catalogGeneration": "Catalog generation",
+  "overview.metric.currentResponse": "Current response",
+  "overview.metric.authorizedItems": "authorized safe items",
+  "overview.metric.observed": "Observed",
+  "overview.metric.staleRepresentation": "stale local representation",
+  "overview.metric.verifiedRepresentation": "verified representation",
+  "overview.metric.projection": "Projection",
+  "overview.metric.semanticDigest": "semantic digest verified",
+  "overview.empty.eyebrow": "Current response",
+  "overview.empty.title": "No recent items",
+  "overview.empty.description": "The selected authorized scope returned an empty, verified Overview.",
+  "overview.searchEmpty.eyebrow": "Local search",
+  "overview.searchEmpty.title": "No response items match",
+  "overview.searchEmpty.description": "The search examined only the items already present in this authorized response.",
+  "overview.facts.eyebrow": "Recent safe facts",
+  "overview.truncated": "truncated",
+  "overview.footer.view": "View {{digest}}",
+  "overview.footer.scope": "Scope {{digest}}",
+  "overview.section.workspaces": "Workspaces",
+  "overview.section.runs": "Recent runs",
+  "overview.section.unknown": "Unknown outcomes",
+  "overview.section.learning": "Learning proposals",
+  "overview.section.moduleCandidates": "Module candidates",
+  "overview.section.usage": "Usage reconciliation",
+  "overview.result.empty": "No items in this current response.",
+  "overview.result.workspace": "Workspace {{version}}",
+  "overview.result.run": "{{state}}{{disposition}}",
+  "overview.result.learning": "{{kind}} · {{state}}",
+  "overview.result.moduleCandidate": "{{current}} → {{target}} · {{conclusion}}",
+  "overview.result.usage": "{{status}} · run {{run}}",
+  "overview.detail.eyebrow": "Current response detail",
+  "overview.detail.unavailable": "Detail unavailable",
+  "overview.detail.close": "Close detail",
+  "overview.detail.missing": "This deep link is not present in the current authorized scope response.",
+  "overview.detail.frozenScope": "Frozen {{kind}} scope: {{scope}}",
+  "modules.failure.eyebrow": "Modules fail-closed boundary",
+  "modules.failure.permission": "Modules permission denied",
+  "modules.failure.session": "Control session unavailable",
+  "modules.failure.stale": "Published basis changed",
+  "modules.failure.integrity": "Modules response was rejected",
+  "modules.failure.reload": "Reload validated Modules data",
+  "modules.loading.title": "Loading Modules...",
+  "modules.eyebrow": "Authorized configuration surface",
+  "modules.title": "Modules",
+  "modules.description": "Validated module instances and bindings at published pointer revision {{revision}}.",
+  "modules.refresh": "Refresh exact basis",
+  "modules.controls.aria": "Modules filters",
+  "modules.search": "Search current pages",
+  "modules.searchPlaceholder": "Instance, module, version, class",
+  "modules.readOnly.title": "Read-only Modules session.",
+  "modules.readOnly.description": "OPERATE_MODULES is not present, so no mutation control is rendered.",
+  "modules.workspaceReadOnly.title": "Workspace scope is read-only for MODULE_DISABLE.",
+  "modules.workspaceReadOnly.description": "Select an authorized Tenant scope to review a narrow Profile binding.",
+  "modules.list.eyebrow": "Current validated pages",
+  "modules.list.title": "Module instances",
+  "modules.list.loaded": "{{count}} loaded",
+  "modules.refreshFailed": "Background refresh failed.",
+  "modules.refreshFailedMessage": "Modules refresh failed.",
+  "modules.list.empty": "No loaded module instance matches this search.",
+  "modules.loadNext": "Load next validated page",
+  "modules.detail.eyebrow": "Exact instance detail",
+  "modules.detail.select": "Select a module",
+  "modules.detail.selectDescription": "Select an instance to fetch its independently validated binding detail.",
+  "modules.detail.loading": "Loading exact module detail...",
+  "modules.detail.unavailable": "Detail unavailable.",
+  "modules.detail.readFailed": "Module detail could not be read.",
+  "modules.detail.retry": "Retry detail",
+  "modules.detail.module": "Module",
+  "modules.detail.version": "Version",
+  "modules.detail.execution": "Execution",
+  "modules.detail.adapter": "Adapter",
+  "modules.detail.artifact": "Artifact",
+  "modules.bindings.title": "Visible bindings",
+  "modules.bindings.empty": "No binding is visible in this authorized scope.",
+  "modules.binding.staticRefs": "{{count}} static context refs",
+  "modules.binding.reviewDisable": "Review disable",
+  "modules.binding.duplicate": "Higher duplicate binding index",
+  "modules.binding.tenantRequired": "Tenant OPERATE_MODULES required",
+  "modules.binding.outsideCandidate": "Outside narrow disable candidate",
+  "modules.footer": "Reads are bounded and same-origin. MODULE_DISABLE is server-authoritative and non-optimistic.",
+  "modules.footer.pointer": "Pointer {{digest}}",
+  "modules.list.summary": "{{module}} @ {{version}} / {{execution}} / {{count}} visible bindings",
+  "modules.binding.profile": "Profile {{id}}",
+  "modules.binding.workspaceEndpoint": "Workspace {{workspace}} / endpoint {{endpoint}}",
+  "modules.binding.detail": "{{port}}/{{version}} / {{policy}} / index {{index}}",
+  "reviews.eyebrow": "Server-owned upgrade review",
+  "reviews.title": "Upgrade Reviews",
+  "reviews.description": "Read-only review projections and inert artifact provenance for the authorized scope.",
+  "reviews.refresh": "Refresh reviews",
+  "reviews.controls.aria": "Upgrade review controls",
+  "reviews.loading": "Loading upgrade reviews...",
+  "reviews.unavailable": "Upgrade reviews unavailable",
+  "reviews.readFailed": "Upgrade reviews could not be read.",
+  "reviews.invalidTime": "Invalid time",
+  "reviews.list.eyebrow": "Current review projections",
+  "reviews.list.title": "Review records",
+  "reviews.list.loaded": "{{count}} loaded",
+  "reviews.list.empty": "No server-owned upgrade review is visible in this scope.",
+  "reviews.list.summary": "{{target}} / {{conclusion}} / {{decision}}",
+  "reviews.list.noDecision": "no decision",
+  "reviews.detail.eyebrow": "Verified review detail",
+  "reviews.detail.select": "Select a review",
+  "reviews.detail.selectDescription": "Select a review to inspect its decision and admitted artifact provenance.",
+  "reviews.detail.loading": "Loading review detail...",
+  "reviews.detail.unavailable": "Review detail unavailable",
+  "reviews.detail.readFailed": "Review detail could not be read.",
+  "reviews.detail.reviewID": "Review ID",
+  "reviews.detail.conclusion": "Conclusion",
+  "reviews.detail.candidate": "Candidate",
+  "reviews.detail.reviewKey": "Review key",
+  "reviews.detail.target": "Binding target",
+  "reviews.detail.instance": "Target instance",
+  "reviews.detail.module": "Target module",
+  "reviews.detail.version": "Target version",
+  "reviews.detail.artifact": "Target artifact",
+  "reviews.detail.artifactSize": "Artifact size",
+  "reviews.detail.port": "Port / binding index",
+  "reviews.detail.created": "Created",
+  "reviews.detail.operator": "Review operator",
+  "reviews.detail.admission": "Artifact admission",
+  "reviews.detail.admissionID": "Admission ID",
+  "reviews.detail.source": "Source",
+  "reviews.detail.snapshot": "Snapshot",
+  "reviews.detail.manifest": "Manifest",
+  "reviews.detail.fileCount": "Covered files",
+  "reviews.detail.admitted": "Admitted",
+  "reviews.detail.decision": "Decision",
+  "reviews.detail.noDecision": "No decision is recorded for this review.",
+  "reviews.detail.decisionValue": "Decision",
+  "reviews.detail.decisionID": "Decision ID",
+  "reviews.detail.decisionOperator": "Decision operator",
+  "reviews.detail.decisionTime": "Decided",
+  "reviews.detail.reason": "Reason",
+  "reviews.detail.reasonCodes": "Reason codes",
+  "reviews.footer.projection": "Projection {{digest}}",
+  "management.eyebrow": "Read-only reconciliation",
+  "management.title": "Store Management",
+  "management.description": "Inspect durable UNKNOWN outcomes, Store verification facts, backup constraints, and admitted artifacts for the authorized scope.",
+  "management.refresh": "Refresh management facts",
+  "management.controls.aria": "Store management controls",
+  "management.loading": "Loading management facts...",
+  "management.unavailable": "Management facts unavailable",
+  "management.readFailed": "Management facts could not be read.",
+  "management.readOnly.title": "Read-only management surface.",
+  "management.readOnly.description": "This page never restores, replays, resends, installs, activates, binds, applies, or changes Store state.",
+  "management.loaded": "{{count}} loaded",
+  "management.yes": "yes",
+  "management.no": "no",
+  "management.unknownValue": "unknown",
+  "management.invalidTime": "Invalid time",
+  "management.unknown.eyebrow": "Durable UNKNOWN attempts",
+  "management.unknown.title": "Unknown outcomes",
+  "management.unknown.empty": "No pending or UNKNOWN attempt is visible in this scope.",
+  "management.unknown.itemTitle": "{{kind}} · {{attempt}}",
+  "management.unknown.summary": "{{state}} · run {{run}}",
+  "management.unknown.detailEyebrow": "Reconciliation evidence",
+  "management.unknown.select": "Select an UNKNOWN outcome",
+  "management.unknown.selectDescription": "Select an outcome to inspect its safe evidence projection. Request bodies, receipts, secrets, paths, and replay material are never shown.",
+  "management.unknown.detailLoading": "Loading UNKNOWN detail...",
+  "management.unknown.detailUnavailable": "UNKNOWN detail unavailable",
+  "management.unknown.detailReadFailed": "UNKNOWN detail could not be read.",
+  "management.unknown.kind": "Attempt kind",
+  "management.unknown.attempt": "Attempt ID",
+  "management.unknown.run": "Run ID",
+  "management.unknown.state": "State",
+  "management.unknown.provider": "Provider",
+  "management.unknown.model": "Model",
+  "management.unknown.requestID": "Provider request ID",
+  "management.unknown.externalID": "External operation ID",
+  "management.unknown.endpoint": "Endpoint",
+  "management.unknown.classification": "Error classification",
+  "management.unknown.reason": "Unknown reason",
+  "management.unknown.evidence": "Reconciliation evidence",
+  "management.unknown.evidenceRef": "Evidence reference",
+  "management.unknown.created": "Created",
+  "management.unknown.updated": "Updated",
+  "management.unknown.usage": "Token usage facts",
+  "management.unknown.inputTokens": "Input tokens",
+  "management.unknown.cachedInputTokens": "Cached input tokens",
+  "management.unknown.uncachedInputTokens": "Uncached input tokens",
+  "management.unknown.outputTokens": "Output tokens",
+  "management.unknown.reasoningTokens": "Reasoning tokens",
+  "management.unknown.readOnly": "No automatic retry or replay is available from this view.",
+  "management.store.eyebrow": "Current Store verification",
+  "management.store.title": "Store and backup",
+  "management.store.instance": "Store instance",
+  "management.store.schema": "Schema identity",
+  "management.store.schemaVersion": "Schema version",
+  "management.store.fingerprint": "Schema fingerprint",
+  "management.store.generator": "Generator",
+  "management.store.backupFormat": "Backup format",
+  "management.store.onlineCreate": "Online create",
+  "management.store.onlineRestore": "Online restore",
+  "management.store.restoreMode": "Restore mode",
+  "management.artifacts.eyebrow": "Server-owned admissions",
+  "management.artifacts.title": "Artifact admissions",
+  "management.artifacts.empty": "No admitted artifact is visible in this scope.",
+  "management.artifacts.summary": "{{source}} · {{files}} files · {{time}}",
+  "management.footer.projection": "Management projection {{digest}}",
+  "management.footer.noPath": "No physical Store path is exposed.",
+  "operation.dryRun.eyebrow": "Effect-free evaluation",
+  "operation.dryRun.running": "Running server dry-run",
+  "operation.dryRun.noChange": "No published state is being changed for {{target}}.",
+  "operation.result.eyebrow": "Authoritative dry-run result",
+  "operation.result.target": "Target: {{target}}. Catalog effect: {{effect}}.",
+  "operation.result.plan": "Plan {{digest}}",
+  "operation.value.ALREADY_APPLIED": "ALREADY APPLIED",
+  "operation.value.NO_CHANGE": "NO CHANGE",
+  "operation.value.WOULD_APPLY": "WOULD APPLY",
+  "operation.value.NONE": "NONE",
+  "operation.value.RETAIN_INSTANCE": "RETAIN INSTANCE",
+  "operation.value.REMOVE_INSTANCE": "REMOVE INSTANCE",
+  "operation.value.APPLIED": "APPLIED",
+  "operation.value.OPTIONAL": "OPTIONAL",
+  "operation.target.from": "{{instance}} from {{target}}",
+  "operation.fact.scopeValue": "{{kind}} / tenant {{tenant}}{{workspace}}",
+  "operation.fact.workspaceSuffix": " / workspace {{workspace}}",
+  "operation.fact.portValue": "{{name}}@{{version}} / {{index}}",
+  "operation.confirm.request": "Request short-lived confirmation",
+  "operation.result.noMutation": "No mutation request was sent.",
+  "operation.result.done": "Done and refresh authority",
+  "operation.confirming.eyebrow": "Confirmation evaluation",
+  "operation.confirming.title": "Binding the exact request...",
+  "operation.confirming.description": "The server is re-evaluating {{target}}; no mutation is being sent.",
+  "operation.confirm.eyebrow": "Explicit operator confirmation",
+  "operation.confirm.title": "Disable this exact Profile binding?",
+  "operation.confirm.description": "The server evaluated {{target}} as WOULD APPLY. The projected catalog effect is {{effect}}.",
+  "operation.confirm.expires": "Confirmation expires {{time}}.",
+  "operation.fact.principal": "Principal",
+  "operation.fact.scope": "Scope",
+  "operation.fact.pointerRevision": "Published pointer revision",
+  "operation.fact.instance": "Instance",
+  "operation.fact.portBinding": "Port / binding index",
+  "operation.fact.profileTarget": "Profile target",
+  "operation.fact.failurePolicy": "Failure policy",
+  "operation.fact.catalogEffect": "Catalog effect",
+  "operation.digest.scope": "Scope digest",
+  "operation.digest.expectedRef": "Expected ref",
+  "operation.digest.configRef": "Config ref",
+  "operation.digest.authorityCeiling": "Authority ceiling",
+  "operation.digest.staticRefs": "Static context refs",
+  "operation.digest.input": "Input digest",
+  "operation.digest.plan": "Plan digest",
+  "operation.digest.idempotency": "Idempotency-key digest",
+  "operation.digest.evaluation": "Evaluation digest",
+  "operation.digest.statement": "Statement digest",
+  "operation.staticRefs.empty": "none",
+  "operation.confirm.checkbox": "I understand this sends one governed published-state mutation.",
+  "operation.confirm.submit": "Confirm and disable binding",
+  "operation.mutating.eyebrow": "Governed mutation",
+  "operation.mutating.replay": "Replaying the exact request...",
+  "operation.mutating.waiting": "Waiting for an authoritative receipt...",
+  "operation.mutating.description": "The page will not update local authority optimistically for {{target}}.",
+  "operation.uncertain.eyebrow": "Outcome not yet known",
+  "operation.uncertain.title": "Do not construct a replacement mutation",
+  "operation.uncertain.description": "Only an exact replay of the original body, idempotency key, precondition, and evaluation digest is available. The confirmation proof will not be resent.",
+  "operation.uncertain.retry": "Retry exact request",
+  "operation.uncertain.reload": "Discard retry state and reload authority",
+  "operation.complete.eyebrow": "Authoritative mutation receipt",
+  "operation.complete.receipt": "Receipt {{digest}}",
+  "operation.complete.description": "The server completed {{target}} at {{time}}.",
+  "operation.complete.close": "Close receipt",
+  "operation.error.stopped": "{{step}} stopped",
+  "operation.error.title": "The operation did not advance",
+  "operation.error.retry": "Retry same step",
+  "operation.error.restart": "Restart review",
+  "operation.client.sessionExpiredDuring": "The control session expired before this operation completed.",
+  "operation.client.confirmExpired": "The short-lived confirmation expired. Start a new dry-run.",
+  "operation.client.sessionExpired": "The control session has expired. Open a new handoff.",
+  "operation.client.permission": "This session does not hold OBSERVE for the Modules surface.",
+  "operation.client.contextMismatch": "The Modules session, scope, and transport context do not match exactly.",
+  "operation.client.basisMismatch": "The Modules list and detail are not bound to one published basis.",
+  "operation.client.boundary": "The Modules response failed its fail-closed boundary.",
+  "operation.client.differentBinding": "The dry-run selected a different binding than the exact binding reviewed by the operator.",
+  "operation.client.untrustedDryRun": "The MODULE_DISABLE dry-run did not return a trusted result.",
+  "operation.client.confirmExpiredBeforeApproval": "The confirmation expired before it could be presented for explicit approval.",
+  "operation.client.confirmNoLongerApplies": "Confirmation no longer evaluates the exact request as WOULD APPLY.",
+  "operation.client.confirmDifferentBinding": "Confirmation selected a different binding than the exact binding reviewed by the operator.",
+  "operation.client.confirmDrift": "Confirmation drifted from the exact authoritative dry-run projection.",
+  "operation.client.invalidCatalogEffect": "Confirmation returned an invalid MODULE_DISABLE catalog effect.",
+  "operation.client.confirmUntrusted": "The confirmation endpoint did not return a trusted exact evaluation.",
+  "operation.client.nonMutationReceipt": "The MODULE_DISABLE mutation returned a non-mutation receipt status.",
+  "operation.client.uncertainReceipt": "The mutation outcome could not be established from a trusted receipt.",
+  "operation.client.secureConfirmation": "A secure confirmation request could not be prepared.",
+  "operation.client.selectedBinding": "the selected binding",
+  "operation.client.projectionRead": "The Modules projection could not be read.",
+  "operation.step.DRY_RUN": "DRY RUN",
+  "operation.step.CONFIRMATION": "CONFIRMATION",
+  "operation.step.MUTATE": "MUTATE"
+};
+const zhCNMessages = {
+  "overview.nav.reviews": "升级审核",
+  "overview.nav.management": "Store 管理",
+  "reviews.eyebrow": "服务端持有的升级审核",
+  "reviews.title": "升级审核",
+  "reviews.description": "展示当前授权范围内只读的审核投影和惰性制品来源。",
+  "reviews.refresh": "刷新审核",
+  "reviews.controls.aria": "升级审核控制",
+  "reviews.loading": "正在加载升级审核...",
+  "reviews.unavailable": "升级审核不可用",
+  "reviews.readFailed": "无法读取升级审核。",
+  "reviews.invalidTime": "时间无效",
+  "reviews.list.eyebrow": "当前审核投影",
+  "reviews.list.title": "审核记录",
+  "reviews.list.loaded": "已加载 {{count}} 条",
+  "reviews.list.empty": "当前范围内没有可见的服务端升级审核。",
+  "reviews.list.summary": "{{target}} / {{conclusion}} / {{decision}}",
+  "reviews.list.noDecision": "没有决定",
+  "reviews.detail.eyebrow": "已验证审核详情",
+  "reviews.detail.select": "选择审核",
+  "reviews.detail.selectDescription": "选择审核以查看其决定和已接纳制品来源。",
+  "reviews.detail.loading": "正在加载审核详情...",
+  "reviews.detail.unavailable": "审核详情不可用",
+  "reviews.detail.readFailed": "无法读取审核详情。",
+  "reviews.detail.reviewID": "审核 ID",
+  "reviews.detail.conclusion": "结论",
+  "reviews.detail.candidate": "候选",
+  "reviews.detail.reviewKey": "审核键",
+  "reviews.detail.target": "绑定目标",
+  "reviews.detail.instance": "目标实例",
+  "reviews.detail.module": "目标模块",
+  "reviews.detail.version": "目标版本",
+  "reviews.detail.artifact": "目标制品",
+  "reviews.detail.artifactSize": "制品大小",
+  "reviews.detail.port": "端口 / 绑定索引",
+  "reviews.detail.created": "创建时间",
+  "reviews.detail.operator": "审核操作员",
+  "reviews.detail.admission": "制品接纳",
+  "reviews.detail.admissionID": "接纳 ID",
+  "reviews.detail.source": "来源",
+  "reviews.detail.snapshot": "快照",
+  "reviews.detail.manifest": "清单",
+  "reviews.detail.fileCount": "覆盖文件数",
+  "reviews.detail.admitted": "接纳时间",
+  "reviews.detail.decision": "决定",
+  "reviews.detail.noDecision": "此审核尚未记录决定。",
+  "reviews.detail.decisionValue": "决定",
+  "reviews.detail.decisionID": "决定 ID",
+  "reviews.detail.decisionOperator": "决定操作员",
+  "reviews.detail.decisionTime": "决定时间",
+  "reviews.detail.reason": "理由",
+  "reviews.detail.reasonCodes": "理由代码",
+  "reviews.footer.projection": "投影 {{digest}}",
+  "management.eyebrow": "只读对账",
+  "management.title": "Store 管理",
+  "management.description": "查看当前授权范围内的持久化 UNKNOWN 结果、Store 验证事实、备份约束和已接纳制品。",
+  "management.refresh": "刷新管理事实",
+  "management.controls.aria": "Store 管理控制",
+  "management.loading": "正在加载管理事实...",
+  "management.unavailable": "管理事实不可用",
+  "management.readFailed": "无法读取管理事实。",
+  "management.readOnly.title": "只读管理界面。",
+  "management.readOnly.description": "此页面不会恢复、重放、重发、安装、激活、绑定、应用或修改 Store 状态。",
+  "management.loaded": "已加载 {{count}} 条",
+  "management.yes": "是",
+  "management.no": "否",
+  "management.unknownValue": "未知",
+  "management.invalidTime": "时间无效",
+  "management.unknown.eyebrow": "持久化 UNKNOWN Attempt",
+  "management.unknown.title": "未知结果",
+  "management.unknown.empty": "当前范围内没有可见的 PENDING 或 UNKNOWN Attempt。",
+  "management.unknown.itemTitle": "{{kind}} · {{attempt}}",
+  "management.unknown.summary": "{{state}} · 运行 {{run}}",
+  "management.unknown.detailEyebrow": "对账证据",
+  "management.unknown.select": "选择 UNKNOWN 结果",
+  "management.unknown.selectDescription": "选择一个结果查看其安全证据投影。不会显示请求体、回执、Secret、路径或重放材料。",
+  "management.unknown.detailLoading": "正在加载 UNKNOWN 详情...",
+  "management.unknown.detailUnavailable": "UNKNOWN 详情不可用",
+  "management.unknown.detailReadFailed": "无法读取 UNKNOWN 详情。",
+  "management.unknown.kind": "Attempt 类型",
+  "management.unknown.attempt": "Attempt ID",
+  "management.unknown.run": "运行 ID",
+  "management.unknown.state": "状态",
+  "management.unknown.provider": "Provider",
+  "management.unknown.model": "模型",
+  "management.unknown.requestID": "Provider 请求 ID",
+  "management.unknown.externalID": "外部操作 ID",
+  "management.unknown.endpoint": "端点",
+  "management.unknown.classification": "错误分类",
+  "management.unknown.reason": "未知原因",
+  "management.unknown.evidence": "对账证据",
+  "management.unknown.evidenceRef": "证据引用",
+  "management.unknown.created": "创建时间",
+  "management.unknown.updated": "更新时间",
+  "management.unknown.usage": "Token 用量事实",
+  "management.unknown.inputTokens": "输入 Token",
+  "management.unknown.cachedInputTokens": "缓存输入 Token",
+  "management.unknown.uncachedInputTokens": "非缓存输入 Token",
+  "management.unknown.outputTokens": "输出 Token",
+  "management.unknown.reasoningTokens": "推理 Token",
+  "management.unknown.readOnly": "此视图不提供自动重试或重放。",
+  "management.store.eyebrow": "Current Store 验证",
+  "management.store.title": "Store 与备份",
+  "management.store.instance": "Store 实例",
+  "management.store.schema": "Schema identity",
+  "management.store.schemaVersion": "Schema 版本",
+  "management.store.fingerprint": "Schema 指纹",
+  "management.store.generator": "生成器",
+  "management.store.backupFormat": "备份格式",
+  "management.store.onlineCreate": "在线创建",
+  "management.store.onlineRestore": "在线恢复",
+  "management.store.restoreMode": "恢复模式",
+  "management.artifacts.eyebrow": "服务端持有的接纳记录",
+  "management.artifacts.title": "制品接纳",
+  "management.artifacts.empty": "当前范围内没有可见的已接纳制品。",
+  "management.artifacts.summary": "{{source}} · {{files}} 个文件 · {{time}}",
+  "management.footer.projection": "管理投影 {{digest}}",
+  "management.footer.noPath": "不会暴露物理 Store 路径。",
+  "app.title": "FreeAgent 控制台",
+  "brand.name": "FreeAgent 控制台",
+  "brand.overviewAria": "FreeAgent 控制台概览",
+  "locale.selector.label": "语言",
+  "locale.name.en-US": "English",
+  "locale.name.zh-CN": "简体中文",
+  "session.open.eyebrow": "FreeAgent 控制台",
+  "session.open.title": "打开控制会话",
+  "session.open.description": "请选择由当前本地 Control 进程创建的短时 handoff JSON。能力只交换一次，页面不会保留它。",
+  "session.open.error": "无法打开会话。",
+  "session.opening": "正在打开会话...",
+  "session.chooseHandoff": "选择 handoff JSON",
+  "session.security.authority": "权限",
+  "session.security.authorityValue": "只能选择服务端授权的范围。",
+  "session.security.credentials": "凭据",
+  "session.security.credentialsValue": "CSRF 只保留在内存中；恢复数据只保留在当前标签页会话中。",
+  "session.security.surface": "界面",
+  "session.security.surfaceValue": "概览保持只读；模块只提供已确认的禁用操作。",
+  "session.error.resume": "无法恢复已保存的会话：{{message}}",
+  "session.error.handoffTooLarge": "handoff 文件超过 4 KiB 限制。",
+  "session.error.storageWarning": "此浏览器无法保留当前标签页的会话恢复凭据。",
+  "loading.brand": "FreeAgent 控制台",
+  "loading.overview": "正在加载概览...",
+  "loading.modules": "正在加载模块...",
+  "loading.checkingSession": "正在检查当前标签页会话...",
+  "loading.closingSession": "正在关闭已过期会话...",
+  "loading.waiting": "正在等待一次有界且已认证的响应。",
+  "loading.waitingProjection": "正在等待一次有界且已认证的投影。",
+  "permission.eyebrow": "只读访问",
+  "permission.title": "概览权限被拒绝",
+  "permission.description": "会话主体 {{principal}} 当前没有此视图所需的 OBSERVE 能力。未发送概览请求。",
+  "error.overview.eyebrow": "只读概览",
+  "error.overview.scopeDenied": "范围权限被拒绝",
+  "error.overview.unavailable": "概览不可用",
+  "error.overview.correlation": "关联 ID：{{id}}",
+  "error.overview.retry": "重试读取",
+  "common.correlation": "关联 ID：{{id}}",
+  "common.cancel": "取消",
+  "common.close": "关闭",
+  "common.retry": "重试",
+  "common.none": "无",
+  "common.tenant": "租户",
+  "common.workspace": "工作区",
+  "common.tenantLower": "租户",
+  "common.workspaceLower": "工作区",
+  "common.expires": "过期时间 {{time}}",
+  "common.current": "当前",
+  "common.refreshing": "刷新中",
+  "common.stale": "过期",
+  "scope.tenant": "租户 · {{tenant}}",
+  "scope.workspace": "工作区 · {{tenant}} / {{workspace}}",
+  "overview.nav.aria": "控制导航",
+  "overview.nav.control": "控制",
+  "overview.nav.status": "状态",
+  "overview.nav.modules": "模块",
+  "overview.eyebrow": "已授权只读界面",
+  "overview.title": "概览",
+  "overview.description": "当前已发布基础和近期安全事实的有界投影。",
+  "overview.refresh": "刷新读取",
+  "overview.reading": "读取中...",
+  "overview.controls.aria": "概览控制",
+  "overview.scope": "已授权范围",
+  "overview.search": "搜索当前响应",
+  "overview.searchPlaceholder": "ID、状态、类型、版本...",
+  "overview.refreshFailed": "上次刷新失败。",
+  "overview.staleNotice": "{{message}} 之前已验证的响应仍以过期状态显示。",
+  "overview.status.aria": "概览状态",
+  "overview.metric.pointerRevision": "指针修订",
+  "overview.metric.controlGeneration": "控制代次",
+  "overview.metric.catalogGeneration": "目录代次",
+  "overview.metric.currentResponse": "当前响应",
+  "overview.metric.authorizedItems": "已授权安全条目",
+  "overview.metric.observed": "观测时间",
+  "overview.metric.staleRepresentation": "本地过期表示",
+  "overview.metric.verifiedRepresentation": "已验证表示",
+  "overview.metric.projection": "投影",
+  "overview.metric.semanticDigest": "语义摘要已验证",
+  "overview.empty.eyebrow": "当前响应",
+  "overview.empty.title": "没有近期条目",
+  "overview.empty.description": "选定的已授权范围返回了空的、已验证的概览。",
+  "overview.searchEmpty.eyebrow": "本地搜索",
+  "overview.searchEmpty.title": "没有匹配的响应条目",
+  "overview.searchEmpty.description": "搜索只检查了当前已授权响应中已经存在的条目。",
+  "overview.facts.eyebrow": "近期安全事实",
+  "overview.truncated": "已截断",
+  "overview.footer.view": "视图 {{digest}}",
+  "overview.footer.scope": "范围 {{digest}}",
+  "overview.section.workspaces": "工作区",
+  "overview.section.runs": "近期运行",
+  "overview.section.unknown": "未知结果",
+  "overview.section.learning": "学习提案",
+  "overview.section.moduleCandidates": "模块候选",
+  "overview.section.usage": "用量对账",
+  "overview.result.empty": "当前响应中没有条目。",
+  "overview.result.workspace": "工作区 {{version}}",
+  "overview.result.run": "{{state}}{{disposition}}",
+  "overview.result.learning": "{{kind}} · {{state}}",
+  "overview.result.moduleCandidate": "{{current}} → {{target}} · {{conclusion}}",
+  "overview.result.usage": "{{status}} · 运行 {{run}}",
+  "overview.detail.eyebrow": "当前响应详情",
+  "overview.detail.unavailable": "详情不可用",
+  "overview.detail.close": "关闭详情",
+  "overview.detail.missing": "当前已授权范围响应中不存在此深层链接。",
+  "overview.detail.frozenScope": "冻结的{{kind}}范围：{{scope}}",
+  "modules.failure.eyebrow": "模块 fail-closed 边界",
+  "modules.failure.permission": "模块权限被拒绝",
+  "modules.failure.session": "控制会话不可用",
+  "modules.failure.stale": "已发布基础已变化",
+  "modules.failure.integrity": "模块响应已被拒绝",
+  "modules.failure.reload": "重新加载已验证的模块数据",
+  "modules.loading.title": "正在加载模块...",
+  "modules.eyebrow": "已授权配置界面",
+  "modules.title": "模块",
+  "modules.description": "已发布指针修订 {{revision}} 下已验证的模块实例和绑定。",
+  "modules.refresh": "刷新精确基础",
+  "modules.controls.aria": "模块筛选",
+  "modules.search": "搜索当前页面",
+  "modules.searchPlaceholder": "实例、模块、版本、类别",
+  "modules.readOnly.title": "只读模块会话。",
+  "modules.readOnly.description": "当前没有 OPERATE_MODULES，因此不会显示变更控制。",
+  "modules.workspaceReadOnly.title": "工作区范围对 MODULE_DISABLE 只读。",
+  "modules.workspaceReadOnly.description": "选择已授权的租户范围，以审核限定的 Profile 绑定。",
+  "modules.list.eyebrow": "当前已验证页面",
+  "modules.list.title": "模块实例",
+  "modules.list.loaded": "已加载 {{count}} 个",
+  "modules.refreshFailed": "后台刷新失败。",
+  "modules.refreshFailedMessage": "模块刷新失败。",
+  "modules.list.empty": "没有已加载的模块实例匹配此搜索。",
+  "modules.loadNext": "加载下一页已验证数据",
+  "modules.detail.eyebrow": "精确实例详情",
+  "modules.detail.select": "选择模块",
+  "modules.detail.selectDescription": "选择一个实例以获取独立验证的绑定详情。",
+  "modules.detail.loading": "正在加载精确模块详情...",
+  "modules.detail.unavailable": "详情不可用。",
+  "modules.detail.readFailed": "无法读取模块详情。",
+  "modules.detail.retry": "重试详情",
+  "modules.detail.module": "模块",
+  "modules.detail.version": "版本",
+  "modules.detail.execution": "执行",
+  "modules.detail.adapter": "适配器",
+  "modules.detail.artifact": "制品",
+  "modules.bindings.title": "可见绑定",
+  "modules.bindings.empty": "当前已授权范围中没有可见绑定。",
+  "modules.binding.staticRefs": "{{count}} 个静态上下文引用",
+  "modules.binding.reviewDisable": "审核禁用",
+  "modules.binding.duplicate": "更高的重复绑定索引",
+  "modules.binding.tenantRequired": "需要租户 OPERATE_MODULES",
+  "modules.binding.outsideCandidate": "不属于限定的禁用候选",
+  "modules.footer": "读取有界且同源。MODULE_DISABLE 由服务端裁定，不采用乐观更新。",
+  "modules.footer.pointer": "指针 {{digest}}",
+  "modules.list.summary": "{{module}} @ {{version}} / {{execution}} / {{count}} 个可见绑定",
+  "modules.binding.profile": "Profile {{id}}",
+  "modules.binding.workspaceEndpoint": "工作区 {{workspace}} / 端点 {{endpoint}}",
+  "modules.binding.detail": "{{port}}/{{version}} / {{policy}} / 索引 {{index}}",
+  "operation.dryRun.eyebrow": "无副作用评估",
+  "operation.dryRun.running": "正在运行服务端 dry-run",
+  "operation.dryRun.noChange": "不会为 {{target}} 修改已发布状态。",
+  "operation.result.eyebrow": "权威 dry-run 结果",
+  "operation.result.target": "目标：{{target}}。目录影响：{{effect}}。",
+  "operation.result.plan": "计划 {{digest}}",
+  "operation.value.ALREADY_APPLIED": "已应用",
+  "operation.value.NO_CHANGE": "无变化",
+  "operation.value.WOULD_APPLY": "将应用",
+  "operation.value.NONE": "无",
+  "operation.value.RETAIN_INSTANCE": "保留实例",
+  "operation.value.REMOVE_INSTANCE": "移除实例",
+  "operation.value.APPLIED": "已应用",
+  "operation.value.OPTIONAL": "可选",
+  "operation.target.from": "{{instance}} 来自 {{target}}",
+  "operation.fact.scopeValue": "{{kind}} / 租户 {{tenant}}{{workspace}}",
+  "operation.fact.workspaceSuffix": " / 工作区 {{workspace}}",
+  "operation.fact.portValue": "{{name}}@{{version}} / {{index}}",
+  "operation.confirm.request": "请求短时确认",
+  "operation.result.noMutation": "未发送变更请求。",
+  "operation.result.done": "完成并刷新权限",
+  "operation.confirming.eyebrow": "确认评估",
+  "operation.confirming.title": "正在绑定精确请求...",
+  "operation.confirming.description": "服务端正在重新评估 {{target}}；不会发送变更。",
+  "operation.confirm.eyebrow": "操作员显式确认",
+  "operation.confirm.title": "禁用这个精确的 Profile 绑定？",
+  "operation.confirm.description": "服务端将 {{target}} 评估为 WOULD APPLY。预计目录影响为 {{effect}}。",
+  "operation.confirm.expires": "确认过期时间 {{time}}。",
+  "operation.fact.principal": "主体",
+  "operation.fact.scope": "范围",
+  "operation.fact.pointerRevision": "已发布指针修订",
+  "operation.fact.instance": "实例",
+  "operation.fact.portBinding": "端口 / 绑定索引",
+  "operation.fact.profileTarget": "Profile 目标",
+  "operation.fact.failurePolicy": "失败策略",
+  "operation.fact.catalogEffect": "目录影响",
+  "operation.digest.scope": "范围摘要",
+  "operation.digest.expectedRef": "预期引用",
+  "operation.digest.configRef": "配置引用",
+  "operation.digest.authorityCeiling": "权限上限",
+  "operation.digest.staticRefs": "静态上下文引用",
+  "operation.digest.input": "输入摘要",
+  "operation.digest.plan": "计划摘要",
+  "operation.digest.idempotency": "幂等键摘要",
+  "operation.digest.evaluation": "评估摘要",
+  "operation.digest.statement": "声明摘要",
+  "operation.staticRefs.empty": "无",
+  "operation.confirm.checkbox": "我理解这会发送一次受治理的已发布状态变更。",
+  "operation.confirm.submit": "确认并禁用绑定",
+  "operation.mutating.eyebrow": "受治理变更",
+  "operation.mutating.replay": "正在重放精确请求...",
+  "operation.mutating.waiting": "正在等待权威回执...",
+  "operation.mutating.description": "页面不会针对 {{target}} 乐观更新本地权限。",
+  "operation.uncertain.eyebrow": "结果尚未知",
+  "operation.uncertain.title": "不要构造替代变更",
+  "operation.uncertain.description": "只能精确重放原始请求体、幂等键、前置条件和评估摘要。不会重新发送确认凭据。",
+  "operation.uncertain.retry": "重试精确请求",
+  "operation.uncertain.reload": "丢弃重试状态并重新加载权限",
+  "operation.complete.eyebrow": "权威变更回执",
+  "operation.complete.receipt": "回执 {{digest}}",
+  "operation.complete.description": "服务端已于 {{time}} 完成 {{target}}。",
+  "operation.complete.close": "关闭回执",
+  "operation.error.stopped": "{{step}} 已停止",
+  "operation.error.title": "操作未继续",
+  "operation.error.retry": "重试相同步骤",
+  "operation.error.restart": "重新开始审核",
+  "operation.client.sessionExpiredDuring": "控制会话在此操作完成前已过期。",
+  "operation.client.confirmExpired": "短时确认已过期。请开始新的 dry-run。",
+  "operation.client.sessionExpired": "控制会话已过期。请打开新的 handoff。",
+  "operation.client.permission": "此会话没有模块界面所需的 OBSERVE。",
+  "operation.client.contextMismatch": "模块会话、范围和传输上下文不完全匹配。",
+  "operation.client.basisMismatch": "模块列表和详情没有绑定到同一个已发布基础。",
+  "operation.client.boundary": "模块响应未通过 fail-closed 边界。",
+  "operation.client.differentBinding": "dry-run 选择了不同于操作员审核的精确绑定。",
+  "operation.client.untrustedDryRun": "MODULE_DISABLE dry-run 未返回可信结果。",
+  "operation.client.confirmExpiredBeforeApproval": "确认在展示给操作员明确批准前已过期。",
+  "operation.client.confirmNoLongerApplies": "确认已不再将精确请求评估为 WOULD APPLY。",
+  "operation.client.confirmDifferentBinding": "确认选择了不同于操作员审核的精确绑定。",
+  "operation.client.confirmDrift": "确认与权威 dry-run 的精确投影发生漂移。",
+  "operation.client.invalidCatalogEffect": "确认返回了无效的 MODULE_DISABLE 目录影响。",
+  "operation.client.confirmUntrusted": "确认端点未返回可信的精确评估。",
+  "operation.client.nonMutationReceipt": "MODULE_DISABLE 变更返回了非变更回执状态。",
+  "operation.client.uncertainReceipt": "无法从可信回执确定变更结果。",
+  "operation.client.secureConfirmation": "无法准备安全的确认请求。",
+  "operation.client.selectedBinding": "选定的绑定",
+  "operation.client.projectionRead": "无法读取模块投影。",
+  "operation.step.DRY_RUN": "DRY RUN",
+  "operation.step.CONFIRMATION": "确认",
+  "operation.step.MUTATE": "变更"
+};
+const i18nResources = {
+  "en-US": enUSMessages,
+  "zh-CN": zhCNMessages
+};
+assertCatalogCompatibility(i18nResources);
 const OVERVIEW_PATH = "/control/api/v1/overview";
 const STRONG_ETAG_PATTERN$1 = /^"[0-9a-f]{64}"$/u;
 class ControlOverviewError extends Error {
@@ -843,13 +1685,22 @@ const fetchOverview = async (context, signal, fetcher = fetch) => {
 };
 const isPermissionDenied = (error) => error instanceof ControlOverviewError && (error.status === 403 || error.code === "FORBIDDEN" || error.code === "PERMISSION_DENIED");
 const isSessionInvalid = (error) => error instanceof ControlOverviewError && (error.status === 401 || error.code === "UNAUTHENTICATED" || error.code === "SESSION_EXPIRED");
-const buildScopeChoices = (authorizedScopes, workspacesByTenant) => {
+const defaultOverviewTranslator = createI18nRuntime(
+  "en-US",
+  i18nResources
+).t;
+const buildScopeChoices = (authorizedScopes, workspacesByTenant, translate = defaultOverviewTranslator) => {
   const choices = /* @__PURE__ */ new Map();
   for (const scope of authorizedScopes) {
     const key = scopeKey(scope);
     choices.set(key, {
       key,
-      label: scope.kind === "TENANT" ? `Tenant · ${scope.tenant_id}` : `Workspace · ${scope.tenant_id} / ${scope.workspace_id ?? ""}`,
+      label: scope.kind === "TENANT" ? translate("scope.tenant", { values: { tenant: scope.tenant_id } }) : translate("scope.workspace", {
+        values: {
+          tenant: scope.tenant_id,
+          workspace: scope.workspace_id ?? ""
+        }
+      }),
       scope,
       source: "authorized"
     });
@@ -866,7 +1717,9 @@ const buildScopeChoices = (authorizedScopes, workspacesByTenant) => {
       if (!choices.has(derivedKey)) {
         choices.set(derivedKey, {
           key: derivedKey,
-          label: `Workspace · ${scope.tenant_id} / ${workspace.id}`,
+          label: translate("scope.workspace", {
+            values: { tenant: scope.tenant_id, workspace: workspace.id }
+          }),
           scope: derived,
           source: "tenant-workspace"
         });
@@ -875,20 +1728,27 @@ const buildScopeChoices = (authorizedScopes, workspacesByTenant) => {
   }
   return [...choices.values()].sort((left, right) => left.label.localeCompare(right.label, "en"));
 };
-const overviewSearchResults = (overview, rawSearch) => {
+const overviewSearchResults = (overview, rawSearch, translate = defaultOverviewTranslator) => {
   const rows = [
     ...overview.workspaces.map((item) => ({
       section: "workspaces",
       id: item.id,
       title: item.id,
-      summary: `Workspace ${item.version}`,
+      summary: translate("overview.result.workspace", {
+        values: { version: item.version }
+      }),
       value: item
     })),
     ...overview.runs.map((item) => ({
       section: "runs",
       id: item.run_id,
       title: item.run_id,
-      summary: `${item.state}${item.disposition ? ` · ${item.disposition}` : ""}`,
+      summary: translate("overview.result.run", {
+        values: {
+          state: item.state,
+          disposition: item.disposition ? ` · ${item.disposition}` : ""
+        }
+      }),
       value: item
     })),
     ...overview.unknown.map((item) => ({
@@ -902,21 +1762,31 @@ const overviewSearchResults = (overview, rawSearch) => {
       section: "learning",
       id: item.proposal_id,
       title: item.proposal_id,
-      summary: `${item.kind} · ${item.state}`,
+      summary: translate("overview.result.learning", {
+        values: { kind: item.kind, state: item.state }
+      }),
       value: item
     })),
     ...overview.module_candidates.map((item) => ({
       section: "module-candidates",
       id: item.review_id,
       title: item.target_module_id,
-      summary: `${item.current_exact_version} → ${item.target_exact_version} · ${item.conclusion}`,
+      summary: translate("overview.result.moduleCandidate", {
+        values: {
+          current: item.current_exact_version,
+          target: item.target_exact_version,
+          conclusion: item.conclusion
+        }
+      }),
       value: item
     })),
     ...overview.usage.map((item) => ({
       section: "usage",
       id: item.attempt_id,
       title: item.attempt_id,
-      summary: `${item.reconciliation_status} · run ${item.run_id}`,
+      summary: translate("overview.result.usage", {
+        values: { status: item.reconciliation_status, run: item.run_id }
+      }),
       value: item
     }))
   ];
@@ -953,14 +1823,15 @@ const parseDetailHash = (hash) => {
   if (!DETAIL_SECTIONS.has(section) || id === "" || new TextEncoder().encode(id).length > 1024 || /[\u0000-\u001f\u007f]/u.test(id)) return null;
   return { section, id };
 };
-const captureDetailSnapshot = (overview, link) => ({
+const captureDetailSnapshot = (overview, link, translate = defaultOverviewTranslator) => ({
   link,
-  result: overviewSearchResults(overview, "").find(
+  result: overviewSearchResults(overview, "", translate).find(
     (item) => item.section === link.section && item.id === link.id
   ) ?? null,
   scope: overview.view.scope
 });
 const MODULES_PATH = "/control/api/v1/modules";
+const MODULE_UPGRADE_REVIEWS_PATH = "/control/api/v1/module-upgrade-reviews";
 const MODULE_DISABLE_DRY_RUN_PATH = "/control/api/v1/modules/disable/dry-run";
 const MODULE_DISABLE_CONFIRMATION_PATH = "/control/api/v1/modules/disable/confirmation";
 const MODULE_DISABLE_MUTATE_PATH = "/control/api/v1/modules/disable/mutate";
@@ -969,6 +1840,8 @@ const MODULE_DISABLE_BODY_SCHEMA = "control-module-disable-dry-run-input/v1";
 const MODULES_PAGE_SCHEMA = "control-http-modules-page/v1";
 const MODULES_APPLICATION_PAGE_SCHEMA = "control-modules-page/v1";
 const MODULE_DETAIL_SCHEMA = "control-module-detail/v1";
+const MODULE_UPGRADE_REVIEW_LIST_SCHEMA = "control-module-upgrade-review-list/v1";
+const MODULE_UPGRADE_REVIEW_DETAIL_SCHEMA = "control-module-upgrade-review-detail/v1";
 const MODULES_CURSOR_SCHEMA = "control-modules-cursor/v1";
 const MODULES_SORT_VERSION = "control-modules-instance-id-binary/v1";
 const MODULE_DISABLE_DRY_RUN_RESULT_SCHEMA = "control-module-disable-dry-run-result/v1";
@@ -995,6 +1868,7 @@ const MAX_JSON_DEPTH = 64;
 const MAX_JSON_NODES = 1 << 16;
 const MAX_TRANSPORT_CACHE_ENTRIES = 256;
 const MAX_CONFIRMATION_CACHE_ENTRIES = 64;
+const reviewListCache = /* @__PURE__ */ new Map();
 class ControlModulesError extends Error {
   status;
   code;
@@ -1014,7 +1888,7 @@ class ControlModulesError extends Error {
 const isModulesPermissionDenied = (error) => error instanceof ControlModulesError && (error.status === 403 || error.code === "FORBIDDEN" || error.code === "PERMISSION_DENIED");
 const isModulesSessionInvalid = (error) => error instanceof ControlModulesError && (error.status === 401 || error.code === "UNAUTHENTICATED" || error.code === "SESSION_EXPIRED");
 const isModulesStale = (error) => error instanceof ControlModulesError && (error.code === "REVISION_CONFLICT" || error.code === "CURSOR_STALE" || error.code === "CURSOR_CONTEXT_MISSING" || error.code === "INVALID_304");
-const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord$1 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 const exactKeys = (value, required, optional = []) => {
   const allowed = /* @__PURE__ */ new Set([...required, ...optional]);
   const keys = Object.keys(value);
@@ -1148,11 +2022,11 @@ const parseJSONRecord = (text, label) => {
     }
     throw new Error(`${label} is not valid JSON`);
   }
-  if (!isRecord(decoded)) throw new Error(`${label} must be one JSON object`);
+  if (!isRecord$1(decoded)) throw new Error(`${label} must be one JSON object`);
   return decoded;
 };
 const decodeScope = (value) => {
-  if (!isRecord(value) || value.schema_version !== "control-scope/v1") {
+  if (!isRecord$1(value) || value.schema_version !== "control-scope/v1") {
     throw new Error("control scope is invalid");
   }
   if (value.kind === "TENANT") {
@@ -1167,13 +2041,13 @@ const decodeScope = (value) => {
   return value;
 };
 const decodeDigestRef = (value) => {
-  if (!isRecord(value) || !exactKeys(value, ["id", "revision", "digest"]) || !opaque(value.id) || !safeInteger(value.revision, true) || !digest(value.digest)) {
+  if (!isRecord$1(value) || !exactKeys(value, ["id", "revision", "digest"]) || !opaque(value.id) || !safeInteger(value.revision, true) || !digest(value.digest)) {
     throw new Error("revisioned digest reference is invalid");
   }
   return value;
 };
 const decodeBasis = (value) => {
-  if (!isRecord(value) || !exactKeys(value, ["tenant_id", "pointer_revision", "control", "catalog"]) || !opaque(value.tenant_id) || !safeInteger(value.pointer_revision, true)) {
+  if (!isRecord$1(value) || !exactKeys(value, ["tenant_id", "pointer_revision", "control", "catalog"]) || !opaque(value.tenant_id) || !safeInteger(value.pointer_revision, true)) {
     throw new Error("published basis is invalid");
   }
   return {
@@ -1184,13 +2058,13 @@ const decodeBasis = (value) => {
   };
 };
 const decodeExpectedRef = (value) => {
-  if (!isRecord(value) || !exactKeys(value, ["kind", "resource_id", "revision", "digest"]) || value.kind !== "PUBLISHED_POINTER" || !opaque(value.resource_id) || !safeInteger(value.revision, true) || !digest(value.digest)) {
+  if (!isRecord$1(value) || !exactKeys(value, ["kind", "resource_id", "revision", "digest"]) || value.kind !== "PUBLISHED_POINTER" || !opaque(value.resource_id) || !safeInteger(value.revision, true) || !digest(value.digest)) {
     throw new Error("Published Pointer reference is invalid");
   }
   return value;
 };
 const decodeView = (value) => {
-  if (!isRecord(value) || !exactKeys(value, [
+  if (!isRecord$1(value) || !exactKeys(value, [
     "schema_version",
     "scope",
     "scope_digest",
@@ -1201,7 +2075,7 @@ const decodeView = (value) => {
     throw new Error("Modules view is invalid");
   }
   const section = value.sections[0];
-  if (!isRecord(section) || !exactKeys(section, [
+  if (!isRecord$1(section) || !exactKeys(section, [
     "kind",
     "source_revision",
     "source_digest",
@@ -1228,13 +2102,13 @@ const decodeView = (value) => {
   };
 };
 const decodePort = (value) => {
-  if (!isRecord(value) || !exactKeys(value, ["name", "exact_version"]) || !dottedIdentifier(value.name) || !version(value.exact_version)) {
+  if (!isRecord$1(value) || !exactKeys(value, ["name", "exact_version"]) || !dottedIdentifier(value.name) || !version(value.exact_version)) {
     throw new Error("module Port reference is invalid");
   }
   return value;
 };
 const decodeTarget = (value) => {
-  if (!isRecord(value)) throw new Error("module Binding target is invalid");
+  if (!isRecord$1(value)) throw new Error("module Binding target is invalid");
   if (value.kind === "PROFILE") {
     if (!exactKeys(value, ["kind", "profile_id"]) || !opaque(value.profile_id)) {
       throw new Error("Profile Binding target is invalid");
@@ -1260,7 +2134,7 @@ const decodeDigestArray = (value, label) => {
   return result;
 };
 const decodeBinding = (value) => {
-  if (!isRecord(value) || !exactKeys(value, [
+  if (!isRecord$1(value) || !exactKeys(value, [
     "target",
     "port",
     "port_binding_index",
@@ -1292,7 +2166,7 @@ const EXECUTION_CLASSES = /* @__PURE__ */ new Set([
   "WASM"
 ]);
 const decodeModuleSummary = (value) => {
-  if (!isRecord(value) || !exactKeys(value, [
+  if (!isRecord$1(value) || !exactKeys(value, [
     "instance_id",
     "module_id",
     "exact_version",
@@ -1339,7 +2213,7 @@ const compareBinding = (left, right) => {
   return left.port_binding_index - right.port_binding_index;
 };
 const decodeModuleDetail = (value, scope) => {
-  if (!isRecord(value) || !exactKeys(value, ["summary", "bindings"]) || !Array.isArray(value.bindings) || value.bindings.length > MAX_VISIBLE_BINDINGS) {
+  if (!isRecord$1(value) || !exactKeys(value, ["summary", "bindings"]) || !Array.isArray(value.bindings) || value.bindings.length > MAX_VISIBLE_BINDINGS) {
     throw new Error("module detail is invalid");
   }
   const summary = decodeModuleSummary(value.summary);
@@ -1479,7 +2353,7 @@ const putBounded = (map, key, value, maximum) => {
     map.delete(oldest.value);
   }
 };
-const contextIdentity$1 = (context) => [
+const contextIdentity$2 = (context) => [
   context.origin,
   context.bootID,
   context.sessionID,
@@ -1496,10 +2370,10 @@ const sessionIdentityProjection = (context) => Object.fromEntries([
   ["authorization_revision", context.authorizationRevision],
   ["scope_set_digest", context.scopeSetDigest]
 ]);
-const contextCacheKey = (context) => JSON.stringify(contextIdentity$1(context));
-const cursorCacheKey = (context, cursor) => JSON.stringify([...contextIdentity$1(context), cursor]);
+const contextCacheKey$1 = (context) => JSON.stringify(contextIdentity$2(context));
+const cursorCacheKey = (context, cursor) => JSON.stringify([...contextIdentity$2(context), cursor]);
 const confirmationCacheKey = (context, idempotencyKeyDigest, inputDigest, evaluationDigest) => JSON.stringify([
-  ...contextIdentity$1(context),
+  ...contextIdentity$2(context),
   idempotencyKeyDigest,
   inputDigest,
   evaluationDigest
@@ -1537,6 +2411,7 @@ const clearModulesOperationCache = () => {
 const clearModulesTransportCache = () => {
   pageCache.clear();
   detailCache.clear();
+  reviewListCache.clear();
   cursorBindings.clear();
   clearModulesOperationCache();
 };
@@ -1891,7 +2766,7 @@ const validateDetailDigests = async (context, detail, instanceID, rawBody, respo
 const storePublishedBinding = (context, basis, pointer) => {
   putBounded(
     publishedBindings,
-    contextCacheKey(context),
+    contextCacheKey$1(context),
     { basis: detachJSON(basis), pointer: detachJSON(pointer) },
     MAX_TRANSPORT_CACHE_ENTRIES
   );
@@ -2097,14 +2972,272 @@ const fetchModuleDetail = async (context, instanceID, signal, fetcher = fetch) =
   storePublishedBinding(context, detail.basis, detail.published_pointer);
   return detail;
 };
+const decodeReviewModuleRef = (value, label) => {
+  if (!isRecord$1(value) || !exactKeys(value, ["id", "version"]) || !dottedIdentifier(value.id) || !version(value.version)) {
+    throw new Error(`${label} module reference is invalid`);
+  }
+  return { id: value.id, version: value.version };
+};
+const decodeReviewDecision = (value) => {
+  if (!isRecord$1(value) || !exactKeys(value, [
+    "decision_id",
+    "decision",
+    "operator_principal_id",
+    "reason",
+    "decided_at_unix_micros"
+  ]) || !digest(value.decision_id) || value.decision !== "APPROVE" && value.decision !== "REJECT" || !opaque(value.operator_principal_id) || typeof value.reason !== "string" || byteLength(value.reason) > 64 * 1024 || !safeInteger(value.decided_at_unix_micros, true)) {
+    throw new Error("module Review Decision is invalid");
+  }
+  return value;
+};
+const decodeReviewArtifact = (value) => {
+  if (!isRecord$1(value) || !exactKeys(value, [
+    "artifact_digest",
+    "module",
+    "manifest_ref",
+    "artifact_size_bytes",
+    "covered_file_count"
+  ]) || !digest(value.artifact_digest) || !digest(value.manifest_ref) || !safeInteger(value.artifact_size_bytes, true) || !safeInteger(value.covered_file_count, true)) {
+    throw new Error("module Review Artifact is invalid");
+  }
+  return {
+    artifact_digest: value.artifact_digest,
+    module: decodeReviewModuleRef(value.module, "Review Artifact"),
+    manifest_ref: value.manifest_ref,
+    artifact_size_bytes: value.artifact_size_bytes,
+    covered_file_count: value.covered_file_count
+  };
+};
+const decodeReviewItem = (value) => {
+  if (!isRecord$1(value) || !exactKeys(
+    value,
+    [
+      "review_id",
+      "candidate_id",
+      "review_key",
+      "tenant_id",
+      "artifact_admission_id",
+      "operator_principal_id",
+      "review_request_digest",
+      "binding_target",
+      "port",
+      "target_instance_id",
+      "target_module",
+      "target_artifact_digest",
+      "target_artifact_size_bytes",
+      "conclusion",
+      "reason_codes",
+      "created_at_unix_micros"
+    ],
+    ["decision", "artifact"]
+  ) || !digest(value.review_id) || !digest(value.candidate_id) || !digest(value.review_key) || !opaque(value.tenant_id) || !digest(value.artifact_admission_id) || !opaque(value.operator_principal_id) || !digest(value.review_request_digest) || !isRecord$1(value.binding_target) || !isRecord$1(value.port) || !opaque(value.target_instance_id) || !digest(value.target_artifact_digest) || !safeInteger(value.target_artifact_size_bytes, true) || value.conclusion !== "WOULD_APPLY" && value.conclusion !== "CONFLICT" && value.conclusion !== "UNSUPPORTED" || !Array.isArray(value.reason_codes) || value.reason_codes.some((reason) => typeof reason !== "string" || !opaque(reason)) || !safeInteger(value.created_at_unix_micros, true)) {
+    throw new Error("module Review item is invalid");
+  }
+  const target = decodeTarget(value.binding_target);
+  const port = decodePort(value.port);
+  return {
+    review_id: value.review_id,
+    candidate_id: value.candidate_id,
+    review_key: value.review_key,
+    tenant_id: value.tenant_id,
+    artifact_admission_id: value.artifact_admission_id,
+    operator_principal_id: value.operator_principal_id,
+    review_request_digest: value.review_request_digest,
+    binding_target: target,
+    port,
+    target_instance_id: value.target_instance_id,
+    target_module: decodeReviewModuleRef(value.target_module, "Review Target"),
+    target_artifact_digest: value.target_artifact_digest,
+    target_artifact_size_bytes: value.target_artifact_size_bytes,
+    conclusion: value.conclusion,
+    reason_codes: [...value.reason_codes],
+    created_at_unix_micros: value.created_at_unix_micros,
+    ...Object.hasOwn(value, "decision") ? { decision: decodeReviewDecision(value.decision) } : {},
+    ...Object.hasOwn(value, "artifact") ? { artifact: decodeReviewArtifact(value.artifact) } : {}
+  };
+};
+const decodeReviewList = (text, scope) => {
+  const value = parseJSONRecord(text, "Module Review list response");
+  if (!exactKeys(value, [
+    "schema_version",
+    "scope",
+    "items",
+    "has_more",
+    "projection_digest",
+    "strong_etag"
+  ]) || value.schema_version !== MODULE_UPGRADE_REVIEW_LIST_SCHEMA || !sameCanonical(value.scope, scope) || !Array.isArray(value.items) || value.items.length > 100 || typeof value.has_more !== "boolean" || value.has_more || !digest(value.projection_digest) || !strongETag(value.strong_etag)) {
+    throw new Error("module Review list response envelope is invalid");
+  }
+  const items = value.items.map(decodeReviewItem);
+  if (items.some((item, index) => index > 0 && item.review_id <= items[index - 1].review_id)) {
+    throw new Error("module Review list is not in canonical order");
+  }
+  return {
+    schema_version: MODULE_UPGRADE_REVIEW_LIST_SCHEMA,
+    scope,
+    items,
+    has_more: false,
+    projection_digest: value.projection_digest,
+    strong_etag: value.strong_etag
+  };
+};
+const reviewWireKeys = [
+  "schema_version",
+  "candidate_id",
+  "review_key",
+  "tenant_id",
+  "artifact_admission_id",
+  "operator_principal_id",
+  "review_request_digest",
+  "binding_target",
+  "port",
+  "port_binding_index",
+  "target_instance_id",
+  "target_module",
+  "target_artifact_digest",
+  "target_artifact_size_bytes",
+  "conclusion",
+  "reason_codes"
+];
+const decodeReviewProjection = (value) => {
+  if (!isRecord$1(value) || !exactKeys(value, reviewWireKeys) || value.schema_version !== "module-upgrade-review/v1" || !digest(value.candidate_id) || !digest(value.review_key) || !opaque(value.tenant_id) || !digest(value.artifact_admission_id) || !opaque(value.operator_principal_id) || !digest(value.review_request_digest) || !isRecord$1(value.binding_target) || !isRecord$1(value.port) || !safeInteger(value.port_binding_index) || !opaque(value.target_instance_id) || !digest(value.target_artifact_digest) || !safeInteger(value.target_artifact_size_bytes, true) || value.conclusion !== "WOULD_APPLY" && value.conclusion !== "CONFLICT" && value.conclusion !== "UNSUPPORTED" || !Array.isArray(value.reason_codes) || value.reason_codes.some((reason) => typeof reason !== "string" || !opaque(reason))) {
+    throw new Error("module Review projection is invalid");
+  }
+  return {
+    schema_version: "module-upgrade-review/v1",
+    candidate_id: value.candidate_id,
+    review_key: value.review_key,
+    tenant_id: value.tenant_id,
+    artifact_admission_id: value.artifact_admission_id,
+    operator_principal_id: value.operator_principal_id,
+    review_request_digest: value.review_request_digest,
+    binding_target: decodeTarget(value.binding_target),
+    port: decodePort(value.port),
+    port_binding_index: value.port_binding_index,
+    target_instance_id: value.target_instance_id,
+    target_module: decodeReviewModuleRef(value.target_module, "Review Target"),
+    target_artifact_digest: value.target_artifact_digest,
+    target_artifact_size_bytes: value.target_artifact_size_bytes,
+    conclusion: value.conclusion,
+    reason_codes: [...value.reason_codes]
+  };
+};
+const decodeReviewDetail = (text, scope, reviewID) => {
+  const value = parseJSONRecord(text, "Module Review detail response");
+  if (!exactKeys(value, [
+    "schema_version",
+    "scope",
+    "review_id",
+    "review",
+    "created_at_unix_micros",
+    "artifact",
+    "admission",
+    "projection_digest",
+    "strong_etag"
+  ], ["decision"]) || value.schema_version !== MODULE_UPGRADE_REVIEW_DETAIL_SCHEMA || !sameCanonical(value.scope, scope) || value.review_id !== reviewID || !isRecord$1(value.review) || !safeInteger(value.created_at_unix_micros, true) || !digest(value.projection_digest) || !strongETag(value.strong_etag)) {
+    throw new Error("module Review detail response envelope is invalid");
+  }
+  const review = decodeReviewProjection(value.review);
+  const artifact = decodeReviewArtifact(value.artifact);
+  if (!isRecord$1(value.admission) || !exactKeys(value.admission, [
+    "admission_id",
+    "source_id",
+    "source_policy_id",
+    "source_policy_revision",
+    "snapshot_id",
+    "snapshot_observation_revision",
+    "entry_ordinal",
+    "module",
+    "artifact_digest",
+    "manifest_ref",
+    "artifact_size_bytes",
+    "covered_file_count",
+    "admitted_at_unix_micros"
+  ]) || !digest(value.admission.admission_id) || !opaque(value.admission.source_id) || !digest(value.admission.source_policy_id) || !safeInteger(value.admission.source_policy_revision, true) || !digest(value.admission.snapshot_id) || !safeInteger(value.admission.snapshot_observation_revision, true) || !safeInteger(value.admission.entry_ordinal) || !digest(value.admission.artifact_digest) || !digest(value.admission.manifest_ref) || !safeInteger(value.admission.artifact_size_bytes, true) || !safeInteger(value.admission.covered_file_count, true) || !safeInteger(value.admission.admitted_at_unix_micros, true) || !sameCanonical(value.admission.module, artifact.module) || value.admission.artifact_digest !== artifact.artifact_digest || value.admission.manifest_ref !== artifact.manifest_ref || value.admission.artifact_size_bytes !== artifact.artifact_size_bytes || value.admission.covered_file_count !== artifact.covered_file_count) {
+    throw new Error("module Artifact Admission is invalid");
+  }
+  if (review.artifact_admission_id !== value.admission.admission_id) {
+    throw new Error("module Review admission binding is invalid");
+  }
+  return {
+    schema_version: MODULE_UPGRADE_REVIEW_DETAIL_SCHEMA,
+    scope,
+    review_id: reviewID,
+    review,
+    created_at_unix_micros: value.created_at_unix_micros,
+    ...Object.hasOwn(value, "decision") ? { decision: decodeReviewDecision(value.decision) } : {},
+    artifact,
+    admission: {
+      ...value.admission,
+      module: decodeReviewModuleRef(value.admission.module, "Admission")
+    },
+    projection_digest: value.projection_digest,
+    strong_etag: value.strong_etag
+  };
+};
+const fetchModuleUpgradeReviews = async (context, signal, fetcher = fetch) => {
+  validateContext(context);
+  const key = JSON.stringify(["module-upgrade-reviews", ...contextIdentity$2(context)]);
+  const cached = reviewListCache.get(key);
+  const headers = scopeHeaders(context);
+  if (cached !== void 0) headers["If-None-Match"] = cached.etag;
+  const url = `${context.origin}${MODULE_UPGRADE_REVIEWS_PATH}?limit=100`;
+  const response = await fetchExact(url, {
+    method: "GET",
+    credentials: "include",
+    redirect: "error",
+    headers,
+    signal
+  }, fetcher, false);
+  if (response.status === 304 && cached !== void 0) return detachJSON(cached.data);
+  const text = await requireJSONSuccess(response, "Module Review list response", false, true);
+  const etag = response.headers.get("ETag");
+  if (!strongETag(etag)) throw new ControlModulesError("Module Review list omitted its ETag", response.status, "INVALID_RESPONSE");
+  let result;
+  try {
+    result = decodeReviewList(text, context.scope);
+    if (await httpStrongETag("freeagent.control-http-module-upgrade-review-list-etag/v1", result.strong_etag, text) !== etag) {
+      throw new Error("Module Review list HTTP ETag is invalid");
+    }
+  } catch (error) {
+    throw new ControlModulesError(error instanceof Error ? error.message : "Module Review list is invalid", response.status, "INVALID_RESPONSE");
+  }
+  reviewListCache.set(key, { etag, data: detachJSON(result) });
+  return result;
+};
+const fetchModuleUpgradeReviewDetail = async (context, reviewID, signal, fetcher = fetch) => {
+  validateContext(context);
+  if (!digest(reviewID)) throw new ControlModulesError("Module Review ID is invalid", 0, "INVALID_CLIENT_INPUT");
+  const headers = scopeHeaders(context);
+  const url = `${context.origin}${MODULE_UPGRADE_REVIEWS_PATH}/${reviewID}`;
+  const response = await fetchExact(url, {
+    method: "GET",
+    credentials: "include",
+    redirect: "error",
+    headers,
+    signal
+  }, fetcher, false);
+  const text = await requireJSONSuccess(response, "Module Review detail response", false, true);
+  const etag = response.headers.get("ETag");
+  if (!strongETag(etag)) throw new ControlModulesError("Module Review detail omitted its ETag", response.status, "INVALID_RESPONSE");
+  try {
+    const result = decodeReviewDetail(text, context.scope, reviewID);
+    if (await httpStrongETag("freeagent.control-http-module-upgrade-review-detail-etag/v1", result.strong_etag, text) !== etag) {
+      throw new Error("Module Review detail HTTP ETag is invalid");
+    }
+    return result;
+  } catch (error) {
+    throw new ControlModulesError(error instanceof Error ? error.message : "Module Review detail is invalid", response.status, "INVALID_RESPONSE");
+  }
+};
 const validateDisableBody = (body) => {
-  if (!isRecord(body) || !exactKeys(body, [
+  if (!isRecord$1(body) || !exactKeys(body, [
     "schema_version",
     "expected_pointer_revision",
     "binding_target",
     "instance_id",
     "port"
-  ]) || body.schema_version !== MODULE_DISABLE_BODY_SCHEMA || !safeInteger(body.expected_pointer_revision, true) || !opaque(body.instance_id) || !isRecord(body.binding_target) || !exactKeys(body.binding_target, ["kind", "profile_id"]) || body.binding_target.kind !== "PROFILE" || !opaque(body.binding_target.profile_id) || !isRecord(body.port) || !exactKeys(body.port, ["name", "exact_version"]) || body.port.name !== "context.provide" || body.port.exact_version !== "v1") {
+  ]) || body.schema_version !== MODULE_DISABLE_BODY_SCHEMA || !safeInteger(body.expected_pointer_revision, true) || !opaque(body.instance_id) || !isRecord$1(body.binding_target) || !exactKeys(body.binding_target, ["kind", "profile_id"]) || body.binding_target.kind !== "PROFILE" || !opaque(body.binding_target.profile_id) || !isRecord$1(body.port) || !exactKeys(body.port, ["name", "exact_version"]) || body.port.name !== "context.provide" || body.port.exact_version !== "v1") {
     throw new ControlModulesError(
       "MODULE_DISABLE body is outside the narrow Profile context.provide/v1 contract",
       0,
@@ -2195,7 +3328,7 @@ const resolveMutationBasis = async (context, body) => {
       );
     }
   } else {
-    binding = publishedBindings.get(contextCacheKey(context));
+    binding = publishedBindings.get(contextCacheKey$1(context));
   }
   if (binding === void 0) {
     throw new ControlModulesError(
@@ -2225,7 +3358,7 @@ const resolveMutationBasis = async (context, body) => {
 const sameRef = (left, right) => left.kind === right.kind && left.resource_id === right.resource_id && left.revision === right.revision && left.digest === right.digest;
 const nextBasis = (before, after) => before.tenant_id === after.tenant_id && after.pointer_revision === before.pointer_revision + 1 && after.control.revision === before.control.revision + 1 && after.catalog.revision === before.catalog.revision + 1 && after.control.id !== before.control.id && after.control.digest !== before.control.digest && after.catalog.id !== before.catalog.id && after.catalog.digest !== before.catalog.digest;
 const decodeDisableProjection = (value) => {
-  if (!isRecord(value) || !exactKeys(
+  if (!isRecord$1(value) || !exactKeys(
     value,
     [
       "disposition",
@@ -2307,7 +3440,7 @@ const confirmationFromRequest = (request) => ({
   expected_ref: request.expected_ref
 });
 const decodeOperationRequest = async (value, context, inputs) => {
-  if (!isRecord(value)) throw new Error("Control operation Request is invalid");
+  if (!isRecord$1(value)) throw new Error("Control operation Request is invalid");
   const commonKeys = [
     "schema_version",
     "principal_id",
@@ -2369,13 +3502,13 @@ const decodeOperationRequest = async (value, context, inputs) => {
   return { request, requestDigest };
 };
 const decodeDomainReceipt = (value) => {
-  if (!isRecord(value) || !exactKeys(value, ["kind", "id", "digest"]) || value.kind !== "MODULE_DISABLE" || !opaque(value.id) || !digest(value.digest)) {
+  if (!isRecord$1(value) || !exactKeys(value, ["kind", "id", "digest"]) || value.kind !== "MODULE_DISABLE" || !opaque(value.id) || !digest(value.digest)) {
     throw new Error("MODULE_DISABLE domain receipt reference is invalid");
   }
   return value;
 };
 const decodeOperationReceipt = async (value, request, requestDigest, expected, idempotencyKeyDigest) => {
-  if (!isRecord(value)) throw new Error("Control operation Receipt is invalid");
+  if (!isRecord$1(value)) throw new Error("Control operation Receipt is invalid");
   const dryRun = request.intent === "DRY_RUN";
   const base = [
     "schema_version",
@@ -2457,7 +3590,7 @@ const decodeOperationReceipt = async (value, request, requestDigest, expected, i
   return { receipt, receiptDigest };
 };
 const decodeEvaluation = async (value, context, body, inputDigest, expected) => {
-  if (!isRecord(value) || !exactKeys(value, [
+  if (!isRecord$1(value) || !exactKeys(value, [
     "schema_version",
     "operation",
     "input_digest",
@@ -2486,7 +3619,7 @@ const decodeEvaluation = async (value, context, body, inputDigest, expected) => 
   return { evaluation, evaluationDigest };
 };
 const decodeStatement = async (value, request) => {
-  if (!isRecord(value) || !exactKeys(value, [
+  if (!isRecord$1(value) || !exactKeys(value, [
     "schema_version",
     "principal_id",
     "capability",
@@ -2860,6 +3993,397 @@ const mutateModuleDisable = async (context, body, key, evaluationDigest, proof, 
     );
   }
 };
+const UNKNOWN_OUTCOMES_PATH = "/control/api/v1/unknown-outcomes";
+const STORE_MANAGEMENT_PATH = "/control/api/v1/store-management";
+const MANAGEMENT_PAGE_LIMIT = 100;
+const UNKNOWN_LIST_SCHEMA = "control-unknown-outcome-list/v1";
+const UNKNOWN_DETAIL_SCHEMA = "control-unknown-outcome-detail/v1";
+const STORE_SCHEMA = "control-store-management/v1";
+const RAW_SEGMENT = /^[A-Za-z0-9_-]+$/u;
+const DOTTED_ID = /^[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)*$/u;
+const VERSION = /^[A-Za-z0-9](?:[A-Za-z0-9._+-]*[A-Za-z0-9])?$/u;
+const unknownListCache = /* @__PURE__ */ new Map();
+const unknownDetailCache = /* @__PURE__ */ new Map();
+const storeCache = /* @__PURE__ */ new Map();
+const contextCacheKey = (context) => JSON.stringify([scopeKey(context.scope), ...contextIdentity$1(context)]);
+const contextIdentity$1 = (context) => [
+  context.origin,
+  context.bootID,
+  context.sessionID,
+  context.principalID,
+  context.authorizationRevision,
+  context.scopeSetDigest,
+  context.sessionEpoch
+];
+const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const optionalText = (value, label) => {
+  if (value === void 0) return void 0;
+  if (!opaque(value)) throw new Error(`${label} is invalid`);
+  return value;
+};
+const opaqueOrEmpty = (value, label) => {
+  if (value === "") return "";
+  if (!opaque(value)) throw new Error(`${label} is invalid`);
+  return value;
+};
+const decodeModuleRef = (value, label) => {
+  if (!isRecord(value) || !exactKeys(value, ["id", "version"]) || typeof value.id !== "string" || !DOTTED_ID.test(value.id) || typeof value.version !== "string" || !VERSION.test(value.version)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return { id: value.id, version: value.version };
+};
+const decodeUsage = (value) => {
+  if (!isRecord(value) || !exactKeys(value, [
+    "input_tokens",
+    "cached_input_tokens",
+    "uncached_input_tokens",
+    "output_tokens",
+    "reasoning_tokens"
+  ])) {
+    throw new Error("UNKNOWN usage is invalid");
+  }
+  const usageValue = (candidate) => candidate === null ? null : safeInteger(candidate) ? candidate : (() => {
+    throw new Error("UNKNOWN usage token is invalid");
+  })();
+  return {
+    input_tokens: usageValue(value.input_tokens),
+    cached_input_tokens: usageValue(value.cached_input_tokens),
+    uncached_input_tokens: usageValue(value.uncached_input_tokens),
+    output_tokens: usageValue(value.output_tokens),
+    reasoning_tokens: usageValue(value.reasoning_tokens)
+  };
+};
+const decodeUnknown = (value) => {
+  const required = [
+    "kind",
+    "attempt_id",
+    "run_id",
+    "tenant_id",
+    "workspace_id",
+    "state",
+    "has_reconciliation_evidence",
+    "revision",
+    "created_at_unix_micros",
+    "updated_at_unix_micros",
+    "usage"
+  ];
+  const optional = [
+    "provider",
+    "model",
+    "provider_request_id",
+    "external_operation_id",
+    "endpoint_id",
+    "error_classification",
+    "unknown_reason",
+    "reconciliation_evidence_ref"
+  ];
+  if (!isRecord(value) || !exactKeys(value, required, optional)) {
+    throw new Error("UNKNOWN outcome is invalid");
+  }
+  if (value.kind !== "MODEL" && value.kind !== "ACTION" && value.kind !== "CHANNEL" || !opaque(value.attempt_id) || !opaque(value.run_id) || !opaque(value.tenant_id) || typeof value.workspace_id !== "string" || typeof value.state !== "string" || value.state.length === 0 || typeof value.has_reconciliation_evidence !== "boolean" || !safeInteger(value.revision, true) || !safeInteger(value.created_at_unix_micros, true) || !safeInteger(value.updated_at_unix_micros, true)) {
+    throw new Error("UNKNOWN outcome facts are invalid");
+  }
+  return {
+    kind: value.kind,
+    attempt_id: value.attempt_id,
+    run_id: value.run_id,
+    tenant_id: value.tenant_id,
+    workspace_id: opaqueOrEmpty(value.workspace_id, "UNKNOWN workspace ID"),
+    state: value.state,
+    provider: optionalText(value.provider, "UNKNOWN provider"),
+    model: optionalText(value.model, "UNKNOWN model"),
+    provider_request_id: optionalText(value.provider_request_id, "provider request ID"),
+    external_operation_id: optionalText(value.external_operation_id, "external operation ID"),
+    endpoint_id: optionalText(value.endpoint_id, "UNKNOWN endpoint"),
+    error_classification: optionalText(value.error_classification, "UNKNOWN error classification"),
+    unknown_reason: optionalText(value.unknown_reason, "UNKNOWN reason"),
+    has_reconciliation_evidence: value.has_reconciliation_evidence,
+    reconciliation_evidence_ref: optionalText(
+      value.reconciliation_evidence_ref,
+      "reconciliation evidence reference"
+    ),
+    revision: value.revision,
+    created_at_unix_micros: value.created_at_unix_micros,
+    updated_at_unix_micros: value.updated_at_unix_micros,
+    usage: decodeUsage(value.usage)
+  };
+};
+const decodeUnknownList = (text, scope) => {
+  const value = parseJSONRecord(text, "UNKNOWN outcome list response");
+  if (!exactKeys(value, [
+    "schema_version",
+    "scope",
+    "items",
+    "has_more",
+    "projection_digest",
+    "strong_etag"
+  ]) || value.schema_version !== UNKNOWN_LIST_SCHEMA || !sameCanonical(value.scope, scope) || !Array.isArray(value.items) || value.items.length > MANAGEMENT_PAGE_LIMIT || typeof value.has_more !== "boolean" || !digest(value.projection_digest) || !strongETag(value.strong_etag)) {
+    throw new Error("UNKNOWN outcome list envelope is invalid");
+  }
+  const items = value.items.map(decodeUnknown);
+  return {
+    schema_version: UNKNOWN_LIST_SCHEMA,
+    scope,
+    items,
+    has_more: value.has_more,
+    projection_digest: value.projection_digest,
+    strong_etag: value.strong_etag
+  };
+};
+const decodeUnknownDetail = (text, scope, kind, attemptID) => {
+  const value = parseJSONRecord(text, "UNKNOWN outcome detail response");
+  if (!exactKeys(value, [
+    "schema_version",
+    "scope",
+    "item",
+    "projection_digest",
+    "strong_etag"
+  ]) || value.schema_version !== UNKNOWN_DETAIL_SCHEMA || !sameCanonical(value.scope, scope) || !digest(value.projection_digest) || !strongETag(value.strong_etag)) {
+    throw new Error("UNKNOWN outcome detail envelope is invalid");
+  }
+  const item = decodeUnknown(value.item);
+  if (item.kind !== kind || item.attempt_id !== attemptID) {
+    throw new Error("UNKNOWN outcome detail does not bind the request");
+  }
+  return {
+    schema_version: UNKNOWN_DETAIL_SCHEMA,
+    scope,
+    item,
+    projection_digest: value.projection_digest,
+    strong_etag: value.strong_etag
+  };
+};
+const decodeArtifact = (value) => {
+  if (!isRecord(value) || !exactKeys(value, [
+    "admission_id",
+    "source_id",
+    "source_policy_id",
+    "source_policy_revision",
+    "snapshot_id",
+    "snapshot_observation_revision",
+    "entry_ordinal",
+    "module",
+    "artifact_digest",
+    "manifest_ref",
+    "artifact_size_bytes",
+    "covered_file_count",
+    "admitted_at_unix_micros"
+  ]) || !digest(value.admission_id) || !opaque(value.source_id) || !digest(value.source_policy_id) || !safeInteger(value.source_policy_revision, true) || !digest(value.snapshot_id) || !safeInteger(value.snapshot_observation_revision, true) || !safeInteger(value.entry_ordinal) || !digest(value.artifact_digest) || !digest(value.manifest_ref) || !safeInteger(value.artifact_size_bytes, true) || !safeInteger(value.covered_file_count, true) || !safeInteger(value.admitted_at_unix_micros, true)) {
+    throw new Error("Artifact Admission is invalid");
+  }
+  return {
+    admission_id: value.admission_id,
+    source_id: value.source_id,
+    source_policy_id: value.source_policy_id,
+    source_policy_revision: value.source_policy_revision,
+    snapshot_id: value.snapshot_id,
+    snapshot_observation_revision: value.snapshot_observation_revision,
+    entry_ordinal: value.entry_ordinal,
+    module: decodeModuleRef(value.module, "Artifact module"),
+    artifact_digest: value.artifact_digest,
+    manifest_ref: value.manifest_ref,
+    artifact_size_bytes: value.artifact_size_bytes,
+    covered_file_count: value.covered_file_count,
+    admitted_at_unix_micros: value.admitted_at_unix_micros
+  };
+};
+const decodeStore = (text, scope) => {
+  const value = parseJSONRecord(text, "Store management response");
+  if (!exactKeys(value, [
+    "schema_version",
+    "scope",
+    "verification",
+    "backup",
+    "artifacts",
+    "has_more",
+    "projection_digest",
+    "strong_etag"
+  ]) || value.schema_version !== STORE_SCHEMA || !sameCanonical(value.scope, scope) || !isRecord(value.verification) || !isRecord(value.backup) || !Array.isArray(value.artifacts) || value.artifacts.length > MANAGEMENT_PAGE_LIMIT || typeof value.has_more !== "boolean" || !digest(value.projection_digest) || !strongETag(value.strong_etag)) {
+    throw new Error("Store management envelope is invalid");
+  }
+  const verification = value.verification;
+  if (!exactKeys(verification, [
+    "store_instance_id",
+    "schema_identity",
+    "schema_version",
+    "schema_fingerprint",
+    "generator_id"
+  ]) || !opaque(verification.store_instance_id) || !opaque(verification.schema_identity) || !safeInteger(verification.schema_version, true) || !digest(verification.schema_fingerprint) || !opaque(verification.generator_id)) {
+    throw new Error("Store verification is invalid");
+  }
+  const backup = value.backup;
+  if (!exactKeys(backup, [
+    "format_version",
+    "state",
+    "online_create",
+    "online_restore",
+    "restore_mode"
+  ]) || typeof backup.format_version !== "string" || typeof backup.state !== "string" || typeof backup.online_create !== "boolean" || typeof backup.online_restore !== "boolean" || typeof backup.restore_mode !== "string") {
+    throw new Error("Backup management projection is invalid");
+  }
+  return {
+    schema_version: STORE_SCHEMA,
+    scope,
+    verification: {
+      store_instance_id: verification.store_instance_id,
+      schema_identity: verification.schema_identity,
+      schema_version: verification.schema_version,
+      schema_fingerprint: verification.schema_fingerprint,
+      generator_id: verification.generator_id
+    },
+    backup: {
+      format_version: backup.format_version,
+      state: backup.state,
+      online_create: backup.online_create,
+      online_restore: backup.online_restore,
+      restore_mode: backup.restore_mode
+    },
+    artifacts: value.artifacts.map(decodeArtifact),
+    has_more: value.has_more,
+    projection_digest: value.projection_digest,
+    strong_etag: value.strong_etag
+  };
+};
+const managementURL = (context, path, limit = MANAGEMENT_PAGE_LIMIT) => `${context.origin}${path}?limit=${limit}`;
+const readManagement = async (context, url, cache, cacheKey2, label, decode, validateProjection, httpETagDomain, signal, fetcher) => {
+  validateContext(context);
+  const cached = cache.get(cacheKey2);
+  const headers = scopeHeaders(context);
+  if (cached !== void 0) headers["If-None-Match"] = cached.etag;
+  const response = await fetchExact(url, {
+    method: "GET",
+    credentials: "include",
+    redirect: "error",
+    headers,
+    signal
+  }, fetcher, false);
+  if (response.status === 304) {
+    if (cached === void 0) {
+      throw new ControlModulesError(
+        `${label} returned 304 without a cached response`,
+        response.status,
+        "INVALID_304"
+      );
+    }
+    return detachJSON(cached.data);
+  }
+  const text = await requireJSONSuccess(response, label, false, true);
+  const etag = response.headers.get("ETag");
+  if (!strongETag(etag)) {
+    throw new ControlModulesError(`${label} omitted its ETag`, response.status, "INVALID_RESPONSE");
+  }
+  try {
+    const result = decode(text);
+    await validateProjection(result);
+    if (await httpStrongETag(
+      httpETagDomain,
+      result.strong_etag,
+      text
+    ) !== etag) {
+      throw new Error(`${label} HTTP ETag is invalid`);
+    }
+    cache.set(cacheKey2, { etag, data: detachJSON(result) });
+    return result;
+  } catch (error) {
+    throw new ControlModulesError(
+      error instanceof Error ? error.message : `${label} is invalid`,
+      response.status,
+      "INVALID_RESPONSE"
+    );
+  }
+};
+const clearManagementTransportCache = () => {
+  unknownListCache.clear();
+  unknownDetailCache.clear();
+  storeCache.clear();
+};
+const managementQueryKey = (context) => ["management", ...contextIdentity$1(context), scopeKey(context.scope)];
+const unknownDetailQueryKey = (context, kind, attemptID) => ["management-unknown-detail", ...managementQueryKey(context), kind, attemptID];
+const fetchUnknownOutcomes = (context, signal, fetcher = fetch) => {
+  const key = contextCacheKey(context);
+  const url = managementURL(context, UNKNOWN_OUTCOMES_PATH);
+  return readManagement(
+    context,
+    url,
+    unknownListCache,
+    key,
+    "UNKNOWN outcome list response",
+    (text) => decodeUnknownList(text, context.scope),
+    async (result) => {
+      const expected = await domainDigest(
+        "freeagent.control-management-projection/v1",
+        canonicalJSONString({
+          scope: result.scope,
+          items: result.items,
+          has_more: result.has_more
+        })
+      );
+      if (expected !== result.projection_digest) {
+        throw new Error("UNKNOWN outcome list projection digest is invalid");
+      }
+    },
+    "freeagent.control-http-unknown-outcome-list-etag/v1",
+    signal,
+    fetcher
+  );
+};
+const fetchUnknownOutcomeDetail = (context, kind, attemptID, signal, fetcher = fetch) => {
+  if (!RAW_SEGMENT.test(attemptID) || !opaque(attemptID) || kind !== "MODEL" && kind !== "ACTION" && kind !== "CHANNEL") {
+    throw new ControlModulesError("UNKNOWN outcome identity is invalid", 0, "INVALID_CLIENT_INPUT");
+  }
+  const key = JSON.stringify([contextCacheKey(context), kind, attemptID]);
+  const url = `${context.origin}${UNKNOWN_OUTCOMES_PATH}/${kind}/${attemptID}`;
+  return readManagement(
+    context,
+    url,
+    unknownDetailCache,
+    key,
+    "UNKNOWN outcome detail response",
+    (text) => decodeUnknownDetail(text, context.scope, kind, attemptID),
+    async (result) => {
+      const expected = await domainDigest(
+        "freeagent.control-management-projection/v1",
+        canonicalJSONString({ scope: result.scope, item: result.item })
+      );
+      if (expected !== result.projection_digest) {
+        throw new Error("UNKNOWN outcome detail projection digest is invalid");
+      }
+    },
+    "freeagent.control-http-unknown-outcome-detail-etag/v1",
+    signal,
+    fetcher
+  );
+};
+const fetchStoreManagement = (context, signal, fetcher = fetch) => {
+  const key = contextCacheKey(context);
+  const url = managementURL(context, STORE_MANAGEMENT_PATH);
+  return readManagement(
+    context,
+    url,
+    storeCache,
+    key,
+    "Store management response",
+    (text) => decodeStore(text, context.scope),
+    async (result) => {
+      const expected = await domainDigest(
+        "freeagent.control-management-projection/v1",
+        canonicalJSONString({
+          scope: result.scope,
+          verification: result.verification,
+          backup: result.backup,
+          artifacts: result.artifacts,
+          has_more: result.has_more
+        })
+      );
+      if (expected !== result.projection_digest) {
+        throw new Error("Store management projection digest is invalid");
+      }
+    },
+    "freeagent.control-http-store-management-etag/v1",
+    signal,
+    fetcher
+  );
+};
 const RESUME_STORAGE_KEY = "freeagent.control.resume.v1";
 const RESUME_STORAGE_SCHEMA = "freeagent.control-resume-storage/v1";
 class ControlSessionError extends Error {
@@ -2983,17 +4507,129 @@ const clearStoredResume = () => {
   }
 };
 const shouldDiscardResume = (error) => error instanceof ControlSessionError && (error.code === "STORED_SESSION_INVALID" || error.code === "UNAUTHENTICATED" || error.code === "SESSION_EXPIRED" || error.status === 401);
+const LOCALE_PREFERENCE_STORAGE_KEY = "freeagent.ui.locale.v1";
+const browserStorage = () => {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+};
+class LocalePreferenceStore {
+  #storage;
+  constructor(storage = browserStorage()) {
+    this.#storage = storage;
+  }
+  read() {
+    try {
+      const stored = this.#storage?.getItem(LOCALE_PREFERENCE_STORAGE_KEY) ?? null;
+      return isSupportedLocale(stored) ? stored : null;
+    } catch {
+      return null;
+    }
+  }
+  write(locale) {
+    if (!isSupportedLocale(locale) || this.#storage === null) return false;
+    try {
+      this.#storage.setItem(LOCALE_PREFERENCE_STORAGE_KEY, locale);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  clear() {
+    if (this.#storage === null) return false;
+    try {
+      this.#storage.removeItem(LOCALE_PREFERENCE_STORAGE_KEY);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+const I18nContext = reactExports.createContext(null);
+const defaultRuntime = createI18nRuntime(
+  "en-US",
+  i18nResources
+);
+const browserLocaleCandidates = () => {
+  if (typeof navigator === "undefined") return [];
+  return navigator.languages.length > 0 ? navigator.languages : [navigator.language];
+};
+function syncDocumentLocale(target, locale, title) {
+  target.documentElement.lang = locale;
+  target.title = title;
+}
+function I18nProvider({
+  children,
+  initialLocale,
+  onMissingMessage,
+  preferenceStore,
+  catalogs = i18nResources
+}) {
+  const [store] = reactExports.useState(
+    () => preferenceStore ?? new LocalePreferenceStore()
+  );
+  const [locale, setLocaleState] = reactExports.useState(
+    () => store.read() ?? initialLocale ?? resolveLocale(browserLocaleCandidates())
+  );
+  const runtime = reactExports.useMemo(
+    () => createI18nRuntime(locale, catalogs, void 0, onMissingMessage),
+    [catalogs, locale, onMissingMessage]
+  );
+  const setLocale = reactExports.useCallback((nextLocale) => {
+    if (!isSupportedLocale(nextLocale)) return false;
+    setLocaleState(nextLocale);
+    store.write(nextLocale);
+    return true;
+  }, [store]);
+  reactExports.useEffect(() => {
+    if (typeof document === "undefined") return;
+    syncDocumentLocale(document, locale, runtime.t("app.title"));
+  }, [locale, runtime]);
+  const value = reactExports.useMemo(
+    () => ({ ...runtime, setLocale }),
+    [runtime, setLocale]
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(I18nContext.Provider, { value, children });
+}
+function useI18n() {
+  const value = reactExports.useContext(I18nContext);
+  if (value === null) throw new Error("useI18n must be used within I18nProvider");
+  return value;
+}
+function useOptionalI18n() {
+  const value = reactExports.useContext(I18nContext);
+  return value ?? { ...defaultRuntime, setLocale: () => false };
+}
+function LocaleSelector() {
+  const id = reactExports.useId();
+  const { locale, setLocale, t } = useI18n();
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "locale-selector", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: id, children: t("locale.selector.label") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "select",
+      {
+        id,
+        value: locale,
+        onChange: (event) => setLocale(event.target.value),
+        children: SUPPORTED_LOCALES.map((option) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { lang: option, value: option, children: t(`locale.name.${option}`) }, option))
+      }
+    )
+  ] });
+}
 function HandoffPanel({ busy, error, onFile }) {
+  const { t } = useOptionalI18n();
   return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", "aria-labelledby": "entry-title", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "FreeAgent Control" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "entry-title", children: "Open a Control session" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: "Select the short-lived handoff JSON created by this exact local Control process. The capability is exchanged once and is never retained by this page." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("session.open.eyebrow") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "entry-title", children: t("session.open.title") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: t("session.open.description") }),
     error !== "" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--error", role: "alert", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Session could not be opened." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("session.open.error") }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: error })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: `file-picker${busy ? " file-picker--busy" : ""}`, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: busy ? "Opening session…" : "Choose handoff JSON" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: busy ? t("session.opening") : t("session.chooseHandoff") }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "input",
         {
@@ -3006,37 +4642,36 @@ function HandoffPanel({ busy, error, onFile }) {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "security-notes", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Authority" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: "Only server-authorized scopes are selectable." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("session.security.authority") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: t("session.security.authorityValue") })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Credentials" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: "CSRF stays in memory; resume data stays in this tab session." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("session.security.credentials") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: t("session.security.credentialsValue") })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Surface" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: "Overview stays read-only; Modules exposes only confirmed disable operations." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("session.security.surface") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: t("session.security.surfaceValue") })
       ] })
     ] })
   ] }) });
 }
-function LoadingPanel({ label = "Loading Overview…" }) {
+function LoadingPanel({ label, labelKey }) {
+  const { t } = useOptionalI18n();
+  const resolvedLabel = labelKey !== void 0 ? t(labelKey) : label ?? t("loading.overview");
   return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", "aria-busy": "true", "aria-labelledby": "loading-title", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "FreeAgent Control" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "loading-title", children: label }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("loading.brand") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "loading-title", children: resolvedLabel }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "loading-bar", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", {}) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "muted", children: "Waiting for one bounded, authenticated response." })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "muted", children: t("loading.waiting") })
   ] }) });
 }
 function PermissionPanel({ principalID }) {
+  const { t } = useOptionalI18n();
   return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", "aria-labelledby": "permission-title", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Read-only access" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "permission-title", children: "Overview permission denied" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "lede", children: [
-      "Session principal ",
-      /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: principalID }),
-      " does not currently hold the OBSERVE capability for this view. No Overview request was sent."
-    ] })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("permission.eyebrow") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "permission-title", children: t("permission.title") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: t("permission.description", { values: { principal: principalID } }) })
   ] }) });
 }
 function SessionInvalidBoundary({
@@ -3044,7 +4679,7 @@ function SessionInvalidBoundary({
   children
 }) {
   if (error !== null && isSessionInvalid(error)) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingPanel, { label: "Closing an expired session…" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingPanel, { labelKey: "loading.closingSession" });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children });
 }
@@ -3054,29 +4689,27 @@ function FatalOverviewPanel({
   correlationID,
   onRetry
 }) {
+  const { t } = useOptionalI18n();
   return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", "aria-labelledby": "overview-error-title", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Read-only Overview" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "overview-error-title", children: permissionDenied ? "Scope permission denied" : "Overview unavailable" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("error.overview.eyebrow") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "overview-error-title", children: permissionDenied ? t("error.overview.scopeDenied") : t("error.overview.unavailable") }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: message }),
-    correlationID !== "" && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "correlation", children: [
-      "Correlation: ",
-      correlationID
-    ] }),
-    !permissionDenied && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: onRetry, children: "Retry read" })
+    correlationID !== "" && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "correlation", children: t("error.overview.correlation", { values: { id: correlationID } }) }),
+    !permissionDenied && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: onRetry, children: t("error.overview.retry") })
   ] }) });
 }
-const formatMicros$1 = (value) => {
+const formatMicros$3 = (value, formatDateTime) => {
   const date = new Date(Math.floor(value / 1e3));
-  return Number.isNaN(date.getTime()) ? "Invalid time" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "Invalid time" : formatDateTime(date);
 };
-const shortDigest$1 = (value) => `${value.slice(0, 10)}…${value.slice(-8)}`;
-const sectionLabels = {
-  workspaces: "Workspaces",
-  runs: "Recent runs",
-  unknown: "Unknown outcomes",
-  learning: "Learning proposals",
-  "module-candidates": "Module candidates",
-  usage: "Usage reconciliation"
+const shortDigest$3 = (value) => `${value.slice(0, 10)}…${value.slice(-8)}`;
+const sectionLabelKeys = {
+  workspaces: "overview.section.workspaces",
+  runs: "overview.section.runs",
+  unknown: "overview.section.unknown",
+  learning: "overview.section.learning",
+  "module-candidates": "overview.section.moduleCandidates",
+  usage: "overview.section.usage"
 };
 const sectionTruncated = (overview, section) => {
   switch (section) {
@@ -3094,9 +4727,9 @@ const sectionTruncated = (overview, section) => {
       return overview.usage_truncated;
   }
 };
-function ResultList({ results }) {
+function ResultList({ results, t }) {
   if (results.length === 0) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: "No items in this current response." });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("overview.result.empty") });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "result-list", children: results.map((result) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("a", { href: detailHash(result), className: "result-link", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__title", children: result.title }),
@@ -3107,6 +4740,7 @@ function ResultList({ results }) {
 function DetailDrawer({
   snapshot
 }) {
+  const { t } = useOptionalI18n();
   if (snapshot === null) return null;
   const { result, scope } = snapshot;
   const frozenScope = scope.kind === "WORKSPACE" ? `${scope.tenant_id} / ${scope.workspace_id}` : scope.tenant_id;
@@ -3115,23 +4749,23 @@ function DetailDrawer({
     /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "drawer__panel", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "drawer__header", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Current response detail" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "detail-title", children: result?.title ?? "Detail unavailable" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("overview.detail.eyebrow") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "detail-title", children: result?.title ?? t("overview.detail.unavailable") })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { className: "drawer__close", href: "#", "aria-label": "Close detail", children: "×" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { className: "drawer__close", href: "#", "aria-label": t("overview.detail.close"), children: "×" })
       ] }),
-      result === null ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: "This deep link is not present in the current authorized scope response." }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      result === null ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("overview.detail.missing") }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "drawer__summary", children: [
-          sectionLabels[result.section],
+          t(sectionLabelKeys[result.section]),
           " · ",
           result.summary
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "drawer__scope", children: [
-          "Frozen ",
-          scope.kind.toLowerCase(),
-          " scope: ",
-          frozenScope
-        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "drawer__scope", children: t("overview.detail.frozenScope", {
+          values: {
+            kind: scope.kind === "TENANT" ? t("common.tenantLower") : t("common.workspaceLower"),
+            scope: frozenScope
+          }
+        }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: JSON.stringify(result.value, null, 2) })
       ] })
     ] })
@@ -3149,159 +4783,151 @@ function OverviewPage({
   detailSnapshot,
   onScopeChange,
   onSearchChange,
-  onRefresh
+  onRefresh,
+  onNavigateManagement
 }) {
-  const allResults = overviewSearchResults(overview, search);
-  const unfilteredResults = overviewSearchResults(overview, "");
+  const { t, formatDateTime, formatNumber } = useOptionalI18n();
+  const allResults = overviewSearchResults(overview, search, t);
+  const unfilteredResults = overviewSearchResults(overview, "", t);
   const itemCount = unfilteredResults.length;
-  const groups = Object.keys(sectionLabels).map((section) => ({
+  const groups = Object.keys(sectionLabelKeys).map((section) => ({
     section,
     results: allResults.filter((result) => result.section === section).slice(0, search.trim() === "" ? 12 : void 0)
   }));
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "control-shell", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "topbar", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("a", { className: "brand", href: "#overview", "aria-label": "FreeAgent Control Overview", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("a", { className: "brand", href: "#overview", "aria-label": t("brand.overviewAria"), children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "brand__mark", "aria-hidden": "true", children: "F" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "FreeAgent Control" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("brand.name") })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "topbar__status", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `status-dot${stale ? " status-dot--stale" : ""}`, "aria-hidden": "true" }),
-        refreshing ? "Refreshing" : stale ? "Stale" : "Current"
+        refreshing ? t("common.refreshing") : stale ? t("common.stale") : t("common.current")
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "sidebar", "aria-label": "Control navigation", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "sidebar__label", children: "Control" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "sidebar", "aria-label": t("overview.nav.aria"), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "sidebar__label", children: t("overview.nav.control") }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#overview", children: "Status" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#modules", children: "Modules" }),
-        groups.map(({ section }) => /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: `#section-${section}`, children: sectionLabels[section] }, section))
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#overview", children: t("overview.nav.status") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#modules", children: t("overview.nav.modules") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#management", onClick: onNavigateManagement, children: t("overview.nav.management") }),
+        groups.map(({ section }) => /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: `#section-${section}`, children: t(sectionLabelKeys[section]) }, section))
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-card", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Session" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("session.open.title") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: session.principal_id }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
-          "Expires ",
-          formatMicros$1(session.expires_at_unix_micros)
-        ] })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: t("common.expires", { values: { time: formatMicros$3(session.expires_at_unix_micros, formatDateTime) } }) })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "content", id: "overview", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "page-heading", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Authorized read-only surface" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: "Overview" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: "A bounded projection of the current published basis and recent safe facts." })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("overview.eyebrow") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: t("overview.title") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: t("overview.description") })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onRefresh, disabled: refreshing, children: refreshing ? "Reading…" : "Refresh read" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onRefresh, disabled: refreshing, children: refreshing ? t("overview.reading") : t("overview.refresh") })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "toolbar", "aria-label": "Overview controls", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "toolbar", "aria-label": t("overview.controls.aria"), children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Authorized scope" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: selectedScopeKey, onChange: (event) => onScopeChange(event.target.value), children: scopeChoices.map((choice) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: choice.key, children: choice.label }, choice.key)) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.scope") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: selectedScopeKey, onChange: (event) => onScopeChange(event.target.value), children: scopeChoices.map((choice) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: choice.key, children: choice.scope.kind === "TENANT" ? t("scope.tenant", { values: { tenant: choice.scope.tenant_id } }) : t("scope.workspace", { values: { tenant: choice.scope.tenant_id, workspace: choice.scope.workspace_id ?? "" } }) }, choice.key)) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Search this response" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.search") }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
             {
               type: "search",
               value: search,
               onChange: (event) => onSearchChange(event.target.value),
-              placeholder: "ID, state, kind, version…",
+              placeholder: t("overview.searchPlaceholder"),
               autoComplete: "off"
             }
           )
         ] })
       ] }),
       backgroundError !== "" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--warning", role: "status", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "The last refresh failed." }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          backgroundError,
-          " The prior verified response remains visible as stale."
-        ] })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("overview.refreshFailed") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.staleNotice", { values: { message: backgroundError } }) })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "metric-grid", "aria-label": "Overview status", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "metric-grid", "aria-label": t("overview.status.aria"), children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Pointer revision" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: overview.basis.pointer_revision.toLocaleString() }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.metric.pointerRevision") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: formatNumber(overview.basis.pointer_revision) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: overview.published_pointer.kind })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Control generation" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.metric.controlGeneration") }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("strong", { children: [
             overview.basis.control.id,
             " · r",
             overview.basis.control.revision
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { className: "digest", children: shortDigest$1(overview.basis.control.digest) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { className: "digest", children: shortDigest$3(overview.basis.control.digest) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Catalog generation" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.metric.catalogGeneration") }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("strong", { children: [
             overview.basis.catalog.id,
             " · r",
             overview.basis.catalog.revision
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { className: "digest", children: shortDigest$1(overview.basis.catalog.digest) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { className: "digest", children: shortDigest$3(overview.basis.catalog.digest) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Current response" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: itemCount.toLocaleString() }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "authorized safe items" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.metric.currentResponse") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: formatNumber(itemCount) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: t("overview.metric.authorizedItems") })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Observed" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: formatMicros$1(overview.view.observed_at_unix_micros) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: stale ? "stale local representation" : "verified representation" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.metric.observed") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: formatMicros$3(overview.view.observed_at_unix_micros, formatDateTime) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: stale ? t("overview.metric.staleRepresentation") : t("overview.metric.verifiedRepresentation") })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Projection" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { className: "digest", children: shortDigest$1(overview.projection_digest) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "semantic digest verified" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.metric.projection") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { className: "digest", children: shortDigest$3(overview.projection_digest) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: t("overview.metric.semanticDigest") })
         ] })
       ] }),
       itemCount === 0 && search.trim() === "" && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "empty-state", "aria-labelledby": "empty-title", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Current response" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "empty-title", children: "No recent items" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "The selected authorized scope returned an empty, verified Overview." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("overview.empty.eyebrow") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "empty-title", children: t("overview.empty.title") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("overview.empty.description") })
       ] }),
       search.trim() !== "" && allResults.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "empty-state", "aria-labelledby": "search-empty-title", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Local search" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "search-empty-title", children: "No response items match" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "The search examined only the items already present in this authorized response." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("overview.searchEmpty.eyebrow") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "search-empty-title", children: t("overview.searchEmpty.title") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("overview.searchEmpty.description") })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "section-grid", children: groups.map(({ section, results }) => /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section", id: `section-${section}`, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Recent safe facts" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: sectionLabels[section] })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("overview.facts.eyebrow") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: t(sectionLabelKeys[section]) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "section-meta", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: results.length }),
-            sectionTruncated(overview, section) && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: "truncated" })
+            sectionTruncated(overview, section) && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: t("overview.truncated") })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ResultList, { results })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ResultList, { results, t })
       ] }, section)) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("footer", { className: "page-footer", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          "View ",
-          shortDigest$1(overview.view_snapshot_digest)
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          "Scope ",
-          shortDigest$1(overview.view.scope_digest)
-        ] })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.footer.view", { values: { digest: shortDigest$3(overview.view_snapshot_digest) } }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.footer.scope", { values: { digest: shortDigest$3(overview.view.scope_digest) } }) })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(DetailDrawer, { snapshot: detailSnapshot })
   ] });
 }
-const shortDigest = (value) => value.length <= 20 ? value : `${value.slice(0, 10)}...${value.slice(-8)}`;
-const formatMicros = (value) => {
+const shortDigest$2 = (value) => value.length <= 20 ? value : `${value.slice(0, 10)}...${value.slice(-8)}`;
+const formatMicros$2 = (value, formatDateTime) => {
   const date = new Date(Math.floor(value / 1e3));
-  return Number.isNaN(date.getTime()) ? "Invalid time" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "Invalid time" : formatDateTime(date);
 };
+const operationValue = (t, value) => t(`operation.value.${value}`);
 const contextIdentity = (context) => JSON.stringify([
   context.origin,
   context.bootID,
@@ -3328,8 +4954,15 @@ const publishedIdentity = (source) => JSON.stringify([
   source.basis.catalog.digest
 ]);
 const samePublishedBasis = (left, right) => publishedIdentity(left) === publishedIdentity(right);
-const bindingTargetLabel = (binding) => binding.target.kind === "PROFILE" ? `Profile ${binding.target.profile_id}` : `Workspace ${binding.target.workspace_id} / endpoint ${binding.target.endpoint_id}`;
-const operationTargetLabel = (summary, binding) => `${summary.instance_id} from ${bindingTargetLabel(binding)}`;
+const bindingTargetLabel = (binding, t) => binding.target.kind === "PROFILE" ? t("modules.binding.profile", { values: { id: binding.target.profile_id } }) : t("modules.binding.workspaceEndpoint", {
+  values: {
+    workspace: binding.target.workspace_id,
+    endpoint: binding.target.endpoint_id
+  }
+});
+const operationTargetLabel = (summary, binding, t) => t("operation.target.from", {
+  values: { instance: summary.instance_id, target: bindingTargetLabel(binding, t) }
+});
 const detachBinding = (binding) => ({
   target: binding.target.kind === "PROFILE" ? { kind: "PROFILE", profile_id: binding.target.profile_id } : {
     kind: "WORKSPACE_CHANNEL_ENDPOINT",
@@ -3379,7 +5012,7 @@ const moduleSearchMatch = (summary, rawSearch) => {
     summary.adapter_identity
   ].join("\n").toLocaleLowerCase("en").includes(search);
 };
-const failureFromError = (error) => {
+const failureFromError$2 = (error) => {
   if (isModulesSessionInvalid(error)) {
     return {
       kind: "SESSION",
@@ -3440,29 +5073,28 @@ function FailurePanel({
   failure,
   onRetry
 }) {
+  const { t, formatDateTime } = useOptionalI18n();
   const title = {
-    PERMISSION: "Modules permission denied",
-    SESSION: "Control session unavailable",
-    STALE: "Published basis changed",
-    INTEGRITY: "Modules response was rejected"
+    PERMISSION: t("modules.failure.permission"),
+    SESSION: t("modules.failure.session"),
+    STALE: t("modules.failure.stale"),
+    INTEGRITY: t("modules.failure.integrity")
   }[failure.kind];
   return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", "aria-labelledby": "modules-failure-title", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Modules fail-closed boundary" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("modules.failure.eyebrow") }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "modules-failure-title", children: title }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: failure.message }),
-    failure.correlationID !== "" && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "correlation", children: [
-      "Correlation: ",
-      failure.correlationID
-    ] }),
-    onRetry !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: onRetry, children: "Reload validated Modules data" })
+    failure.correlationID !== "" && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "correlation", children: t("common.correlation", { values: { id: failure.correlationID } }) }),
+    onRetry !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: onRetry, children: t("modules.failure.reload") })
   ] }) });
 }
 function ModulesLoading() {
+  const { t } = useOptionalI18n();
   return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", "aria-busy": "true", "aria-labelledby": "modules-loading-title", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "FreeAgent Control" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "modules-loading-title", children: "Loading Modules..." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("loading.brand") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { id: "modules-loading-title", children: t("modules.loading.title") }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "loading-bar", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", {}) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "muted", children: "Waiting for one bounded, authenticated projection." })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "muted", children: t("loading.waitingProjection") })
   ] }) });
 }
 function OperationPanel({
@@ -3477,33 +5109,23 @@ function OperationPanel({
   onReset,
   onReload
 }) {
+  const { t, formatDateTime } = useOptionalI18n();
   if (state.phase === "IDLE") return null;
   if (state.phase === "DRY_RUNNING") {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "module-operation", "aria-busy": "true", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Effect-free evaluation" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Running server dry-run" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-        "No published state is being changed for ",
-        state.target,
-        "."
-      ] })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("operation.dryRun.eyebrow") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("operation.dryRun.running") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.dryRun.noChange", { values: { target: state.target } }) })
     ] });
   }
   if (state.phase === "DRY_RESULT") {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "module-operation", "aria-live": "polite", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Authoritative dry-run result" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: state.disposition.replaceAll("_", " ") }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-        "Target: ",
-        state.target,
-        ". Catalog effect: ",
-        state.catalogChange.replaceAll("_", " "),
-        "."
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "digest", children: [
-        "Plan ",
-        shortDigest(state.planDigest)
-      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("operation.result.eyebrow") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: operationValue(t, state.disposition) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.result.target", {
+        values: { target: state.target, effect: operationValue(t, state.catalogChange) }
+      }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "digest", children: t("operation.result.plan", { values: { digest: shortDigest$2(state.planDigest) } }) }),
       state.disposition === "WOULD_APPLY" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "module-operation__actions", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
@@ -3511,25 +5133,21 @@ function OperationPanel({
             className: "button button--primary",
             type: "button",
             onClick: onRequestConfirmation,
-            children: "Request short-lived confirmation"
+            children: t("operation.confirm.request")
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReset, children: "Cancel" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReset, children: t("common.cancel") })
       ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No mutation request was sent." }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onAcknowledgeDryResult, children: "Done and refresh authority" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.result.noMutation") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onAcknowledgeDryResult, children: t("operation.result.done") })
       ] })
     ] });
   }
   if (state.phase === "CONFIRMING") {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "module-operation", "aria-busy": "true", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Confirmation evaluation" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Binding the exact request..." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-        "The server is re-evaluating ",
-        state.target,
-        "; no mutation is being sent."
-      ] })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("operation.confirming.eyebrow") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("operation.confirming.title") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.confirming.description", { values: { target: state.target } }) })
     ] });
   }
   if (state.phase === "AWAITING_EXPLICIT_CONFIRMATION") {
@@ -3540,73 +5158,64 @@ function OperationPanel({
         role: "alertdialog",
         "aria-labelledby": "module-confirm-title",
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Explicit operator confirmation" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { id: "module-confirm-title", children: "Disable this exact Profile binding?" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-            "The server evaluated ",
-            state.target,
-            " as WOULD APPLY. The projected catalog effect is",
-            ` ${state.catalogChange.replaceAll("_", " ")}`,
-            "."
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-            "Confirmation expires ",
-            formatMicros(state.expiresAtUnixMicros),
-            "."
-          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("operation.confirm.eyebrow") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { id: "module-confirm-title", children: t("operation.confirm.title") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.confirm.description", {
+            values: { target: state.target, effect: operationValue(t, state.catalogChange) }
+          }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.confirm.expires", { values: { time: formatMicros$2(state.expiresAtUnixMicros, formatDateTime) } }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "module-facts", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Principal" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("operation.fact.principal") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: state.review.principalID })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Scope" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("dd", { children: [
-                state.review.scopeKind,
-                " / tenant ",
-                state.review.tenantID,
-                state.review.workspaceID === "" ? "" : ` / workspace ${state.review.workspaceID}`
-              ] })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("operation.fact.scope") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: t("operation.fact.scopeValue", {
+                values: {
+                  kind: state.review.scopeKind === "TENANT" ? t("common.tenant") : t("common.workspace"),
+                  tenant: state.review.tenantID,
+                  workspace: state.review.workspaceID === "" ? "" : t("operation.fact.workspaceSuffix", { values: { workspace: state.review.workspaceID } })
+                }
+              }) })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Published pointer revision" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("operation.fact.pointerRevision") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: state.review.expectedRevision })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Instance" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("operation.fact.instance") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: state.review.instanceID })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Port / binding index" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("dd", { children: [
-                state.review.portName,
-                "@",
-                state.review.portVersion,
-                " / ",
-                state.review.portBindingIndex
-              ] })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("operation.fact.portBinding") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: t("operation.fact.portValue", { values: {
+                name: state.review.portName,
+                version: state.review.portVersion,
+                index: state.review.portBindingIndex
+              } }) })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Profile target" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("operation.fact.profileTarget") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: state.review.targetProfileID })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Failure policy" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: state.review.failurePolicy })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("operation.fact.failurePolicy") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: operationValue(t, state.review.failurePolicy) })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Catalog effect" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: state.catalogChange.replaceAll("_", " ") })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("operation.fact.catalogEffect") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: operationValue(t, state.catalogChange) })
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "module-operation__digests", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Scope digest" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.scope") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.scopeDigest })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Expected ref" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.expectedRef") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsxs("code", { children: [
                 state.review.expectedKind,
@@ -3619,42 +5228,42 @@ function OperationPanel({
               ] })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Config ref" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.configRef") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.configRef })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Authority ceiling" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.authorityCeiling") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.authorityCeilingRef })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Static context refs" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.staticRefs") }),
               " ",
-              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.staticContextRefs.length === 0 ? "none" : state.review.staticContextRefs.join(",") })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.staticContextRefs.length === 0 ? t("operation.staticRefs.empty") : state.review.staticContextRefs.join(",") })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Input digest" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.input") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.inputDigest })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Plan digest" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.plan") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.planDigest })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Idempotency-key digest" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.idempotency") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.idempotencyKeyDigest })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Evaluation digest" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.evaluation") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.evaluationDigest })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Statement digest" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("operation.digest.statement") }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: state.review.statementDigest })
             ] })
@@ -3668,7 +5277,7 @@ function OperationPanel({
                 onChange: (event) => onConfirmationAccepted(event.currentTarget.checked)
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "I understand this sends one governed published-state mutation." })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("operation.confirm.checkbox") })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "module-operation__actions", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -3678,10 +5287,10 @@ function OperationPanel({
                 type: "button",
                 disabled: !confirmationAccepted,
                 onClick: onExplicitConfirm,
-                children: "Confirm and disable binding"
+                children: t("operation.confirm.submit")
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReset, children: "Cancel" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReset, children: t("common.cancel") })
           ] })
         ]
       }
@@ -3689,63 +5298,41 @@ function OperationPanel({
   }
   if (state.phase === "MUTATING") {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "module-operation", "aria-busy": "true", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Governed mutation" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: state.exactRetry ? "Replaying the exact request..." : "Waiting for an authoritative receipt..." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-        "The page will not update local authority optimistically for ",
-        state.target,
-        "."
-      ] })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("operation.mutating.eyebrow") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: state.exactRetry ? t("operation.mutating.replay") : t("operation.mutating.waiting") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.mutating.description", { values: { target: state.target } }) })
     ] });
   }
   if (state.phase === "MUTATION_UNCERTAIN") {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "module-operation module-operation--warning", role: "alert", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Outcome not yet known" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Do not construct a replacement mutation" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("operation.uncertain.eyebrow") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("operation.uncertain.title") }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: state.message }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Only an exact replay of the original body, idempotency key, precondition, and evaluation digest is available. The confirmation proof will not be resent." }),
-      state.correlationID !== "" && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "correlation", children: [
-        "Correlation: ",
-        state.correlationID
-      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.uncertain.description") }),
+      state.correlationID !== "" && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "correlation", children: t("common.correlation", { values: { id: state.correlationID } }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "module-operation__actions", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: onExactRetry, children: "Retry exact request" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReload, children: "Discard retry state and reload authority" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: onExactRetry, children: t("operation.uncertain.retry") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReload, children: t("operation.uncertain.reload") })
       ] })
     ] });
   }
   if (state.phase === "COMPLETE") {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "module-operation module-operation--complete", "aria-live": "polite", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Authoritative mutation receipt" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: state.status.replaceAll("_", " ") }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-        "The server completed ",
-        state.target,
-        " at ",
-        formatMicros(state.completedAtUnixMicros),
-        "."
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "digest", children: [
-        "Receipt ",
-        shortDigest(state.receiptDigest)
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReset, children: "Close receipt" })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("operation.complete.eyebrow") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: operationValue(t, state.status) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("operation.complete.description", { values: { target: state.target, time: formatMicros$2(state.completedAtUnixMicros, formatDateTime) } }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "digest", children: t("operation.complete.receipt", { values: { digest: shortDigest$2(state.receiptDigest) } }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReset, children: t("operation.complete.close") })
     ] });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "module-operation notice notice--error", role: "alert", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "eyebrow", children: [
-      state.step.replaceAll("_", " "),
-      " stopped"
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "The operation did not advance" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("operation.error.stopped", { values: { step: t(`operation.step.${state.step}`) } }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("operation.error.title") }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: state.message }),
-    state.correlationID !== "" && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "correlation", children: [
-      "Correlation: ",
-      state.correlationID
-    ] }),
+    state.correlationID !== "" && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "correlation", children: t("common.correlation", { values: { id: state.correlationID } }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "module-operation__actions", children: [
-      state.retryable && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: onRetryStep, children: "Retry same step" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReset, children: state.retryable ? "Cancel" : "Restart review" })
+      state.retryable && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: onRetryStep, children: t("operation.error.retry") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onReset, children: state.retryable ? t("common.cancel") : t("operation.error.restart") })
     ] })
   ] });
 }
@@ -3757,9 +5344,12 @@ function ModulesPage({
   navigationKey = "modules",
   onScopeChange,
   onNavigateOverview,
+  onNavigateReviews,
+  onNavigateManagement,
   onFailClosed,
   onMutationComplete
 }) {
+  const { t, formatDateTime, formatNumber } = useOptionalI18n();
   const queryClient2 = useQueryClient();
   const [search, setSearch] = reactExports.useState("");
   const [selectedInstanceID, setSelectedInstanceID] = reactExports.useState(null);
@@ -3873,7 +5463,7 @@ function ModulesPage({
       setOperation({ phase: "IDLE" });
       setOperationFailure({
         kind: "SESSION",
-        message: "The control session expired before this operation completed.",
+        message: t("operation.client.sessionExpiredDuring"),
         correlationID: ""
       });
     }, Math.max(0, remaining));
@@ -3891,7 +5481,7 @@ function ModulesPage({
         target: operation.target,
         step: "CONFIRMATION",
         retryable: false,
-        message: "The short-lived confirmation expired. Start a new dry-run.",
+        message: t("operation.client.confirmExpired"),
         correlationID: ""
       });
     }, Math.max(0, remaining));
@@ -3902,20 +5492,20 @@ function ModulesPage({
     if (sessionExpired) {
       return {
         kind: "SESSION",
-        message: "The control session has expired. Open a new handoff.",
+        message: t("operation.client.sessionExpired"),
         correlationID: ""
       };
     }
     if (!session.capabilities.includes("OBSERVE")) {
       return {
         kind: "PERMISSION",
-        message: "This session does not hold OBSERVE for the Modules surface.",
+        message: t("operation.client.permission"),
         correlationID: ""
       };
     }
     return {
       kind: "INTEGRITY",
-      message: "The Modules session, scope, and transport context do not match exactly.",
+      message: t("operation.client.contextMismatch"),
       correlationID: ""
     };
   }, [contextIsValid, session.capabilities, sessionExpired]);
@@ -3923,17 +5513,17 @@ function ModulesPage({
     if (!pagesAligned || !detailAligned) {
       return {
         kind: "STALE",
-        message: "The Modules list and detail are not bound to one published basis.",
+        message: t("operation.client.basisMismatch"),
         correlationID: ""
       };
     }
-    const error = failureFromError(modules.error) !== null ? modules.error : failureFromError(detail.error) !== null ? detail.error : null;
-    const failure = failureFromError(error);
+    const error = failureFromError$2(modules.error) !== null ? modules.error : failureFromError$2(detail.error) !== null ? detail.error : null;
+    const failure = failureFromError$2(error);
     if (failure === null) return null;
     const safe = safeErrorText(
       error,
       pendingRef.current,
-      "The Modules response failed its fail-closed boundary."
+      t("operation.client.boundary")
     );
     return { ...failure, ...safe };
   }, [detail.error, detailAligned, modules.error, pagesAligned]);
@@ -3973,7 +5563,7 @@ function ModulesPage({
         });
         return;
       }
-      const critical = failureFromError(error);
+      const critical = failureFromError$2(error);
       if (critical !== null) {
         enterCriticalFailure({
           ...critical,
@@ -4016,7 +5606,7 @@ function ModulesPage({
       if (result.projection.disposition === "WOULD_APPLY" && !sameBinding(pending.selectedBinding, result.projection.binding_removal)) {
         enterCriticalFailure({
           kind: "INTEGRITY",
-          message: "The dry-run selected a different binding than the exact binding reviewed by the operator.",
+          message: t("operation.client.differentBinding"),
           correlationID: ""
         });
         return;
@@ -4036,7 +5626,7 @@ function ModulesPage({
         "DRY_RUN",
         error,
         epoch,
-        "The MODULE_DISABLE dry-run did not return a trusted result."
+        t("operation.client.untrustedDryRun")
       );
     } finally {
       if (epoch === operationEpochRef.current) {
@@ -4056,7 +5646,7 @@ function ModulesPage({
       const operationContext = withPublishedModulesBasis(context, detail.data);
       const nextPending = {
         identity: currentOperationIdentity,
-        target: operationTargetLabel(summary, binding),
+        target: operationTargetLabel(summary, binding, t),
         context: operationContext,
         body: {
           schema_version: "control-module-disable-dry-run-input/v1",
@@ -4110,7 +5700,7 @@ function ModulesPage({
           "CONFIRMATION",
           error,
           operationEpochRef.current,
-          "A secure confirmation request could not be prepared."
+          t("operation.client.secureConfirmation")
         );
         return;
       }
@@ -4135,7 +5725,7 @@ function ModulesPage({
         result.confirmation_proof = "";
         enterCriticalFailure({
           kind: "STALE",
-          message: "The confirmation expired before it could be presented for explicit approval.",
+          message: t("operation.client.confirmExpiredBeforeApproval"),
           correlationID: ""
         });
         return;
@@ -4144,7 +5734,7 @@ function ModulesPage({
         result.confirmation_proof = "";
         enterCriticalFailure({
           kind: "STALE",
-          message: "Confirmation no longer evaluates the exact request as WOULD APPLY.",
+          message: t("operation.client.confirmNoLongerApplies"),
           correlationID: ""
         });
         return;
@@ -4156,7 +5746,7 @@ function ModulesPage({
         result.confirmation_proof = "";
         enterCriticalFailure({
           kind: "INTEGRITY",
-          message: "Confirmation selected a different binding than the exact binding reviewed by the operator.",
+          message: t("operation.client.confirmDifferentBinding"),
           correlationID: ""
         });
         return;
@@ -4165,7 +5755,7 @@ function ModulesPage({
         result.confirmation_proof = "";
         enterCriticalFailure({
           kind: "STALE",
-          message: "Confirmation drifted from the exact authoritative dry-run projection.",
+          message: t("operation.client.confirmDrift"),
           correlationID: ""
         });
         return;
@@ -4180,7 +5770,7 @@ function ModulesPage({
       if (pending.catalogChange !== "RETAIN_INSTANCE" && pending.catalogChange !== "REMOVE_INSTANCE") {
         enterCriticalFailure({
           kind: "INTEGRITY",
-          message: "Confirmation returned an invalid MODULE_DISABLE catalog effect.",
+          message: t("operation.client.invalidCatalogEffect"),
           correlationID: ""
         });
         return;
@@ -4223,7 +5813,7 @@ function ModulesPage({
         "CONFIRMATION",
         error,
         epoch,
-        "The confirmation endpoint did not return a trusted exact evaluation."
+        t("operation.client.confirmUntrusted")
       );
     } finally {
       if (epoch === operationEpochRef.current) {
@@ -4248,7 +5838,7 @@ function ModulesPage({
           target,
           step: "CONFIRMATION",
           retryable: false,
-          message: "The short-lived confirmation expired. Start a new dry-run.",
+          message: t("operation.client.confirmExpired"),
           correlationID: ""
         });
         return;
@@ -4277,7 +5867,7 @@ function ModulesPage({
         if (result.receipt.status !== "NO_CHANGE" && result.receipt.status !== "APPLIED") {
           enterCriticalFailure({
             kind: "INTEGRITY",
-            message: "The MODULE_DISABLE mutation returned a non-mutation receipt status.",
+            message: t("operation.client.nonMutationReceipt"),
             correlationID: ""
           });
           return;
@@ -4308,7 +5898,7 @@ function ModulesPage({
           "MUTATE",
           error,
           epoch,
-          "The mutation outcome could not be established from a trusted receipt."
+          t("operation.client.uncertainReceipt")
         );
       } finally {
         if (epoch === operationEpochRef.current) {
@@ -4391,7 +5981,7 @@ function ModulesPage({
       const safe = safeErrorText(
         modules.error,
         null,
-        "The Modules projection could not be read."
+        t("operation.client.projectionRead")
       );
       return /* @__PURE__ */ jsxRuntimeExports.jsx(
         FailurePanel,
@@ -4416,11 +6006,11 @@ function ModulesPage({
         {
           className: "brand",
           href: "#overview",
-          "aria-label": "FreeAgent Control Overview",
+          "aria-label": t("brand.overviewAria"),
           onClick: navigateOverview,
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "brand__mark", "aria-hidden": "true", children: "F" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "FreeAgent Control" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("brand.name") })
           ]
         }
       ),
@@ -4432,44 +6022,39 @@ function ModulesPage({
             "aria-hidden": "true"
           }
         ),
-        modules.isFetching ? "Refreshing" : modules.error !== null ? "Stale" : "Current"
+        modules.isFetching ? t("common.refreshing") : modules.error !== null ? t("common.stale") : t("common.current")
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "sidebar", "aria-label": "Control navigation", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "sidebar__label", children: "Control" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "sidebar", "aria-label": t("overview.nav.aria"), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "sidebar__label", children: t("overview.nav.control") }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#overview", onClick: navigateOverview, children: "Overview" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#modules", "aria-current": "page", children: "Modules" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#overview", onClick: navigateOverview, children: t("overview.nav.status") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#modules", "aria-current": "page", children: t("overview.nav.modules") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#upgrade-reviews", onClick: onNavigateReviews, children: t("overview.nav.reviews") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#management", onClick: onNavigateManagement, children: t("overview.nav.management") })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-card", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Session" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("session.open.title") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: session.principal_id }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
-          "Expires ",
-          formatMicros(session.expires_at_unix_micros)
-        ] })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: t("common.expires", { values: { time: formatMicros$2(session.expires_at_unix_micros, formatDateTime) } }) })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "content modules-content", id: "modules", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "page-heading", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Authorized configuration surface" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: "Modules" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "lede", children: [
-            "Validated module instances and bindings at published pointer revision",
-            ` ${pageBasis.pointer_revision}`,
-            "."
-          ] })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("modules.eyebrow") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: t("modules.title") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: t("modules.description", { values: { revision: pageBasis.pointer_revision } }) })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: reloadAuthority, children: modules.isFetching ? "Refreshing..." : "Refresh exact basis" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: reloadAuthority, children: modules.isFetching ? t("common.refreshing") : t("modules.refresh") })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "toolbar modules-toolbar", "aria-label": "Modules filters", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "toolbar modules-toolbar", "aria-label": t("modules.controls.aria"), children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Authorized scope" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: selectedScopeKey, onChange: onSelectScope, children: scopeChoices.map((choice) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: choice.key, children: choice.label }, choice.key)) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.scope") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: selectedScopeKey, onChange: onSelectScope, children: scopeChoices.map((choice) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: choice.key, children: choice.scope.kind === "TENANT" ? t("scope.tenant", { values: { tenant: choice.scope.tenant_id } }) : t("scope.workspace", { values: { tenant: choice.scope.tenant_id, workspace: choice.scope.workspace_id ?? "" } }) }, choice.key)) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Search current pages" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("modules.search") }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
             {
@@ -4477,37 +6062,34 @@ function ModulesPage({
               value: search,
               maxLength: 256,
               onChange: (event) => setSearch(event.currentTarget.value),
-              placeholder: "Instance, module, version, class"
+              placeholder: t("modules.searchPlaceholder")
             }
           )
         ] })
       ] }),
       !session.capabilities.includes("OPERATE_MODULES") && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--warning", role: "status", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Read-only Modules session." }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "OPERATE_MODULES is not present, so no mutation control is rendered." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("modules.readOnly.title") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("modules.readOnly.description") })
       ] }),
       session.capabilities.includes("OPERATE_MODULES") && context.scope.kind !== "TENANT" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--warning", role: "status", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Workspace scope is read-only for MODULE_DISABLE." }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Select an authorized Tenant scope to review a narrow Profile binding." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("modules.workspaceReadOnly.title") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("modules.workspaceReadOnly.description") })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modules-layout", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section modules-list", "aria-labelledby": "modules-list-title", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Current validated pages" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "modules-list-title", children: "Module instances" })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("modules.list.eyebrow") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "modules-list-title", children: t("modules.list.title") })
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "section-meta", children: [
-              summaries.length,
-              " loaded"
-            ] })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "section-meta", children: t("modules.list.loaded", { count: summaries.length }) })
           ] }),
           modules.error !== null && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--error", role: "alert", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Background refresh failed." }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: safeErrorText(modules.error, null, "Modules refresh failed.").message }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: reloadAuthority, children: "Retry" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("modules.refreshFailed") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: safeErrorText(modules.error, null, t("modules.refreshFailedMessage")).message }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: reloadAuthority, children: t("common.retry") })
           ] }),
-          filteredSummaries.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: "No loaded module instance matches this search." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "result-list modules-result-list", children: filteredSummaries.map((summary) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          filteredSummaries.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("modules.list.empty") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "result-list modules-result-list", children: filteredSummaries.map((summary) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
             {
               className: "result-link module-result",
@@ -4521,14 +6103,12 @@ function ModulesPage({
               },
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__title", children: summary.instance_id }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "result-link__summary", children: [
-                  summary.module_id,
-                  " @ ",
-                  summary.exact_version,
-                  " / ",
-                  summary.execution_class,
-                  ` / ${summary.visible_binding_count} visible bindings`
-                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__summary", children: t("modules.list.summary", { values: {
+                  module: summary.module_id,
+                  version: summary.exact_version,
+                  execution: summary.execution_class,
+                  count: summary.visible_binding_count
+                } }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__arrow", "aria-hidden": "true", children: ">" })
               ]
             }
@@ -4542,15 +6122,15 @@ function ModulesPage({
               onClick: () => {
                 void modules.fetchNextPage();
               },
-              children: modules.isFetchingNextPage ? "Loading..." : "Load next validated page"
+              children: modules.isFetchingNextPage ? t("loading.modules") : t("modules.loadNext")
             }
           )
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section module-detail", "aria-labelledby": "module-detail-title", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: "Exact instance detail" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "module-detail-title", children: selectedSummary?.instance_id ?? "Select a module" })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("modules.detail.eyebrow") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "module-detail-title", children: selectedSummary?.instance_id ?? t("modules.detail.select") })
             ] }),
             selectedInstanceID !== null && /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
@@ -4563,13 +6143,13 @@ function ModulesPage({
                   setOperationFailure(null);
                   setSelectedInstanceID(null);
                 },
-                children: "Close"
+                children: t("common.close")
               }
             )
           ] }),
-          selectedInstanceID === null ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: "Select an instance to fetch its independently validated binding detail." }) : detail.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", "aria-busy": "true", children: "Loading exact module detail..." }) : detail.error !== null || detail.data === void 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--error", role: "alert", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Detail unavailable." }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: safeErrorText(detail.error, null, "Module detail could not be read.").message }),
+          selectedInstanceID === null ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("modules.detail.selectDescription") }) : detail.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", "aria-busy": "true", children: t("modules.detail.loading") }) : detail.error !== null || detail.data === void 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--error", role: "alert", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("modules.detail.unavailable") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: safeErrorText(detail.error, null, t("modules.detail.readFailed")).message }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
@@ -4579,35 +6159,35 @@ function ModulesPage({
                   resetOperation();
                   void detail.refetch();
                 },
-                children: "Retry detail"
+                children: t("modules.detail.retry")
               }
             )
           ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "module-facts", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Module" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("modules.detail.module") }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.data.module.summary.module_id })
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Version" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("modules.detail.version") }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.data.module.summary.exact_version })
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Execution" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("modules.detail.execution") }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.data.module.summary.execution_class })
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Adapter" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("modules.detail.adapter") }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.data.module.summary.adapter_identity })
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: "Artifact" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest(detail.data.module.summary.artifact_digest) })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("modules.detail.artifact") }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$2(detail.data.module.summary.artifact_digest) })
               ] })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "module-bindings", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Visible bindings" }),
-              detail.data.module.bindings.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: "No binding is visible in this authorized scope." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "module-binding-list", children: detail.data.module.bindings.map((binding) => {
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("modules.bindings.title") }),
+              detail.data.module.bindings.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("modules.bindings.empty") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "module-binding-list", children: detail.data.module.bindings.map((binding) => {
                 const candidate = isModuleDisableCandidate(
                   detail.data.module.summary,
                   binding
@@ -4626,17 +6206,14 @@ function ModulesPage({
                 ].join(":");
                 return /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "module-binding", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: bindingTargetLabel(binding) }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                      binding.port.name,
-                      "/",
-                      binding.port.exact_version,
-                      ` / ${binding.failure_policy} / index ${binding.port_binding_index}`
-                    ] }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
-                      binding.static_context_refs.length,
-                      " static context refs"
-                    ] })
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: bindingTargetLabel(binding, t) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("modules.binding.detail", { values: {
+                      port: binding.port.name,
+                      version: binding.port.exact_version,
+                      policy: operationValue(t, binding.failure_policy),
+                      index: binding.port_binding_index
+                    } }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: t("modules.binding.staticRefs", { count: binding.static_context_refs.length }) })
                   ] }),
                   candidate && lowestCandidate && canOperate ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "button",
@@ -4645,9 +6222,9 @@ function ModulesPage({
                       type: "button",
                       disabled: detail.isFetching || operation.phase !== "IDLE",
                       onClick: () => startDryRun(detail.data.module.summary, binding),
-                      children: "Review disable"
+                      children: t("modules.binding.reviewDisable")
                     }
-                  ) : candidate && !lowestCandidate ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: "Higher duplicate binding index" }) : candidate ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: "Tenant OPERATE_MODULES required" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: "Outside narrow disable candidate" })
+                  ) : candidate && !lowestCandidate ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: t("modules.binding.duplicate") }) : candidate ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: t("modules.binding.tenantRequired") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: t("modules.binding.outsideCandidate") })
                 ] }, key);
               }) })
             ] }),
@@ -4676,11 +6253,679 @@ function ModulesPage({
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("footer", { className: "page-footer", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Reads are bounded and same-origin. MODULE_DISABLE is server-authoritative and non-optimistic." }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "digest", children: [
-          "Pointer ",
-          shortDigest(modules.data.pages[0].published_pointer.digest)
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("modules.footer") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "digest", children: t("modules.footer.pointer", { values: { digest: shortDigest$2(modules.data.pages[0].published_pointer.digest) } }) })
+      ] })
+    ] })
+  ] });
+}
+const formatMicros$1 = (value, formatDateTime, invalidTime) => {
+  const date = new Date(Math.floor(value / 1e3));
+  return Number.isNaN(date.getTime()) ? invalidTime : formatDateTime(date);
+};
+const shortDigest$1 = (value) => value.length <= 20 ? value : `${value.slice(0, 10)}...${value.slice(-8)}`;
+const reviewQueryKey = (context) => [
+  "module-upgrade-reviews",
+  context.origin,
+  context.bootID,
+  context.sessionID,
+  context.principalID,
+  context.authorizationRevision,
+  context.scopeSetDigest,
+  context.scope.kind,
+  context.scope.tenant_id,
+  context.scope.workspace_id ?? ""
+];
+const detailQueryKey = (context, reviewID) => [
+  ...reviewQueryKey(context),
+  "detail",
+  reviewID
+];
+const failureFromError$1 = (error) => {
+  const message = error instanceof Error ? error.message : "Review response was rejected";
+  const correlationID = error instanceof ControlModulesError ? error.correlationID : "";
+  if (isModulesSessionInvalid(error)) return { kind: "SESSION", message, correlationID };
+  if (isModulesPermissionDenied(error)) return { kind: "PERMISSION", message, correlationID };
+  if (isModulesStale(error)) return { kind: "STALE", message, correlationID };
+  return { kind: "INTEGRITY", message, correlationID };
+};
+const targetLabel = (item, t) => {
+  const target = item.binding_target;
+  return target.kind === "PROFILE" ? t("modules.binding.profile", { values: { id: target.profile_id } }) : t("modules.binding.workspaceEndpoint", { values: { workspace: target.workspace_id, endpoint: target.endpoint_id } });
+};
+function ReviewDetail({
+  detail,
+  onRetry
+}) {
+  const { t, formatDateTime } = useOptionalI18n();
+  const invalidTime = t("reviews.invalidTime");
+  const review = detail.review;
+  const targetLabelValue = review.binding_target.kind === "PROFILE" ? t("modules.binding.profile", { values: { id: review.binding_target.profile_id } }) : t("modules.binding.workspaceEndpoint", { values: { workspace: review.binding_target.workspace_id, endpoint: review.binding_target.endpoint_id } });
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "module-facts", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.reviewID") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$1(detail.review_id) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.conclusion") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: review.conclusion })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.candidate") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$1(review.candidate_id) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.reviewKey") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$1(review.review_key) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.target") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: targetLabelValue })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.instance") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: review.target_instance_id })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.module") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: review.target_module.id })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.version") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: review.target_module.version })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.artifact") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$1(review.target_artifact_digest) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.artifactSize") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: review.target_artifact_size_bytes })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.port") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("dd", { children: [
+          review.port.name,
+          " / ",
+          review.port.exact_version,
+          " / ",
+          review.port_binding_index
         ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.created") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: formatMicros$1(detail.created_at_unix_micros, formatDateTime, invalidTime) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.operator") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: review.operator_principal_id })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "review-subsection", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("reviews.detail.admission") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "module-facts", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.admissionID") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$1(detail.admission.admission_id) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.source") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.admission.source_id })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.snapshot") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$1(detail.admission.snapshot_id) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.manifest") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$1(detail.admission.manifest_ref) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.fileCount") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.admission.covered_file_count })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.admitted") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: formatMicros$1(detail.admission.admitted_at_unix_micros, formatDateTime, invalidTime) })
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "review-subsection", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("reviews.detail.decision") }),
+      detail.decision === void 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("reviews.detail.noDecision") }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "module-facts", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.decisionValue") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.decision.decision })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.decisionID") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest$1(detail.decision.decision_id) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.decisionOperator") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.decision.operator_principal_id })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.decisionTime") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: formatMicros$1(detail.decision.decided_at_unix_micros, formatDateTime, invalidTime) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("reviews.detail.reason") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: detail.decision.reason })
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "review-subsection", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("reviews.detail.reasonCodes") }),
+      review.reason_codes.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("common.none") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "tag-list", children: review.reason_codes.map((code) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { className: "tag", children: code }, code)) })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("footer", { className: "page-footer", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("reviews.footer.projection", { values: { digest: shortDigest$1(detail.projection_digest) } }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onRetry, children: t("common.retry") })
+    ] })
+  ] });
+}
+function ModuleUpgradeReviewsPage({
+  session,
+  context,
+  scopeChoices,
+  selectedScopeKey,
+  onScopeChange,
+  onNavigateOverview,
+  onNavigateModules,
+  onNavigateManagement,
+  onFailClosed
+}) {
+  const { t, formatDateTime } = useOptionalI18n();
+  const invalidTime = t("reviews.invalidTime");
+  const [selectedReviewID, setSelectedReviewID] = reactExports.useState(null);
+  const reviews = useQuery({
+    queryKey: reviewQueryKey(context),
+    queryFn: ({ signal }) => fetchModuleUpgradeReviews(context, signal),
+    staleTime: 3e4,
+    retry: false
+  });
+  const detail = useQuery({
+    queryKey: selectedReviewID === null ? ["module-upgrade-review-detail", "disabled"] : detailQueryKey(context, selectedReviewID),
+    queryFn: ({ signal }) => {
+      if (selectedReviewID === null) throw new Error("review detail is disabled");
+      return fetchModuleUpgradeReviewDetail(context, selectedReviewID, signal);
+    },
+    enabled: selectedReviewID !== null,
+    retry: false
+  });
+  reactExports.useEffect(() => {
+    if (reviews.error !== null) onFailClosed?.(failureFromError$1(reviews.error));
+  }, [onFailClosed, reviews.error]);
+  reactExports.useEffect(() => {
+    if (detail.error !== null) onFailClosed?.(failureFromError$1(detail.error));
+  }, [detail.error, onFailClosed]);
+  const items = reactExports.useMemo(() => reviews.data?.items ?? [], [reviews.data]);
+  reactExports.useEffect(() => {
+    if (selectedReviewID !== null && !items.some((item) => item.review_id === selectedReviewID)) {
+      setSelectedReviewID(null);
+    }
+  }, [items, selectedReviewID]);
+  const navigateOverview = () => onNavigateOverview?.();
+  const navigateModules = () => onNavigateModules?.();
+  if (reviews.isPending) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", "aria-busy": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("loading.brand") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: t("reviews.loading") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "loading-bar", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", {}) })
+    ] }) });
+  }
+  if (reviews.error !== null || reviews.data === void 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("reviews.eyebrow") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: t("reviews.unavailable") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: reviews.error instanceof Error ? reviews.error.message : t("reviews.readFailed") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: () => {
+        void reviews.refetch();
+      }, children: t("common.retry") })
+    ] }) });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "control-shell control-shell--modules", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "topbar", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("a", { className: "brand", href: "#overview", "aria-label": t("brand.overviewAria"), onClick: navigateOverview, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "brand__mark", "aria-hidden": "true", children: "F" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("brand.name") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "topbar__status", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "status-dot", "aria-hidden": "true" }),
+        t("common.current")
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "sidebar", "aria-label": t("overview.nav.aria"), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "sidebar__label", children: t("overview.nav.control") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#overview", onClick: navigateOverview, children: t("overview.nav.status") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#modules", onClick: navigateModules, children: t("overview.nav.modules") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#upgrade-reviews", "aria-current": "page", children: t("overview.nav.reviews") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#management", onClick: onNavigateManagement, children: t("overview.nav.management") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-card", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("session.open.title") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: session.principal_id }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: t("common.expires", { values: { time: formatMicros$1(session.expires_at_unix_micros, formatDateTime, invalidTime) } }) })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "content modules-content", id: "upgrade-reviews", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "page-heading", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("reviews.eyebrow") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: t("reviews.title") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: t("reviews.description") })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: () => {
+          void reviews.refetch();
+        }, children: reviews.isFetching ? t("common.refreshing") : t("reviews.refresh") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "toolbar modules-toolbar", "aria-label": t("reviews.controls.aria"), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.scope") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: selectedScopeKey, onChange: (event) => onScopeChange(event.currentTarget.value), children: scopeChoices.map((choice) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: choice.key, children: choice.scope.kind === "TENANT" ? t("scope.tenant", { values: { tenant: choice.scope.tenant_id } }) : t("scope.workspace", { values: { tenant: choice.scope.tenant_id, workspace: choice.scope.workspace_id ?? "" } }) }, choice.key)) })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "reviews-layout modules-layout", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section modules-list", "aria-labelledby": "reviews-list-title", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("reviews.list.eyebrow") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "reviews-list-title", children: t("reviews.list.title") })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "section-meta", children: t("reviews.list.loaded", { values: { count: items.length } }) })
+          ] }),
+          items.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("reviews.list.empty") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "result-list", children: items.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "result-link module-result", type: "button", "aria-current": selectedReviewID === item.review_id ? "true" : void 0, onClick: () => setSelectedReviewID(item.review_id), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "result-link__title", children: [
+              item.target_module.id,
+              " @ ",
+              item.target_module.version
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__summary", children: t("reviews.list.summary", { values: { target: targetLabel(item, t), conclusion: item.conclusion, decision: item.decision?.decision ?? t("reviews.list.noDecision") } }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__arrow", "aria-hidden": "true", children: ">" })
+          ] }) }, item.review_id)) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section module-detail", "aria-labelledby": "review-detail-title", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("reviews.detail.eyebrow") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "review-detail-title", children: selectedReviewID === null ? t("reviews.detail.select") : shortDigest$1(selectedReviewID) })
+            ] }),
+            selectedReviewID !== null && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: () => setSelectedReviewID(null), children: t("common.close") })
+          ] }),
+          selectedReviewID === null ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("reviews.detail.selectDescription") }) : detail.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", "aria-busy": "true", children: t("reviews.detail.loading") }) : detail.error !== null || detail.data === void 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--error", role: "alert", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("reviews.detail.unavailable") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: detail.error instanceof Error ? detail.error.message : t("reviews.detail.readFailed") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: () => {
+              void detail.refetch();
+            }, children: t("common.retry") })
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ReviewDetail, { detail: detail.data, onRetry: () => {
+            void detail.refetch();
+          } })
+        ] })
+      ] })
+    ] })
+  ] });
+}
+const shortDigest = (value) => value.length <= 20 ? value : `${value.slice(0, 10)}...${value.slice(-8)}`;
+const formatMicros = (value, formatDateTime, invalidTime) => {
+  const date = new Date(Math.floor(value / 1e3));
+  return Number.isNaN(date.getTime()) ? invalidTime : formatDateTime(date);
+};
+const failureFromError = (error) => {
+  const message = error instanceof Error ? error.message : "Management response was rejected";
+  const correlationID = error instanceof ControlModulesError ? error.correlationID : "";
+  if (isModulesSessionInvalid(error)) return { kind: "SESSION", message, correlationID };
+  if (isModulesPermissionDenied(error)) return { kind: "PERMISSION", message, correlationID };
+  if (isModulesStale(error)) return { kind: "STALE", message, correlationID };
+  return { kind: "INTEGRITY", message, correlationID };
+};
+const scopeLabel = (choice, t) => choice.scope.kind === "TENANT" ? t("scope.tenant", { values: { tenant: choice.scope.tenant_id } }) : t("scope.workspace", {
+  values: {
+    tenant: choice.scope.tenant_id,
+    workspace: choice.scope.workspace_id ?? ""
+  }
+});
+const unknownTitle = (item, t) => t("management.unknown.itemTitle", {
+  values: { kind: item.kind, attempt: shortDigest(item.attempt_id) }
+});
+function UnknownDetail({
+  item,
+  onRetry
+}) {
+  const { t, formatDateTime, formatTokenCount } = useOptionalI18n();
+  const invalidTime = t("management.invalidTime");
+  const usageValue = (value) => value === null ? t("management.unknownValue") : formatTokenCount(value);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "module-facts", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.kind") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.kind })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.attempt") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest(item.attempt_id) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.run") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.run_id })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.state") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.state })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.provider") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.provider ?? t("management.unknownValue") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.model") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.model ?? t("management.unknownValue") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.requestID") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.provider_request_id ?? t("management.unknownValue") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.externalID") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.external_operation_id ?? t("management.unknownValue") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.endpoint") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.endpoint_id ?? t("management.unknownValue") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.classification") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.error_classification ?? t("management.unknownValue") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.reason") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.unknown_reason ?? t("management.unknownValue") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.evidence") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: item.has_reconciliation_evidence ? t("management.yes") : t("management.no") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.evidenceRef") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: item.reconciliation_evidence_ref ? shortDigest(item.reconciliation_evidence_ref) : t("management.unknownValue") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.created") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: formatMicros(item.created_at_unix_micros, formatDateTime, invalidTime) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.updated") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: formatMicros(item.updated_at_unix_micros, formatDateTime, invalidTime) })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "review-subsection", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: t("management.unknown.usage") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "module-facts", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.inputTokens") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: usageValue(item.usage.input_tokens) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.cachedInputTokens") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: usageValue(item.usage.cached_input_tokens) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.uncachedInputTokens") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: usageValue(item.usage.uncached_input_tokens) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.outputTokens") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: usageValue(item.usage.output_tokens) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.unknown.reasoningTokens") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: usageValue(item.usage.reasoning_tokens) })
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("footer", { className: "page-footer", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("management.unknown.readOnly") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: onRetry, children: t("common.retry") })
+    ] })
+  ] });
+}
+function ArtifactList({
+  artifacts,
+  t,
+  formatDateTime
+}) {
+  const invalidTime = t("management.invalidTime");
+  if (artifacts.length === 0) return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("management.artifacts.empty") });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "result-list", children: artifacts.map((artifact) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "management-artifact", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("strong", { children: [
+      artifact.module.id,
+      " @ ",
+      artifact.module.version
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "digest", children: shortDigest(artifact.artifact_digest) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: t("management.artifacts.summary", {
+      values: {
+        source: artifact.source_id,
+        files: artifact.covered_file_count,
+        time: formatMicros(artifact.admitted_at_unix_micros, formatDateTime, invalidTime)
+      }
+    }) })
+  ] }) }, artifact.admission_id)) });
+}
+function ManagementPage({
+  session,
+  context,
+  scopeChoices,
+  selectedScopeKey,
+  onScopeChange,
+  onNavigateOverview,
+  onNavigateModules,
+  onNavigateReviews,
+  onFailClosed
+}) {
+  const { t, formatDateTime } = useOptionalI18n();
+  const [selectedUnknown, setSelectedUnknown] = reactExports.useState(null);
+  const unknowns = useQuery({
+    queryKey: managementQueryKey(context),
+    queryFn: ({ signal }) => fetchUnknownOutcomes(context, signal),
+    staleTime: 3e4,
+    retry: false
+  });
+  const store = useQuery({
+    queryKey: ["store-management", ...managementQueryKey(context)],
+    queryFn: ({ signal }) => fetchStoreManagement(context, signal),
+    staleTime: 3e4,
+    retry: false
+  });
+  const detail = useQuery({
+    queryKey: selectedUnknown === null ? ["management-unknown-detail", "disabled"] : unknownDetailQueryKey(context, selectedUnknown.kind, selectedUnknown.attemptID),
+    queryFn: ({ signal }) => {
+      if (selectedUnknown === null) throw new Error("UNKNOWN detail is disabled");
+      return fetchUnknownOutcomeDetail(
+        context,
+        selectedUnknown.kind,
+        selectedUnknown.attemptID,
+        signal
+      );
+    },
+    enabled: selectedUnknown !== null,
+    retry: false
+  });
+  reactExports.useEffect(() => {
+    for (const error of [unknowns.error, store.error, detail.error]) {
+      if (error !== null) {
+        onFailClosed?.(failureFromError(error));
+        break;
+      }
+    }
+  }, [detail.error, onFailClosed, store.error, unknowns.error]);
+  const unknownItems = reactExports.useMemo(() => unknowns.data?.items ?? [], [unknowns.data]);
+  reactExports.useEffect(() => {
+    if (selectedUnknown !== null && !unknownItems.some(
+      (item) => item.kind === selectedUnknown.kind && item.attempt_id === selectedUnknown.attemptID
+    )) setSelectedUnknown(null);
+  }, [selectedUnknown, unknownItems]);
+  if (unknowns.isPending || store.isPending) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", "aria-busy": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("loading.brand") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: t("management.loading") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "loading-bar", "aria-hidden": "true", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", {}) })
+    ] }) });
+  }
+  if (unknowns.error !== null || store.error !== null || unknowns.data === void 0 || store.data === void 0) {
+    const error = unknowns.error ?? store.error;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "entry", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "entry__panel entry__panel--compact", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("management.eyebrow") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: t("management.unavailable") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: error instanceof Error ? error.message : t("management.readFailed") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button button--primary", type: "button", onClick: () => {
+        void unknowns.refetch();
+        void store.refetch();
+      }, children: t("common.retry") })
+    ] }) });
+  }
+  const storeData = store.data;
+  const navigate = (callback) => callback?.();
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "control-shell control-shell--modules", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "topbar", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("a", { className: "brand", href: "#overview", "aria-label": t("brand.overviewAria"), onClick: () => navigate(onNavigateOverview), children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "brand__mark", "aria-hidden": "true", children: "F" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("brand.name") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "topbar__status", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "status-dot", "aria-hidden": "true" }),
+        t("common.current")
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "sidebar", "aria-label": t("overview.nav.aria"), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "sidebar__label", children: t("overview.nav.control") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#overview", onClick: () => navigate(onNavigateOverview), children: t("overview.nav.status") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#modules", onClick: () => navigate(onNavigateModules), children: t("overview.nav.modules") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#upgrade-reviews", onClick: () => navigate(onNavigateReviews), children: t("overview.nav.reviews") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#management", "aria-current": "page", children: t("overview.nav.management") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-card", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("session.open.title") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: session.principal_id }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: t("common.expires", { values: { time: formatMicros(session.expires_at_unix_micros, formatDateTime, t("management.invalidTime")) } }) })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "content modules-content", id: "management", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "page-heading", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("management.eyebrow") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { children: t("management.title") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "lede", children: t("management.description") })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: () => {
+          void unknowns.refetch();
+          void store.refetch();
+        }, children: unknowns.isFetching || store.isFetching ? t("common.refreshing") : t("management.refresh") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "toolbar modules-toolbar", "aria-label": t("management.controls.aria"), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("overview.scope") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: selectedScopeKey, onChange: (event) => onScopeChange(event.currentTarget.value), children: scopeChoices.map((choice) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: choice.key, children: scopeLabel(choice, t) }, choice.key)) })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--warning", role: "status", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("management.readOnly.title") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("management.readOnly.description") })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "management-grid", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section", "aria-labelledby": "unknown-title", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("management.unknown.eyebrow") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "unknown-title", children: t("management.unknown.title") })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "section-meta", children: t("management.loaded", { values: { count: unknownItems.length } }) })
+          ] }),
+          unknownItems.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("management.unknown.empty") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "result-list", children: unknownItems.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "result-link module-result", type: "button", "aria-current": selectedUnknown?.kind === item.kind && selectedUnknown.attemptID === item.attempt_id ? "true" : void 0, onClick: () => setSelectedUnknown({ kind: item.kind, attemptID: item.attempt_id }), children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__title", children: unknownTitle(item, t) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__summary", children: t("management.unknown.summary", { values: { state: item.state, run: item.run_id } }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "result-link__arrow", "aria-hidden": "true", children: ">" })
+          ] }) }, `${item.kind}:${item.attempt_id}`)) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section module-detail", "aria-labelledby": "unknown-detail-title", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("management.unknown.detailEyebrow") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "unknown-detail-title", children: selectedUnknown === null ? t("management.unknown.select") : shortDigest(selectedUnknown.attemptID) })
+            ] }),
+            selectedUnknown !== null && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: () => setSelectedUnknown(null), children: t("common.close") })
+          ] }),
+          selectedUnknown === null ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", children: t("management.unknown.selectDescription") }) : detail.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "empty-copy", "aria-busy": "true", children: t("management.unknown.detailLoading") }) : detail.error !== null || detail.data === void 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notice notice--error", role: "alert", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: t("management.unknown.detailUnavailable") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: detail.error instanceof Error ? detail.error.message : t("management.unknown.detailReadFailed") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "button", type: "button", onClick: () => {
+              void detail.refetch();
+            }, children: t("common.retry") })
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(UnknownDetail, { item: detail.data.item, onRetry: () => {
+            void detail.refetch();
+          } })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section", "aria-labelledby": "store-title", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("management.store.eyebrow") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "store-title", children: t("management.store.title") })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "section-meta", children: storeData.backup.state })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "module-facts", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.instance") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest(storeData.verification.store_instance_id) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.schema") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: storeData.verification.schema_identity })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.schemaVersion") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: storeData.verification.schema_version })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.fingerprint") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "digest", children: shortDigest(storeData.verification.schema_fingerprint) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.generator") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: storeData.verification.generator_id })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.backupFormat") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: storeData.backup.format_version })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.onlineCreate") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: storeData.backup.online_create ? t("management.yes") : t("management.no") })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.onlineRestore") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: storeData.backup.online_restore ? t("management.yes") : t("management.no") })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { children: t("management.store.restoreMode") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: storeData.backup.restore_mode })
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "data-section", "aria-labelledby": "artifacts-title", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "eyebrow", children: t("management.artifacts.eyebrow") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { id: "artifacts-title", children: t("management.artifacts.title") })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "section-meta", children: t("management.loaded", { values: { count: storeData.artifacts.length } }) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ArtifactList, { artifacts: storeData.artifacts, t, formatDateTime })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("footer", { className: "page-footer", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("management.footer.projection", { values: { digest: shortDigest(storeData.projection_digest) } }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: t("management.footer.noPath") })
       ] })
     ] })
   ] });
@@ -4691,9 +6936,10 @@ const activeSessionFromExchange = (origin, exchange) => ({
   csrfToken: exchange.csrf_token,
   authorizedScopes: exchange.authorized_scopes
 });
-const errorMessage = (error) => error instanceof Error ? error.message : "the control session could not be opened";
+const errorMessage = (error, fallback) => error instanceof Error ? error.message : fallback;
 const currentHash = () => typeof window === "undefined" ? "" : window.location.hash;
 function App() {
+  const { t } = useOptionalI18n();
   const queryClient2 = useQueryClient();
   const [checkingResume, setCheckingResume] = reactExports.useState(true);
   const [openingSession, setOpeningSession] = reactExports.useState(false);
@@ -4711,6 +6957,7 @@ function App() {
     (origin, exchange) => {
       clearOverviewTransportCache();
       clearModulesTransportCache();
+      clearManagementTransportCache();
       queryClient2.clear();
       setWorkspacesByTenant(/* @__PURE__ */ new Map());
       setSearch("");
@@ -4719,7 +6966,7 @@ function App() {
       const stored = storeResume(origin, exchange.resume_credential);
       if (!stored) {
         clearStoredResume();
-        setStorageWarning("This browser could not retain a tab-scoped resume credential.");
+        setStorageWarning(t("session.error.storageWarning"));
       } else {
         setStorageWarning("");
       }
@@ -4729,13 +6976,14 @@ function App() {
       setSelectedScopeKey(scopeKey(next.authorizedScopes[0]));
       setSessionError("");
     },
-    [queryClient2]
+    [queryClient2, t]
   );
   const closeActiveSession = reactExports.useCallback(
     (message) => {
       clearStoredResume();
       clearOverviewTransportCache();
       clearModulesTransportCache();
+      clearManagementTransportCache();
       queryClient2.clear();
       setActive(null);
       setSelectedScopeKey("");
@@ -4761,14 +7009,16 @@ function App() {
     }).catch((error) => {
       if (cancelled) return;
       if (shouldDiscardResume(error)) clearStoredResume();
-      setSessionError(`Stored session could not be resumed: ${errorMessage(error)}`);
+      setSessionError(t("session.error.resume", {
+        values: { message: errorMessage(error, t("session.open.error")) }
+      }));
     }).finally(() => {
       if (!cancelled) setCheckingResume(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [acceptExchange]);
+  }, [acceptExchange, t]);
   reactExports.useEffect(() => {
     const onHashChange = () => setHash(window.location.hash);
     window.addEventListener("hashchange", onHashChange);
@@ -4787,26 +7037,26 @@ function App() {
       let handoff = null;
       try {
         if (file.size > MAX_HANDOFF_BYTES) {
-          throw new Error("handoff file exceeds the 4 KiB limit");
+          throw new Error(t("session.error.handoffTooLarge"));
         }
         text = await file.text();
         handoff = decodeHandoff(text);
         const exchange = await exchangeHandoff(handoff);
         acceptExchange(handoff.origin, exchange);
       } catch (error) {
-        setSessionError(errorMessage(error));
+        setSessionError(errorMessage(error, t("session.open.error")));
       } finally {
         if (handoff !== null) handoff.capability = "";
         text = "";
         setOpeningSession(false);
       }
     },
-    [acceptExchange]
+    [acceptExchange, t]
   );
   const observes = active?.session.capabilities.includes("OBSERVE") ?? false;
   const scopeChoices = reactExports.useMemo(
-    () => buildScopeChoices(active?.authorizedScopes ?? [], workspacesByTenant),
-    [active?.authorizedScopes, workspacesByTenant]
+    () => buildScopeChoices(active?.authorizedScopes ?? [], workspacesByTenant, t),
+    [active?.authorizedScopes, t, workspacesByTenant]
   );
   const selectedScope = reactExports.useMemo(
     () => scopeChoices.find((choice) => choice.key === selectedScopeKey)?.scope ?? null,
@@ -4820,6 +7070,8 @@ function App() {
     }
   }, [scopeChoices, selectedScopeKey]);
   const modulesSelected = hash === "#modules";
+  const reviewsSelected = hash === "#upgrade-reviews";
+  const managementSelected = hash === "#management";
   const overviewContext = active !== null && observes && selectedScope !== null ? {
     origin: active.origin,
     bootID: active.session.boot_id,
@@ -4863,15 +7115,15 @@ function App() {
     if (overview.data === void 0) return;
     setDetailSnapshot((current) => {
       if (current !== null && current.link.section === detailLink.section && current.link.id === detailLink.id) return current;
-      return captureDetailSnapshot(overview.data, detailLink);
+      return captureDetailSnapshot(overview.data, detailLink, t);
     });
-  }, [detailLink, overview.data]);
+  }, [detailLink, overview.data, t]);
   reactExports.useEffect(() => {
     if (overview.error === null || !isSessionInvalid(overview.error)) return;
     closeActiveSession(
-      "The control session expired or is no longer authenticated. Open a new handoff."
+      t("operation.client.sessionExpired")
     );
-  }, [closeActiveSession, overview.error]);
+  }, [closeActiveSession, overview.error, t]);
   reactExports.useEffect(() => {
     if (overview.error === null || !isPermissionDenied(overview.error)) return;
     setPermissionRevoked(true);
@@ -4886,6 +7138,10 @@ function App() {
       clearModulesTransportCache();
       queryClient2.removeQueries({ queryKey: ["modules"] });
       queryClient2.removeQueries({ queryKey: ["module-detail"] });
+      queryClient2.removeQueries({ queryKey: ["module-upgrade-reviews"] });
+      queryClient2.removeQueries({ queryKey: ["management"] });
+      queryClient2.removeQueries({ queryKey: ["store-management"] });
+      queryClient2.removeQueries({ queryKey: ["management-unknown-detail"] });
       setPermissionRevoked(false);
       setSelectedScopeKey(key);
       setSearch("");
@@ -4896,9 +7152,7 @@ function App() {
   const handleModulesFailure = reactExports.useCallback(
     (event) => {
       if (event.kind === "SESSION") {
-        closeActiveSession(
-          "The control session expired or is no longer authenticated. Open a new handoff."
-        );
+        closeActiveSession(t("operation.client.sessionExpired"));
         return;
       }
       if (event.kind !== "PERMISSION") return;
@@ -4908,10 +7162,14 @@ function App() {
       queryClient2.removeQueries({ queryKey: ["overview"] });
       queryClient2.removeQueries({ queryKey: ["modules"] });
       queryClient2.removeQueries({ queryKey: ["module-detail"] });
+      queryClient2.removeQueries({ queryKey: ["module-upgrade-reviews"] });
+      queryClient2.removeQueries({ queryKey: ["management"] });
+      queryClient2.removeQueries({ queryKey: ["store-management"] });
+      queryClient2.removeQueries({ queryKey: ["management-unknown-detail"] });
     },
-    [closeActiveSession, queryClient2]
+    [closeActiveSession, queryClient2, t]
   );
-  if (checkingResume) return /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingPanel, { label: "Checking this tab session…" });
+  if (checkingResume) return /* @__PURE__ */ jsxRuntimeExports.jsx(LoadingPanel, { labelKey: "loading.checkingSession" });
   if (active === null) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(HandoffPanel, { busy: openingSession, error: sessionError, onFile: onHandoffFile });
   }
@@ -4922,7 +7180,7 @@ function App() {
       FatalOverviewPanel,
       {
         permissionDenied: true,
-        message: denied?.message ?? "the selected scope is no longer authorized",
+        message: denied?.message ?? t("error.overview.scopeDenied"),
         correlationID: denied?.correlationID ?? "",
         onRetry: () => void 0
       }
@@ -4941,9 +7199,61 @@ function App() {
         onNavigateOverview: () => {
           window.location.hash = "overview";
         },
+        onNavigateReviews: () => {
+          window.location.hash = "upgrade-reviews";
+        },
+        onNavigateManagement: () => {
+          window.location.hash = "management";
+        },
         onFailClosed: handleModulesFailure
       },
       `${active.session.session_id}:${selectedScopeKey}:modules`
+    );
+  }
+  if (reviewsSelected && moduleContext !== null) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ModuleUpgradeReviewsPage,
+      {
+        session: active.session,
+        context: moduleContext,
+        scopeChoices,
+        selectedScopeKey,
+        onScopeChange: changeScope,
+        onNavigateOverview: () => {
+          window.location.hash = "overview";
+        },
+        onNavigateModules: () => {
+          window.location.hash = "modules";
+        },
+        onNavigateManagement: () => {
+          window.location.hash = "management";
+        },
+        onFailClosed: handleModulesFailure
+      },
+      `${active.session.session_id}:${selectedScopeKey}:upgrade-reviews`
+    );
+  }
+  if (managementSelected && moduleContext !== null) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ManagementPage,
+      {
+        session: active.session,
+        context: moduleContext,
+        scopeChoices,
+        selectedScopeKey,
+        onScopeChange: changeScope,
+        onNavigateOverview: () => {
+          window.location.hash = "overview";
+        },
+        onNavigateModules: () => {
+          window.location.hash = "modules";
+        },
+        onNavigateReviews: () => {
+          window.location.hash = "upgrade-reviews";
+        },
+        onFailClosed: handleModulesFailure
+      },
+      `${active.session.session_id}:${selectedScopeKey}:management`
     );
   }
   if (overview.isPending || overview.data === void 0) {
@@ -4979,242 +7289,12 @@ function App() {
       onSearchChange: setSearch,
       onRefresh: () => {
         void overview.refetch();
+      },
+      onNavigateManagement: () => {
+        window.location.hash = "management";
       }
     }
   ) });
-}
-const SUPPORTED_LOCALES = ["en-US", "zh-CN"];
-const FALLBACK_LOCALE = "en-US";
-const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
-function isSupportedLocale(value) {
-  return typeof value === "string" && SUPPORTED_LOCALES.some((locale) => locale === value);
-}
-function matchSupportedLocale(value) {
-  let canonical;
-  try {
-    [canonical] = Intl.getCanonicalLocales(value);
-  } catch {
-    return null;
-  }
-  if (canonical === "zh" || canonical.startsWith("zh-")) return "zh-CN";
-  if (canonical === "en" || canonical.startsWith("en-")) return "en-US";
-  return null;
-}
-function resolveLocale(candidates) {
-  for (const candidate of candidates) {
-    const locale = matchSupportedLocale(candidate);
-    if (locale !== null) return locale;
-  }
-  return FALLBACK_LOCALE;
-}
-function interpolateMessage(template, values = {}) {
-  return template.replace(
-    /\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/gu,
-    (placeholder, name) => hasOwn(values, name) ? String(values[name]) : placeholder
-  );
-}
-function interpolationParameterNames(template) {
-  return [...new Set(
-    [...template.matchAll(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/gu)].map((match) => match[1])
-  )].sort();
-}
-function assertCatalogCompatibility(catalogs, fallbackLocale = FALLBACK_LOCALE) {
-  const fallbackCatalog = catalogs[fallbackLocale];
-  if (fallbackCatalog === void 0) {
-    throw new Error(`i18n fallback catalog is missing: ${fallbackLocale}`);
-  }
-  const expectedKeys = Object.keys(fallbackCatalog).sort();
-  for (const locale of SUPPORTED_LOCALES) {
-    const catalog = catalogs[locale];
-    if (catalog === void 0) throw new Error(`i18n catalog is missing: ${locale}`);
-    const actualKeys = Object.keys(catalog).sort();
-    if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
-      throw new Error(`i18n catalog key mismatch: ${locale}`);
-    }
-    for (const key of expectedKeys) {
-      const expectedParameters = interpolationParameterNames(fallbackCatalog[key]);
-      const actualParameters = interpolationParameterNames(catalog[key]);
-      if (actualParameters.length !== expectedParameters.length || actualParameters.some((name, index) => name !== expectedParameters[index])) {
-        throw new Error(`i18n interpolation mismatch: ${locale}:${key}`);
-      }
-    }
-  }
-}
-const messageCandidates = (key, count, locale) => {
-  if (count === void 0) return [key];
-  const category = new Intl.PluralRules(locale).select(count);
-  return [`${key}_${category}`, `${key}_other`, key];
-};
-const findMessage = (catalog, candidates) => {
-  if (catalog === void 0) return null;
-  for (const candidate of candidates) {
-    if (hasOwn(catalog, candidate)) return catalog[candidate];
-  }
-  return null;
-};
-function translateMessage(catalogs, locale, fallbackLocale, key, options = {}, onMissingMessage) {
-  const localMessage = findMessage(
-    catalogs[locale],
-    messageCandidates(key, options.count, locale)
-  );
-  const fallbackMessage = localMessage === null && locale !== fallbackLocale ? findMessage(
-    catalogs[fallbackLocale],
-    messageCandidates(key, options.count, fallbackLocale)
-  ) : null;
-  const template = localMessage ?? fallbackMessage;
-  if (template === null) {
-    onMissingMessage?.({ fallbackLocale, key, locale });
-    return key;
-  }
-  const values = options.count === void 0 ? options.values : { ...options.values, count: options.count };
-  return interpolateMessage(template, values);
-}
-function createI18nRuntime(locale, catalogs, fallbackLocale = FALLBACK_LOCALE, onMissingMessage) {
-  const currency = (value, currencyCode, options) => new Intl.NumberFormat(locale, {
-    ...options,
-    currency: currencyCode,
-    style: "currency"
-  }).format(value);
-  return {
-    locale,
-    t: (key, options) => translateMessage(
-      catalogs,
-      locale,
-      fallbackLocale,
-      key,
-      options,
-      onMissingMessage
-    ),
-    formatNumber: (value, options) => new Intl.NumberFormat(locale, options).format(value),
-    formatCurrency: currency,
-    formatTokenCount: (value, options) => new Intl.NumberFormat(locale, options).format(value),
-    formatCost: currency,
-    formatDateTime: (value, options) => new Intl.DateTimeFormat(locale, options).format(
-      value instanceof Date ? value : new Date(value)
-    ),
-    formatRelativeTime: (value, unit, options) => new Intl.RelativeTimeFormat(locale, options).format(value, unit),
-    formatList: (values, options) => new Intl.ListFormat(locale, options).format([...values])
-  };
-}
-const LOCALE_PREFERENCE_STORAGE_KEY = "freeagent.ui.locale.v1";
-const browserStorage = () => {
-  try {
-    return globalThis.localStorage ?? null;
-  } catch {
-    return null;
-  }
-};
-class LocalePreferenceStore {
-  #storage;
-  constructor(storage = browserStorage()) {
-    this.#storage = storage;
-  }
-  read() {
-    try {
-      const stored = this.#storage?.getItem(LOCALE_PREFERENCE_STORAGE_KEY) ?? null;
-      return isSupportedLocale(stored) ? stored : null;
-    } catch {
-      return null;
-    }
-  }
-  write(locale) {
-    if (!isSupportedLocale(locale) || this.#storage === null) return false;
-    try {
-      this.#storage.setItem(LOCALE_PREFERENCE_STORAGE_KEY, locale);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  clear() {
-    if (this.#storage === null) return false;
-    try {
-      this.#storage.removeItem(LOCALE_PREFERENCE_STORAGE_KEY);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-const enUSMessages = {
-  "app.title": "FreeAgent Control",
-  "locale.selector.label": "Language",
-  "locale.name.en-US": "English",
-  "locale.name.zh-CN": "简体中文"
-};
-const zhCNMessages = {
-  "app.title": "FreeAgent 控制台",
-  "locale.selector.label": "语言",
-  "locale.name.en-US": "English",
-  "locale.name.zh-CN": "简体中文"
-};
-const i18nResources = {
-  "en-US": enUSMessages,
-  "zh-CN": zhCNMessages
-};
-assertCatalogCompatibility(i18nResources);
-const I18nContext = reactExports.createContext(null);
-const browserLocaleCandidates = () => {
-  if (typeof navigator === "undefined") return [];
-  return navigator.languages.length > 0 ? navigator.languages : [navigator.language];
-};
-function syncDocumentLocale(target, locale, title) {
-  target.documentElement.lang = locale;
-  target.title = title;
-}
-function I18nProvider({
-  children,
-  initialLocale,
-  onMissingMessage,
-  preferenceStore,
-  catalogs = i18nResources
-}) {
-  const [store] = reactExports.useState(
-    () => preferenceStore ?? new LocalePreferenceStore()
-  );
-  const [locale, setLocaleState] = reactExports.useState(
-    () => store.read() ?? initialLocale ?? resolveLocale(browserLocaleCandidates())
-  );
-  const runtime = reactExports.useMemo(
-    () => createI18nRuntime(locale, catalogs, void 0, onMissingMessage),
-    [catalogs, locale, onMissingMessage]
-  );
-  const setLocale = reactExports.useCallback((nextLocale) => {
-    if (!isSupportedLocale(nextLocale)) return false;
-    setLocaleState(nextLocale);
-    store.write(nextLocale);
-    return true;
-  }, [store]);
-  reactExports.useEffect(() => {
-    if (typeof document === "undefined") return;
-    syncDocumentLocale(document, locale, runtime.t("app.title"));
-  }, [locale, runtime]);
-  const value = reactExports.useMemo(
-    () => ({ ...runtime, setLocale }),
-    [runtime, setLocale]
-  );
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(I18nContext.Provider, { value, children });
-}
-function useI18n() {
-  const value = reactExports.useContext(I18nContext);
-  if (value === null) throw new Error("useI18n must be used within I18nProvider");
-  return value;
-}
-function LocaleSelector() {
-  const id = reactExports.useId();
-  const { locale, setLocale, t } = useI18n();
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "locale-selector", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: id, children: t("locale.selector.label") }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "select",
-      {
-        id,
-        value: locale,
-        onChange: (event) => setLocale(event.target.value),
-        children: SUPPORTED_LOCALES.map((option) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { lang: option, value: option, children: t(`locale.name.${option}`) }, option))
-      }
-    )
-  ] });
 }
 const rootElement = document.getElementById("root");
 if (rootElement === null) {

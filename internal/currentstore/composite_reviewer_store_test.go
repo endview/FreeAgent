@@ -125,7 +125,6 @@ func TestCompositeReviewerAdmissionAndLoopClosure(t *testing.T) {
 
 func TestCompositeReviewerPermitBlocksBeforeSpecialists(t *testing.T) {
 	fixture := newCommittedCompositeReviewerRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	child := fixture.compiled.Children[0]
 	childLease := acquireCompositeTestLease(
 		t,
@@ -181,7 +180,6 @@ func TestCompositeReviewerPermitBlocksBeforeSpecialists(t *testing.T) {
 
 func TestCompositeTerminalEvidenceIgnoresPostTerminalLeaseRevision(t *testing.T) {
 	fixture := newCommittedCompositeReviewerRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	terminalLease := finishCompositeReviewerSpecialist(t, fixture, 0, false)
 	root := fixture.compiled.Parent.RunManifest
 	rootLease := acquireCompositeTestLease(
@@ -219,7 +217,6 @@ func TestCompositeTerminalEvidenceIgnoresPostTerminalLeaseRevision(t *testing.T)
 func TestCompositeReviewerSchedulerWaitsForExactSpecialists(t *testing.T) {
 	t.Run("all successful Specialists release only Reviewer", func(t *testing.T) {
 		fixture := newCommittedCompositeReviewerRuntimeFixture(t)
-		putCompositeModelPrice(t, fixture.store)
 		for index := range fixture.compiled.Children {
 			finishCompositeReviewerSpecialist(t, fixture, index, false)
 		}
@@ -244,7 +241,6 @@ func TestCompositeReviewerSchedulerWaitsForExactSpecialists(t *testing.T) {
 
 	t.Run("UNKNOWN Specialist keeps Reviewer and Root closed", func(t *testing.T) {
 		fixture := newCommittedCompositeReviewerRuntimeFixture(t)
-		putCompositeModelPrice(t, fixture.store)
 		finishCompositeReviewerSpecialist(t, fixture, 0, true)
 		finishCompositeReviewerSpecialist(t, fixture, 1, false)
 		claim, err := fixture.store.ClaimFairRun(
@@ -268,7 +264,6 @@ func TestCompositeReviewerSchedulerWaitsForExactSpecialists(t *testing.T) {
 
 func TestCompositeReviewerApproveIsRequiredForRootMerge(t *testing.T) {
 	fixture := newCommittedCompositeReviewerRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	for index := range fixture.compiled.Children {
 		finishCompositeReviewerSpecialist(t, fixture, index, false)
 	}
@@ -384,7 +379,6 @@ func TestCompositeReviewerApproveIsRequiredForRootMerge(t *testing.T) {
 
 func TestCompositeReviewRejectPersistsAttemptFreeRootFailure(t *testing.T) {
 	fixture := newCommittedCompositeReviewerRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	for index := range fixture.compiled.Children {
 		finishCompositeReviewerSpecialist(t, fixture, index, false)
 	}
@@ -443,7 +437,6 @@ func TestCompositeReviewRejectPersistsAttemptFreeRootFailure(t *testing.T) {
 
 func TestCompositeReviewerAttemptFreeFailurePropagatesToRoot(t *testing.T) {
 	fixture := newCommittedCompositeReviewerRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	for index := range fixture.compiled.Children {
 		finishCompositeReviewerSpecialist(t, fixture, index, false)
 	}
@@ -650,7 +643,7 @@ func enableCompositeReviewerFixture(
 		corecontract.ContextPolicyV1{
 			SchemaVersion:        corecontract.ContextPolicySchemaVersionV1,
 			ContextWindowTokens:  10000,
-			ReservedOutputTokens: 0,
+			ReservedOutputTokens: 64,
 			RecentHistoryTurns:   0,
 			EstimatorVersion: corecontract.
 				ContextEstimatorCanonicalJSONUTF8ByteUpperBoundV1,
@@ -692,7 +685,7 @@ func enableCompositeReviewerFixture(
 		SchemaVersion:   controlcontract.CompositeReviewerSchemaVersionV1,
 		AgentID:         reviewerAgent.ID,
 		ProfileID:       reviewerProfile.Profile.ID,
-		MaxOutputTokens: 512,
+		MaxOutputTokens: 64,
 		Policy:          corecontract.CompositeReviewerPolicyResultsGateV1,
 	}
 	_, controlRef, controlCanonical, err :=

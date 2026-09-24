@@ -65,7 +65,6 @@ func newWorkspaceTransferStoreFixture(
 				control.Workspaces,
 				controlcontract.WorkspaceDefinition{
 					Workspace:      targetWorkspace,
-					BudgetPolicy:   control.Workspaces[0].BudgetPolicy,
 					TransferGrants: []corecontract.WorkspaceTransferGrantV1{targetGrant},
 				},
 			)
@@ -575,7 +574,6 @@ func TestCompositeWorkspaceTransferResultProjectionUsesPersistedEnvelope(
 	t *testing.T,
 ) {
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	finishDecisionSpecialist(
 		t,
 		fixture.compositeAdmissionFixture,
@@ -629,7 +627,6 @@ func TestLoadRunForLoopWorkspaceTransferRepairCarriesExactLineage(
 	t *testing.T,
 ) {
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	for index, child := range fixture.compiled.Children {
 		finishDecisionSpecialist(
 			t,

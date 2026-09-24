@@ -123,7 +123,7 @@ func TestInvocationGateMismatchDoesNotConsumeGrant(t *testing.T) {
 		{"member", func(value *modulehost.ModuleInvocation) { value.MemberID += "-other" }},
 		{"snapshot", func(value *modulehost.ModuleInvocation) { value.MemberSnapshotDigest = strings.Repeat("f", 64) }},
 		{"port name", func(value *modulehost.ModuleInvocation) { value.Port.Name = moduleapi.PortNameContextProvide }},
-		{"port version", func(value *modulehost.ModuleInvocation) { value.Port.ExactVersion = "v2" }},
+		{"port version", func(value *modulehost.ModuleInvocation) { value.Port.ExactVersion = "v1" }},
 		{"binding index", func(value *modulehost.ModuleInvocation) { value.BindingIndex = 1 }},
 		{"request bytes", func(value *modulehost.ModuleInvocation) { value.Input = json.RawMessage(`{"changed":true}`) }},
 		{"deadline", func(value *modulehost.ModuleInvocation) { value.Deadline = value.Deadline.Add(time.Microsecond) }},

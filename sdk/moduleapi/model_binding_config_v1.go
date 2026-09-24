@@ -9,37 +9,35 @@ import (
 )
 
 const (
-	// ModelBindingConfigSchemaV1 is the exact provider-neutral configuration
-	// schema referenced by a model.generate/v1 PortBinding.ConfigRef.
-	ModelBindingConfigSchemaV1 = "model-binding-config/v1"
+	// ModelBindingConfigSchemaV2 is the exact provider-neutral configuration
+	// schema referenced by a model.generate/v2 PortBinding.ConfigRef.
+	ModelBindingConfigSchemaV2 = "model-binding-config/v2"
 
 	maxModelBindingConfigDepth = 128
 )
 
-// ModelBindingConfigV1 binds one model.generate/v1 Binding to its provider,
-// exact model build, billing semantics, immutable price snapshot, and
-// canonical generation parameters. Dynamic credentials and endpoints are
+// ModelBindingConfigV2 binds one model.generate/v2 Binding to its provider,
+// exact model build and canonical generation parameters. Dynamic credentials
+// and endpoints are
 // injected separately and are deliberately absent from this contract.
-type ModelBindingConfigV1 struct {
-	SchemaVersion   string          `json:"schema_version"`
-	Provider        string          `json:"provider"`
-	Model           string          `json:"model"`
-	ModelBuildID    string          `json:"model_build_id"`
-	BillingVersion  string          `json:"billing_version"`
-	PriceSnapshotID string          `json:"price_snapshot_id"`
-	Parameters      json.RawMessage `json:"parameters"`
+type ModelBindingConfigV2 struct {
+	SchemaVersion string          `json:"schema_version"`
+	Provider      string          `json:"provider"`
+	Model         string          `json:"model"`
+	ModelBuildID  string          `json:"model_build_id"`
+	Parameters    json.RawMessage `json:"parameters"`
 }
 
-// NewModelBindingConfigV1 validates, canonicalizes, and defensively copies one
+// NewModelBindingConfigV2 validates, canonicalizes, and defensively copies one
 // provider-neutral model Binding configuration. The complete canonical record,
 // including its parameters object, is bounded by MaxConfigBytes.
-func NewModelBindingConfigV1(
-	input ModelBindingConfigV1,
-) (ModelBindingConfigV1, []byte, error) {
-	if input.SchemaVersion != ModelBindingConfigSchemaV1 {
-		return ModelBindingConfigV1{}, nil, fmt.Errorf(
+func NewModelBindingConfigV2(
+	input ModelBindingConfigV2,
+) (ModelBindingConfigV2, []byte, error) {
+	if input.SchemaVersion != ModelBindingConfigSchemaV2 {
+		return ModelBindingConfigV2{}, nil, fmt.Errorf(
 			"model binding config schema_version must be %q",
-			ModelBindingConfigSchemaV1,
+			ModelBindingConfigSchemaV2,
 		)
 	}
 	for _, field := range []struct {
@@ -49,36 +47,34 @@ func NewModelBindingConfigV1(
 		{name: "provider", value: input.Provider},
 		{name: "model", value: input.Model},
 		{name: "model_build_id", value: input.ModelBuildID},
-		{name: "billing_version", value: input.BillingVersion},
-		{name: "price_snapshot_id", value: input.PriceSnapshotID},
 	} {
 		if err := validateOpaqueID(
 			"model binding config "+field.name,
 			field.value,
 		); err != nil {
-			return ModelBindingConfigV1{}, nil, err
+			return ModelBindingConfigV2{}, nil, err
 		}
 	}
 	parameters, err := canonicalModelBindingParameters(input.Parameters)
 	if err != nil {
-		return ModelBindingConfigV1{}, nil, err
+		return ModelBindingConfigV2{}, nil, err
 	}
 	frozen := input
 	frozen.Parameters = bytes.Clone(parameters)
 	canonical, err := marshalCanonicalModelBindingConfig(frozen)
 	if err != nil {
-		return ModelBindingConfigV1{}, nil, err
+		return ModelBindingConfigV2{}, nil, err
 	}
 	return frozen, bytes.Clone(canonical), nil
 }
 
-// RestoreModelBindingConfigV1 accepts only the exact canonical representation
-// emitted by NewModelBindingConfigV1 and rejects unknown fields.
-func RestoreModelBindingConfigV1(
+// RestoreModelBindingConfigV2 accepts only the exact canonical representation
+// emitted by NewModelBindingConfigV2 and rejects unknown fields.
+func RestoreModelBindingConfigV2(
 	canonical []byte,
-) (ModelBindingConfigV1, error) {
+) (ModelBindingConfigV2, error) {
 	if len(canonical) == 0 || len(canonical) > MaxConfigBytes {
-		return ModelBindingConfigV1{}, fmt.Errorf(
+		return ModelBindingConfigV2{}, fmt.Errorf(
 			"model binding config must contain between 1 and %d canonical bytes",
 			MaxConfigBytes,
 		)
@@ -92,25 +88,25 @@ func RestoreModelBindingConfigV1(
 		},
 	)
 	if err != nil || !bytes.Equal(checked, canonical) {
-		return ModelBindingConfigV1{}, fmt.Errorf(
+		return ModelBindingConfigV2{}, fmt.Errorf(
 			"model binding config is not canonical JSON",
 		)
 	}
-	var decoded ModelBindingConfigV1
+	var decoded ModelBindingConfigV2
 	decoder := json.NewDecoder(bytes.NewReader(canonical))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&decoded); err != nil {
-		return ModelBindingConfigV1{}, fmt.Errorf(
+		return ModelBindingConfigV2{}, fmt.Errorf(
 			"decode model binding config: %w",
 			err,
 		)
 	}
-	restored, rebuilt, err := NewModelBindingConfigV1(decoded)
+	restored, rebuilt, err := NewModelBindingConfigV2(decoded)
 	if err != nil {
-		return ModelBindingConfigV1{}, err
+		return ModelBindingConfigV2{}, err
 	}
 	if !bytes.Equal(canonical, rebuilt) {
-		return ModelBindingConfigV1{}, fmt.Errorf(
+		return ModelBindingConfigV2{}, fmt.Errorf(
 			"model binding config is not frozen canonically",
 		)
 	}
@@ -300,7 +296,7 @@ func modelBindingParameterKeySegments(key string) []string {
 }
 
 func marshalCanonicalModelBindingConfig(
-	config ModelBindingConfigV1,
+	config ModelBindingConfigV2,
 ) ([]byte, error) {
 	encoded, err := json.Marshal(config)
 	if err != nil {

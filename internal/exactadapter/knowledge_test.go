@@ -194,7 +194,7 @@ func TestDeterministicKnowledgeRejectsWrongProviderSourcePortAndUnknownField(t *
 
 	wrongPort := knowledgePrepared(provider, validRequest)
 	wrongPort.Invocation.Port = moduleapi.PortRef{
-		Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1,
+		Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2,
 	}
 	_, err = adapter.Invoke(context.Background(), wrongPort)
 	if !errors.Is(err, ErrKnowledgeInvocation) {

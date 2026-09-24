@@ -420,7 +420,7 @@ func TestValidateOverviewResultV1RejectsSelfConsistentImpossibleItems(t *testing
 	for _, test := range usage {
 		t.Run("Usage "+test.name, func(t *testing.T) {
 			changed := cloneOverviewResultV1(result)
-			changed.Usage[0].ReconciliationStatus = test.status
+			changed.Usage[0].UsageStatus = test.status
 			changed.Usage[0].Revision = test.revision
 			if test.clear {
 				changed.Usage[0].OutputTokens = nil
@@ -471,7 +471,7 @@ func newCompleteOverviewResultTestV1(t *testing.T) (
 			AttemptID: "model-attempt-a", RunID: "overview-run-a",
 			TenantID: testTenantIDV1, WorkspaceID: testWorkspaceAV1,
 			Revision: 1, OutputTokens: &outputTokens,
-			ReconciliationStatus: "PENDING_RECONCILIATION", UpdatedAtUnixMicros: 1_300,
+			UsageStatus: "PENDING_RECONCILIATION", UpdatedAtUnixMicros: 1_300,
 		}},
 	}}
 	service, err := NewOverviewServiceV1(reader)
@@ -555,17 +555,17 @@ func TestOverviewProjectionValidatorsMatchStoreStateMachines(t *testing.T) {
 		item  controloverview.UsageV1
 		valid bool
 	}{
-		{"pending genesis", controloverview.UsageV1{ReconciliationStatus: "PENDING"}, true},
-		{"pending facts", controloverview.UsageV1{ReconciliationStatus: "PENDING", OutputTokens: &known}, false},
-		{"reported", controloverview.UsageV1{Revision: 1, ReconciliationStatus: "PROVIDER_REPORTED", OutputTokens: &known}, true},
-		{"reported reconciled", controloverview.UsageV1{Revision: 2, ReconciliationStatus: "PROVIDER_REPORTED", OutputTokens: &known}, true},
-		{"reported impossible advance", controloverview.UsageV1{Revision: 3, ReconciliationStatus: "PROVIDER_REPORTED", OutputTokens: &known}, false},
-		{"reconciliation", controloverview.UsageV1{Revision: 1, ReconciliationStatus: "PENDING_RECONCILIATION"}, true},
-		{"reconciliation impossible advance", controloverview.UsageV1{Revision: 2, ReconciliationStatus: "PENDING_RECONCILIATION"}, false},
-		{"expired no report", controloverview.UsageV1{ReconciliationStatus: "NO_USAGE_REPORTED"}, true},
-		{"reconciled no report", controloverview.UsageV1{Revision: 2, ReconciliationStatus: "NO_USAGE_REPORTED"}, true},
-		{"no report impossible advance", controloverview.UsageV1{Revision: 3, ReconciliationStatus: "NO_USAGE_REPORTED"}, false},
-		{"no report facts", controloverview.UsageV1{Revision: 1, ReconciliationStatus: "NO_USAGE_REPORTED", OutputTokens: &known}, false},
+		{"pending genesis", controloverview.UsageV1{UsageStatus: "PENDING"}, true},
+		{"pending facts", controloverview.UsageV1{UsageStatus: "PENDING", OutputTokens: &known}, false},
+		{"reported", controloverview.UsageV1{Revision: 1, UsageStatus: "PROVIDER_REPORTED", OutputTokens: &known}, true},
+		{"reported reconciled", controloverview.UsageV1{Revision: 2, UsageStatus: "PROVIDER_REPORTED", OutputTokens: &known}, true},
+		{"reported impossible advance", controloverview.UsageV1{Revision: 3, UsageStatus: "PROVIDER_REPORTED", OutputTokens: &known}, false},
+		{"reconciliation", controloverview.UsageV1{Revision: 1, UsageStatus: "PENDING_RECONCILIATION"}, true},
+		{"reconciliation impossible advance", controloverview.UsageV1{Revision: 2, UsageStatus: "PENDING_RECONCILIATION"}, false},
+		{"expired no report", controloverview.UsageV1{UsageStatus: "NO_USAGE_REPORTED"}, true},
+		{"reconciled no report", controloverview.UsageV1{Revision: 2, UsageStatus: "NO_USAGE_REPORTED"}, true},
+		{"no report impossible advance", controloverview.UsageV1{Revision: 3, UsageStatus: "NO_USAGE_REPORTED"}, false},
+		{"no report facts", controloverview.UsageV1{Revision: 1, UsageStatus: "NO_USAGE_REPORTED", OutputTokens: &known}, false},
 	}
 	for _, test := range usage {
 		if got := validOverviewUsageProjectionV1(test.item); got != test.valid {

@@ -58,15 +58,15 @@ $script:ExactJobKinds = @(
 )
 $script:MaximumAuthenticatedScriptBytes = 4194304
 $script:PublicTreeGateSha256 =
-    'd37b15573d9f4c3692c5488d03fe4a0ef7481fe8f2b3e42921901fe5950e5cf9'
+    '7d631de3b6a42289f38b9e58f307124b24f89ab087cac389f19ac090cfcaf993'
 $script:LicenseGateSha256 =
     '9bcdf09b55df7dbbbec06dfaa376dd57ac71a93360281f8482316423e78ee1e8'
 $script:DocsGateSha256 =
-    '137db9d8155b7818ff784576e674961af1853582981e7eb519093961c7e8cf26'
+    '8f59e2cdff1ac3ac05ca9dca0e141e61e39e8add1099f29d7c93423dc4505b19'
 $script:BrandingGateSha256 =
     '244db2cf888f8beb6eadbc0dd850d4c6e9ebf6e084e47cc637f10068a118bb00'
 $script:ControlWebGateSha256 =
-    'd21a1ab5b861d3a077a9de309b9afda750dd81e22dbfbe3445d5bbefffe089a3'
+    '6849d116931cfac1022c531dc70db2b49eaaccdc1bd3d0683dc374aa6fe99055'
 
 function Fail-CIWorkflowJob {
     param([Parameter(Mandatory = $true)][string]$Code)
@@ -363,7 +363,7 @@ function Copy-CIWReleasePayload {
         @('docs/INSTALL.md', 'INSTALL.md'),
         @('docs/QUICKSTART.md', 'QUICKSTART.md'),
         @('docs/KNOWN_LIMITATIONS.md', 'KNOWN_LIMITATIONS.md'),
-        @('docs/RELEASE_NOTES_v0.1.0-dev.2.md', 'RELEASE_NOTES.md'),
+        @("docs/RELEASE_NOTES_$releaseVersion.md", 'RELEASE_NOTES.md'),
         @('docs/CHECKSUMS.md', 'VERIFY_CHECKSUMS.md'),
         @('docs/PACKAGE_CONFIG.md', 'config/README.md'),
         @('docs/PACKAGE_DATA.md', 'data/README.md'),
@@ -372,11 +372,11 @@ function Copy-CIWReleasePayload {
         @('examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml', 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml'),
         @('examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md', 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md'),
         @('examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json', 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json'),
-        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE'),
-        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml'),
-        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md'),
-        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json'),
-        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json')
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/LICENSE', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/LICENSE'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.yaml', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.yaml'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/README.md', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/README.md'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/implementation/adapter.json', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/implementation/adapter.json'),
+        @('examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/schemas/config.schema.json', 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/schemas/config.schema.json')
     )) {
         $sourcePath = Join-Path $SourceRoot ([string]$entry[0])
         [byte[]]$bytes = Read-CIWBoundedFile `

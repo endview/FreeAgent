@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/endview/freeagent/internal/runtimefacts"
 )
 
 func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
@@ -13,9 +16,25 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 ) {
 	root := filepath.Clean(filepath.Join("..", ".."))
 	inventory := readCapabilityDocument(t, root, "docs", "CURRENT_CAPABILITIES.md")
+	generatedCanonical := readCapabilityDocument(
+		t,
+		root,
+		"docs",
+		"generated",
+		"runtime-facts.json",
+	)
+	var generated runtimefacts.Facts
+	if err := json.Unmarshal([]byte(generatedCanonical), &generated); err != nil {
+		t.Fatalf("restore generated runtime facts: %v", err)
+	}
+	if generated.SchemaVersion != runtimefacts.SchemaVersion {
+		t.Fatalf("generated runtime facts schema=%q", generated.SchemaVersion)
+	}
 	const collaborationStatus = "W5_F1_COLLABORATION_STABILITY_ACCEPTED_DEVELOPMENT_SLICE / " +
 		"W5_COMPLETE_ACCEPTED_DEVELOPMENT_SLICE / W6_NEXT"
 	const currentNextFunctionEntry = "W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT"
+	const currentNextStageEntry = "P5_BETA_GATE"
+	const w6U6CurrentStatus = "W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE"
 	const historicalW6U5NextEntry = "W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT"
 	const historicalW6U3NextEntry = "W6_3_WEB_SHELL_READ_ONLY_OVERVIEW_NEXT"
 	const historicalW6U4NextEntry = "W6_4_MODULES_CONFIGURATION_UI_NEXT"
@@ -50,13 +69,14 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 	if !strings.Contains(inventory, "既有 W5 路线状态：`"+collaborationStatus+"`") {
 		t.Fatal("current capability inventory lost the historical accepted W5-F1/W5 status")
 	}
-	if !strings.Contains(inventory, "当前下一入口：`"+currentNextFunctionEntry+"`") {
+	if !strings.Contains(inventory, "当前下一入口为 `"+currentNextStageEntry+"`") {
 		t.Fatal("current capability inventory lost the exact next-entry declaration")
 	}
-	if !strings.Contains(inventory, "当前收口：`"+w6U5CurrentStatus+" / "+currentNextFunctionEntry) {
-		t.Fatal("current capability inventory lost the exact W6-5 artifact-ingress declaration")
+	if !strings.Contains(inventory, "当前收口：`"+w6U5CurrentStatus+" / "+w6U6CurrentStatus) {
+		t.Fatal("current capability inventory lost the exact W6-5/W6-6 declaration")
 	}
 	if !strings.Contains(inventory, currentNextFunctionEntry) ||
+		!strings.Contains(inventory, w6U6CurrentStatus) ||
 		!strings.Contains(inventory, historicalW6U5NextEntry) ||
 		!strings.Contains(inventory, w6U5CurrentStatus) ||
 		!strings.Contains(inventory, historicalW6U4NextEntry) ||
@@ -81,9 +101,9 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 	if !strings.Contains(inventory, historicalW2U4NextEntry) {
 		t.Fatal("current capability inventory lost the explicitly historical W2-U4 next marker")
 	}
-	if !strings.Contains(inventory, "权威能力清单共 40 项") ||
+	if !strings.Contains(inventory, "权威能力清单共 42 项") ||
 		!strings.Contains(inventory, "不是历史发布 Capability Matrix 的 49 项") {
-		t.Fatal("current capability inventory lost the 40-row versus historical 49-item boundary")
+		t.Fatal("current capability inventory lost the current-row versus historical 49-item boundary")
 	}
 	if !strings.Contains(inventory, w2R3CurrentStatus) {
 		t.Fatal("current capability inventory lost the accepted W2-R3 status")
@@ -107,47 +127,19 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 		t.Fatal("current capability inventory lost the accepted narrow W2-D predecessor status")
 	}
 
-	expected := map[string]string{
-		"core.unique-runtime-store":             "accepted",
-		"core.pure-chat":                        "accepted",
-		"core.context-compiler":                 "accepted",
-		"core.model-profile":                    "accepted",
-		"module.rag-local-readonly":             "accepted",
-		"module.memory-local-bounded":           "accepted",
-		"core.action-gateway":                   "accepted",
-		"extension.mcp-local-stdio-tool":        "accepted",
-		"runtime.remote-action-http":            "accepted",
-		"runtime.wasm-action-host":              "accepted",
-		"channel.loopback-workspace":            "accepted",
-		"agent.composite-depth1":                "accepted",
-		"scheduler.local-fair":                  "accepted",
-		"agent.reviewer-results-gate":           "accepted",
-		"runtime.exact-adapter-lazy":            "accepted",
-		"core.complete-backup-recovery":         "accepted",
-		"core.effect-ledger-usage":              "accepted",
-		"module.package-conformance":            "experimental",
-		"module.supply-contracts-v1":            "accepted",
-		"module.discovery-snapshot-v1":          "accepted",
-		"module.artifact-ingress-v1":            "accepted",
-		"module.upgrade-review-v1":              "accepted",
-		"module.upgrade-apply-v1":               "accepted",
-		"module.assembly-local-v1":              "accepted",
-		"operator.module-apply":                 "experimental",
-		"module.workspace-channel-apply":        "accepted",
-		"module.deepseek-model-replacement":     "accepted",
-		"module.document-insight-dual-port":     "accepted",
-		"provider.deepseek-s3c":                 "unverified",
-		"provider.deepseek-controlled":          "accepted",
-		"product.conversation-config":           "accepted",
-		"module.general-assembly":               "planned",
-		"knowledge.proposal-store":              "accepted",
-		"knowledge.materialized-version":        "accepted",
-		"knowledge.learning-cycle":              "accepted",
-		"collaboration.decision-repair-bounded": "accepted",
-		"collaboration.cross-workspace":         "accepted",
-		"control.api-contract-v1":               "accepted",
-		"control-plane.online":                  "accepted",
-		"release.public-beta":                   "planned",
+	expected := make(map[string]string, generated.Capabilities.Count)
+	for _, capability := range generated.Capabilities.Entries {
+		if _, duplicate := expected[capability.ID]; duplicate {
+			t.Fatalf("duplicate generated capability ID %q", capability.ID)
+		}
+		expected[capability.ID] = capability.Status
+	}
+	if len(expected) != generated.Capabilities.Count {
+		t.Fatalf(
+			"generated capability entries=%d count=%d",
+			len(expected),
+			generated.Capabilities.Count,
+		)
 	}
 	rowPattern := regexp.MustCompile(
 		`(?m)^\| ` + "`" + `([a-z0-9][a-z0-9.-]+)` + "`" +
@@ -173,6 +165,8 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 	for _, evidence := range []string{
 		w6U5CurrentStatus,
 		currentNextFunctionEntry,
+		currentNextStageEntry,
+		w6U6CurrentStatus,
 		"`module-artifact-ingress`",
 		"`--enable-module-artifact-ingress`",
 		"`--source-root`",
@@ -193,6 +187,27 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 	} {
 		if !strings.Contains(inventory, evidence) {
 			t.Fatalf("accepted W6-5 inventory lacks evidence or boundary %q", evidence)
+		}
+	}
+	for _, evidence := range []string{
+		"module-upgrade-review-server-owned",
+		"module-upgrade-decide-server-owned",
+		"ArtifactAdmissionID",
+		"OperatorPrincipalID",
+		"ReviewRequestDigest",
+		"content identity exact retry",
+		"跨 tenant、source/head stale、物理篡改",
+		"不自动 Install、Activate、Bind、Grant、Apply、Execute",
+		"不调用 Provider",
+		"UserVersion 2",
+		"42 tables / 26 explicit indexes / 64 triggers",
+		"d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e",
+		"0002_server_owned_review.sql",
+		"7,173 bytes",
+		"3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb",
+	} {
+		if !strings.Contains(inventory, evidence) {
+			t.Fatalf("accepted W6.6 inventory lacks evidence or boundary %q", evidence)
 		}
 	}
 	for _, evidence := range []string{
@@ -254,10 +269,10 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 		"digest-only required grants",
 		"--confirm-tenant-wide-reject",
 		"{tenant_id, review_key}",
-		"无下载、stage、Install、Activate、grant、Bind、Apply、Host 或外部效果",
-		"9 条 generic/Model policy 与 2 条 Document Insight reserved exact selector",
+		"系统不读取 Index `PackagePath`、不联网下载",
+		"9 条 generic/Model policy 与 2 条 Document Insight reserved",
 		"唯一 pure policy/assessor",
-		"未复制第二张 handler 表",
+		"未复制第二张",
 		historicalW2U4NextEntry,
 	} {
 		if !strings.Contains(inventory, evidence) {
@@ -314,7 +329,7 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 		}
 	}
 	for _, evidence := range []string{
-		"必须以 exact pair 同时声明 `model.generate/v1` Require",
+		"必须以 exact pair 同时声明 `model.generate/v2` Require",
 		"窄 `knowledge.read` grant",
 		"只证明 governed Knowledge 的单 Port Require/grant",
 		"30 个仓内 Go package 用时 221.9 秒",
@@ -331,8 +346,8 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 	}
 	for _, evidence := range []string{
 		w2E5BCurrentStatus,
-		"`freeagent.builtin.document-insight@1.0.0`",
-		"838ff9ddd45186f0cdb26021d16902b2bfd7581c2dc0d7b72014cf4f48d0f7ea",
+		"`freeagent.builtin.document-insight@2.0.0`",
+		"9cf2e60f4b6d30cfd93ea93245f4a6eadbd4f365b93f06b7decb389c4f4d4bfa",
 		"`freeagent.adapter.document-insight/v1`",
 		"Context→Action 两步 Apply",
 		"同一 Run 首个 Model Compilation 同时冻结一条真实",
@@ -853,7 +868,7 @@ func TestCurrentCapabilityInventoryIsAuthoritativeAndSeparateFromHistory(
 		t.Fatal("current specification index does not publish CONTROL_API_V1")
 	}
 	for _, evidence := range []string{
-		"当前 FAC1 Store 为 43 表",
+		"删除前的 FAC1 Store 为 43 表",
 		"47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d",
 		"150,301 bytes",
 		"6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86",

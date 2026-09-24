@@ -40,7 +40,7 @@ func TestExternalModuleCanImportCurrentPublicAPI(t *testing.T) {
 		t.Fatalf("compat manifest=%+v canonical=%t err=%v", manifest, reflect.DeepEqual(manifestCanonical, canonical), err)
 	}
 	wantPorts := []moduleapi.PortRef{
-		{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1},
+		{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2},
 		{Name: moduleapi.PortNameContextProvide, ExactVersion: moduleapi.PortVersionV1},
 		{Name: moduleapi.PortNameActionProvider, ExactVersion: moduleapi.PortVersionV1},
 		{Name: moduleapi.PortNameChannelTransport, ExactVersion: moduleapi.PortVersionV1},

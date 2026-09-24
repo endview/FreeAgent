@@ -4,9 +4,9 @@
 >
 > 既有 W5 路线状态：`W5_F1_COLLABORATION_STABILITY_ACCEPTED_DEVELOPMENT_SLICE / W5_COMPLETE_ACCEPTED_DEVELOPMENT_SLICE / W6_NEXT`
 >
-> 当前下一入口：`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`；只允许独立设计消费已接纳的 server-owned inert Artifact 进行 Upgrade Review；W6-5 不授权 review/decision、install/activate/bind/grant/apply/execute、HTTP/upload/UI、SSE 或后台 worker
+> 当前 P4 只读范围收口：`P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE`；公共 model stream contract、UNKNOWN/终态规则与 Secret resolver 边界已冻结，受控智谱 `glm-4.5` 已通过 production composition + Universal Loop 的脱敏真实实验。UNKNOWN、Store Verify、Backup constraints 与 server-owned Artifact/Admission 均已接入只读查询；当前下一入口切换为 `P5_BETA_GATE`。P2 Control UI 完整 i18n 已完成；P1/W6.6 已完成 server-owned Review/Decision 的服务端闭环；P4 只读范围仍不授权自动 install/activate/bind/grant/apply/execute
 >
-> 当前收口：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`；W6-5 只新增默认关闭的可信本地 Operator CLI `module-artifact-ingress`。source/artifact roots 是瞬时可信输入；caller 只选择 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` 的 exact entry，不提供 package path/URL/signature。filesystem durable-first、digest-addressed/no-replace publication 后，唯一 Current Store 同事务写入 inert Artifact 与 append-only Admission；Backup 以 installation ∪ ingress 闭合并支持 uninstalled offline restore
+> 当前收口：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE`；W6-5 接纳 inert Artifact/Admission，W6.6 只从 Current Store 与 server-owned Artifact 生成持久 Review/Decision。caller 不提供 artifact path、URL、signature 或 target facts；Review/Decision exact retry、跨 tenant、source/head stale、物理篡改与 backup/restore closure 已验收，且不触发 install/activate/bind/grant/apply/execute
 >
 > 历史 W6-2/W6-3/W6-4 记录中的 `W6_3_WEB_SHELL_READ_ONLY_OVERVIEW_NEXT`、`W6_4_MODULES_CONFIGURATION_UI_NEXT` 与 `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT` 只表示对应切片收口时的下一入口，现已由上面的 W6-5 accepted marker 取代
 >
@@ -18,7 +18,9 @@
 >
 > W5-F1 历史边界：`W5_F1_COLLABORATION_STABILITY_ACCEPTED_DEVELOPMENT_SLICE / W5_COMPLETE_ACCEPTED_DEVELOPMENT_SLICE / W6_NEXT`；只补齐上述协作纵链的公平调度、稳定顺序、整族取消、UNKNOWN 对账、恢复、权限负例和零 Transfer canary
 >
-> 日期：2026-08-17
+> 金额边界：`P0_MONEY_BUDGET_REMOVED_FAC2_BASELINE`；当前运行路径已删除 BudgetPolicy、CostPolicy、PriceSnapshot、费用估算与金额对账，只保留 token usage、输出上限、deadline、权限、UNKNOWN 对账与 exact retry。Current Store 家族改为 FAC2（`github.com/endview/freeagent/current-store-v2`），新运行时只读拒绝 FAC1 旧库，不迁移也不修改。本文件中出现的 `CNY`、估算费用与 PriceSnapshot 字样一律是删除前 FAC1 时期的冻结历史验收证据，不描述当前运行语义；冻结记录见 [`P0_BASELINE_FREEZE`](P0_BASELINE_FREEZE.md)
+>
+> 日期：2026-09-23
 
 W2-R2 WASM Host 尚未生产可用。
 
@@ -29,21 +31,42 @@ W2-R2 WASM Host 尚未生产可用。
 [`CUTOVER_ACCEPTANCE`](CUTOVER_ACCEPTANCE.md)。本清单不替代编码规格，也不把开发切片
 转换为部署或发布许可。
 
-当前仓库正在准备 `v0.1.0-dev.2` 本地 Developer Preview 归档。该轨道只包装既有开发切片，
-不新增 Runtime feature，也不改变任何 `accepted/planned` 状态；它不是公开 Release、生产
-版本、公开 Beta 或 `RELEASE_READY`。Windows/Linux amd64 必须通过真实本地安装验证，
-Darwin 输出仅 build-only，且生成归档不执行 push、远程 tag、上传、签名、公证、公网下载
-入口或公开发布。
+当前版本、Store、migration、包数量与能力 ID/状态的可机械验证投影见
+[`generated/runtime-facts.md`](generated/runtime-facts.md)；机器可读形式为
+[`generated/runtime-facts.json`](generated/runtime-facts.json)。生成器只投影本清单中人工审定的
+能力状态，不自动判断成熟度，也不改写历史验收记录。
+
+当前仓库正在准备 `v0.1.0-dev.2` 本地 Developer Preview 候选。该轨道只包装既有
+开发切片，不新增 Runtime feature，也不改变任何 `accepted/planned` 状态；它不是
+公开 Release、生产版本、公开 Beta 或 `RELEASE_READY`。功能基线 `ecb5a12`
+已生成六平台本地归档及供应链文件（Darwin build-only），Windows/Linux AMD64
+原生离线安装和打包后备份/恢复预检通过。Linux 全仓 race 已在 ext4 干净源码上以
+exit code 0 完成，53 个 package result、5,166 个测试 PASS、stderr 为空；最终文档
+提交后的六平台归档和 Windows/Linux AMD64 原生复验也已通过。此前 Windows 全仓、
+vet、module、事实、文档、许可证、公开树、金额禁入、能力矩阵、前端静态门禁、
+真实浏览器管理面和 Linux 受影响 race 已通过。未 push、tag、上传、签名或公开发布。
+完整证据见 [`RELEASE_CANDIDATE_2026-09-23`](RELEASE_CANDIDATE_2026-09-23.md)。
 
 [`RELEASE_MATURITY`](RELEASE_MATURITY.md) 和
 [`capabilities.v1.json`](../testdata/release/capabilities.v1.json) 是旧架构的历史归档，继续保持
 `HISTORICAL_BASELINE_NON_NORMATIVE`。它们不再表达当前状态，也不得因为本清单而被回填或
 重新分类。
 
-当前 FAC1 Store 为 43 表、25 explicit indexes、64 triggers。W6-3 在 W6-2 的 33 表基础上增加
+当前 FAC2 Store 为 UserVersion 2、42 表、26 explicit indexes、64 triggers，fingerprint 为
+`d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`。冻结 bootstrap
+`internal/currentstore/migrations/fac2/0001_current.sql` 仍为 149,239 bytes、SHA-256
+`dbc3e724a1f7c030677c84a77a317f69ef2fe246985cc749559a9f3dd5a6dc5a`；当前追加的
+`0002_server_owned_review.sql` 为 7,173 bytes、SHA-256
+`3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`。两段 migration
+连续执行后的 facts digest 为 `b00a2163ad95ed6b3d35c030a69f2d641fd20b4117ecc811add04dec17904048`。
+FAC2 在 FAC1 的 43 表基础上
+删除 `model_price_snapshots` 并移除全部金额列；新运行时只读拒绝 FAC1 旧库，不迁移也不改写。
+下列 FAC1 及更早身份一律是冻结历史证据。
+
+删除前的 FAC1 Store 为 43 表、25 explicit indexes、64 triggers。W6-3 在 W6-2 的 33 表基础上增加
 `run_observation_heads`、`run_observation_snapshots` 与六张 `overview_basis_*` / `overview_resource_*`
 不可变 observation 表；W6-5 再增加 `module_artifacts` 与 append-only `module_artifact_admissions`。
-当前 fingerprint 为
+该 FAC1 fingerprint 为
 `47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d`，migration 为
 150,301 bytes，SHA-256 为
 `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`。W6-3/W6-4 的历史 41 表
@@ -86,7 +109,7 @@ grant、受限 REQUEST/RESULT transfer、真实 Usage 和完整 Backup。W5-F1 �
 唯一 Scheduler 纵链、稳定归位、family 取消、UNKNOWN 原 Attempt 对账、恢复与权限失败关闭证据。
 它仍没有自动 Reviewer、无限返工、动态图或任意 payload；项目从未正式部署，不是公开 Beta，
 也未达到 `RELEASE_READY`。W2-E4 另行闭合了同一内建 DeepSeek 构件内 flash/pro 显式替换、
-跨 Workspace/Profile、Usage/cost、Backup/Restore 与失败关闭矩阵；它没有开放自动选模、成本路由、
+跨 Workspace/Profile、token Usage、Backup/Restore 与失败关闭矩阵；它没有开放自动选模、成本路由、
 跨 Provider、多 Provider 或通用 Model 插件。W2-E5-A 与 E5-B 又分别闭合 governed Knowledge 的
 Requires/grant 和固定 Document Insight 双 Port 产品纵链；两者都没有把 Operator Module Apply
 提升为稳定公共合同，也没有开放任意第三方代码或广义通用装配。W2-R1 随后只把一个窄
@@ -149,7 +172,7 @@ mutation route、handler 或 confirmation endpoint。当前 wiring 收口见下�
 
 ## 当前清单
 
-当前源码树的权威能力清单共 40 项；这不是历史发布 Capability Matrix 的 49 项，也不改写其归档。
+当前源码树的权威能力清单共 42 项；这不是历史发布 Capability Matrix 的 49 项，也不改写其归档。
 
 | ID | 能力 | 状态 | 当前边界与证据 |
 |---|---|---|---|
@@ -169,29 +192,31 @@ mutation route、handler 或 confirmation endpoint。当前 wiring 收口见下�
 | `agent.reviewer-results-gate` | 单次 Reviewer 审核门 | `accepted` | legacy S3-B 能力：可选 `RESULTS_GATE`；不包含 W5-X1 Decision repair，也无自动 Reviewer、无限返工或动态图 |
 | `runtime.exact-adapter-lazy` | ExactAdapter 按需物化 | `accepted` | 完整 exact key、同键合并、异键并行、失败不缓存；W2-R1 production loader 逐次重验 REMOTE artifact digest/covered size/descriptor；W2-R2/R3 loader 逐次重验 WASM artifact/descriptor/ABI 后才构造 Adapter。WASM Adapter cache 只保存 ModuleID、Version、ArtifactDigest、ExecutionClass 与 AdapterIdentity，不缓存 InstanceID、ActivationRevision、Tenant、Workspace、Config 或 Authority；权限仍由 Gateway 的 exact Activation/Binding 闭包决定 |
 | `core.complete-backup-recovery` | Current Store 完整备份与恢复 | `accepted` | Store、引用构件、Channel Cursor、UNKNOWN、Knowledge reuse、Memory revision、Context Summary、Learning Proposal/Version/Schedule/Task，以及 W5-X1/F1 Decision/repair、双边 grant、Transfer payload/envelope 和终态进入同一 bundle 闭包。F1 完整 Decision+Transfer 已通过 backup→verify→restore→reopen；跨 Workspace PENDING 恢复为同一 Attempt UNKNOWN，Loop 语义重放为 0。Conversation compiler-owned model-1 会由冻结事实确定性重编译并逐字节核对请求与 Compilation，Learning 与 Transfer 事实均由只读语义验证器重建校验。W2-E4 要求 Backup current semantic gate 重验活动 DeepSeek Binding 的 Price/Authority/Profile closure；W2-E5-A 又重验 governed Knowledge 的 exact Manifest shape、同 Profile Model Require 与窄 `knowledge.read` grant；W2-E5-B 继续逐字节保留同一 Document Insight Run 的 RAG、Action 链与 MemberSnapshot；W2-R1 再保存 exact REMOTE Provider、Binding endpoint/SecretRef identity、Action closure 与原 Attempt 终态，恢复不解析 Secret、不联网也不重放 UNKNOWN；W2-R2 逐字节保存 exact WASM descriptor/module/Action closure，Backup/Verify/Restore 不编译、实例化或执行 guest，恢复后 UNKNOWN 仍不重放 |
-| `core.effect-ledger-usage` | 外部效果账本、Usage 与 Cost 语义 | `accepted` | 模型、Action、Channel 先建 Attempt；Decision family 的 `2N+3` 表示物理 Run 图和 dispatch cap，不等于调用数，未激活 repair Run 保持 `Attempt=nil` 且不伪造零 Usage。X1D 历史样本为 7 physical Runs/4 Attempts/3 nil repair Runs，input 3,443、cached 768、uncached 2,675、output 1,353、估算 `0.00539636 CNY`。F1 Test-0808 独立样本为 4/4 HTTP 2xx、exact retry 新 HTTP/Attempt 0、input 3,149、cached 768、uncached 2,381、output 1,492、2/4 请求命中、token 加权 `24.388695%`、估算 `0.00538036 CNY`；两者 reasoning 与 Provider reported/reconciled cost 均 UNKNOWN |
+| `core.explicit-schema-migration` | Current Store 显式前向迁移链 | `accepted` | `0001_current.sql` 保持字节冻结；当前 FAC2 为 UserVersion 2，W6.6 通过真实 `0002_server_owned_review.sql` 增加 Review 的 Admission/operator/request-digest 关系投影。`migrate` 在同一单写者 lease 内强制先创建并验证完整 backup，再执行连续前向步骤；普通 Runtime open 不迁移，未知/未来版本失败关闭；restore 只在私有 staging 副本上迁移后再原子发布；见 [`STORE_MIGRATIONS`](STORE_MIGRATIONS.md) |
+| `core.effect-ledger-usage` | 外部效果账本与 token Usage 语义 | `accepted` | 模型、Action、Channel 先建 Attempt；Decision family 的 `2N+3` 表示物理 Run 图和 dispatch cap，不等于调用数，未激活 repair Run 保持 `Attempt=nil` 且不伪造零 Usage。当前 FAC2 运行路径只记录 token usage，不再记录估算费用、Provider 报告费用或对账费用。X1D 历史样本（删除前 FAC1 证据）为 7 physical Runs/4 Attempts/3 nil repair Runs，input 3,443、cached 768、uncached 2,675、output 1,353、估算 `0.00539636 CNY`。F1 Test-0808 独立历史样本为 4/4 HTTP 2xx、exact retry 新 HTTP/Attempt 0、input 3,149、cached 768、uncached 2,381、output 1,492、2/4 请求命中、token 加权 `24.388695%`、估算 `0.00538036 CNY`；两者 reasoning 与 Provider reported/reconciled cost 均 UNKNOWN，且这三个金额字段已随 P0 从合同与 Store 中删除 |
 | `module.package-conformance` | Module Package Conformance | `experimental` | `module-verify` 无 supply flag 时保持 legacy 输出/错误逐字兼容；任一 supply flag 显式进入只接受 `LOCAL_DIRECTORY + DENY` 的 governed observation。该路径复验外置 exact Policy/Key/Signature IDs、Ed25519、点分段 Module ID prefix、Policy 收紧的首轮/最终 package scan 和调用期 immutable revocation deny snapshot。成功仍只输出 `freeagent.module-package-verification/v1`，不产生 reservation、grant、staging、Store fact 或 Apply authority |
 | `module.supply-contracts-v1` | 模块签名、来源、发现与候选纯合同 | `accepted` | `W2_U0_SIGNING_SOURCE_CONTRACT_ACCEPTED_DEVELOPMENT_SLICE`：在 `sdk/moduleapi` 冻结 `module-publisher-key/signature/source-policy/discovery-index/discovery-snapshot/upgrade-candidate/candidate-decision` 七份 exact canonical wire。Ed25519 只签域分隔 ArtifactDigest；Source Policy 为本地 Operator 约束；Version 为不透明 exact string；Snapshot/Candidate 有 parent/content-ID 与跨刷新 review-key 闭包。所有 wire 有 unknown-field、canonical/content-ID canary、defensive-copy 和签名负例。该 U0 能力不联网、不改 24 表 Store（即当时的 Store）、不扫描/安装/Apply/执行模块，也不授予 Trust/Authority/Effect；U1/U2 后续接线不改写本行的 U0 历史范围 |
 | `module.discovery-snapshot-v1` | 显式 Source observation 与不可变 Snapshot | `accepted` | `W2_U2_DISCOVERY_SNAPSHOT_ACCEPTED_DEVELOPMENT_SLICE`：`module-source-register`、`module-source-refresh`、`module-publisher-key-revoke` 均要求 `--enable-module-discovery`。Local 只读固定 `root/index.json`；HTTPS 另需显式开关与 exact HTTPS origin allowlist，并禁止 proxy、redirect、retry、HTTP/2、keep-alive、cookie、凭据和 special-use 地址。Store 在 Source I/O 前后以 exact revision/CAS 重验 Source Policy 与全局不可逆 Publisher Key revocation，冻结 Index/Snapshot parent、跨来源 ModuleRef→ArtifactDigest 唯一性与安全 `entry_count` 投影。该 observation-only 能力不下载包、不验证 entry signature、不生成 Candidate、Decision 或 Apply；Backup/Verify/Restore 零网络、零来源读取、零包获取 |
-| `module.artifact-ingress-v1` | server-owned content-addressed module artifact ingress | `accepted` | `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE`：唯一入口是默认关闭的可信本地 Operator CLI `module-artifact-ingress`。`--source-root` / `--artifact-root` 只在进程内使用；caller 仅选择 Store-owned current Snapshot 的 unsigned `LOCAL_DIRECTORY + DENY` exact entry，不能提供 package path、URL 或 signature。完整 conformance/digest/size/file-count 验证后，filesystem 先以 hidden stage、sync、digest-addressed no-replace 方式 durable publish；唯一 Current Store 随后在一个 `BEGIN IMMEDIATE` 中重验 basis 并提交不可变 `module_artifacts` 与 append-only `module_artifact_admissions`。对象 inert，不 Install/Activate/Bind/grant/Review/execute；无 HTTP/upload/UI。Backup artifact set 是 installation ∪ ingress 的去重并集，支持 Source removed、零 Installation 的 offline restore。当前 Store 43 tables / 25 explicit indexes / 64 triggers；下一入口仅为 `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` |
-| `module.upgrade-review-v1` | 离线 exact-version Candidate、Review 与 Decision | `accepted` | `W2_U3_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE`：`module-upgrade-review`/`module-upgrade-decide` 默认关闭，只接受可信本地 Operator 显式 `--enable-module-upgrade-review`。首片只接 `EXACT_VERSION_CHANGE`；Store 重建 exact Snapshot 与 current Binding→Catalog→Activation→Installation，双次验证显式本地 target artifact，并把参与摘要的 canonical Manifest 存为 content-addressed evidence。Review 仅有 `WOULD_APPLY/CONFLICT/UNSUPPORTED`，显示全部 published Binding impacts、共享 Handler compatibility 和 digest-only grants。`APPROVE` 只接受 current `WOULD_APPLY` 且在 U3 本身不授权；`REJECT` 需显式 Tenant-wide 确认并按 `{tenant_id, review_key}` 抑制。U3 自身无下载、stage、Install、Activate、grant、Bind、Apply、Host 或外部效果；U4 历史入口门曾把 9 条 generic/Model policy 与 2 条 Document Insight reserved exact selector 收口为唯一 pure policy/assessor，未复制第二张 handler 表；后续 U4 只为下行所列窄 Profile Context replacement 消费 exact APPROVE，不改写 U3 历史边界 |
+| `module.artifact-ingress-v1` | server-owned content-addressed module artifact ingress | `accepted` | `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE`：唯一入口是默认关闭的可信本地 Operator CLI `module-artifact-ingress`。`--source-root` / `--artifact-root` 只在进程内使用；caller 仅选择 Store-owned current Snapshot 的 unsigned `LOCAL_DIRECTORY + DENY` exact entry，不能提供 package path、URL 或 signature。完整 conformance/digest/size/file-count 验证后，filesystem durable-first 地以 hidden stage、sync、digest-addressed no-replace 方式 durable publish；唯一 Current Store 随后在一个 `BEGIN IMMEDIATE` 中重验 basis 并提交不可变 `module_artifacts` 与 append-only `module_artifact_admissions`。对象 inert，不 Install/Activate/Bind/grant/Review/execute；无 HTTP/upload/UI。Backup artifact set 是 installation ∪ ingress 的去重并集，支持 Source removed、零 Installation 的 offline restore。W6-5 的历史 FAC1 identity 保持冻结，当前 FAC2 identity 由 P0/W6.6 事实记录维护 |
+| `module.upgrade-review-v1` | 离线 exact-version Candidate、Review 与 Decision | `accepted` | 保留 `W2_U3_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE` 的 caller-owned 历史入口；新增 `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE` 的默认关闭 `module-upgrade-review-server-owned` / `module-upgrade-decide-server-owned`。新入口只接受 Tenant/scope/Admission/Review identity、operator 和 reason 等精确输入，从 Current Store 持有的 Admission、canonical Manifest 与 server-owned Artifact 复建 basis；不接受 artifact path、URL、signature bytes 或调用方 target facts。Review/Decision 持久化并 content identity exact retry；错误区分 Admission 不存在、Artifact 篡改、Tenant/Review 冲突、Source stale 与 Review integrity。跨 tenant、source/head stale、物理 Artifact 篡改和 backup/restore 失败关闭；Review/Decision 不调用 Provider，且不 Install、Activate、Bind、grant、Apply、Execute。 |
 | `module.upgrade-apply-v1` | 审批后 exact Declarative Profile Context 原位替换 | `accepted` | `W2_U4_OPERATOR_APPLY_ACCEPTED_DEVELOPMENT_SLICE`：`module-upgrade-apply` 默认关闭，必须显式绑定 exact Tenant/Review/APPROVE Decision，并只接受 `LOCAL_DIRECTORY + DENY` 的显式 `--source-root`；不读取 Index `PackagePath`。首片要求全部 grant flags 显式出现且为空，只接一个 PROFILE `context.provide/v1`、DECLARATIVE `static/v1`、`TRUSTED_INSTRUCTION`、deny-all Authority 的 BindingImpact。历史 U1 验证→current Store 重验→同一 exact plan→current U1 验证→pre-stage 后，复用唯一 Apply/CAS 将原 ordinal 原位替换；其他 Binding 字节与顺序不变。旧 Run 继续冻结旧 Provider，新 Run 使用 target。Model、Channel、Action、`SINGLE`、shared-current 与 fanout 失败关闭。Review/Apply 复用同一 evaluator，不虚构独立 dry-run admission；只有相邻 current exact retry 返回原结果，不建立 durable receipt，后续 publication 后返回 `POINTER_CONFLICT`。UNKNOWN 原样保留且禁止重放；Backup、Pure Chat 零访问与 32 表 Store 不变 |
 | `module.assembly-local-v1` | 本地显式模块装配 v1 | `accepted` | `W2_D_LOCAL_ASSEMBLY_ACCEPTED_DEVELOPMENT_SLICE`：声明式 Role/静态 Skill、本地只读 Knowledge、W3-M1 已验收的本地有界 Memory 与 Operator 完全信任的本地 MCP Action 已在同一 Store/Catalog/Assembly 完成集中纵链；逐个 Catalog Entry 闭包和 unbound `module-inspect` P1 回归已通过，Windows 全仓 188.9 秒、WSL2 ext4 有效 START/COMPLETE 全仓 128.1 秒、vet/mod/gofmt、License 35/55 与 `PUBLIC_TREE_PASS` 已闭合。accepted 只限该窄本地 v1 |
 | `operator.module-apply` | Operator Module Apply v1 | `experimental` | 停机态已支持统一 exact Apply、current-only `module-list`/`module-inspect`、调用方已知 exact pair 的 `module-history`、独立 deny-only `module-disable` 与只读 `module-dry-run`。Core 当前有 9 个唯一协议 tuple：第 8 个选择 exact REMOTE Action 并要求 artifact/endpoint/SecretRef grants，第 9 个选择 exact `action.provider/v1 + WASM/freeagent-action-wasm/v1 + action-binding-config/v1` 并要求 `--allow-wasm-action-artifact`。LOCAL_PROCESS、TRUSTED_IN_PROCESS、REMOTE、WASM 四类 artifact grant 互斥。Document Insight 仍通过两个固定摘要 selector 复用现有 Knowledge/Action tuple。U4 只在既有 evaluator/Apply/CAS 上增加一个 approved Declarative Profile Context exact replacement seam，不扩张其他 handler。Manifest request 不能自授权，history 保持原只读边界。入口仍是 `experimental`；任意模块的通用 multi-Port、同 Port 多 Binding、任意第三方进程内 Action、R1/R2 exact 合同外的 REMOTE/WASM、热加载、自动升级或第二控制器未完成 |
 | `module.workspace-channel-apply` | Workspace Channel Endpoint 统一 Apply | `accepted` | `W2_E3_WORKSPACE_CHANNEL_APPLY_ACCEPTED_DEVELOPMENT_SLICE`：ENABLED 原子发布 Control/Catalog 与 revision-0 Cursor seed；Dry-run 零写、零 Secret、零网络，exact retry 复验原始 seed；Disable 保留 Cursor/Attempt/history/evidence，共享 Instance 仅在最后引用消失时退出当前 Catalog。双 Workspace/Endpoint 的 Cursor、Run、History、duplicate、UNKNOWN 与 Backup/Restore 隔离已闭合 |
-| `module.deepseek-model-replacement` | DeepSeek Model 显式替换 | `accepted` | `W2_E4_DEEPSEEK_MODEL_REPLACEMENT_ACCEPTED_DEVELOPMENT_SLICE`：仅支持 `freeagent.builtin.model.deepseek@1.0.0` 同 Artifact/Adapter/Provider Instance 内 `deepseek-v4-flash`↔`deepseek-v4-pro`。Operator 显式 Apply/Dry-run/CAS 必须闭合 exact Config、`model-authority-ceiling/v1`、临时 exact SecretRef grant、Store 预存且 provider/model/billing 匹配的 PriceSnapshot，以及可选且 exact 的 ModelProfile；省略画像表示清除。Model Disable 禁止，回滚使用新的 ENABLED Apply；只影响新 Run，旧 Run 保持冻结。UNKNOWN 不换模型、不建替代 Attempt、不语义重放。Store direct publication 与 Backup current semantic gate 均重验 Price/Authority/Profile closure；跨 Workspace/Profile、Usage/cost、Backup/Restore 和负例矩阵已闭合。零新增 Schema/表/Runtime/Loop/Gateway/账本 |
-| `module.document-insight-dual-port` | 固定 Document Insight 双 Port 产品模块 | `accepted` | `W2_E5_B_DOCUMENT_INSIGHT_DUAL_PORT_ACCEPTED_DEVELOPMENT_SLICE`：固定 `freeagent.builtin.document-insight@1.0.0`、Artifact `838ff9ddd45186f0cdb26021d16902b2bfd7581c2dc0d7b72014cf4f48d0f7ea`、Adapter `freeagent.adapter.document-insight/v1`，有序提供 `action.provider/v1` 与 `context.provide/v1`，要求唯一 `model.generate/v1` 并请求窄 `knowledge.read`。同一首个 Model Compilation 同时冻结真实 RAG retrieval 与精确 Action result reservation，随后经唯一 Gateway 形成 2 个 Model Attempt 和 1 个 Action Attempt；两个 PortPlan 中由 Document Insight 贡献的两个 Binding 及 Action Attempt 使用完整相同 `ActivatedModuleRef`，Context PortPlan 另保留 `context.basic`。Context→Action 两步 Apply、CAS、exact retry、Backup/Restore 与 Action→Context Disable 顺序已闭合。实现编译进 Core，包只携带不可变 JSON；不代表任意第三方代码、通用 multi-Port 或同 Port 多 Binding 合并 |
+| `module.deepseek-model-replacement` | DeepSeek Model 显式替换 | `accepted` | `W2_E4_DEEPSEEK_MODEL_REPLACEMENT_ACCEPTED_DEVELOPMENT_SLICE`：仅支持 `freeagent.builtin.model.deepseek@2.0.0` 同 Artifact/Adapter/Provider Instance 内 `deepseek-v4-flash`↔`deepseek-v4-pro`。Operator 显式 Apply/Dry-run/CAS 必须闭合 exact Config、`model-authority-ceiling/v1`、临时 exact SecretRef grant，以及可选且 exact 的 ModelProfile；省略画像表示清除。Model Disable 禁止，回滚使用新的 ENABLED Apply；只影响新 Run，旧 Run 保持冻结。UNKNOWN 不换模型、不建替代 Attempt、不语义重放。Store direct publication 与 Backup current semantic gate 均重验 Authority/Profile closure；跨 Workspace/Profile、token Usage、Backup/Restore 和负例矩阵已闭合。零新增 Schema/表/Runtime/Loop/Gateway/账本。原 E4 验收要求的 PriceSnapshot 闭合已随 P0 删除，其历史证据只保留在 FAC1 冻结记录中 |
+| `module.document-insight-dual-port` | 固定 Document Insight 双 Port 产品模块 | `accepted` | `W2_E5_B_DOCUMENT_INSIGHT_DUAL_PORT_ACCEPTED_DEVELOPMENT_SLICE`：固定 `freeagent.builtin.document-insight@2.0.0`、Artifact `9cf2e60f4b6d30cfd93ea93245f4a6eadbd4f365b93f06b7decb389c4f4d4bfa`、Adapter `freeagent.adapter.document-insight/v1`，有序提供 `action.provider/v1` 与 `context.provide/v1`，要求唯一 `model.generate/v2` 并请求窄 `knowledge.read`。同一首个 Model Compilation 同时冻结真实 RAG retrieval 与精确 Action result reservation，随后经唯一 Gateway 形成 2 个 Model Attempt 和 1 个 Action Attempt；两个 PortPlan 中由 Document Insight 贡献的两个 Binding 及 Action Attempt 使用完整相同 `ActivatedModuleRef`，Context PortPlan 另保留 `context.basic`。Context→Action 两步 Apply、CAS、exact retry、Backup/Restore 与 Action→Context Disable 顺序已闭合。实现编译进 Core，包只携带不可变 JSON；不代表任意第三方代码、通用 multi-Port 或同 Port 多 Binding 合并 |
 | `provider.deepseek-s3c` | DeepSeek 真实模型专用路径 | `unverified` | 历史 Pilot 停在 `3 COMPLETE + 1 PARTIAL` 和 4 个 `MODEL_UNKNOWN`；S3-C 未通过，不能推广为普通产品 Provider |
-| `provider.deepseek-controlled` | 受控 DeepSeek 正常 Model Provider | `accepted` | 仅由显式 `--enable-deepseek` 启用，固定官方 endpoint，Secret 只在 dispatch 解析；production-adapter mock E2E 与 W1 真实 50 轮已闭合 POST、Usage/cache/reasoning UNKNOWN、费用和 UNKNOWN 零重放；不开放任意 OpenAI-compatible URL |
+| `provider.deepseek-controlled` | 受控 DeepSeek 正常 Model Provider | `accepted` | 仅由显式 `--enable-deepseek` 启用，固定官方 endpoint，Secret 只在 dispatch 解析；production-adapter mock E2E 与 W1 真实 50 轮已闭合 POST、Usage/cache/reasoning UNKNOWN 与 UNKNOWN 零重放；不开放任意 OpenAI-compatible URL |
+| `provider.zhipu-controlled` | 受控智谱 GLM Model Provider | `accepted` | P3 默认关闭的 exact `zhipu` / `glm-4.5` / compiled official endpoint；Secret 只在 dispatch 解析并清除。非流式与 SSE 协议 fixture、公共有界 accumulator、FAILED/UNKNOWN/截断终态和 production composition + Universal Loop 脱敏真实实验已闭合；不支持 Actions、自动选模、跨 Provider fallback、任意 endpoint/model 或用户可见流式 UI |
 | `product.conversation-config` | Pure Chat Conversation | `accepted` | CLI create/get/chat 与 loopback HTTP 已接入 exact revision/head、服务重启、turn-25 backup/restore、正常 OS 进程 25+25 轮和真实 DeepSeek 50 轮；50/50 首次 Attempt 成功，精确 retry 不增加模型调用。统一验收又证明已安装但未选择的 Knowledge、Memory、Skill、MCP/Action、Channel、Learning 与 Team 零解析、零请求暴露、零可选状态增量。仅验收普通单 Agent 单模型 Pure Chat；Composite 与 Conversation 明确互斥，Conversation+Action/Channel 不在本切片成熟度声明内 |
 | `module.general-assembly` | Agent、Workspace 与广义通用模块自由配置 | `planned` | 该范围不同于本地显式装配 v1、W2-E3 loopback Endpoint Apply、W2-E4 窄 DeepSeek replacement、E5-A Require/grant、固定 E5-B Document Insight 双 Port、R1/R2 窄 Action Host与 U4 单一 approved Context replacement：公开 Agent/Workspace/Profile 目录、公网或任意第三方 Channel Provider、任意第三方进程内 Action、任意模块组合的通用 multi-Port、同一 PortPlan 多 ProviderBinding、`knowledge.read` 之外的任意权限语言、跨 Provider/多 Provider Model、其他 REMOTE 协议、R2 exact 合同外的 WASM/ABI/Host、自动发现/升级、面向不可信代码的强隔离和稳定在线控制面尚未实现；窄 accepted 切片不把这些广义能力提前变为可用 |
-| `knowledge.proposal-store` | W4 Learning Proposal Store 与有界审核 | `accepted` | W4-L1A/L1B 在唯一 Current Store 和同一 `learning_proposals` 表闭合 Knowledge/静态 Skill Proposal、Tenant+kind 三轴去重、权威 proposer lineage、exact retry 与 backup semantic gate；W4-L2 独立验收同表 review refs/state/revision、Reviewer 普通 Run/Attempt/Usage/MODEL_RESULT/UNKNOWN 与 Store 派生终态。真实 DeepSeek 验收为 `APPROVED/2`、Attempt `SUCCEEDED`，Usage/费用落账且 exact retry 零重放 |
+| `knowledge.proposal-store` | W4 Learning Proposal Store 与有界审核 | `accepted` | W4-L1A/L1B 在唯一 Current Store 和同一 `learning_proposals` 表闭合 Knowledge/静态 Skill Proposal、Tenant+kind 三轴去重、权威 proposer lineage、exact retry 与 backup semantic gate；W4-L2 独立验收同表 review refs/state/revision、Reviewer 普通 Run/Attempt/Usage/MODEL_RESULT/UNKNOWN 与 Store 派生终态。真实 DeepSeek 验收为 `APPROVED/2`、Attempt `SUCCEEDED`，Usage 落账且 exact retry 零重放 |
 | `knowledge.materialized-version` | 审核后不可变 Knowledge/Skill Version 与 Operator 交接 | `accepted` | W4-L3 继续复用同一表，以严格 0/7 投影保存 `APPROVED/2` 或 `APPROVED/3` 的 canonical Version、APPROVE Verdict digest、ArtifactDigest/size 和时间；跨 Tenant/kind 的全局 ModuleRef 唯一，Installation↔Version 两种顺序都只接受 exact Manifest/ArtifactDigest。`learning-materialize` 只导出可重建两文件包；安全 exact retry、并发发布、module-verify/dry-run、完整备份恢复与恢复后重导出已通过。专属 E2E 又证明 stale CAS 零发布、Operator exact Apply 后仅新 Run 冻结并消费审批 Version；不自动生成 Apply plan、安装、激活、绑定或扩权 |
 | `knowledge.learning-cycle` | 有界 Learning PR 与 24 小时逻辑周期 | `accepted` | W4-L4 的新 Schedule 默认关闭；省略间隔时冻结为 86,400 秒，且必须以 exact revision 显式启用。`learning-cycle-tick` 必须指定 exact Tenant/Schedule 与显式 UTC `--observed-at`，每个到期窗口只经现有 Universal Loop 建立一个普通 Model Run/Attempt/Usage；模型只能返回 `NO_CHANGE` 或提交同 kind 的有界 Proposal，同窗重试不重放。`learning-cycle-reconcile` 仅补齐现有 Store 投影，不创建 Run/Attempt 或调用 Provider/Loop/Gateway/Secret/网络；`learning-cycle-report` 只读生成不持久化的半开窗 canonical 报告，单次上限 1,024 项并拒绝溢出。没有常驻 Worker、Queue 或后台 daemon，也不自动 Apply、安装、激活、绑定或扩权 |
 | `collaboration.decision-repair-bounded` | 显式 Decision 与一次有界修复 | `accepted` | W5-X1 预冻结 `2N+3` 个物理 Run，最多激活一次 repair；只激活受影响槽位，其他 repair Run 明确跳过且 `Attempt=nil`。W5-F1 已验证 approve、单槽 repair 和 Transfer 的唯一 Scheduler 纵链、dormant/skipped 零 claim、完整跨 Workspace family 取消后零新 Attempt/payload/envelope；没有自动 Reviewer、无限返工或动态图 |
 | `collaboration.cross-workspace` | 受控跨 Workspace 协作 | `accepted` | W5-X1 只允许同 Tenant、root/target 双边 grant；每个 Run 仍只绑定一个 Workspace。v1 仅传 Store-loaded `TASK_INPUT` 的确定性有界 `TASK_SUMMARY` 请求与 `SPECIALIST_RESULT` 返回，不传完整 History、Memory、知识正文、SecretRef 或任意 payload。X1D 的 4/4 HTTP 2xx、REQUEST/RESULT transfer 与 exact retry 零新 HTTP/Attempt 保持为历史证据；F1 追加 frozen plan 稳定归位、reopen 字节/身份不变、UNKNOWN 原 Attempt 对账、恢复和权限负例 |
 | `control.api-contract-v1` | 轻量控制 API 纯合同与策略 | `accepted` | `W6_0_CONTROL_API_CONTRACT_ACCEPTED_DEVELOPMENT_SLICE`：冻结六份 pure canonical wire、独立 digest domain、`DRY_RUN/MUTATE` intent、强 ETag/If-Match、keyset pagination、限流与 loopback threat policy。Web view 明确为 `control-view-snapshot/v1`，不改写 Core `control-snapshot/v1`。动态 ID/时间不进入 semantic request；UNKNOWN 仅 exact receipt、禁止重放。W6-0 的无 Schema/receipt 历史边界保持不变；W6-2 confirmation 又增加 canonical-frozen Statement/evaluation。`W6_2_DURABLE_RECEIPT_SCHEMA_ACCEPTED_DEVELOPMENT_SLICE` 历史原子当时只批准一张 append-only receipt 表、exact resolver、NO_CHANGE commit 与 existing-row semantic/Backup closure，尚无公开 APPLIED insert；其 publication transaction 接线已由下一行的当前 wiring 切片验收 |
-| `control-plane.online` | 默认关闭的本地 Control、只读 Overview 与窄 Modules Disable UI | `accepted` | `W6_4_MODULES_CONFIGURATION_UI_ACCEPTED_DEVELOPMENT_SLICE`：W6-3 的 exact Web assets 与 scope-filtered Overview 保持不变；W6-4 新增严格 Modules list/detail UI，并只消费既有 `MODULE_DISABLE` dry-run/confirmation/mutate。Tenant/Workspace UTF-8 scope 与 instance path 使用显式 canonical carrier；浏览器只从授权 projection 选择 TENANT/PROFILE OPTIONAL `context.provide/v1` 窄候选，先 dry-run、再 short-lived confirmation、最后第二次显式确认。proof/key/CSRF 不进入 DOM/URL/log/durable cache；不可判定结果只允许无 proof exact retry，可信成功只 invalidate/refetch。零新增 operation、route、service、Store/Schema/writer、artifact ingress、其他 mutation、SSE、worker或预热；其历史下一入口为 `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT` |
+| `control-plane.online` | 默认关闭的本地 Control、只读 Overview 与模块管理查询 | `accepted` | 保留 W6-3/W6-4 的 Overview、Modules list/detail 与窄 `MODULE_DISABLE` workflow；P4 只读范围新增 tenant/workspace-scoped 的 UNKNOWN list/detail、Store verification、Backup constraints 与 Artifact Admission list/detail 查询，均使用 bounded reader、scope fence、projection digest、强 ETag 与 fail-closed error mapping。管理 UI 不接受服务器路径、Secret、请求体、签名材料或 replay material；UNKNOWN 不允许 resend、replay、换 Provider 或隐式 retry。P4 没有新增 lifecycle mutation、在线 Restore/CreateBundle、SSE、worker 或第二 Store/writer；浏览器验证与 Linux/安装门禁仍待 P5 |
 | `release.public-beta` | 真实验证与公开 Beta | `planned` | W7 工作包；S3-D、Public Stage 与首次正式部署均未获批准 |
 
 ## W2-R1 REMOTE Action Host 验收边界
@@ -382,7 +407,8 @@ Store-backed observation 见其后的独立小节。
   facts、Source、artifact、signature 与 assessor 零访问。
 
 U4 的历史入口门已经把原 CLI 私有的 9 条 generic/Model policy 与 2 条 Document Insight reserved
-exact selector 提取为 Review 与 Apply 共同复用的唯一 `internal/modulehandler` 实现，未复制第二张
+exact selector 提取为 Review 与 Apply 共同复用的唯一 pure policy/assessor、唯一
+`internal/modulehandler` 实现，未复制第二张
 handler 表。这条 `W2_U4_SHARED_HANDLER_GATE` 旧 NEXT marker 只描述 U4 开发前置，不是第二套策略表。
 
 ### W2-U4 已验收边界
@@ -560,8 +586,9 @@ W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT`。
 
 ### W6-5 server-owned module artifact ingress 当前验收边界
 
-当前状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE /
-W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。
+W6-5 收口时的历史状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE /
+W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`；当前 W6.6、P2、P3 与 P4 两批只读管理能力
+均已收口，当前下一入口为 `P5_BETA_GATE`。
 
 - 入口只有可信本地 Operator CLI `module-artifact-ingress`，并默认关闭；未显式
   `--enable-module-artifact-ingress` 时不打开 Store、不读 Source、不发布文件；
@@ -587,10 +614,56 @@ W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。
   Review/Decision、Apply、Host、execution、Secret 或 effect。没有 HTTP route、upload、UI、SSE 或 worker；
 - Backup 将 Installation 与 ingress 的 artifact digest 去重合并，离线验证并恢复完整 Store/manifest/bytes；
   Source 已移除且零 Installation 的构件仍可离线恢复；临时 DB/bundle/restore tree 使用私有 staging 与 parent sync；
-- 当前 Store 为 43 tables / 25 explicit indexes / 64 triggers，fingerprint
+- W6-5 验收当时的 FAC1 Store 为 43 tables / 25 explicit indexes / 64 triggers，fingerprint
   `47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d`，migration 150,301 bytes /
-  SHA-256 `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`。下一入口仅为
-  `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。
+  SHA-256 `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`；该身份已冻结。P0/W6.6
+  后的当前 FAC2 Store 为 UserVersion 2、42 tables / 26 explicit indexes / 64 triggers，fingerprint
+  `d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`；`0001` bootstrap 保持
+  149,239 bytes / `dbc3e724a1f7c030677c84a77a317f69ef2fe246985cc749559a9f3dd5a6dc5a`，`0002`
+  为 7,173 bytes / `3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`。W6.6 已完成，
+  P2 Control UI i18n、P3 第二 Provider 与 P4 两批只读 service/UI 已完成，当前下一入口为 `P5_BETA_GATE`。
+
+### W6.6 server-owned module Upgrade Review 当前验收边界
+
+当前状态：`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`。
+
+- 入口只有默认关闭的可信本地 Operator CLI `module-upgrade-review-server-owned` 与
+  `module-upgrade-decide-server-owned`；请求只含 Tenant、scope、Admission/Review identity、operator、
+  request digest 和 Decision reason，不接受 artifact directory、package path、URL、signature bytes 或
+  调用方提交的 current/target facts；artifact root 是服务端注入的 trusted dependency；
+- Review 通过 `module_artifact_admissions` 读取已接纳的 inert Artifact，复验 Admission↔Artifact↔Manifest
+  closure 与 server-owned physical digest/size/file-count/mode；再由 Current Store 重建 Source/Snapshot、
+  Current Installation、Binding/Activation/Catalog/Control basis，并复用既有 W2-U3 evaluator；
+- Review/Decision 都持久化、content-ID exact retry，Admission ID/operator/request digest 同时进入 Review
+  canonical 与 v2 SQL projection（`ArtifactAdmissionID`、`OperatorPrincipalID`、`ReviewRequestDigest`）；v1 caller-owned Review 继续只读兼容，v1→v2 只能通过显式 backup-fenced
+  migration；
+- 失败分类覆盖 Admission 不存在、Artifact 篡改、Tenant/Review 冲突、Source/Review stale 与 Review
+  integrity。跨 tenant、source/head stale、物理篡改、Decision 非 `WOULD_APPLY` approve 均失败关闭；
+- Review/Decision 是 inert 审核事实，不自动 Install、Activate、Bind、Grant、Apply、Execute，不调用
+  不调用 Provider，不创建 Runtime/Attempt/Usage/Effect；Windows CLI 集成、exact retry、zero-effect、tamper、
+  wrong-tenant、backup/verify/restore/reopen 已回归。
+
+### P3 第二 Provider 当前验收边界
+
+当前状态：`P3_PROVIDER_CONTRACT_FROZEN_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE / P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`。
+
+- `corecontract.ModelStreamEventV1` 与 `ModelStreamAccumulatorV1` 是所有 Provider adapter 共用的流式边界；支持最后一帧携带文本分片与 Usage，EOF 无终态进入 `UNKNOWN`，超限进入 `TRUNCATED`，迟到分片拒绝；
+- 既有 `modulehost.InvocationOutcome`、`moduleapi.ModelGenerateOutputV1` 与 `ModelUsageReceiptV2` 继续作为成功、失败、UNKNOWN、输出与 Usage 的唯一持久消费边界；不新增第二 Store、第二 retry loop、Provider fallback 或预算/金额语义；
+- DeepSeek 现有 `APIKeyResolver` 的 SecretRef/短生命周期明文边界被写入 P3 contract；智谱 adapter 复用同一形态，凭据、原始响应、Prompt 与 private reasoning 不进入普通 contract、日志或备份；
+- 第二 Provider 冻结为 `zhipu`，代表模型冻结为 `glm-4.5`，只允许 compiled official Chat Completions endpoint、exact model/build 和显式 `--enable-zhipu`；不开放任意 OpenAI-compatible URL 或模型枚举；
+- 非流式严格要求 `finish_reason=stop`；流式将 SSE 映射到公共 `DELTA/USAGE/COMPLETED` 状态机，EOF 无终态为 `UNKNOWN`，`length`/tool 终态不冒充成功，超限为 `TRUNCATED`；Actions、vision 和用户可见 SSE/token UI 不在本轮支持矩阵；
+- 2026-09-22 的 opt-in 真实实验通过 FAC2 seed、production composition、Universal Loop 与 `glm-4.5` 得到 `SUCCEEDED`，input/output token 字段存在；报告只保留脱敏元数据。`glm-5.3-flash` 的独立探测暴露 thinking 参数差异，因此不能把本验收扩大为全部 GLM 模型兼容；
+- 不新增第二 Store、第二 Loop、adapter retry、Provider fallback、自动选模、预算或金额语义。P3 accepted 仍不等于公开 Beta 或 `RELEASE_READY`；P4 两批统一 application/control service 只读管理投影已实现，下一步是 `P5_BETA_GATE`。
+
+### P4 模块管理 UI 当前只读边界
+
+当前状态：`P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE / P5_BETA_GATE`；这不是完整生命周期管理，也不代表 `RELEASE_READY`。
+
+- Control 层新增 `GET /control/api/v1/module-upgrade-reviews` 与按 ID 的 detail route；两者只依赖统一 `controlapp` read service，使用 tenant-scoped、bounded Store reader、重复 live authorization、projection digest 与强 ETag；不暴露 Store 的 unbounded audit API；
+- application/service 边界使用中性 DTO。Review detail 仅返回安全字段、Decision 摘要和 server-owned Artifact/Admission 的来源、快照、Manifest digest、大小与文件数；不返回 canonical bytes、host path、URL、signature、Secret 或目标包正文；
+- `#upgrade-reviews` 双语页面已接入 `zh-CN` / `en-US`，可查看 Review、Decision、UNKNOWN-safe read boundary 所需的审计字段和 Artifact provenance；没有 approve/reject/apply/install/activate/bind/resend/replay 按钮；
+- 第二批已补齐 tenant/workspace-scoped、bounded 的 UNKNOWN list/detail、Store Verify、Backup constraints 与 server-owned Artifact Admission list/detail；复用 projection digest、strong ETag、scope fence 与 fail-closed error mapping。Backup UI 不在线创建或恢复，Restore 仍为离线 staging + atomic publish；
+- 前端继续复用 `modules.ts` 的 scope headers、transport validation、ETag 与 fail-closed 事件；未新增 Store、Loop、retry、outcome 或权限规则。UI 不接受服务器路径、Secret、请求体、签名材料或 replay material；当前下一入口为 `P5_BETA_GATE`，mutation、在线 Restore/CreateBundle 与生命周期操作继续后置。
 
 ## W5-F1 权威验收边界
 
@@ -649,22 +722,23 @@ Backup/Restore 均保留历史并从下一 Cursor revision 继续。该窄 `acce
 任意第三方进程内代码，也不提升 Operator Module Apply、Module Conformance、W6/W7 或 Beta。
 
 W2-E4 将第 7 个 Core-owned exact handler 收窄到
-`model.generate/v1 + TRUSTED_IN_PROCESS/go-in-process/v1 + model-binding-config/v1`，且 selector
-固定为 `freeagent.builtin.model.deepseek@1.0.0`。它只允许同一 Artifact、Adapter 和 Provider
+`model.generate/v2 + TRUSTED_IN_PROCESS/go-in-process/v1 + model-binding-config/v2`，且 selector
+固定为 `freeagent.builtin.model.deepseek@2.0.0`。它只允许同一 Artifact、Adapter 和 Provider
 Instance 内 flash/pro 的 Operator 显式 Apply/Dry-run/CAS；候选必须在任何 Store 写入、Secret
-解析或网络调用前闭合 Config、`model-authority-ceiling/v1`、临时 exact SecretRef grant、预存且
-provider/model/billing 匹配的 PriceSnapshot，以及可选 exact ModelProfile。省略 optional Profile
-表示清除；Model Disable 拒绝，回滚仍发布新的 ENABLED Apply。
+解析或网络调用前闭合 Config、`model-authority-ceiling/v1`、临时 exact SecretRef grant，以及可选
+exact ModelProfile。省略 optional Profile
+表示清除；Model Disable 拒绝，回滚仍发布新的 ENABLED Apply。原 E4 当时还要求闭合预存且
+provider/model/billing 匹配的 PriceSnapshot，该要求已随 P0 金额退场删除。
 
-E4 publication 只对新 Run 生效，旧 Run 的 Binding、Config、Authority、SecretRef、PriceSnapshot
+E4 publication 只对新 Run 生效，旧 Run 的 Binding、Config、Authority、SecretRef
 和 Profile 继续冻结。UNKNOWN 只允许对账原 Attempt，不能换模型、创建替代 Attempt 或语义重放。
-Store direct publication 与 Backup current semantic gate 都重新验证 Price/Authority/Profile closure；
-集中验收已覆盖跨 Workspace/Profile、Usage/cost、Backup/Restore 和负例矩阵。它没有新增 Schema、
+Store direct publication 与 Backup current semantic gate 都重新验证 Authority/Profile closure；
+集中验收已覆盖跨 Workspace/Profile、token Usage、Backup/Restore 和负例矩阵。它没有新增 Schema、
 表、Runtime、Loop、Gateway、Catalog pointer 或效果账本，也不把自动选模、成本路由、跨 Provider、
 多 Provider、REMOTE/WASM、Operator Module Apply overall、Module Conformance、W6/W7 或 Beta 提升为可用。
 
 W2-E5-A 在原 Knowledge handler 上增加一个不可变 governed 版本：Manifest 仍只提供
-`context.provide/v1`，但必须以 exact pair 同时声明 `model.generate/v1` Require 与
+`context.provide/v1`，但必须以 exact pair 同时声明 `model.generate/v2` Require 与
 `knowledge.read` request；旧 permissionless 版本继续兼容。Manifest request 不授予权限。Core 从
 同一 Profile 的 Binding→Catalog→Activation→Installation→Manifest 身份链以及 Config、
 `knowledge-authority-ceiling/v1` 重算唯一 Model 依赖与有效 grant，按 Config/Authority 交集裁剪检索
@@ -683,10 +757,10 @@ Runtime、Store、Loop 或 Gateway。上述 57 个资产和 221.9 秒均是 E5-A
 只证明 governed Knowledge 的单 Port Require/grant，当时下一入口为 E5-B，不能用来证明后续双 Port。
 
 W2-E5-B 使用具有真实产品职责的固定模块
-`freeagent.builtin.document-insight@1.0.0`：ArtifactDigest 为
-`838ff9ddd45186f0cdb26021d16902b2bfd7581c2dc0d7b72014cf4f48d0f7ea`、size 为 1,097 bytes，
+`freeagent.builtin.document-insight@2.0.0`：ArtifactDigest 为
+`9cf2e60f4b6d30cfd93ea93245f4a6eadbd4f365b93f06b7decb389c4f4d4bfa`、size 为 1,097 bytes，
 Adapter 为 `freeagent.adapter.document-insight/v1`。Manifest 有序提供 `action.provider/v1` 与
-`context.provide/v1`，要求唯一 `model.generate/v1` 并请求唯一 `knowledge.read`；包只携带不可变
+`context.provide/v1`，要求唯一 `model.generate/v2` 并请求唯一 `knowledge.read`；包只携带不可变
 JSON，真实 RAG 与无外部副作用的 `text.stats` 实现均编译进 Core，不执行第三方包内代码。
 
 集中产品验收从普通 Pure Chat Store 开始。Action-first Apply 以 `TARGET_CONFLICT` 零写拒绝；

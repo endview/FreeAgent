@@ -12,7 +12,6 @@ func TestCommitCoreDeterministicFailureIsAttemptFreeAtomicAndIdempotent(
 	t *testing.T,
 ) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	failedInput := newCompositeChildBeginInput(
 		t,
 		fixture,

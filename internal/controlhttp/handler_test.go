@@ -59,6 +59,31 @@ type fakeModuleDisableDryRunServiceV1 struct {
 	dryRun func(context.Context, controlapp.ModuleDisableDryRunInputV1) (controlapp.ModuleDisableDryRunResultV1, error)
 }
 
+type fakeModuleUpgradeReviewServiceV1 struct {
+	list   func(context.Context, controlapp.ModuleUpgradeReviewListInputV1) (controlapp.ModuleUpgradeReviewListResultV1, error)
+	detail func(context.Context, controlapp.GetModuleUpgradeReviewInputV1) (controlapp.ModuleUpgradeReviewDetailResultV1, error)
+}
+
+func (service *fakeModuleUpgradeReviewServiceV1) ListModuleUpgradeReviewsV1(
+	ctx context.Context,
+	input controlapp.ModuleUpgradeReviewListInputV1,
+) (controlapp.ModuleUpgradeReviewListResultV1, error) {
+	if service.list != nil {
+		return service.list(ctx, input)
+	}
+	return controlapp.ModuleUpgradeReviewListResultV1{}, controlapp.ErrNotFound
+}
+
+func (service *fakeModuleUpgradeReviewServiceV1) GetModuleUpgradeReviewV1(
+	ctx context.Context,
+	input controlapp.GetModuleUpgradeReviewInputV1,
+) (controlapp.ModuleUpgradeReviewDetailResultV1, error) {
+	if service.detail != nil {
+		return service.detail(ctx, input)
+	}
+	return controlapp.ModuleUpgradeReviewDetailResultV1{}, controlapp.ErrNotFound
+}
+
 func (service *fakeModuleDisableDryRunServiceV1) DryRunModuleDisableV1(
 	ctx context.Context,
 	input controlapp.ModuleDisableDryRunInputV1,
@@ -917,6 +942,46 @@ func TestAuthenticatedModulesListDetailCursorAndETagV1(t *testing.T) {
 	_, getCalls := fixture.service.counts()
 	if getCalls != 2 {
 		t.Fatalf("detail calls=%d", getCalls)
+	}
+}
+
+func TestAuthenticatedModuleUpgradeReviewListETagAndScopeV1(t *testing.T) {
+	t.Parallel()
+	fixture := newHandlerFixtureV1(t, []controlapicontract.ControlScopeV1{workspaceScopeV1(testWorkspaceV1)}, true)
+	reviewID := strings.Repeat("a", moduleapi.SHA256HexLength)
+	service := &fakeModuleUpgradeReviewServiceV1{}
+	service.list = func(_ context.Context, input controlapp.ModuleUpgradeReviewListInputV1) (controlapp.ModuleUpgradeReviewListResultV1, error) {
+		return controlapp.ModuleUpgradeReviewListResultV1{
+			SchemaVersion: controlapp.ModuleUpgradeReviewListSchemaVersionV1,
+			Scope:         input.Scope,
+			Items: []controlapp.ModuleUpgradeReviewItemV1{{
+				ReviewID: reviewID, CandidateID: strings.Repeat("b", 64), ReviewKey: strings.Repeat("c", 64),
+				TenantID: testTenantV1, ArtifactAdmissionID: strings.Repeat("d", 64),
+				OperatorPrincipalID: "operator-owner", ReviewRequestDigest: strings.Repeat("e", 64),
+				BindingTarget: controlapp.ModuleUpgradeReviewBindingTargetV1{Kind: "WORKSPACE_CHANNEL_ENDPOINT", WorkspaceID: testWorkspaceV1, EndpointID: "endpoint-a"},
+				Port:          moduleapi.PortRef{Name: "context.provide", ExactVersion: "v1"}, TargetInstanceID: "module-one",
+				TargetModule: moduleapi.Ref{ID: "fixture.module", Version: "1.0.0"}, TargetArtifactDigest: strings.Repeat("f", 64),
+				Conclusion: "WOULD_APPLY", ReasonCodes: []string{}, CreatedAtUnixMicros: 1_500,
+			}},
+			HasMore: false, ProjectionDigest: strings.Repeat("1", 64), StrongETag: `"` + strings.Repeat("2", 64) + `"`,
+		}, nil
+	}
+	fixture.handler.moduleUpgradeReviews = service
+	request := fixture.readRequestV1(ModuleUpgradeReviewsPathV1 + "?limit=1")
+	recorder := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK || !validStrongETagV1(recorder.Header().Get("ETag")) || !strings.Contains(recorder.Body.String(), reviewID) {
+		t.Fatalf("review list status=%d etag=%q body=%s", recorder.Code, recorder.Header().Get("ETag"), recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"workspace_id":"`+testWorkspaceV1+`"`) || strings.Contains(recorder.Body.String(), "canonical") {
+		t.Fatalf("review list exposed unsafe fields: %s", recorder.Body.String())
+	}
+	conditional := fixture.readRequestV1(ModuleUpgradeReviewsPathV1 + "?limit=1")
+	conditional.Header.Set("If-None-Match", recorder.Header().Get("ETag"))
+	conditionalRecorder := httptest.NewRecorder()
+	fixture.handler.ServeHTTP(conditionalRecorder, conditional)
+	if conditionalRecorder.Code != http.StatusNotModified || conditionalRecorder.Body.Len() != 0 {
+		t.Fatalf("review conditional status=%d body=%q", conditionalRecorder.Code, conditionalRecorder.Body.String())
 	}
 }
 

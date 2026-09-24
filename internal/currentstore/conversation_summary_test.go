@@ -245,7 +245,6 @@ func TestLoadLoopConversationHistoryLoadsDirectAndLatestExactCompilations(
 	); err != nil {
 		t.Fatal(err)
 	}
-	putDynamicContextTestPrice(t, fixture.admission.store)
 	firstLease, firstRun := acquireDynamicContextConversationRun(
 		t, fixture.admission.store, firstRunID, "summary-loader-first-worker",
 	)
@@ -424,7 +423,6 @@ func TestLoadLoopConversationHistoryAgentVersionChangeIsFresh(
 	widenDynamicContextConversationPolicy(t, fixture.admission)
 	conversationID := "conversation-summary-agent-version"
 	createConversationForAdmission(t, fixture.admission, conversationID)
-	putDynamicContextTestPrice(t, fixture.admission.store)
 
 	firstRunID := "run-conversation-summary-agent-v1"
 	firstInput := dynamicConversationAdmissionInput(

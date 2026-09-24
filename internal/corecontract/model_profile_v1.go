@@ -175,12 +175,12 @@ func RestoreModelProfileV1(
 }
 
 // ValidateModelProfileBindingV1 proves that a profile describes exactly the
-// supplied model.generate/v1 Binding, its canonical CONFIG, and its activated
+// supplied model.generate/v2 Binding, its canonical CONFIG, and its activated
 // adapter. It performs no I/O and never searches for another provider.
 func ValidateModelProfileBindingV1(
 	profile ModelProfileV1,
 	binding moduleapi.PortBinding,
-	config moduleapi.ModelBindingConfigV1,
+	config moduleapi.ModelBindingConfigV2,
 ) error {
 	frozenProfile, _, _, err := NewModelProfileV1(profile)
 	if err != nil {
@@ -189,7 +189,7 @@ func ValidateModelProfileBindingV1(
 	plan, err := moduleapi.NewPortPlan(moduleapi.PortPlan{
 		Port: moduleapi.PortRef{
 			Name:         moduleapi.PortNameModelGenerate,
-			ExactVersion: moduleapi.PortVersionV1,
+			ExactVersion: moduleapi.PortVersionV2,
 		},
 		Bindings: []moduleapi.PortBinding{binding},
 	})
@@ -197,7 +197,7 @@ func ValidateModelProfileBindingV1(
 		return fmt.Errorf("corecontract: model profile binding: %w", err)
 	}
 	frozenConfig, configCanonical, err :=
-		moduleapi.NewModelBindingConfigV1(config)
+		moduleapi.NewModelBindingConfigV2(config)
 	if err != nil {
 		return fmt.Errorf("corecontract: model profile binding config: %w", err)
 	}

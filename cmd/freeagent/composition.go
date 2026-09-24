@@ -32,24 +32,33 @@ import (
 	"github.com/endview/freeagent/internal/remoteactionhttp"
 	"github.com/endview/freeagent/internal/runscheduler"
 	"github.com/endview/freeagent/internal/wasmaction"
+	"github.com/endview/freeagent/internal/zhipumodel"
 	"github.com/endview/freeagent/sdk/loopapi"
 	"github.com/endview/freeagent/sdk/moduleapi"
 )
 
 const (
 	localEchoModuleID         = "freeagent.builtin.model.echo"
-	localEchoModuleVersion    = "1.0.0"
-	localEchoArtifactDigest   = "884c16b339b6f9154a6f64b23e800010f0b29074c1ad9a01c540f9c9ed9182f7"
+	localEchoModuleVersion    = "2.0.0"
+	localEchoArtifactDigest   = "d18fcd76e180ea5ed4ace15e2a8c76befdca131c93bfbd60f99d09244b419154"
 	localEchoAdapterIdentity  = "freeagent.adapter.model.echo/v1"
 	localDeepSeekModuleID     = "freeagent.builtin.model.deepseek"
-	localDeepSeekVersion      = "1.0.0"
-	localDeepSeekDigest       = "e7864f4478a588dad4de9fff53b0c4dcecc17420e80420018bcc5fe5502887c3"
-	localDeepSeekSize         = uint64(2914)
+	localDeepSeekVersion      = "2.0.0"
+	localDeepSeekDigest       = "ebef19d2fd153773f11e331d219edd4a414af069101f9f834fdd6ecf85dce3e2"
+	localDeepSeekSize         = uint64(2771)
 	localDeepSeekEntrypoint   = "freeagent.manifest-request.model.deepseek/v1"
 	localDeepSeekSchemaPath   = "schemas/config.schema.json"
-	localDeepSeekSchemaDigest = "2113510aca9f5332ba0a7ace2267d9964295c087fadd3ca4be5c47ba7e863d66"
+	localDeepSeekSchemaDigest = "5b6aa6f4229dcb025e21848fe33c9568b63e84d77a70d0454f3852be00878311"
 	localDeepSeekFlashBuild   = "deepseek-v4-flash/public-alias-observed-2026-08-04"
 	localDeepSeekProBuild     = "deepseek-v4-pro/public-alias-observed-2026-08-04"
+	localZhipuModuleID        = "freeagent.builtin.model.zhipu"
+	localZhipuVersion         = "2.0.0"
+	localZhipuDigest          = "4b0d3296f467d36b198f8f22cb22cceef57e5605b3af52d5c45d8694cd693dc8"
+	localZhipuSize            = uint64(2135)
+	localZhipuEntrypoint      = "freeagent.manifest-request.model.zhipu/v1"
+	localZhipuSchemaPath      = "schemas/config.schema.json"
+	localZhipuSchemaDigest    = "069e34bd433773ba9e5bfe9b4d0bdd217597a73dc9c74f5027da4c9b4f69b81e"
+	localZhipuGLM45Build      = "glm-4.5/public-alias-observed-2026-09-22"
 	localKnowledgeAdapterID   = "freeagent.adapter.knowledge.lexical/v1"
 	localMemoryAdapterID      = "freeagent.adapter.memory.deterministic/v1"
 	localTextStatsModuleID    = "freeagent.builtin.action.text_stats"
@@ -63,7 +72,7 @@ const (
 var (
 	productionModelPort = moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}
 	productionContextPort = moduleapi.PortRef{
 		Name:         moduleapi.PortNameContextProvide,
@@ -145,6 +154,7 @@ func (composition *productionComposition) CloseStoreV1() error {
 type productionCompositionOptions struct {
 	FairScheduler *runscheduler.Config
 	DeepSeek      *productionDeepSeekRuntimeConfig
+	Zhipu         *productionZhipuRuntimeConfig
 	RemoteAction  *productionRemoteActionRuntimeConfig
 	WASMAction    *productionWASMActionRuntimeConfig
 }
@@ -172,6 +182,14 @@ type productionWASMActionRuntimeConfig struct {
 // frozen by the compiled composition root and deepseekmodel adapter.
 type productionDeepSeekRuntimeConfig struct {
 	APIKeyResolver deepseekmodel.APIKeyResolver
+	HTTPClient     *http.Client
+}
+
+// productionZhipuRuntimeConfig contains process-owned capabilities only. The
+// endpoint, model allowlist, and adapter identity remain compiled and are not
+// serialized into any artifact, Binding, Store row, or model request.
+type productionZhipuRuntimeConfig struct {
+	APIKeyResolver zhipumodel.APIKeyResolver
 	HTTPClient     *http.Client
 }
 
@@ -407,10 +425,11 @@ func openProductionCompositionWithOptions(
 	if err != nil {
 		return fail(err)
 	}
-	registry, err := newProductionAdapterRegistryWithActionRuntimesAndExtras(
+	registry, err := newProductionAdapterRegistryWithModelRuntimesAndExtras(
 		root,
 		catalog.Entries,
 		options.DeepSeek,
+		options.Zhipu,
 		options.RemoteAction,
 		options.WASMAction,
 	)
@@ -716,6 +735,11 @@ func newBootstrapModelProbe(
 		// Seed import needs only an exact registry-presence probe. It must not
 		// resolve a credential, create an HTTP client, or make a request.
 		return bootstrapModelActivationProbe{}, nil
+	case localZhipuModuleID:
+		if err := validateZhipuArtifact(assertion.ArtifactDirectory, assertion.ArtifactSizeBytes, provider); err != nil {
+			return nil, err
+		}
+		return bootstrapModelActivationProbe{}, nil
 	default:
 		return nil, errors.New(
 			"composition: bootstrap model is not in the compiled local trust set",
@@ -752,6 +776,11 @@ func isCompiledModelProvider(provider moduleapi.ActivatedModuleRef) bool {
 		provider.ArtifactDigest == localDeepSeekDigest &&
 		provider.AdapterIdentity == deepseekmodel.AdapterIdentityV1:
 		return true
+	case provider.ModuleID == localZhipuModuleID &&
+		provider.Version == localZhipuVersion &&
+		provider.ArtifactDigest == localZhipuDigest &&
+		provider.AdapterIdentity == zhipumodel.AdapterIdentityV1:
+		return true
 	default:
 		return false
 	}
@@ -776,7 +805,7 @@ func exactLocalModelProvider(
 					found = true
 				} else if !sameProviderArtifactAdapter(provider, candidate) {
 					return moduleapi.ActivatedModuleRef{}, errors.New(
-						"composition: model.generate/v1 providers from different exact artifacts or adapters require an explicit multi-model composition",
+						"composition: model.generate/v2 providers from different exact artifacts or adapters require an explicit multi-model composition",
 					)
 				}
 				break
@@ -785,7 +814,7 @@ func exactLocalModelProvider(
 	}
 	if !found {
 		return moduleapi.ActivatedModuleRef{}, fmt.Errorf(
-			"composition: catalog must contain a model.generate/v1 provider",
+			"composition: catalog must contain a model.generate/v2 provider",
 		)
 	}
 	return provider, nil
@@ -872,6 +901,20 @@ func newProductionAdapterRegistryWithActionRuntimesAndExtras(
 	wasmAction *productionWASMActionRuntimeConfig,
 	extras ...exactadapter.Registration,
 ) (*exactadapter.Registry, error) {
+	return newProductionAdapterRegistryWithModelRuntimesAndExtras(
+		artifactRoot, entries, deepSeek, nil, remoteAction, wasmAction, extras...,
+	)
+}
+
+func newProductionAdapterRegistryWithModelRuntimesAndExtras(
+	artifactRoot string,
+	entries []controlcontract.CatalogEntry,
+	deepSeek *productionDeepSeekRuntimeConfig,
+	zhipu *productionZhipuRuntimeConfig,
+	remoteAction *productionRemoteActionRuntimeConfig,
+	wasmAction *productionWASMActionRuntimeConfig,
+	extras ...exactadapter.Registration,
+) (*exactadapter.Registry, error) {
 	remoteProviders, err := exactRemoteActionCatalogProviders(entries)
 	if err != nil {
 		return nil, err
@@ -898,9 +941,9 @@ func newProductionAdapterRegistryWithActionRuntimesAndExtras(
 	var modelInvoker modulehost.ModuleInvoker
 	switch modelProvider.ModuleID {
 	case localEchoModuleID:
-		if deepSeek != nil {
+		if deepSeek != nil || zhipu != nil {
 			return nil, errors.New(
-				"composition: DeepSeek runtime configuration was supplied but the current Catalog selects Echo",
+				"composition: model runtime configuration was supplied but the current Catalog selects Echo",
 			)
 		}
 		// Preserve the Echo artifact-read and construction path.
@@ -918,7 +961,7 @@ func newProductionAdapterRegistryWithActionRuntimesAndExtras(
 			return nil, err
 		}
 	case localDeepSeekModuleID:
-		if deepSeek == nil {
+		if deepSeek == nil || zhipu != nil {
 			return nil, errors.New(
 				"composition: current Catalog selects DeepSeek but no explicit runtime configuration was supplied",
 			)
@@ -944,6 +987,26 @@ func newProductionAdapterRegistryWithActionRuntimesAndExtras(
 				"composition: construct exact DeepSeek adapter: %w",
 				err,
 			)
+		}
+	case localZhipuModuleID:
+		if zhipu == nil || deepSeek != nil {
+			return nil, errors.New(
+				"composition: current Catalog selects Zhipu but its exact runtime configuration was not supplied",
+			)
+		}
+		if err := validateZhipuArtifact(modelDirectory, localZhipuSize, modelProvider); err != nil {
+			return nil, err
+		}
+		modelInvoker, err = zhipumodel.New(zhipumodel.Options{
+			Provider: modelProvider,
+			AllowedModelBuildIDs: map[string]string{
+				zhipumodel.ModelGLM45: localZhipuGLM45Build,
+			},
+			APIKeyResolver: zhipu.APIKeyResolver,
+			HTTPClient:     zhipu.HTTPClient,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("composition: construct exact Zhipu adapter: %w", err)
 		}
 	default:
 		return nil, errors.New(
@@ -1041,6 +1104,58 @@ func validateDeepSeekArtifact(
 		return errors.New(
 			"composition: DeepSeek artifact config schema does not match the compiled schema",
 		)
+	}
+	return nil
+}
+
+func validateZhipuArtifact(
+	artifactDirectory string,
+	expectedSize uint64,
+	expectedProvider moduleapi.ActivatedModuleRef,
+) error {
+	if !isCompiledModelProvider(expectedProvider) || expectedProvider.ModuleID != localZhipuModuleID {
+		return errors.New("composition: Zhipu provider is not in the compiled local trust set")
+	}
+	if expectedSize != localZhipuSize {
+		return errors.New("composition: Zhipu artifact size is not the compiled package lock")
+	}
+	digest, size, err := inspectArtifact(artifactDirectory)
+	if err != nil {
+		return err
+	}
+	if digest != localZhipuDigest || digest != expectedProvider.ArtifactDigest || size != localZhipuSize {
+		return errors.New("composition: installed Zhipu artifact digest or size mismatch")
+	}
+	manifestCanonical, files, err := readArtifact(artifactDirectory)
+	if err != nil {
+		return err
+	}
+	manifest, _, err := moduleapi.ParseModuleManifestV1(manifestCanonical)
+	if err != nil {
+		return fmt.Errorf("composition: restore Zhipu manifest: %w", err)
+	}
+	if manifest.APIVersion != moduleapi.ModuleManifestAPIVersionV1 ||
+		manifest.ID != localZhipuModuleID || manifest.Version != localZhipuVersion ||
+		manifest.Runtime.Mode != moduleapi.RuntimeModeRequestTrustedInProcess ||
+		manifest.Runtime.Protocol != moduleapi.RuntimeProtocolGoInProcessV1 ||
+		manifest.Runtime.Entrypoint != localZhipuEntrypoint || len(manifest.Provides) != 1 ||
+		manifest.Provides[0] != productionModelPort || len(manifest.Requires) != 0 ||
+		len(manifest.RequestedPermissions) != 0 ||
+		!bytes.Equal(manifest.ConfigSchema, []byte(`{"path":"`+localZhipuSchemaPath+`"}`)) {
+		return errors.New("composition: Zhipu artifact manifest does not close the exact provider, Port, runtime, entrypoint, and config schema")
+	}
+	var schemaCanonical []byte
+	for _, file := range files {
+		if file.Path == localZhipuSchemaPath {
+			schemaCanonical = file.Content
+			break
+		}
+	}
+	if schemaCanonical == nil {
+		return errors.New("composition: Zhipu artifact config schema is missing")
+	}
+	if fmt.Sprintf("%x", sha256.Sum256(schemaCanonical)) != localZhipuSchemaDigest {
+		return errors.New("composition: Zhipu artifact config schema does not match the compiled schema")
 	}
 	return nil
 }

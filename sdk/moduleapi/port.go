@@ -168,10 +168,11 @@ const (
 	PortNameActionProvider   = "action.provider"
 	PortNameChannelTransport = "channel.transport"
 	PortVersionV1            = "v1"
+	PortVersionV2            = "v2"
 )
 
 var s1PortRefs = [...]PortRef{
-	{Name: PortNameModelGenerate, ExactVersion: PortVersionV1},
+	{Name: PortNameModelGenerate, ExactVersion: PortVersionV2},
 	{Name: PortNameContextProvide, ExactVersion: PortVersionV1},
 	{Name: PortNameActionProvider, ExactVersion: PortVersionV1},
 	{Name: PortNameChannelTransport, ExactVersion: PortVersionV1},
@@ -240,11 +241,12 @@ func validateS1PortPlan(plan PortPlan) error {
 			MaxManifestEntries,
 		)
 	}
-	// model.generate/v1 and channel.transport/v1 are exact single-provider
+	// model.generate/v2 and channel.transport/v1 are exact single-provider
 	// Ports. This is a protocol rule, not caller-configurable cardinality.
-	if (plan.Port.Name == PortNameModelGenerate ||
-		plan.Port.Name == PortNameChannelTransport) &&
-		plan.Port.ExactVersion == PortVersionV1 &&
+	if ((plan.Port.Name == PortNameModelGenerate &&
+		plan.Port.ExactVersion == PortVersionV2) ||
+		(plan.Port.Name == PortNameChannelTransport &&
+			plan.Port.ExactVersion == PortVersionV1)) &&
 		len(plan.Bindings) != 1 {
 		return fmt.Errorf(
 			"port %s/%s requires exactly one binding",
@@ -344,7 +346,7 @@ func validateS1PortPlan(plan PortPlan) error {
 	}
 	if plan.Port.Name == PortNameModelGenerate &&
 		plan.Bindings[0].FailurePolicy != FailureRequired {
-		return fmt.Errorf("port model.generate/v1 requires a REQUIRED binding")
+		return fmt.Errorf("port model.generate/v2 requires a REQUIRED binding")
 	}
 	return nil
 }

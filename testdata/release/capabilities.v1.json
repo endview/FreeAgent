@@ -120,8 +120,8 @@
                                     },
                                     {
                                         "kind":  "go",
-                                        "package":  "./internal/currentstore",
-                                        "name":  "TestModelBudgetAcceptsMaximumLengthBudgetStateRefV1"
+                                        "package":  "./internal/corecontract",
+                                        "name":  "TestUsageLedgerRefV1RoundTripAndDedicatedLengthLimit"
                                     }
                                 ],
                       "docs_anchor":  "model-reservation",

@@ -88,7 +88,7 @@ func TestProfileContextDisableNarrowPlanMatchesBroadApplyPlanExactlyV1(t *testin
 		broadDigest,
 		controlcontract.PublishedBasis{PointerRevision: input.ExpectedPointerRevision},
 		controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    "current-control",
 			TenantID:      input.TenantID,
 			Revision:      input.ExpectedPointerRevision,

@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	SchemaVersionV1 = "freeagent.bootstrap-seed/v1"
+	SchemaVersionV2 = "freeagent.bootstrap-seed/v2"
 
 	policyIDPrefix = "freeagent.policy."
 	policyVersion  = "1"
@@ -119,7 +119,6 @@ type Prepared struct {
 	modelProfileRef        *corecontract.ModelProfileRef
 	modelProfileCanonical  []byte
 	authorityRef           string
-	priceSnapshot          corecontract.ModelPriceSnapshotV1
 }
 
 type seedV1 struct {
@@ -139,7 +138,6 @@ type seedV1 struct {
 	KnowledgeContextProviders   []knowledgeContextProviderSeed               `json:"knowledge_context_providers,omitempty"`
 	MemoryContextProviders      []memoryContextProviderSeed                  `json:"memory_context_providers,omitempty"`
 	ActionProviders             []actionProviderSeed                         `json:"action_providers,omitempty"`
-	PriceSnapshot               priceSnapshotSeed                            `json:"price_snapshot"`
 	DefaultAssembly             defaultAssemblySeed                          `json:"default_assembly"`
 }
 
@@ -170,10 +168,9 @@ type definitionSeed struct {
 }
 
 type workspaceSeed struct {
-	ID                string          `json:"id"`
-	Version           string          `json:"version"`
-	Body              json.RawMessage `json:"body"`
-	BudgetPolicyAlias string          `json:"budget_policy_alias"`
+	ID      string          `json:"id"`
+	Version string          `json:"version"`
+	Body    json.RawMessage `json:"body"`
 }
 
 type profileSeed struct {
@@ -181,7 +178,6 @@ type profileSeed struct {
 	Version               string          `json:"version"`
 	Body                  json.RawMessage `json:"body"`
 	ContextPolicyAlias    string          `json:"context_policy_alias"`
-	CostPolicyAlias       string          `json:"cost_policy_alias"`
 	SchedulingPolicyAlias string          `json:"scheduling_policy_alias"`
 }
 
@@ -207,7 +203,7 @@ type moduleSeed struct {
 type modelBindingSeed struct {
 	Port          moduleapi.PortRef              `json:"port"`
 	InstanceID    string                         `json:"instance_id"`
-	Config        moduleapi.ModelBindingConfigV1 `json:"config"`
+	Config        moduleapi.ModelBindingConfigV2 `json:"config"`
 	FailurePolicy moduleapi.FailurePolicy        `json:"failure_policy"`
 }
 
@@ -240,17 +236,6 @@ type actionProviderSeed struct {
 	Config           moduleapi.ActionBindingConfigV1    `json:"config"`
 	AuthorityCeiling moduleapi.ActionAuthorityCeilingV1 `json:"authority_ceiling"`
 	FailurePolicy    moduleapi.FailurePolicy            `json:"failure_policy"`
-}
-
-type priceSnapshotSeed struct {
-	SchemaVersion   string                     `json:"schema_version"`
-	PriceSnapshotID string                     `json:"price_snapshot_id"`
-	Provider        string                     `json:"provider"`
-	Model           string                     `json:"model"`
-	BillingVersion  string                     `json:"billing_version"`
-	Currency        string                     `json:"currency"`
-	PricingStatus   corecontract.PricingStatus `json:"pricing_status"`
-	Pricing         json.RawMessage            `json:"pricing"`
 }
 
 type defaultAssemblySeed struct {
@@ -595,10 +580,6 @@ func (prepared *Prepared) Import(
 	); err != nil {
 		return Result{}, fmt.Errorf("bootstrapseed: persist deny-all authority ceiling: %w", err)
 	}
-	if _, err := store.PutModelPriceSnapshot(ctx, prepared.priceSnapshot); err != nil {
-		return Result{}, fmt.Errorf("bootstrapseed: persist model price snapshot: %w", err)
-	}
-
 	installation, activation, provider, err := prepared.installAndActivate(
 		ctx,
 		store,
@@ -750,8 +731,8 @@ func (prepared *Prepared) Import(
 }
 
 func prepareSeed(seed seedV1, artifactBase string) (*Prepared, error) {
-	if seed.SchemaVersion != SchemaVersionV1 {
-		return nil, fmt.Errorf("%w: schema_version must be %q", ErrInvalidSeed, SchemaVersionV1)
+	if seed.SchemaVersion != SchemaVersionV2 {
+		return nil, fmt.Errorf("%w: schema_version must be %q", ErrInvalidSeed, SchemaVersionV2)
 	}
 	for name, value := range map[string]string{
 		"seed ID":               seed.SeedID,
@@ -813,17 +794,17 @@ func prepareSeed(seed seedV1, artifactBase string) (*Prepared, error) {
 
 	if seed.ModelBinding.Port != (moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}) {
-		return nil, fmt.Errorf("%w: S1 bootstrap binds only model.generate/v1", ErrInvalidSeed)
+		return nil, fmt.Errorf("%w: S1 bootstrap binds only model.generate/v2", ErrInvalidSeed)
 	}
 	if seed.ModelBinding.InstanceID != seed.Module.InstanceID {
 		return nil, fmt.Errorf("%w: model Binding instance does not match module instance", ErrInvalidSeed)
 	}
 	if seed.ModelBinding.FailurePolicy != moduleapi.FailureRequired {
-		return nil, fmt.Errorf("%w: model.generate/v1 bootstrap Binding must be REQUIRED", ErrInvalidSeed)
+		return nil, fmt.Errorf("%w: model.generate/v2 bootstrap Binding must be REQUIRED", ErrInvalidSeed)
 	}
-	modelConfig, configCanonical, err := moduleapi.NewModelBindingConfigV1(
+	modelConfig, configCanonical, err := moduleapi.NewModelBindingConfigV2(
 		seed.ModelBinding.Config,
 	)
 	if err != nil {
@@ -844,27 +825,6 @@ func prepareSeed(seed seedV1, artifactBase string) (*Prepared, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("%w: deny-all authority ceiling: %v", ErrInvalidSeed, err)
-	}
-
-	priceInput := corecontract.ModelPriceSnapshotV1{
-		SchemaVersion:   seed.PriceSnapshot.SchemaVersion,
-		PriceSnapshotID: seed.PriceSnapshot.PriceSnapshotID,
-		Provider:        seed.PriceSnapshot.Provider,
-		Model:           seed.PriceSnapshot.Model,
-		BillingVersion:  seed.PriceSnapshot.BillingVersion,
-		Currency:        seed.PriceSnapshot.Currency,
-		PricingStatus:   seed.PriceSnapshot.PricingStatus,
-		Pricing:         bytes.Clone(seed.PriceSnapshot.Pricing),
-	}
-	priceSnapshot, _, err := corecontract.NewModelPriceSnapshotV1(priceInput)
-	if err != nil {
-		return nil, fmt.Errorf("%w: model price snapshot: %v", ErrInvalidSeed, err)
-	}
-	if seed.ModelBinding.Config.Provider != priceSnapshot.Provider ||
-		seed.ModelBinding.Config.Model != priceSnapshot.Model ||
-		seed.ModelBinding.Config.BillingVersion != priceSnapshot.BillingVersion ||
-		seed.ModelBinding.Config.PriceSnapshotID != priceSnapshot.PriceSnapshotID {
-		return nil, fmt.Errorf("%w: model Binding config and price snapshot do not close", ErrInvalidSeed)
 	}
 
 	module, manifestCanonical, err := prepareModelArtifact(
@@ -940,13 +900,12 @@ func prepareSeed(seed seedV1, artifactBase string) (*Prepared, error) {
 		modelProfileRef:        cloneModelProfileRef(modelProfileRef),
 		modelProfileCanonical:  bytes.Clone(modelProfileCanonical),
 		authorityRef:           authorityRef,
-		priceSnapshot:          priceSnapshot,
 	}, nil
 }
 
 func prepareModelProfile(
 	input *corecontract.ModelProfileV1,
-	modelConfig moduleapi.ModelBindingConfigV1,
+	modelConfig moduleapi.ModelBindingConfigV2,
 	configRef string,
 	module ModuleAssertion,
 	authorityRef string,
@@ -1024,7 +983,7 @@ func prepareModelArtifact(
 		len(artifact.manifest.Requires) != 0 ||
 		len(artifact.manifest.RequestedPermissions) != 0 {
 		return ModuleAssertion{}, nil, fmt.Errorf(
-			"%w: S1 Echo artifact must provide only model.generate/v1 and request no dependency or permission",
+			"%w: S1 Echo artifact must provide only model.generate/v2 and request no dependency or permission",
 			ErrArtifact,
 		)
 	}
@@ -2301,13 +2260,6 @@ func prepareDefinitionRefs(
 			)
 		}
 		seenWorkspaceIDs[ref.ID] = struct{}{}
-		if err := requirePolicyAlias(
-			policyRefs,
-			definition.BudgetPolicyAlias,
-			fmt.Sprintf("Workspace definition %q budget", ref.ID),
-		); err != nil {
-			return nil, nil, nil, err
-		}
 		workspaceRefs[index] = ref
 	}
 
@@ -2331,7 +2283,6 @@ func prepareDefinitionRefs(
 			alias string
 		}{
 			{name: "context", alias: definition.ContextPolicyAlias},
-			{name: "cost", alias: definition.CostPolicyAlias},
 			{name: "scheduling", alias: definition.SchedulingPolicyAlias},
 		} {
 			if err := requirePolicyAlias(
@@ -2396,10 +2347,6 @@ func freezeSeedCompositeAgents(
 	if len(seed.CompositeAgents) == 0 {
 		return nil, nil
 	}
-	workspaceSeeds := append(
-		[]workspaceSeed{seed.Definitions.Workspace},
-		seed.Definitions.AdditionalWorkspaces...,
-	)
 	profileSeeds := append(
 		[]profileSeed{seed.Definitions.Profile},
 		seed.Definitions.AdditionalProfiles...,
@@ -2407,8 +2354,7 @@ func freezeSeedCompositeAgents(
 	workspaces := make([]controlcontract.WorkspaceDefinition, len(workspaceRefs))
 	for index, ref := range workspaceRefs {
 		workspaces[index] = controlcontract.WorkspaceDefinition{
-			Workspace:    ref,
-			BudgetPolicy: policyRefs[workspaceSeeds[index].BudgetPolicyAlias],
+			Workspace: ref,
 		}
 	}
 	profiles := make([]controlcontract.ProfileDefinition, len(profileRefs))
@@ -2417,14 +2363,13 @@ func freezeSeedCompositeAgents(
 		profiles[index] = controlcontract.ProfileDefinition{
 			Profile:          ref,
 			ContextPolicy:    policyRefs[definition.ContextPolicyAlias],
-			CostPolicy:       policyRefs[definition.CostPolicyAlias],
 			SchedulingPolicy: policyRefs[definition.SchedulingPolicyAlias],
 			Bindings:         []controlcontract.BindingSpec{},
 		}
 	}
 	frozen, _, _, err := controlcontract.NewControlSnapshot(
 		controlcontract.ControlSnapshot{
-			SchemaVersion:   controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion:   controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:      seed.Control.SnapshotID,
 			TenantID:        seed.TenantID,
 			Revision:        seed.Control.Revision,
@@ -2726,18 +2671,13 @@ func (prepared *Prepared) buildPublication(
 		Provides:   []moduleapi.PortRef{modelBinding.Port},
 	})
 	modelProfileRef := cloneModelProfileRef(prepared.modelProfileRef)
-	workspaceSeeds := append(
-		[]workspaceSeed{prepared.seed.Definitions.Workspace},
-		prepared.seed.Definitions.AdditionalWorkspaces...,
-	)
 	workspaces := make(
 		[]controlcontract.WorkspaceDefinition,
 		len(prepared.workspaceRefs),
 	)
 	for index, workspaceRef := range prepared.workspaceRefs {
 		workspaces[index] = controlcontract.WorkspaceDefinition{
-			Workspace:    workspaceRef,
-			BudgetPolicy: refs[workspaceSeeds[index].BudgetPolicyAlias],
+			Workspace: workspaceRef,
 		}
 	}
 	profileSeeds := append(
@@ -2754,14 +2694,13 @@ func (prepared *Prepared) buildPublication(
 			Profile:          profileRef,
 			ModelProfile:     cloneModelProfileRef(modelProfileRef),
 			ContextPolicy:    refs[profileDefinition.ContextPolicyAlias],
-			CostPolicy:       refs[profileDefinition.CostPolicyAlias],
 			SchedulingPolicy: refs[profileDefinition.SchedulingPolicyAlias],
 			Bindings:         cloneBindingSpecs(bindings),
 		}
 	}
 	control, controlRef, controlCanonical, err := controlcontract.NewControlSnapshot(
 		controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    prepared.seed.Control.SnapshotID,
 			TenantID:      prepared.seed.TenantID,
 			Revision:      prepared.seed.Control.Revision,
@@ -3170,7 +3109,6 @@ func cloneSeed(seed seedV1) seedV1 {
 			provider.AuthorityCeiling.AllowedProviderActionIDs...,
 		)
 	}
-	seed.PriceSnapshot.Pricing = bytes.Clone(seed.PriceSnapshot.Pricing)
 	return seed
 }
 

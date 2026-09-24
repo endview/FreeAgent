@@ -19,6 +19,8 @@ import {
 import type { OverviewContext } from "./overview.ts";
 
 export const MODULES_PATH = "/control/api/v1/modules";
+export const MODULE_UPGRADE_REVIEWS_PATH =
+  "/control/api/v1/module-upgrade-reviews";
 export const MODULE_DISABLE_DRY_RUN_PATH =
   "/control/api/v1/modules/disable/dry-run";
 export const MODULE_DISABLE_CONFIRMATION_PATH =
@@ -33,6 +35,8 @@ export const MODULE_DISABLE_BODY_SCHEMA =
 const MODULES_PAGE_SCHEMA = "control-http-modules-page/v1";
 const MODULES_APPLICATION_PAGE_SCHEMA = "control-modules-page/v1";
 const MODULE_DETAIL_SCHEMA = "control-module-detail/v1";
+const MODULE_UPGRADE_REVIEW_LIST_SCHEMA = "control-module-upgrade-review-list/v1";
+const MODULE_UPGRADE_REVIEW_DETAIL_SCHEMA = "control-module-upgrade-review-detail/v1";
 const MODULES_CURSOR_SCHEMA = "control-modules-cursor/v1";
 const MODULES_SORT_VERSION = "control-modules-instance-id-binary/v1";
 const MODULE_DISABLE_DRY_RUN_RESULT_SCHEMA =
@@ -67,6 +71,11 @@ const MAX_JSON_DEPTH = 64;
 const MAX_JSON_NODES = 1 << 16;
 const MAX_TRANSPORT_CACHE_ENTRIES = 256;
 const MAX_CONFIRMATION_CACHE_ENTRIES = 64;
+
+const reviewListCache = new Map<
+  string,
+  { etag: string; data: ModuleUpgradeReviewListResponse }
+>();
 
 export type ModulePortRef = {
   name: string;
@@ -138,6 +147,102 @@ export type ModuleDetailResponse = {
   source_revision: number;
   source_digest: string;
   module: ModuleDetail;
+  projection_digest: string;
+  strong_etag: string;
+};
+
+export type ModuleUpgradeReviewDecision = {
+  decision_id: string;
+  decision: "APPROVE" | "REJECT";
+  operator_principal_id: string;
+  reason: string;
+  decided_at_unix_micros: number;
+};
+
+export type ModuleUpgradeReviewItem = {
+  review_id: string;
+  candidate_id: string;
+  review_key: string;
+  tenant_id: string;
+  artifact_admission_id: string;
+  operator_principal_id: string;
+  review_request_digest: string;
+  binding_target: ModuleBindingTarget;
+  port: ModulePortRef;
+  target_instance_id: string;
+  target_module: { id: string; version: string };
+  target_artifact_digest: string;
+  target_artifact_size_bytes: number;
+  conclusion: "WOULD_APPLY" | "CONFLICT" | "UNSUPPORTED";
+  reason_codes: string[];
+  created_at_unix_micros: number;
+  decision?: ModuleUpgradeReviewDecision;
+  artifact?: {
+    artifact_digest: string;
+    module: { id: string; version: string };
+    manifest_ref: string;
+    artifact_size_bytes: number;
+    covered_file_count: number;
+  };
+};
+
+export type ModuleUpgradeReviewProjection = {
+  schema_version: "module-upgrade-review/v1";
+  candidate_id: string;
+  review_key: string;
+  tenant_id: string;
+  artifact_admission_id: string;
+  operator_principal_id: string;
+  review_request_digest: string;
+  binding_target: ModuleBindingTarget;
+  port: ModulePortRef;
+  port_binding_index: number;
+  target_instance_id: string;
+  target_module: { id: string; version: string };
+  target_artifact_digest: string;
+  target_artifact_size_bytes: number;
+  conclusion: "WOULD_APPLY" | "CONFLICT" | "UNSUPPORTED";
+  reason_codes: string[];
+};
+
+export type ModuleUpgradeReviewListResponse = {
+  schema_version: "control-module-upgrade-review-list/v1";
+  scope: ControlScope;
+  items: ModuleUpgradeReviewItem[];
+  has_more: boolean;
+  projection_digest: string;
+  strong_etag: string;
+};
+
+export type ModuleUpgradeReviewDetailResponse = {
+  schema_version: "control-module-upgrade-review-detail/v1";
+  scope: ControlScope;
+  review_id: string;
+  review: ModuleUpgradeReviewProjection;
+  created_at_unix_micros: number;
+  decision?: ModuleUpgradeReviewDecision;
+  artifact: {
+    artifact_digest: string;
+    module: { id: string; version: string };
+    manifest_ref: string;
+    artifact_size_bytes: number;
+    covered_file_count: number;
+  };
+  admission: {
+    admission_id: string;
+    source_id: string;
+    source_policy_id: string;
+    source_policy_revision: number;
+    snapshot_id: string;
+    snapshot_observation_revision: number;
+    entry_ordinal: number;
+    module: { id: string; version: string };
+    artifact_digest: string;
+    manifest_ref: string;
+    artifact_size_bytes: number;
+    covered_file_count: number;
+    admitted_at_unix_micros: number;
+  };
   projection_digest: string;
   strong_etag: string;
 };
@@ -343,7 +448,7 @@ export const isModulesStale = (error: unknown): error is ControlModulesError =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const exactKeys = (
+export const exactKeys = (
   value: Record<string, unknown>,
   required: readonly string[],
   optional: readonly string[] = []
@@ -356,7 +461,7 @@ const exactKeys = (
   );
 };
 
-const safeInteger = (value: unknown, positive = false): value is number =>
+export const safeInteger = (value: unknown, positive = false): value is number =>
   Number.isSafeInteger(value) && (value as number) >= (positive ? 1 : 0);
 
 const boundedInteger = (
@@ -365,10 +470,10 @@ const boundedInteger = (
   positive = false
 ): value is number => safeInteger(value, positive) && (value as number) <= maximum;
 
-const digest = (value: unknown): value is string =>
+export const digest = (value: unknown): value is string =>
   typeof value === "string" && DIGEST_PATTERN.test(value);
 
-const strongETag = (value: unknown): value is string =>
+export const strongETag = (value: unknown): value is string =>
   typeof value === "string" && STRONG_ETAG_PATTERN.test(value);
 
 const utf8Bytes = (value: string) => new TextEncoder().encode(value);
@@ -381,7 +486,7 @@ const wellFormedUTF8 = (value: string) => {
   }
 };
 
-const opaque = (value: unknown, maximum = MAX_OPAQUE_BYTES): value is string =>
+export const opaque = (value: unknown, maximum = MAX_OPAQUE_BYTES): value is string =>
   typeof value === "string" &&
   value.length > 0 &&
   wellFormedUTF8(value) &&
@@ -400,7 +505,7 @@ const version = (value: unknown): value is string =>
   byteLength(value) <= MAX_VERSION_BYTES &&
   VERSION_PATTERN.test(value);
 
-const sameCanonical = (left: unknown, right: unknown) =>
+export const sameCanonical = (left: unknown, right: unknown) =>
   canonicalJSONString(left) === canonicalJSONString(right);
 
 const compareUTF8 = (left: string, right: string) => {
@@ -505,7 +610,7 @@ const rejectDuplicateObjectKeys = (text: string, label: string) => {
   if (index !== text.length) throw new Error(`${label} contains trailing JSON material`);
 };
 
-const parseJSONRecord = (text: string, label: string) => {
+export const parseJSONRecord = (text: string, label: string) => {
   let decoded: unknown;
   try {
     rejectDuplicateObjectKeys(text, label);
@@ -1043,7 +1148,7 @@ const cursorBindings = new Map<string, CursorBinding>();
 const publishedBindings = new Map<string, PublishedBinding>();
 const confirmationBindings = new Map<string, string>();
 
-const detachJSON = <T>(value: T): T =>
+export const detachJSON = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
 
 const putBounded = <K, V>(map: Map<K, V>, key: K, value: V, maximum: number) => {
@@ -1056,7 +1161,7 @@ const putBounded = <K, V>(map: Map<K, V>, key: K, value: V, maximum: number) => 
   }
 };
 
-const contextIdentity = (context: ModuleContext) => [
+export const contextIdentity = (context: ModuleContext) => [
   context.origin,
   context.bootID,
   context.sessionID,
@@ -1139,6 +1244,7 @@ export const clearModulesOperationCache = () => {
 export const clearModulesTransportCache = () => {
   pageCache.clear();
   detailCache.clear();
+  reviewListCache.clear();
   cursorBindings.clear();
   clearModulesOperationCache();
 };
@@ -1152,7 +1258,7 @@ export const withPublishedModulesBasis = (
   publishedBasis: source.basis
 });
 
-const validateContext = (context: ModuleContext) => {
+export const validateContext = (context: ModuleContext) => {
   if (
     !exactLoopbackOrigin(context.origin) ||
     typeof window === "undefined" ||
@@ -1194,7 +1300,7 @@ const validateContext = (context: ModuleContext) => {
   }
 };
 
-const scopeHeaders = (context: ModuleContext) => {
+export const scopeHeaders = (context: ModuleContext) => {
   const headers: Record<string, string> = {
     "X-FreeAgent-CSRF": context.csrfToken,
     "X-FreeAgent-Scope-Kind": context.scope.kind,
@@ -1257,7 +1363,7 @@ const readBoundedText = async (response: Response, label: string) => {
   }
 };
 
-const fetchExact = async (
+export const fetchExact = async (
   url: string,
   init: RequestInit,
   fetcher: typeof fetch,
@@ -1349,7 +1455,7 @@ const readControlError = async (
   );
 };
 
-const requireJSONSuccess = async (
+export const requireJSONSuccess = async (
   response: Response,
   label: string,
   outcomeMayBeCommitted: boolean,
@@ -1398,7 +1504,7 @@ const strongETagWire = async (
     })
   )}"`;
 
-const httpStrongETag = async (
+export const httpStrongETag = async (
   domain: string,
   applicationETag: string,
   exactBody: string
@@ -1835,6 +1941,355 @@ export const fetchModuleDetail = async (
   );
   storePublishedBinding(context, detail.basis, detail.published_pointer);
   return detail;
+};
+
+const decodeReviewModuleRef = (value: unknown, label: string) => {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, ["id", "version"]) ||
+    !dottedIdentifier(value.id) ||
+    !version(value.version)
+  ) {
+    throw new Error(`${label} module reference is invalid`);
+  }
+  return { id: value.id, version: value.version };
+};
+
+const decodeReviewDecision = (value: unknown): ModuleUpgradeReviewDecision => {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, [
+      "decision_id",
+      "decision",
+      "operator_principal_id",
+      "reason",
+      "decided_at_unix_micros"
+    ]) ||
+    !digest(value.decision_id) ||
+    (value.decision !== "APPROVE" && value.decision !== "REJECT") ||
+    !opaque(value.operator_principal_id) ||
+    typeof value.reason !== "string" ||
+    byteLength(value.reason) > 64 * 1024 ||
+    !safeInteger(value.decided_at_unix_micros, true)
+  ) {
+    throw new Error("module Review Decision is invalid");
+  }
+  return value as ModuleUpgradeReviewDecision;
+};
+
+const decodeReviewArtifact = (value: unknown) => {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, [
+      "artifact_digest",
+      "module",
+      "manifest_ref",
+      "artifact_size_bytes",
+      "covered_file_count"
+    ]) ||
+    !digest(value.artifact_digest) ||
+    !digest(value.manifest_ref) ||
+    !safeInteger(value.artifact_size_bytes, true) ||
+    !safeInteger(value.covered_file_count, true)
+  ) {
+    throw new Error("module Review Artifact is invalid");
+  }
+  return {
+    artifact_digest: value.artifact_digest,
+    module: decodeReviewModuleRef(value.module, "Review Artifact"),
+    manifest_ref: value.manifest_ref,
+    artifact_size_bytes: value.artifact_size_bytes,
+    covered_file_count: value.covered_file_count
+  };
+};
+
+const decodeReviewItem = (value: unknown): ModuleUpgradeReviewItem => {
+  if (
+    !isRecord(value) ||
+    !exactKeys(
+      value,
+      [
+        "review_id",
+        "candidate_id",
+        "review_key",
+        "tenant_id",
+        "artifact_admission_id",
+        "operator_principal_id",
+        "review_request_digest",
+        "binding_target",
+        "port",
+        "target_instance_id",
+        "target_module",
+        "target_artifact_digest",
+        "target_artifact_size_bytes",
+        "conclusion",
+        "reason_codes",
+        "created_at_unix_micros"
+      ],
+      ["decision", "artifact"]
+    ) ||
+    !digest(value.review_id) ||
+    !digest(value.candidate_id) ||
+    !digest(value.review_key) ||
+    !opaque(value.tenant_id) ||
+    !digest(value.artifact_admission_id) ||
+    !opaque(value.operator_principal_id) ||
+    !digest(value.review_request_digest) ||
+    !isRecord(value.binding_target) ||
+    !isRecord(value.port) ||
+    !opaque(value.target_instance_id) ||
+    !digest(value.target_artifact_digest) ||
+    !safeInteger(value.target_artifact_size_bytes, true) ||
+    (value.conclusion !== "WOULD_APPLY" &&
+      value.conclusion !== "CONFLICT" &&
+      value.conclusion !== "UNSUPPORTED") ||
+    !Array.isArray(value.reason_codes) ||
+    value.reason_codes.some((reason) => typeof reason !== "string" || !opaque(reason)) ||
+    !safeInteger(value.created_at_unix_micros, true)
+  ) {
+    throw new Error("module Review item is invalid");
+  }
+  const target = decodeTarget(value.binding_target);
+  const port = decodePort(value.port);
+  return {
+    review_id: value.review_id,
+    candidate_id: value.candidate_id,
+    review_key: value.review_key,
+    tenant_id: value.tenant_id,
+    artifact_admission_id: value.artifact_admission_id,
+    operator_principal_id: value.operator_principal_id,
+    review_request_digest: value.review_request_digest,
+    binding_target: target,
+    port,
+    target_instance_id: value.target_instance_id,
+    target_module: decodeReviewModuleRef(value.target_module, "Review Target"),
+    target_artifact_digest: value.target_artifact_digest,
+    target_artifact_size_bytes: value.target_artifact_size_bytes,
+    conclusion: value.conclusion,
+    reason_codes: [...value.reason_codes] as string[],
+    created_at_unix_micros: value.created_at_unix_micros,
+    ...(Object.hasOwn(value, "decision")
+      ? { decision: decodeReviewDecision(value.decision) }
+      : {}),
+    ...(Object.hasOwn(value, "artifact")
+      ? { artifact: decodeReviewArtifact(value.artifact) }
+      : {})
+  };
+};
+
+const decodeReviewList = (
+  text: string,
+  scope: ControlScope
+): ModuleUpgradeReviewListResponse => {
+  const value = parseJSONRecord(text, "Module Review list response");
+  if (
+    !exactKeys(value, [
+      "schema_version",
+      "scope",
+      "items",
+      "has_more",
+      "projection_digest",
+      "strong_etag"
+    ]) ||
+    value.schema_version !== MODULE_UPGRADE_REVIEW_LIST_SCHEMA ||
+    !sameCanonical(value.scope, scope) ||
+    !Array.isArray(value.items) ||
+    value.items.length > 100 ||
+    typeof value.has_more !== "boolean" ||
+    value.has_more ||
+    !digest(value.projection_digest) ||
+    !strongETag(value.strong_etag)
+  ) {
+    throw new Error("module Review list response envelope is invalid");
+  }
+  const items = value.items.map(decodeReviewItem);
+  if (items.some((item, index) => index > 0 && item.review_id <= items[index - 1].review_id)) {
+    throw new Error("module Review list is not in canonical order");
+  }
+  return {
+    schema_version: MODULE_UPGRADE_REVIEW_LIST_SCHEMA,
+    scope,
+    items,
+    has_more: false,
+    projection_digest: value.projection_digest,
+    strong_etag: value.strong_etag
+  };
+};
+
+const reviewWireKeys = [
+  "schema_version", "candidate_id", "review_key", "tenant_id",
+  "artifact_admission_id", "operator_principal_id", "review_request_digest",
+  "binding_target", "port", "port_binding_index", "target_instance_id",
+  "target_module", "target_artifact_digest", "target_artifact_size_bytes",
+  "conclusion", "reason_codes"
+] as const;
+
+const decodeReviewProjection = (value: unknown): ModuleUpgradeReviewProjection => {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, reviewWireKeys as unknown as string[]) ||
+    value.schema_version !== "module-upgrade-review/v1" ||
+    !digest(value.candidate_id) ||
+    !digest(value.review_key) ||
+    !opaque(value.tenant_id) ||
+    !digest(value.artifact_admission_id) ||
+    !opaque(value.operator_principal_id) ||
+    !digest(value.review_request_digest) ||
+    !isRecord(value.binding_target) ||
+    !isRecord(value.port) ||
+    !safeInteger(value.port_binding_index) ||
+    !opaque(value.target_instance_id) ||
+    !digest(value.target_artifact_digest) ||
+    !safeInteger(value.target_artifact_size_bytes, true) ||
+    (value.conclusion !== "WOULD_APPLY" &&
+      value.conclusion !== "CONFLICT" &&
+      value.conclusion !== "UNSUPPORTED") ||
+    !Array.isArray(value.reason_codes) ||
+    value.reason_codes.some((reason) => typeof reason !== "string" || !opaque(reason))
+  ) {
+    throw new Error("module Review projection is invalid");
+  }
+  return {
+    schema_version: "module-upgrade-review/v1",
+    candidate_id: value.candidate_id,
+    review_key: value.review_key,
+    tenant_id: value.tenant_id,
+    artifact_admission_id: value.artifact_admission_id,
+    operator_principal_id: value.operator_principal_id,
+    review_request_digest: value.review_request_digest,
+    binding_target: decodeTarget(value.binding_target),
+    port: decodePort(value.port),
+    port_binding_index: value.port_binding_index,
+    target_instance_id: value.target_instance_id,
+    target_module: decodeReviewModuleRef(value.target_module, "Review Target"),
+    target_artifact_digest: value.target_artifact_digest,
+    target_artifact_size_bytes: value.target_artifact_size_bytes,
+    conclusion: value.conclusion,
+    reason_codes: [...value.reason_codes] as string[]
+  };
+};
+
+const decodeReviewDetail = (
+  text: string,
+  scope: ControlScope,
+  reviewID: string
+): ModuleUpgradeReviewDetailResponse => {
+  const value = parseJSONRecord(text, "Module Review detail response");
+  if (
+    !exactKeys(value, [
+      "schema_version", "scope", "review_id", "review", "created_at_unix_micros",
+      "artifact", "admission", "projection_digest", "strong_etag"
+    ], ["decision"]) ||
+    value.schema_version !== MODULE_UPGRADE_REVIEW_DETAIL_SCHEMA ||
+    !sameCanonical(value.scope, scope) ||
+    value.review_id !== reviewID ||
+    !isRecord(value.review) ||
+    !safeInteger(value.created_at_unix_micros, true) ||
+    !digest(value.projection_digest) ||
+    !strongETag(value.strong_etag)
+  ) {
+    throw new Error("module Review detail response envelope is invalid");
+  }
+  const review = decodeReviewProjection(value.review);
+  const artifact = decodeReviewArtifact(value.artifact);
+  if (!isRecord(value.admission) || !exactKeys(value.admission, [
+    "admission_id", "source_id", "source_policy_id", "source_policy_revision",
+    "snapshot_id", "snapshot_observation_revision", "entry_ordinal", "module",
+    "artifact_digest", "manifest_ref", "artifact_size_bytes", "covered_file_count",
+    "admitted_at_unix_micros"
+  ]) || !digest(value.admission.admission_id) || !opaque(value.admission.source_id) ||
+    !digest(value.admission.source_policy_id) || !safeInteger(value.admission.source_policy_revision, true) ||
+    !digest(value.admission.snapshot_id) || !safeInteger(value.admission.snapshot_observation_revision, true) ||
+    !safeInteger(value.admission.entry_ordinal) || !digest(value.admission.artifact_digest) ||
+    !digest(value.admission.manifest_ref) || !safeInteger(value.admission.artifact_size_bytes, true) ||
+    !safeInteger(value.admission.covered_file_count, true) ||
+    !safeInteger(value.admission.admitted_at_unix_micros, true) ||
+    !sameCanonical(value.admission.module, artifact.module) ||
+    value.admission.artifact_digest !== artifact.artifact_digest ||
+    value.admission.manifest_ref !== artifact.manifest_ref ||
+    value.admission.artifact_size_bytes !== artifact.artifact_size_bytes ||
+    value.admission.covered_file_count !== artifact.covered_file_count
+  ) {
+    throw new Error("module Artifact Admission is invalid");
+  }
+  if (review.artifact_admission_id !== value.admission.admission_id) {
+    throw new Error("module Review admission binding is invalid");
+  }
+  return {
+    schema_version: MODULE_UPGRADE_REVIEW_DETAIL_SCHEMA,
+    scope,
+    review_id: reviewID,
+    review,
+    created_at_unix_micros: value.created_at_unix_micros,
+    ...(Object.hasOwn(value, "decision")
+      ? { decision: decodeReviewDecision(value.decision) }
+      : {}),
+    artifact,
+    admission: {
+      ...(value.admission as Omit<ModuleUpgradeReviewDetailResponse["admission"], "module">),
+      module: decodeReviewModuleRef(value.admission.module, "Admission")
+    },
+    projection_digest: value.projection_digest,
+    strong_etag: value.strong_etag
+  };
+};
+
+export const fetchModuleUpgradeReviews = async (
+  context: ModuleContext,
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch
+): Promise<ModuleUpgradeReviewListResponse> => {
+  validateContext(context);
+  const key = JSON.stringify(["module-upgrade-reviews", ...contextIdentity(context)]);
+  const cached = reviewListCache.get(key);
+  const headers = scopeHeaders(context);
+  if (cached !== undefined) headers["If-None-Match"] = cached.etag;
+  const url = `${context.origin}${MODULE_UPGRADE_REVIEWS_PATH}?limit=100`;
+  const response = await fetchExact(url, {
+    method: "GET", credentials: "include", redirect: "error", headers, signal
+  }, fetcher, false);
+  if (response.status === 304 && cached !== undefined) return detachJSON(cached.data);
+  const text = await requireJSONSuccess(response, "Module Review list response", false, true);
+  const etag = response.headers.get("ETag");
+  if (!strongETag(etag)) throw new ControlModulesError("Module Review list omitted its ETag", response.status, "INVALID_RESPONSE");
+  let result: ModuleUpgradeReviewListResponse;
+  try {
+    result = decodeReviewList(text, context.scope);
+    if (await httpStrongETag("freeagent.control-http-module-upgrade-review-list-etag/v1", result.strong_etag, text) !== etag) {
+      throw new Error("Module Review list HTTP ETag is invalid");
+    }
+  } catch (error) {
+    throw new ControlModulesError(error instanceof Error ? error.message : "Module Review list is invalid", response.status, "INVALID_RESPONSE");
+  }
+  reviewListCache.set(key, { etag, data: detachJSON(result) });
+  return result;
+};
+
+export const fetchModuleUpgradeReviewDetail = async (
+  context: ModuleContext,
+  reviewID: string,
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch
+): Promise<ModuleUpgradeReviewDetailResponse> => {
+  validateContext(context);
+  if (!digest(reviewID)) throw new ControlModulesError("Module Review ID is invalid", 0, "INVALID_CLIENT_INPUT");
+  const headers = scopeHeaders(context);
+  const url = `${context.origin}${MODULE_UPGRADE_REVIEWS_PATH}/${reviewID}`;
+  const response = await fetchExact(url, {
+    method: "GET", credentials: "include", redirect: "error", headers, signal
+  }, fetcher, false);
+  const text = await requireJSONSuccess(response, "Module Review detail response", false, true);
+  const etag = response.headers.get("ETag");
+  if (!strongETag(etag)) throw new ControlModulesError("Module Review detail omitted its ETag", response.status, "INVALID_RESPONSE");
+  try {
+    const result = decodeReviewDetail(text, context.scope, reviewID);
+    if (await httpStrongETag("freeagent.control-http-module-upgrade-review-detail-etag/v1", result.strong_etag, text) !== etag) {
+      throw new Error("Module Review detail HTTP ETag is invalid");
+    }
+    return result;
+  } catch (error) {
+    throw new ControlModulesError(error instanceof Error ? error.message : "Module Review detail is invalid", response.status, "INVALID_RESPONSE");
+  }
 };
 
 const validateDisableBody = (body: ModuleDisableBody): ModuleDisableBody => {

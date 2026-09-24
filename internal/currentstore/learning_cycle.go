@@ -1393,7 +1393,7 @@ func verifyLearningCyclePreparedAdmission(
 	}
 	plan := member.PortPlans[0]
 	if plan.Port.Name != moduleapi.PortNameModelGenerate ||
-		plan.Port.ExactVersion != moduleapi.PortVersionV1 ||
+		plan.Port.ExactVersion != moduleapi.PortVersionV2 ||
 		plan.Bindings[0].FailurePolicy != moduleapi.FailureRequired ||
 		intent.RequestedPorts[0] != plan.Port {
 		return fmt.Errorf("%w: proposer requires another or optional Port", ErrInvalidLearningCycle)
@@ -1435,7 +1435,7 @@ func verifyLearningCyclePreparedAdmission(
 		configContent.MediaType != admissionJSONMediaType {
 		return fmt.Errorf("%w: proposer model config: %v", ErrInvalidLearningCycle, err)
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(configContent.CanonicalBytes)
+	config, err := moduleapi.RestoreModelBindingConfigV2(configContent.CanonicalBytes)
 	if err != nil {
 		return fmt.Errorf("%w: proposer model config: %v", ErrInvalidLearningCycle, err)
 	}
@@ -1735,7 +1735,7 @@ func loadLearningCycleRunClosure(
 	plan := member.PortPlans[0]
 	binding := plan.Bindings[0]
 	if plan.Port.Name != moduleapi.PortNameModelGenerate ||
-		plan.Port.ExactVersion != moduleapi.PortVersionV1 ||
+		plan.Port.ExactVersion != moduleapi.PortVersionV2 ||
 		binding.FailurePolicy != moduleapi.FailureRequired ||
 		attempt.Binding.Provider != binding.Provider ||
 		attempt.Binding.ConfigRef != binding.ConfigRef ||

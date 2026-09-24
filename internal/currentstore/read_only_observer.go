@@ -20,7 +20,7 @@ type ReadOnlyObserver struct {
 	store *Store
 }
 
-// OpenReadOnlyObserver verifies an existing self-contained FAC1 Store and
+// OpenReadOnlyObserver verifies an existing self-contained FAC2 Store and
 // opens a query-only handle over that exact path. The source must be closed;
 // immutable mode deliberately ignores WAL state and this function therefore
 // rejects every SQLite sidecar before opening.
@@ -38,7 +38,7 @@ func OpenReadOnlyObserver(
 	if err := rejectSQLiteSidecars(canonicalPath); err != nil {
 		return nil, err
 	}
-	verification, err := verifyCurrentStoreReadOnly(ctx, canonicalPath, true)
+	verification, err := verifyCurrentStoreReadOnly(ctx, canonicalPath, true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -229,16 +229,6 @@ func (observer *ReadOnlyObserver) GetTerminalRunResult(
 		return TerminalRunResult{}, ErrStoreClosed
 	}
 	return observer.store.GetTerminalRunResult(ctx, runID)
-}
-
-func (observer *ReadOnlyObserver) GetModelPriceSnapshot(
-	ctx context.Context,
-	priceSnapshotID string,
-) (ModelPriceSnapshotRecord, error) {
-	if observer == nil || observer.store == nil {
-		return ModelPriceSnapshotRecord{}, ErrStoreClosed
-	}
-	return observer.store.GetModelPriceSnapshot(ctx, priceSnapshotID)
 }
 
 func (observer *ReadOnlyObserver) GetFairRunTargetView(

@@ -59,7 +59,7 @@ func exactTestModelProvider(
 	t.Helper()
 	for _, plan := range member.PortPlans {
 		if plan.Port.Name != moduleapi.PortNameModelGenerate ||
-			plan.Port.ExactVersion != moduleapi.PortVersionV1 {
+			plan.Port.ExactVersion != moduleapi.PortVersionV2 {
 			continue
 		}
 		if len(plan.Bindings) != 1 {
@@ -80,7 +80,7 @@ func publishEmptyCurrentCatalog(
 	t.Helper()
 	control, controlRef, controlCanonical, err :=
 		controlcontract.NewControlSnapshot(controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    "control-revoked",
 			TenantID:      tenantID,
 			Revision:      expectedPointerRevision + 1,

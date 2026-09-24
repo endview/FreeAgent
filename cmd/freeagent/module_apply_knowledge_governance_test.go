@@ -38,7 +38,7 @@ func TestGovernedKnowledgeFastPathsRejectDamagedCurrentPublicationWithoutWrites(
 			databasePath := filepath.Join(root, "current.sqlite")
 			artifactRoot := filepath.Join(root, "artifacts")
 			initializePureChatForModuleApplyV1(t, databasePath, artifactRoot)
-			fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "1.1.0")
+			fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "2.0.0")
 			initialPlanPath := writeModuleApplyPlanFixtureV1(
 				t,
 				filepath.Join(root, "initial-governed-knowledge.json"),
@@ -267,7 +267,7 @@ func TestGovernedKnowledgeDependencyPreflightRejectsWithoutWrites(t *testing.T) 
 				test.mutate,
 			)
 
-			fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "1.1.0")
+			fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "2.0.0")
 			planCanonical := newEnabledModuleApplyKnowledgePlanV1(
 				t,
 				fixture,
@@ -417,7 +417,7 @@ func TestGovernedKnowledgeDependencyIdentityChainRejectsWithoutWrites(t *testing
 				test.mutate,
 			)
 
-			fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "1.1.0")
+			fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "2.0.0")
 			planPath := writeModuleApplyPlanFixtureV1(
 				t,
 				filepath.Join(root, "governed-knowledge.json"),
@@ -526,7 +526,7 @@ func TestGovernedKnowledgeDependencyIgnoresNewerUnboundActivation(t *testing.T) 
 	}
 	closeGovernedKnowledgeSQLiteForObserverV1(t, databasePath)
 
-	fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "1.1.0")
+	fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "2.0.0")
 	planPath := writeModuleApplyPlanFixtureV1(
 		t,
 		filepath.Join(root, "governed-knowledge.json"),
@@ -629,7 +629,7 @@ func TestGovernedKnowledgeDependencyPreflightRunsBeforeAnyStaging(t *testing.T) 
 	databasePath := filepath.Join(root, "current.sqlite")
 	artifactRoot := filepath.Join(root, "artifacts")
 	initializePureChatForModuleApplyV1(t, databasePath, artifactRoot)
-	fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "1.1.0")
+	fixture := newModuleApplyKnowledgeFixtureVersionV1(t, "2.0.0")
 	plan, canonical, digest, err := restoreModuleApplyPlanV1(
 		newEnabledModuleApplyKnowledgePlanV1(
 			t,

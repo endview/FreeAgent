@@ -24,20 +24,9 @@ const (
 	actionDispatchTerminalEvent = "ACTION_DISPATCH_TERMINAL"
 )
 
-// ActionBudgetDecision is the temporary explicit bridge to the existing
-// generic BudgetPolicy body. Until that body has a typed evaluator, Core must
-// state whether all policy-required post-model Usage facts are known. Store
-// never interprets UNKNOWN as an implicit allow.
-type ActionBudgetDecision string
-
-const (
-	ActionBudgetAllow   ActionBudgetDecision = "ALLOW"
-	ActionBudgetUnknown ActionBudgetDecision = "BUDGET_UNKNOWN"
-)
-
 // CommitModelActionAndBeginDispatchInput carries the exact model invocation
 // facts plus the Core-built Proposal. The Action logical step, member,
-// Binding, definition, effect, result bound and budget are all derived from
+// Binding, definition, effect and result bound are all derived from
 // the frozen Run and cannot be selected by the caller.
 type CommitModelActionAndBeginDispatchInput struct {
 	Lease                        RunLease
@@ -51,7 +40,6 @@ type CommitModelActionAndBeginDispatchInput struct {
 	DispatchAttemptID            string
 	ProposalCanonical            []byte
 	Deadline                     time.Time
-	BudgetDecision               ActionBudgetDecision
 }
 
 // CommitModelActionAndBeginDispatch atomically closes model one as
@@ -91,18 +79,6 @@ func (store *Store) CommitModelActionAndBeginDispatch(
 			"%w: %v",
 			ErrInvalidActionDispatch,
 			err,
-		)
-	}
-	if input.BudgetDecision != ActionBudgetAllow {
-		if input.BudgetDecision == ActionBudgetUnknown {
-			return CommitModelActionAndBeginDispatchResult{}, fmt.Errorf(
-				"%w: BUDGET_UNKNOWN must use CommitLegalModelActionRejection",
-				ErrActionDispatchConflict,
-			)
-		}
-		return CommitModelActionAndBeginDispatchResult{}, fmt.Errorf(
-			"%w: explicit Action BudgetDecision=ALLOW is required",
-			ErrInvalidActionDispatch,
 		)
 	}
 	deadline, err := normalizeModelDeadline(input.Deadline)
@@ -316,7 +292,7 @@ func (store *Store) CommitModelActionAndBeginDispatch(
 		ctx,
 		connection,
 		run.RunID,
-		run.Frame.BudgetStateRef,
+		run.Frame.UsageLedgerRef,
 	)
 	if err != nil {
 		return CommitModelActionAndBeginDispatchResult{}, err
@@ -326,7 +302,7 @@ func (store *Store) CommitModelActionAndBeginDispatch(
 		return CommitModelActionAndBeginDispatchResult{}, err
 	}
 	if mergedModel.Usage.LedgerSequence == nil &&
-		modelUsageHasBillableFact(mergedModel.Usage) {
+		modelUsageHasReportedTokens(mergedModel.Usage) {
 		if ledgerHead >= math.MaxInt64 {
 			return CommitModelActionAndBeginDispatchResult{}, fmt.Errorf(
 				"%w: Usage ledger cannot advance",
@@ -336,9 +312,9 @@ func (store *Store) CommitModelActionAndBeginDispatch(
 		sequence := ledgerHead + 1
 		mergedModel.Usage.LedgerSequence = &sequence
 	}
-	nextBudgetRef := run.Frame.BudgetStateRef
+	nextBudgetRef := run.Frame.UsageLedgerRef
 	if mergedModel.Usage.LedgerSequence != nil {
-		nextBudgetRef, err = corecontract.NewBudgetStateRefV1(
+		nextBudgetRef, err = corecontract.NewUsageLedgerRefV1(
 			run.RunID,
 			*mergedModel.Usage.LedgerSequence,
 		)
@@ -440,7 +416,7 @@ func (store *Store) CommitModelActionAndBeginDispatch(
 			effect_class,
 			max_result_bytes,
 			deadline,
-			budget_state_ref,
+			usage_ledger_ref,
 			state,
 			revision,
 			created_at,
@@ -881,8 +857,7 @@ func updateModelOutcomeRowsForAction(
 		SET
 			ledger_sequence=?, revision=?, input_tokens=?, cached_input_tokens=?,
 			uncached_input_tokens=?, output_tokens=?, reasoning_tokens=?,
-			estimated_cost=?, provider_reported_cost=?, reconciled_cost=?,
-			reconciliation_status=?, raw_receipt_ref=?,
+			usage_status=?, raw_receipt_ref=?,
 			overview_observation_sequence=overview_observation_sequence+1
 		WHERE attempt_id=? AND run_id=? AND revision=?
 	`,
@@ -893,10 +868,7 @@ func updateModelOutcomeRowsForAction(
 		nullableModelUint(merged.Usage.Tokens.UncachedInput),
 		nullableModelUint(merged.Usage.Tokens.Output),
 		nullableModelUint(merged.Usage.Tokens.Reasoning),
-		nullableModelStringPointer(merged.Usage.EstimatedCost),
-		nullableModelStringPointer(merged.Usage.ProviderReportedCost),
-		nullableModelStringPointer(merged.Usage.ReconciledCost),
-		merged.Usage.ReconciliationStatus,
+		merged.Usage.UsageStatus,
 		nullableModelString(merged.Usage.RawReceiptRef),
 		current.Attempt.AttemptID,
 		current.Attempt.RunID,
@@ -939,7 +911,7 @@ func updateRunAndFrameForActionBegin(
 	frameUpdate, err := connection.ExecContext(ctx, `
 		UPDATE loop_frames
 		SET
-			frame_revision=?, step=?, budget_state_ref=?, continuation=?,
+			frame_revision=?, step=?, usage_ledger_ref=?, continuation=?,
 			pending_attempt_id=NULL, pending_dispatch_attempt_id=?,
 			waiting_reason=NULL, last_authoritative_event=?
 		WHERE run_id=? AND frame_revision=? AND step=?

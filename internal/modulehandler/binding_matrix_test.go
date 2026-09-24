@@ -162,8 +162,8 @@ func TestBindingMatrixResolvesAllGenericAndReservedHandlersExactly(t *testing.T)
 
 	documentInsight := &ModuleIdentityV1{
 		ID:             moduleapi.DocumentInsightModuleIDV1,
-		ExactVersion:   moduleapi.DocumentInsightVersionV1,
-		ArtifactDigest: moduleapi.DocumentInsightArtifactDigestV1,
+		ExactVersion:   moduleapi.DocumentInsightVersionV2,
+		ArtifactDigest: moduleapi.DocumentInsightArtifactDigestV2,
 	}
 	reserved := ExactSelectorTableV1()
 	reservedTests := []struct {
@@ -374,8 +374,8 @@ func TestDocumentInsightIdentityAndTupleDriftNeverFallsBackToGenericHandler(t *t
 	modelConfig, modelAuthority := modelBindingV1(t, matrixTenantIDV1)
 	exactModule := ModuleIdentityV1{
 		ID:             moduleapi.DocumentInsightModuleIDV1,
-		ExactVersion:   moduleapi.DocumentInsightVersionV1,
-		ArtifactDigest: moduleapi.DocumentInsightArtifactDigestV1,
+		ExactVersion:   moduleapi.DocumentInsightVersionV2,
+		ArtifactDigest: moduleapi.DocumentInsightArtifactDigestV2,
 	}
 	reserved := ExactSelectorTableV1()
 	tests := []struct {

@@ -131,26 +131,21 @@ type overviewProposalMaterializationSemanticV1 struct {
 }
 
 type overviewModelUsageSemanticV1 struct {
-	AttemptID            string                   `json:"attempt_id"`
-	RunID                string                   `json:"run_id"`
-	LedgerSequence       *uint64                  `json:"ledger_sequence,omitempty"`
-	Revision             uint64                   `json:"revision"`
-	Tokens               corecontract.UsageTokens `json:"tokens"`
-	EstimatedCost        *string                  `json:"estimated_cost,omitempty"`
-	ProviderReportedCost *string                  `json:"provider_reported_cost,omitempty"`
-	ReconciledCost       *string                  `json:"reconciled_cost,omitempty"`
-	ReconciliationStatus string                   `json:"reconciliation_status"`
-	RawReceiptRef        string                   `json:"raw_receipt_ref,omitempty"`
+	AttemptID      string                   `json:"attempt_id"`
+	RunID          string                   `json:"run_id"`
+	LedgerSequence *uint64                  `json:"ledger_sequence,omitempty"`
+	Revision       uint64                   `json:"revision"`
+	Tokens         corecontract.UsageTokens `json:"tokens"`
+	UsageStatus    string                   `json:"usage_status"`
+	RawReceiptRef  string                   `json:"raw_receipt_ref,omitempty"`
 }
 
 func modelUsageSemanticDigestV1(usage ModelUsageRecord) (string, error) {
 	projection := overviewModelUsageSemanticV1{
 		AttemptID: usage.AttemptID, RunID: usage.RunID,
 		LedgerSequence: cloneModelUint(usage.LedgerSequence), Revision: usage.Revision,
-		Tokens: usage.Tokens.Clone(), EstimatedCost: cloneModelString(usage.EstimatedCost),
-		ProviderReportedCost: cloneModelString(usage.ProviderReportedCost),
-		ReconciledCost:       cloneModelString(usage.ReconciledCost),
-		ReconciliationStatus: usage.ReconciliationStatus, RawReceiptRef: usage.RawReceiptRef,
+		Tokens:      usage.Tokens.Clone(),
+		UsageStatus: usage.UsageStatus, RawReceiptRef: usage.RawReceiptRef,
 	}
 	raw, err := json.Marshal(projection)
 	if err != nil {
@@ -172,8 +167,8 @@ func modelUsageEventV1(usage ModelUsageRecord) (*corecontract.ModelUsageEventV1,
 	}
 	event := &corecontract.ModelUsageEventV1{
 		Revision: usage.Revision, LedgerSequence: cloneModelUint(usage.LedgerSequence),
-		ReconciliationStatus: usage.ReconciliationStatus,
-		Tokens:               usage.Tokens.Clone(), SemanticDigest: digest,
+		UsageStatus: usage.UsageStatus,
+		Tokens:      usage.Tokens.Clone(), SemanticDigest: digest,
 	}
 	if err := event.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: Model Usage event: %v", ErrLoopIntegrity, err)
@@ -363,7 +358,7 @@ func loadCurrentOverviewResourceV1(
 		if err != nil {
 			return out, err
 		}
-		out.Snapshot.UsageStatus = record.Usage.ReconciliationStatus
+		out.Snapshot.UsageStatus = record.Usage.UsageStatus
 		out.Snapshot.InputTokens = cloneOverviewTokenV1(record.Usage.Tokens.Input)
 		out.Snapshot.CachedInputTokens = cloneOverviewTokenV1(record.Usage.Tokens.CachedInput)
 		out.Snapshot.UncachedInputTokens = cloneOverviewTokenV1(record.Usage.Tokens.UncachedInput)
@@ -934,7 +929,7 @@ func verifyOverviewResourceRawProjectionOnlineV1(
 		err := q.QueryRowContext(ctx, `SELECT attempt.run_id,attempt.tenant_id,
 			attempt.workspace_id,attempt.state,attempt.revision,attempt.created_at,
 			attempt.updated_at,attempt.overview_observation_sequence,usage.revision,
-			usage.ledger_sequence,usage.reconciliation_status,usage.input_tokens,usage.cached_input_tokens,
+			usage.ledger_sequence,usage.usage_status,usage.input_tokens,usage.cached_input_tokens,
 			usage.uncached_input_tokens,usage.output_tokens,usage.reasoning_tokens,
 			usage.overview_observation_sequence FROM model_dispatch_attempts AS attempt
 			JOIN model_usage AS usage ON usage.attempt_id=attempt.attempt_id

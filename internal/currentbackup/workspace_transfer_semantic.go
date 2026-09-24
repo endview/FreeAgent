@@ -195,8 +195,7 @@ func inspectWorkspaceTransferFamilyAuthorityV1(
 		)
 	}
 	rootWorkspace, found := control.FindWorkspace(root.manifest.Workspace.ID)
-	if !found || rootWorkspace.Workspace != root.manifest.Workspace ||
-		rootWorkspace.BudgetPolicy != root.manifest.BudgetPolicy {
+	if !found || rootWorkspace.Workspace != root.manifest.Workspace {
 		return nil, workspaceTransferIntegrity(
 			"Composite root %q Workspace differs from historical Control",
 			root.row.runID,
@@ -335,8 +334,7 @@ func inspectWorkspaceTransferPlannedAuthorityV1(
 	if targetID == "" || targetID == root.manifest.Workspace.ID {
 		if planned.Transfer != nil ||
 			child.manifest.Workspace != root.manifest.Workspace ||
-			child.member.Workspace != root.manifest.Workspace ||
-			child.manifest.BudgetPolicy != root.manifest.BudgetPolicy {
+			child.member.Workspace != root.manifest.Workspace {
 			return nil, workspaceTransferIntegrity(
 				"Composite root %q same-Workspace slot %q transfer closure differs",
 				root.row.runID,
@@ -357,8 +355,7 @@ func inspectWorkspaceTransferPlannedAuthorityV1(
 		planned.Transfer.RootWorkspace != root.manifest.Workspace ||
 		child.manifest.Workspace != targetWorkspace.Workspace ||
 		child.member.Workspace != targetWorkspace.Workspace ||
-		child.row.workspaceID != targetWorkspace.Workspace.ID ||
-		child.manifest.BudgetPolicy != targetWorkspace.BudgetPolicy {
+		child.row.workspaceID != targetWorkspace.Workspace.ID {
 		return nil, workspaceTransferIntegrity(
 			"Composite root %q target Workspace for slot %q differs",
 			root.row.runID,

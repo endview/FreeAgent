@@ -19,7 +19,6 @@ import (
 	"github.com/endview/freeagent/internal/assemblycompiler"
 	"github.com/endview/freeagent/internal/controlcontract"
 	"github.com/endview/freeagent/internal/corecontract"
-	"github.com/endview/freeagent/internal/currentbackup"
 	"github.com/endview/freeagent/internal/currentstore"
 	"github.com/endview/freeagent/internal/deepseekmodel"
 	"github.com/endview/freeagent/internal/localchat"
@@ -31,7 +30,6 @@ import (
 func TestModuleApplyDeepSeekModelPreflightFailsClosedBeforeMutation(t *testing.T) {
 	tests := []struct {
 		name                string
-		price               corecontract.ModelPriceSnapshotV1
 		grant               string
 		profileMutation     func(*corecontract.ModelProfileV1)
 		wantDryFailure      moduleApplyFailureCodeV1
@@ -40,56 +38,17 @@ func TestModuleApplyDeepSeekModelPreflightFailsClosedBeforeMutation(t *testing.T
 	}{
 		{
 			name:             "missing SecretRef grant",
-			price:            moduleApplyProPriceV1(),
 			wantDryFailure:   moduleApplyFailureGrantRequired,
 			wantApplyFailure: moduleApplyFailureGrantRequired,
 		},
 		{
 			name:             "mismatched SecretRef grant",
-			price:            moduleApplyProPriceV1(),
 			grant:            "env:OTHER_DEEPSEEK_API_KEY",
 			wantDryFailure:   moduleApplyFailureGrantRequired,
 			wantApplyFailure: moduleApplyFailureGrantRequired,
 		},
 		{
-			name: "PriceSnapshot provider mismatch",
-			price: moduleApplyE4PriceV1(
-				"price-deepseek-v4-pro-provider-mismatch",
-				"other-provider",
-				deepseekmodel.ModelV4Pro,
-				"deepseek-public-price-2026-08-04",
-			),
-			grant:            moduleApplyModelSecretRefV1,
-			wantDryFailure:   moduleApplyFailureStore,
-			wantApplyFailure: moduleApplyFailureTarget,
-		},
-		{
-			name: "PriceSnapshot model mismatch",
-			price: moduleApplyE4PriceV1(
-				"price-deepseek-v4-pro-model-mismatch",
-				deepseekmodel.ProviderNameV1,
-				deepseekmodel.ModelV4Flash,
-				"deepseek-public-price-2026-08-04",
-			),
-			grant:            moduleApplyModelSecretRefV1,
-			wantDryFailure:   moduleApplyFailureStore,
-			wantApplyFailure: moduleApplyFailureTarget,
-		},
-		{
-			name: "PriceSnapshot billing mismatch",
-			price: moduleApplyE4PriceV1(
-				"price-deepseek-v4-pro-billing-mismatch",
-				deepseekmodel.ProviderNameV1,
-				deepseekmodel.ModelV4Pro,
-				"other-billing-version",
-			),
-			grant:            moduleApplyModelSecretRefV1,
-			wantDryFailure:   moduleApplyFailureStore,
-			wantApplyFailure: moduleApplyFailureTarget,
-		},
-		{
 			name:                "ModelProfile provider mismatch",
-			price:               moduleApplyProPriceV1(),
 			grant:               moduleApplyModelSecretRefV1,
 			includeModelProfile: true,
 			profileMutation: func(profile *corecontract.ModelProfileV1) {
@@ -100,7 +59,6 @@ func TestModuleApplyDeepSeekModelPreflightFailsClosedBeforeMutation(t *testing.T
 		},
 		{
 			name:                "ModelProfile model mismatch",
-			price:               moduleApplyProPriceV1(),
 			grant:               moduleApplyModelSecretRefV1,
 			includeModelProfile: true,
 			profileMutation: func(profile *corecontract.ModelProfileV1) {
@@ -111,7 +69,6 @@ func TestModuleApplyDeepSeekModelPreflightFailsClosedBeforeMutation(t *testing.T
 		},
 		{
 			name:                "ModelProfile build mismatch",
-			price:               moduleApplyProPriceV1(),
 			grant:               moduleApplyModelSecretRefV1,
 			includeModelProfile: true,
 			profileMutation: func(profile *corecontract.ModelProfileV1) {
@@ -122,7 +79,6 @@ func TestModuleApplyDeepSeekModelPreflightFailsClosedBeforeMutation(t *testing.T
 		},
 		{
 			name:                "ModelProfile config ref mismatch",
-			price:               moduleApplyProPriceV1(),
 			grant:               moduleApplyModelSecretRefV1,
 			includeModelProfile: true,
 			profileMutation: func(profile *corecontract.ModelProfileV1) {
@@ -133,7 +89,6 @@ func TestModuleApplyDeepSeekModelPreflightFailsClosedBeforeMutation(t *testing.T
 		},
 		{
 			name:                "ModelProfile artifact mismatch",
-			price:               moduleApplyProPriceV1(),
 			grant:               moduleApplyModelSecretRefV1,
 			includeModelProfile: true,
 			profileMutation: func(profile *corecontract.ModelProfileV1) {
@@ -144,7 +99,6 @@ func TestModuleApplyDeepSeekModelPreflightFailsClosedBeforeMutation(t *testing.T
 		},
 		{
 			name:                "ModelProfile adapter mismatch",
-			price:               moduleApplyProPriceV1(),
 			grant:               moduleApplyModelSecretRefV1,
 			includeModelProfile: true,
 			profileMutation: func(profile *corecontract.ModelProfileV1) {
@@ -160,13 +114,12 @@ func TestModuleApplyDeepSeekModelPreflightFailsClosedBeforeMutation(t *testing.T
 			fixture := newModuleApplyModelE4FixtureV1(
 				t,
 				"current-v1.deepseek.bootstrap.seed.json",
-				test.price,
 			)
 			config := moduleApplyModelConfigV1(
 				t,
 				deepseekmodel.ModelV4Pro,
 				localDeepSeekProBuild,
-				test.price.PriceSnapshotID,
+				"",
 				json.RawMessage(`{"max_tokens":1024,"temperature":0.2,"thinking":{"type":"disabled"}}`),
 			)
 			var modelProfile []byte
@@ -213,7 +166,6 @@ func TestModuleApplyDeepSeekModelProfileBackupRestoreExactClosure(t *testing.T) 
 	fixture := newModuleApplyModelE4FixtureV1(
 		t,
 		"current-v1.deepseek.bootstrap.seed.json",
-		moduleApplyProPriceV1(),
 	)
 	beforeProfile, found := fixture.control.FindProfile("deepseek-chat")
 	if !found {
@@ -223,7 +175,7 @@ func TestModuleApplyDeepSeekModelProfileBackupRestoreExactClosure(t *testing.T) 
 		t,
 		deepseekmodel.ModelV4Pro,
 		localDeepSeekProBuild,
-		moduleApplyProPriceV1().PriceSnapshotID,
+		"",
 		json.RawMessage(`{"max_tokens":1024,"temperature":0.2,"thinking":{"type":"disabled"}}`),
 	)
 	modelProfile := moduleApplyE4ModelProfileV1(t, config, nil)
@@ -255,7 +207,6 @@ func TestModuleApplyDeepSeekModelProfileBackupRestoreExactClosure(t *testing.T) 
 	afterProfile, found := control.FindProfile("deepseek-chat")
 	if !found || afterProfile.ModelProfile == nil ||
 		afterProfile.ContextPolicy != beforeProfile.ContextPolicy ||
-		afterProfile.CostPolicy != beforeProfile.CostPolicy ||
 		afterProfile.SchedulingPolicy != beforeProfile.SchedulingPolicy {
 		_ = store.Close()
 		t.Fatalf("profiled replacement changed unrelated Profile policy refs: before=%+v after=%+v", beforeProfile, afterProfile)
@@ -264,12 +215,8 @@ func TestModuleApplyDeepSeekModelProfileBackupRestoreExactClosure(t *testing.T) 
 	configRecord, configErr := store.GetContent(ctx, binding.ConfigRef)
 	authorityRecord, authorityErr := store.GetContent(ctx, binding.AuthorityCeilingRef)
 	profileRecord, profileErr := store.GetContent(ctx, afterProfile.ModelProfile.Digest)
-	priceRecord, priceErr := store.GetModelPriceSnapshot(
-		ctx,
-		moduleApplyProPriceV1().PriceSnapshotID,
-	)
 	closeErr := store.Close()
-	if err := errors.Join(configErr, authorityErr, profileErr, priceErr, closeErr); err != nil {
+	if err := errors.Join(configErr, authorityErr, profileErr, closeErr); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(configRecord.CanonicalBytes, config) ||
@@ -316,12 +263,8 @@ func TestModuleApplyDeepSeekModelProfileBackupRestoreExactClosure(t *testing.T) 
 	restoredConfig, configErr := restored.GetContent(ctx, restoredBinding.ConfigRef)
 	restoredAuthority, authorityErr := restored.GetContent(ctx, restoredBinding.AuthorityCeilingRef)
 	restoredModelProfile, profileErr := restored.GetContent(ctx, restoredProfile.ModelProfile.Digest)
-	restoredPrice, priceErr := restored.GetModelPriceSnapshot(
-		ctx,
-		moduleApplyProPriceV1().PriceSnapshotID,
-	)
 	closeErr = restored.Close()
-	if err := errors.Join(configErr, authorityErr, profileErr, priceErr, closeErr); err != nil {
+	if err := errors.Join(configErr, authorityErr, profileErr, closeErr); err != nil {
 		t.Fatal(err)
 	}
 	if restoredBasis != basis || !reflect.DeepEqual(restoredControl, control) ||
@@ -330,9 +273,8 @@ func TestModuleApplyDeepSeekModelProfileBackupRestoreExactClosure(t *testing.T) 
 		!reflect.DeepEqual(restoredProfile.ModelProfile, afterProfile.ModelProfile) ||
 		!bytes.Equal(restoredConfig.CanonicalBytes, configRecord.CanonicalBytes) ||
 		!bytes.Equal(restoredAuthority.CanonicalBytes, authorityRecord.CanonicalBytes) ||
-		!bytes.Equal(restoredModelProfile.CanonicalBytes, profileRecord.CanonicalBytes) ||
-		!reflect.DeepEqual(restoredPrice, priceRecord) {
-		t.Fatal("Model Config/Authority/SecretRef/PriceSnapshot/ModelProfile drifted across backup/restore")
+		!bytes.Equal(restoredModelProfile.CanonicalBytes, profileRecord.CanonicalBytes) {
+		t.Fatal("Model Config/Authority/SecretRef/ModelProfile drifted across backup/restore")
 	}
 }
 
@@ -343,13 +285,12 @@ func TestModuleApplyDeepSeekModelProfileCanBeClearedByExplicitReplacement(
 	fixture := newModuleApplyModelE4FixtureV1(
 		t,
 		"current-v1.deepseek.bootstrap.seed.json",
-		moduleApplyProPriceV1(),
 	)
 	proConfig := moduleApplyModelConfigV1(
 		t,
 		deepseekmodel.ModelV4Pro,
 		localDeepSeekProBuild,
-		moduleApplyProPriceV1().PriceSnapshotID,
+		"",
 		json.RawMessage(`{"max_tokens":1024,"temperature":0.2,"thinking":{"type":"disabled"}}`),
 	)
 	profiledPlan := moduleApplyE4ModelPlanV1(
@@ -411,7 +352,6 @@ func TestModuleApplyDeepSeekModelProfileCanBeClearedByExplicitReplacement(
 	}
 	if !found || cleared.ModelProfile != nil ||
 		cleared.ContextPolicy != profiled.ContextPolicy ||
-		cleared.CostPolicy != profiled.CostPolicy ||
 		cleared.SchedulingPolicy != profiled.SchedulingPolicy ||
 		!bytes.Equal(clearedConfig.CanonicalBytes, initialConfig.CanonicalBytes) {
 		t.Fatalf("explicit no-Profile target drifted: profile=%+v config=%s", cleared, clearedConfig.CanonicalBytes)
@@ -425,13 +365,12 @@ func TestModuleApplyDeepSeekModelSameBindingProfileDesiredStateTransitions(
 	fixture := newModuleApplyModelE4FixtureV1(
 		t,
 		"current-v1.deepseek.bootstrap.seed.json",
-		moduleApplyProPriceV1(),
 	)
 	config := moduleApplyModelConfigV1(
 		t,
 		deepseekmodel.ModelV4Pro,
 		localDeepSeekProBuild,
-		moduleApplyProPriceV1().PriceSnapshotID,
+		"",
 		json.RawMessage(`{"max_tokens":1024,"temperature":0.2,"thinking":{"type":"disabled"}}`),
 	)
 	authority := moduleApplyModelAuthorityV1(t)
@@ -680,13 +619,12 @@ func TestModuleApplyDeepSeekModelSameBindingProfileCorruptionFailsClosed(
 			fixture := newModuleApplyModelE4FixtureV1(
 				t,
 				"current-v1.deepseek.bootstrap.seed.json",
-				moduleApplyProPriceV1(),
 			)
 			config := moduleApplyModelConfigV1(
 				t,
 				deepseekmodel.ModelV4Pro,
 				localDeepSeekProBuild,
-				moduleApplyProPriceV1().PriceSnapshotID,
+				"",
 				json.RawMessage(`{"max_tokens":1024,"temperature":0.2,"thinking":{"type":"disabled"}}`),
 			)
 			authority := moduleApplyModelAuthorityV1(t)
@@ -981,86 +919,18 @@ func moduleApplyE4AssertFailedProfileCandidateV1(
 	}
 }
 
-func TestModuleApplyDeepSeekModelBackupGateRejectsCurrentMissingPriceWithoutRun(
-	t *testing.T,
-) {
-	ctx := context.Background()
-	fixture := newModuleApplyModelE4FixtureV1(
-		t,
-		"current-v1.deepseek.bootstrap.seed.json",
-		moduleApplyProPriceV1(),
-	)
-	config := moduleApplyModelConfigV1(
-		t,
-		deepseekmodel.ModelV4Pro,
-		localDeepSeekProBuild,
-		moduleApplyProPriceV1().PriceSnapshotID,
-		json.RawMessage(`{"max_tokens":1024,"temperature":0.2,"thinking":{"type":"disabled"}}`),
-	)
-	plan := moduleApplyE4ModelPlanV1(
-		t,
-		fixture.basis.PointerRevision,
-		"deepseek-chat",
-		config,
-		moduleApplyModelAuthorityV1(t),
-		nil,
-	)
-	if result, err := applyModulePlanV1(
-		ctx,
-		fixture.commandInputV1(t, plan, moduleApplyModelSecretRefV1),
-	); err != nil || result.Status != moduleApplyStatusApplied {
-		t.Fatalf("apply Model before backup tamper: result=%+v error=%v", result, err)
-	}
-
-	database, err := sql.Open("sqlite", fixture.databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var runs int
-	if err := database.QueryRowContext(ctx, "SELECT COUNT(*) FROM runs").Scan(&runs); err != nil {
-		_ = database.Close()
-		t.Fatal(err)
-	}
-	result, err := database.ExecContext(
-		ctx,
-		"DELETE FROM model_price_snapshots WHERE price_snapshot_id=?",
-		moduleApplyProPriceV1().PriceSnapshotID,
-	)
-	if err != nil {
-		_ = database.Close()
-		t.Fatal(err)
-	}
-	affected, rowsErr := result.RowsAffected()
-	closeErr := database.Close()
-	if rowsErr != nil || closeErr != nil || affected != 1 || runs != 0 {
-		t.Fatalf(
-			"prepare no-Run missing-price tamper: runs=%d affected=%d error=%v",
-			runs,
-			affected,
-			errors.Join(rowsErr, closeErr),
-		)
-	}
-	if err := currentbackup.VerifyCurrentStoreSemanticClosure(
-		ctx,
-		fixture.databasePath,
-	); err == nil {
-		t.Fatal("backup semantic gate accepted current Model binding with missing PriceSnapshot")
-	}
-}
-
 func TestModuleApplyDeepSeekModelNewRunUsageAndUnknownNeverSubstitute(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	fixture := newModuleApplyModelE4FixtureV1(
 		t,
 		"current-v1.deepseek.bootstrap.seed.json",
-		moduleApplyProPriceV1(),
 	)
 	config := moduleApplyModelConfigV1(
 		t,
 		deepseekmodel.ModelV4Pro,
 		localDeepSeekProBuild,
-		moduleApplyProPriceV1().PriceSnapshotID,
+		"",
 		json.RawMessage(`{"max_tokens":1024,"temperature":0.2,"thinking":{"type":"disabled"}}`),
 	)
 	planCanonical := moduleApplyE4ModelPlanV1(
@@ -1151,8 +1021,6 @@ func TestModuleApplyDeepSeekModelNewRunUsageAndUnknownNeverSubstitute(t *testing
 	}
 	if record.Attempt.Provider != deepseekmodel.ProviderNameV1 ||
 		record.Attempt.Model != deepseekmodel.ModelV4Pro ||
-		record.Attempt.PriceSnapshotID != moduleApplyProPriceV1().PriceSnapshotID ||
-		record.Usage.EstimatedCost == nil || *record.Usage.EstimatedCost != "0.0001008" ||
 		!moduleApplyE4TokenEquals(record.Usage.Tokens.Input, 100) ||
 		!moduleApplyE4TokenEquals(record.Usage.Tokens.CachedInput, 40) ||
 		!moduleApplyE4TokenEquals(record.Usage.Tokens.UncachedInput, 60) ||
@@ -1199,13 +1067,12 @@ func TestModuleApplyDeepSeekModelSameAgentDifferentWorkspaceProfiles(t *testing.
 	fixture := newModuleApplyModelE4FixtureV1(
 		t,
 		"s3c-deepseek-v4-flash-reviewer-on.bootstrap.seed.json",
-		moduleApplyProPriceV1(),
 	)
 	config := moduleApplyModelConfigV1(
 		t,
 		deepseekmodel.ModelV4Pro,
 		localDeepSeekProBuild,
-		moduleApplyProPriceV1().PriceSnapshotID,
+		"",
 		json.RawMessage(`{"max_tokens":1024,"temperature":0.2,"thinking":{"type":"disabled"}}`),
 	)
 	planCanonical := moduleApplyE4ModelPlanV1(
@@ -1259,13 +1126,13 @@ func TestModuleApplyDeepSeekModelSameAgentDifferentWorkspaceProfiles(t *testing.
 	if err := errors.Join(coordinatorErr, backendErr, closeErr); err != nil {
 		t.Fatal(err)
 	}
-	coordinatorConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	coordinatorConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		coordinatorRecord.CanonicalBytes,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	backendConfig, err := moduleapi.RestoreModelBindingConfigV1(backendRecord.CanonicalBytes)
+	backendConfig, err := moduleapi.RestoreModelBindingConfigV2(backendRecord.CanonicalBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1299,7 +1166,6 @@ type moduleApplyModelE4FixtureV1 struct {
 func newModuleApplyModelE4FixtureV1(
 	t *testing.T,
 	seedFile string,
-	prices ...corecontract.ModelPriceSnapshotV1,
 ) moduleApplyModelE4FixtureV1 {
 	t.Helper()
 	ctx := context.Background()
@@ -1317,12 +1183,6 @@ func newModuleApplyModelE4FixtureV1(
 	store, err := currentstore.OpenExistingCurrentStore(ctx, databasePath)
 	if err != nil {
 		t.Fatal(err)
-	}
-	for _, price := range prices {
-		if _, err := store.PutModelPriceSnapshot(ctx, price); err != nil {
-			_ = store.Close()
-			t.Fatalf("put W2-E4 PriceSnapshot %q: %v", price.PriceSnapshotID, err)
-		}
 	}
 	basis, control, catalog, err := store.LoadPublishedBasis(ctx, defaultTenantID)
 	closeErr := store.Close()
@@ -1455,20 +1315,6 @@ func moduleApplyE4ModelProfileV1(
 		t.Fatalf("build W2-E4 ModelProfile: %v", err)
 	}
 	return canonical
-}
-
-func moduleApplyE4PriceV1(
-	id string,
-	provider string,
-	model string,
-	billing string,
-) corecontract.ModelPriceSnapshotV1 {
-	price := moduleApplyProPriceV1()
-	price.PriceSnapshotID = id
-	price.Provider = provider
-	price.Model = model
-	price.BillingVersion = billing
-	return price
 }
 
 func moduleApplyE4CompileSnapshotV1(

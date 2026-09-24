@@ -173,7 +173,7 @@ type actionRoundTripClosure struct {
 	Member                 corecontract.MemberExecutionSnapshot
 	MemberCanonical        []byte
 	Step                   string
-	BudgetStateRef         string
+	UsageLedgerRef         string
 	Continuation           []byte
 	PendingModelAttempt    string
 	PendingActionAttempt   string
@@ -605,7 +605,7 @@ func captureActionRoundTripClosures(
 			Member:                 run.Member,
 			MemberCanonical:        bytes.Clone(run.MemberCanonical),
 			Step:                   run.Frame.Step,
-			BudgetStateRef:         run.Frame.BudgetStateRef,
+			UsageLedgerRef:         run.Frame.UsageLedgerRef,
 			Continuation:           bytes.Clone(run.Frame.Continuation),
 			PendingModelAttempt:    run.Frame.PendingAttemptID,
 			PendingActionAttempt:   run.Frame.PendingDispatchAttemptID,

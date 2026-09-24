@@ -52,7 +52,7 @@ type ChannelDispatchAttemptRecord struct {
 	EffectClass               moduleapi.EffectClass
 	MaxResultBytes            uint32
 	Deadline                  time.Time
-	BudgetStateRef            string
+	UsageLedgerRef            string
 	State                     DispatchState
 	ExternalOperationID       string
 	ProviderReceiptRef        string

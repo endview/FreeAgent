@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	CurrentMemberSnapshotSchemaVersion = corecontract.MemberExecutionSnapshotSchemaVersionV1
-	CurrentCompilerVersion             = corecontract.AssemblyCompilerVersionV1
-	CurrentRunManifestSchemaVersion    = corecontract.RunManifestSchemaVersionV1
-	CurrentCoreRuntimeVersion          = corecontract.CoreRuntimeVersionV1
+	CurrentMemberSnapshotSchemaVersion = corecontract.MemberExecutionSnapshotSchemaVersionV2
+	CurrentCompilerVersion             = corecontract.AssemblyCompilerVersionV2
+	CurrentRunManifestSchemaVersion    = corecontract.RunManifestSchemaVersionV2
+	CurrentCoreRuntimeVersion          = corecontract.CoreRuntimeVersionV2
 )
 
 var ErrCapabilityNotAvailable = errors.New(
@@ -267,7 +267,6 @@ func (Compiler) Compile(
 				PortPlans:        plans,
 				Actions:          actions,
 				ContextPolicy:    profile.ContextPolicy,
-				CostPolicy:       profile.CostPolicy,
 				SchedulingPolicy: profile.SchedulingPolicy,
 			},
 		)
@@ -297,7 +296,6 @@ func (Compiler) Compile(
 			TaskInputRef:      intent.TaskInputRef,
 			TaskInputDigest:   intent.TaskInputRef,
 			ConversationTurn:  conversationTurn,
-			BudgetPolicy:      workspace.BudgetPolicy,
 			CancellationScope: intent.CancellationScope,
 			Deadline:          intent.Deadline,
 			RecoveryRootRef:   input.RecoveryRootRef,

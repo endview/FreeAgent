@@ -859,7 +859,7 @@ func loadDormantCompositeRepairHead(
 		SELECT r.state, r.disposition, r.revision,
 		       r.parent_run_id, r.parent_manifest_digest, r.parent_slot_id,
 		       r.cancel_request_ref,
-		       f.frame_revision, f.step, f.budget_state_ref, f.continuation,
+		       f.frame_revision, f.step, f.usage_ledger_ref, f.continuation,
 		       f.pending_attempt_id, f.pending_dispatch_attempt_id,
 		       f.waiting_reason, f.last_authoritative_event,
 		       f.lease_owner, f.lease_epoch, f.lease_expiry
@@ -943,7 +943,7 @@ func loadDormantCompositeRepairHead(
 			RunID:                  transition.runID,
 			Revision:               uint64(frameRevision),
 			Step:                   step,
-			BudgetStateRef:         budgetRef,
+			UsageLedgerRef:         budgetRef,
 			Continuation:           bytes.Clone(continuation),
 			WaitingReason:          waitingReason.String,
 			LastAuthoritativeEvent: uint64(lastEvent),
@@ -1012,7 +1012,7 @@ func activateCompositeRepairRun(
 	default:
 		err = ErrAdmissionIntegrity
 	}
-	if err != nil || budgetRef != head.frame.BudgetStateRef {
+	if err != nil || budgetRef != head.frame.UsageLedgerRef {
 		return fmt.Errorf(
 			"%w: construct repair activation continuation: %v",
 			ErrCompositeDecisionTransitionIntegrity,
@@ -1083,7 +1083,7 @@ func activateCompositeRepairRun(
 	}
 	frameUpdate, err := connection.ExecContext(ctx, `
 		UPDATE loop_frames
-		SET frame_revision=?, step=?, budget_state_ref=?, continuation=?,
+		SET frame_revision=?, step=?, usage_ledger_ref=?, continuation=?,
 		    waiting_reason=?, last_authoritative_event=?
 		WHERE run_id=? AND frame_revision=? AND step=?
 		  AND pending_attempt_id IS NULL

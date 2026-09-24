@@ -83,9 +83,7 @@ func TestProductionDeepSeekSingleAgentPureChatPersistsExactUsage(
 		!deepSeekTokenEquals(record.Usage.Tokens.CachedInput, 40) ||
 		!deepSeekTokenEquals(record.Usage.Tokens.UncachedInput, 60) ||
 		!deepSeekTokenEquals(record.Usage.Tokens.Output, 20) ||
-		!deepSeekTokenEquals(record.Usage.Tokens.Reasoning, 5) ||
-		record.Usage.EstimatedCost == nil ||
-		*record.Usage.EstimatedCost != "0.0001008" {
+		!deepSeekTokenEquals(record.Usage.Tokens.Reasoning, 5) {
 		t.Fatalf("DeepSeek persisted Attempt/Usage=%+v", record)
 	}
 	usage, err := readChatCommandUsage(ctx, composition.store, result)
@@ -97,11 +95,7 @@ func TestProductionDeepSeekSingleAgentPureChatPersistsExactUsage(
 		!deepSeekTokenEquals(usage.UncachedInputTokens, 60) ||
 		!deepSeekTokenEquals(usage.OutputTokens, 20) ||
 		!deepSeekTokenEquals(usage.ReasoningTokens, 5) ||
-		usage.EstimatedCost == nil || *usage.EstimatedCost != "0.0001008" ||
-		usage.ProviderReportedCost != nil || usage.ReconciledCost != nil ||
-		usage.Status != "PROVIDER_REPORTED" ||
-		usage.PriceSnapshotID != record.Attempt.PriceSnapshotID ||
-		usage.Currency != "CNY" {
+		usage.Status != "PROVIDER_REPORTED" {
 		t.Fatalf("CLI DeepSeek Usage=%+v", usage)
 	}
 

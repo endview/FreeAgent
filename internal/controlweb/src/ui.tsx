@@ -11,6 +11,7 @@ import {
   type SearchResult
 } from "./overview.ts";
 import type { ControlSession, OverviewResponse } from "./contracts.ts";
+import { useOptionalI18n, type I18nRuntime } from "./i18n/index.ts";
 
 type HandoffPanelProps = {
   busy: boolean;
@@ -19,23 +20,21 @@ type HandoffPanelProps = {
 };
 
 export function HandoffPanel({ busy, error, onFile }: HandoffPanelProps) {
+  const { t } = useOptionalI18n();
   return (
     <main className="entry" aria-labelledby="entry-title">
       <section className="entry__panel">
-        <p className="eyebrow">FreeAgent Control</p>
-        <h1 id="entry-title">Open a Control session</h1>
-        <p className="lede">
-          Select the short-lived handoff JSON created by this exact local Control process.
-          The capability is exchanged once and is never retained by this page.
-        </p>
+        <p className="eyebrow">{t("session.open.eyebrow")}</p>
+        <h1 id="entry-title">{t("session.open.title")}</h1>
+        <p className="lede">{t("session.open.description")}</p>
         {error !== "" && (
           <div className="notice notice--error" role="alert">
-            <strong>Session could not be opened.</strong>
+            <strong>{t("session.open.error")}</strong>
             <span>{error}</span>
           </div>
         )}
         <label className={`file-picker${busy ? " file-picker--busy" : ""}`}>
-          <span>{busy ? "Opening session…" : "Choose handoff JSON"}</span>
+          <span>{busy ? t("session.opening") : t("session.chooseHandoff")}</span>
           <input
             type="file"
             accept="application/json,.json"
@@ -45,16 +44,16 @@ export function HandoffPanel({ busy, error, onFile }: HandoffPanelProps) {
         </label>
         <dl className="security-notes">
           <div>
-            <dt>Authority</dt>
-            <dd>Only server-authorized scopes are selectable.</dd>
+            <dt>{t("session.security.authority")}</dt>
+            <dd>{t("session.security.authorityValue")}</dd>
           </div>
           <div>
-            <dt>Credentials</dt>
-            <dd>CSRF stays in memory; resume data stays in this tab session.</dd>
+            <dt>{t("session.security.credentials")}</dt>
+            <dd>{t("session.security.credentialsValue")}</dd>
           </div>
           <div>
-            <dt>Surface</dt>
-            <dd>Overview stays read-only; Modules exposes only confirmed disable operations.</dd>
+            <dt>{t("session.security.surface")}</dt>
+            <dd>{t("session.security.surfaceValue")}</dd>
           </div>
         </dl>
       </section>
@@ -62,29 +61,29 @@ export function HandoffPanel({ busy, error, onFile }: HandoffPanelProps) {
   );
 }
 
-export function LoadingPanel({ label = "Loading Overview…" }: { label?: string }) {
+export function LoadingPanel({ label, labelKey }: { label?: string; labelKey?: string }) {
+  const { t } = useOptionalI18n();
+  const resolvedLabel = labelKey !== undefined ? t(labelKey) : label ?? t("loading.overview");
   return (
     <main className="entry" aria-busy="true" aria-labelledby="loading-title">
       <section className="entry__panel entry__panel--compact">
-        <p className="eyebrow">FreeAgent Control</p>
-        <h1 id="loading-title">{label}</h1>
+        <p className="eyebrow">{t("loading.brand")}</p>
+        <h1 id="loading-title">{resolvedLabel}</h1>
         <div className="loading-bar" aria-hidden="true"><span /></div>
-        <p className="muted">Waiting for one bounded, authenticated response.</p>
+        <p className="muted">{t("loading.waiting")}</p>
       </section>
     </main>
   );
 }
 
 export function PermissionPanel({ principalID }: { principalID: string }) {
+  const { t } = useOptionalI18n();
   return (
     <main className="entry" aria-labelledby="permission-title">
       <section className="entry__panel entry__panel--compact">
-        <p className="eyebrow">Read-only access</p>
-        <h1 id="permission-title">Overview permission denied</h1>
-        <p className="lede">
-          Session principal <code>{principalID}</code> does not currently hold the OBSERVE
-          capability for this view. No Overview request was sent.
-        </p>
+        <p className="eyebrow">{t("permission.eyebrow")}</p>
+        <h1 id="permission-title">{t("permission.title")}</h1>
+        <p className="lede">{t("permission.description", { values: { principal: principalID } })}</p>
       </section>
     </main>
   );
@@ -98,7 +97,7 @@ export function SessionInvalidBoundary({
   children: ReactNode;
 }) {
   if (error !== null && isSessionInvalid(error)) {
-    return <LoadingPanel label="Closing an expired session…" />;
+    return <LoadingPanel labelKey="loading.closingSession" />;
   }
   return <>{children}</>;
 }
@@ -114,18 +113,19 @@ export function FatalOverviewPanel({
   correlationID: string;
   onRetry: () => void;
 }) {
+  const { t } = useOptionalI18n();
   return (
     <main className="entry" aria-labelledby="overview-error-title">
       <section className="entry__panel entry__panel--compact">
-        <p className="eyebrow">Read-only Overview</p>
+        <p className="eyebrow">{t("error.overview.eyebrow")}</p>
         <h1 id="overview-error-title">
-          {permissionDenied ? "Scope permission denied" : "Overview unavailable"}
+          {permissionDenied ? t("error.overview.scopeDenied") : t("error.overview.unavailable")}
         </h1>
         <p className="lede">{message}</p>
-        {correlationID !== "" && <p className="correlation">Correlation: {correlationID}</p>}
+        {correlationID !== "" && <p className="correlation">{t("error.overview.correlation", { values: { id: correlationID } })}</p>}
         {!permissionDenied && (
           <button className="button button--primary" type="button" onClick={onRetry}>
-            Retry read
+            {t("error.overview.retry")}
           </button>
         )}
       </section>
@@ -133,20 +133,20 @@ export function FatalOverviewPanel({
   );
 }
 
-const formatMicros = (value: number) => {
+const formatMicros = (value: number, formatDateTime: I18nRuntime["formatDateTime"]) => {
   const date = new Date(Math.floor(value / 1000));
-  return Number.isNaN(date.getTime()) ? "Invalid time" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "Invalid time" : formatDateTime(date);
 };
 
 const shortDigest = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`;
 
-const sectionLabels: Record<DetailSection, string> = {
-  workspaces: "Workspaces",
-  runs: "Recent runs",
-  unknown: "Unknown outcomes",
-  learning: "Learning proposals",
-  "module-candidates": "Module candidates",
-  usage: "Usage reconciliation"
+const sectionLabelKeys: Record<DetailSection, string> = {
+  workspaces: "overview.section.workspaces",
+  runs: "overview.section.runs",
+  unknown: "overview.section.unknown",
+  learning: "overview.section.learning",
+  "module-candidates": "overview.section.moduleCandidates",
+  usage: "overview.section.usage"
 };
 
 const sectionTruncated = (overview: OverviewResponse, section: DetailSection) => {
@@ -160,9 +160,9 @@ const sectionTruncated = (overview: OverviewResponse, section: DetailSection) =>
   }
 };
 
-function ResultList({ results }: { results: SearchResult[] }) {
+function ResultList({ results, t }: { results: SearchResult[]; t: I18nRuntime["t"] }) {
   if (results.length === 0) {
-    return <p className="empty-copy">No items in this current response.</p>;
+    return <p className="empty-copy">{t("overview.result.empty")}</p>;
   }
   return (
     <ul className="result-list">
@@ -184,6 +184,7 @@ export function DetailDrawer({
 }: {
   snapshot: DetailSnapshot | null;
 }) {
+  const { t } = useOptionalI18n();
   if (snapshot === null) return null;
   const { result, scope } = snapshot;
   const frozenScope = scope.kind === "WORKSPACE"
@@ -195,19 +196,22 @@ export function DetailDrawer({
       <section className="drawer__panel">
         <header className="drawer__header">
           <div>
-            <p className="eyebrow">Current response detail</p>
-            <h2 id="detail-title">{result?.title ?? "Detail unavailable"}</h2>
+            <p className="eyebrow">{t("overview.detail.eyebrow")}</p>
+            <h2 id="detail-title">{result?.title ?? t("overview.detail.unavailable")}</h2>
           </div>
-          <a className="drawer__close" href="#" aria-label="Close detail">×</a>
+          <a className="drawer__close" href="#" aria-label={t("overview.detail.close")}>×</a>
         </header>
         {result === null ? (
-          <p className="empty-copy">
-            This deep link is not present in the current authorized scope response.
-          </p>
+          <p className="empty-copy">{t("overview.detail.missing")}</p>
         ) : (
           <>
-            <p className="drawer__summary">{sectionLabels[result.section]} · {result.summary}</p>
-            <p className="drawer__scope">Frozen {scope.kind.toLowerCase()} scope: {frozenScope}</p>
+            <p className="drawer__summary">{t(sectionLabelKeys[result.section])} · {result.summary}</p>
+            <p className="drawer__scope">{t("overview.detail.frozenScope", {
+              values: {
+                kind: scope.kind === "TENANT" ? t("common.tenantLower") : t("common.workspaceLower"),
+                scope: frozenScope
+              }
+            })}</p>
             <pre>{JSON.stringify(result.value, null, 2)}</pre>
           </>
         )}
@@ -229,6 +233,7 @@ type OverviewPageProps = {
   onScopeChange: (key: string) => void;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
+  onNavigateManagement?: () => void;
 };
 
 export function OverviewPage({
@@ -243,12 +248,14 @@ export function OverviewPage({
   detailSnapshot,
   onScopeChange,
   onSearchChange,
-  onRefresh
+  onRefresh,
+  onNavigateManagement
 }: OverviewPageProps) {
-  const allResults = overviewSearchResults(overview, search);
-  const unfilteredResults = overviewSearchResults(overview, "");
+  const { t, formatDateTime, formatNumber } = useOptionalI18n();
+  const allResults = overviewSearchResults(overview, search, t);
+  const unfilteredResults = overviewSearchResults(overview, "", t);
   const itemCount = unfilteredResults.length;
-  const groups = (Object.keys(sectionLabels) as DetailSection[]).map((section) => ({
+  const groups = (Object.keys(sectionLabelKeys) as DetailSection[]).map((section) => ({
     section,
     results: allResults
       .filter((result) => result.section === section)
@@ -258,60 +265,63 @@ export function OverviewPage({
   return (
     <div className="control-shell">
       <header className="topbar">
-        <a className="brand" href="#overview" aria-label="FreeAgent Control Overview">
+        <a className="brand" href="#overview" aria-label={t("brand.overviewAria")}>
           <span className="brand__mark" aria-hidden="true">F</span>
-          <span>FreeAgent Control</span>
+          <span>{t("brand.name")}</span>
         </a>
         <div className="topbar__status">
           <span className={`status-dot${stale ? " status-dot--stale" : ""}`} aria-hidden="true" />
-          {refreshing ? "Refreshing" : stale ? "Stale" : "Current"}
+          {refreshing ? t("common.refreshing") : stale ? t("common.stale") : t("common.current")}
         </div>
       </header>
 
-      <aside className="sidebar" aria-label="Control navigation">
-        <p className="sidebar__label">Control</p>
+      <aside className="sidebar" aria-label={t("overview.nav.aria")}>
+        <p className="sidebar__label">{t("overview.nav.control")}</p>
         <nav>
-          <a href="#overview">Status</a>
-          <a href="#modules">Modules</a>
+          <a href="#overview">{t("overview.nav.status")}</a>
+          <a href="#modules">{t("overview.nav.modules")}</a>
+          <a href="#management" onClick={onNavigateManagement}>{t("overview.nav.management")}</a>
           {groups.map(({ section }) => (
-            <a href={`#section-${section}`} key={section}>{sectionLabels[section]}</a>
+            <a href={`#section-${section}`} key={section}>{t(sectionLabelKeys[section])}</a>
           ))}
         </nav>
         <div className="session-card">
-          <span>Session</span>
+          <span>{t("session.open.title")}</span>
           <strong>{session.principal_id}</strong>
-          <small>Expires {formatMicros(session.expires_at_unix_micros)}</small>
+          <small>{t("common.expires", { values: { time: formatMicros(session.expires_at_unix_micros, formatDateTime) } })}</small>
         </div>
       </aside>
 
       <main className="content" id="overview">
         <section className="page-heading">
           <div>
-            <p className="eyebrow">Authorized read-only surface</p>
-            <h1>Overview</h1>
-            <p className="lede">A bounded projection of the current published basis and recent safe facts.</p>
+            <p className="eyebrow">{t("overview.eyebrow")}</p>
+            <h1>{t("overview.title")}</h1>
+            <p className="lede">{t("overview.description")}</p>
           </div>
           <button className="button" type="button" onClick={onRefresh} disabled={refreshing}>
-            {refreshing ? "Reading…" : "Refresh read"}
+            {refreshing ? t("overview.reading") : t("overview.refresh")}
           </button>
         </section>
 
-        <section className="toolbar" aria-label="Overview controls">
+        <section className="toolbar" aria-label={t("overview.controls.aria")}>
           <label>
-            <span>Authorized scope</span>
+            <span>{t("overview.scope")}</span>
             <select value={selectedScopeKey} onChange={(event) => onScopeChange(event.target.value)}>
               {scopeChoices.map((choice) => (
-                <option value={choice.key} key={choice.key}>{choice.label}</option>
+                <option value={choice.key} key={choice.key}>{choice.scope.kind === "TENANT"
+                  ? t("scope.tenant", { values: { tenant: choice.scope.tenant_id } })
+                  : t("scope.workspace", { values: { tenant: choice.scope.tenant_id, workspace: choice.scope.workspace_id ?? "" } })}</option>
               ))}
             </select>
           </label>
           <label>
-            <span>Search this response</span>
+            <span>{t("overview.search")}</span>
             <input
               type="search"
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="ID, state, kind, version…"
+              placeholder={t("overview.searchPlaceholder")}
               autoComplete="off"
             />
           </label>
@@ -319,57 +329,57 @@ export function OverviewPage({
 
         {backgroundError !== "" && (
           <div className="notice notice--warning" role="status">
-            <strong>The last refresh failed.</strong>
-            <span>{backgroundError} The prior verified response remains visible as stale.</span>
+            <strong>{t("overview.refreshFailed")}</strong>
+            <span>{t("overview.staleNotice", { values: { message: backgroundError } })}</span>
           </div>
         )}
 
-        <section className="metric-grid" aria-label="Overview status">
+        <section className="metric-grid" aria-label={t("overview.status.aria")}>
           <article>
-            <span>Pointer revision</span>
-            <strong>{overview.basis.pointer_revision.toLocaleString()}</strong>
+            <span>{t("overview.metric.pointerRevision")}</span>
+            <strong>{formatNumber(overview.basis.pointer_revision)}</strong>
             <small>{overview.published_pointer.kind}</small>
           </article>
           <article>
-            <span>Control generation</span>
+            <span>{t("overview.metric.controlGeneration")}</span>
             <strong>{overview.basis.control.id} · r{overview.basis.control.revision}</strong>
             <small className="digest">{shortDigest(overview.basis.control.digest)}</small>
           </article>
           <article>
-            <span>Catalog generation</span>
+            <span>{t("overview.metric.catalogGeneration")}</span>
             <strong>{overview.basis.catalog.id} · r{overview.basis.catalog.revision}</strong>
             <small className="digest">{shortDigest(overview.basis.catalog.digest)}</small>
           </article>
           <article>
-            <span>Current response</span>
-            <strong>{itemCount.toLocaleString()}</strong>
-            <small>authorized safe items</small>
+            <span>{t("overview.metric.currentResponse")}</span>
+            <strong>{formatNumber(itemCount)}</strong>
+            <small>{t("overview.metric.authorizedItems")}</small>
           </article>
           <article>
-            <span>Observed</span>
-            <strong>{formatMicros(overview.view.observed_at_unix_micros)}</strong>
-            <small>{stale ? "stale local representation" : "verified representation"}</small>
+            <span>{t("overview.metric.observed")}</span>
+            <strong>{formatMicros(overview.view.observed_at_unix_micros, formatDateTime)}</strong>
+            <small>{stale ? t("overview.metric.staleRepresentation") : t("overview.metric.verifiedRepresentation")}</small>
           </article>
           <article>
-            <span>Projection</span>
+            <span>{t("overview.metric.projection")}</span>
             <strong className="digest">{shortDigest(overview.projection_digest)}</strong>
-            <small>semantic digest verified</small>
+            <small>{t("overview.metric.semanticDigest")}</small>
           </article>
         </section>
 
         {itemCount === 0 && search.trim() === "" && (
           <section className="empty-state" aria-labelledby="empty-title">
-            <p className="eyebrow">Current response</p>
-            <h2 id="empty-title">No recent items</h2>
-            <p>The selected authorized scope returned an empty, verified Overview.</p>
+            <p className="eyebrow">{t("overview.empty.eyebrow")}</p>
+            <h2 id="empty-title">{t("overview.empty.title")}</h2>
+            <p>{t("overview.empty.description")}</p>
           </section>
         )}
 
         {search.trim() !== "" && allResults.length === 0 && (
           <section className="empty-state" aria-labelledby="search-empty-title">
-            <p className="eyebrow">Local search</p>
-            <h2 id="search-empty-title">No response items match</h2>
-            <p>The search examined only the items already present in this authorized response.</p>
+            <p className="eyebrow">{t("overview.searchEmpty.eyebrow")}</p>
+            <h2 id="search-empty-title">{t("overview.searchEmpty.title")}</h2>
+            <p>{t("overview.searchEmpty.description")}</p>
           </section>
         )}
 
@@ -378,22 +388,22 @@ export function OverviewPage({
             <section className="data-section" id={`section-${section}`} key={section}>
               <header>
                 <div>
-                  <p className="eyebrow">Recent safe facts</p>
-                  <h2>{sectionLabels[section]}</h2>
+                  <p className="eyebrow">{t("overview.facts.eyebrow")}</p>
+                  <h2>{t(sectionLabelKeys[section])}</h2>
                 </div>
                 <div className="section-meta">
                   <span>{results.length}</span>
-                  {sectionTruncated(overview, section) && <span className="tag">truncated</span>}
+                  {sectionTruncated(overview, section) && <span className="tag">{t("overview.truncated")}</span>}
                 </div>
               </header>
-              <ResultList results={results} />
+              <ResultList results={results} t={t} />
             </section>
           ))}
         </div>
 
         <footer className="page-footer">
-          <span>View {shortDigest(overview.view_snapshot_digest)}</span>
-          <span>Scope {shortDigest(overview.view.scope_digest)}</span>
+          <span>{t("overview.footer.view", { values: { digest: shortDigest(overview.view_snapshot_digest) } })}</span>
+          <span>{t("overview.footer.scope", { values: { digest: shortDigest(overview.view.scope_digest) } })}</span>
         </footer>
       </main>
       <DetailDrawer snapshot={detailSnapshot} />

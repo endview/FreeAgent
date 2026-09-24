@@ -381,7 +381,7 @@ func TestRemoteRuntimeRejectsNonNarrowManifestBeforeRegistryProbe(t *testing.T) 
 			mutate: func(manifest *moduleapi.ModuleManifestV1) {
 				manifest.Provides = []moduleapi.PortRef{{
 					Name:         moduleapi.PortNameModelGenerate,
-					ExactVersion: moduleapi.PortVersionV1,
+					ExactVersion: moduleapi.PortVersionV2,
 				}}
 			},
 		},
@@ -390,7 +390,7 @@ func TestRemoteRuntimeRejectsNonNarrowManifestBeforeRegistryProbe(t *testing.T) 
 			mutate: func(manifest *moduleapi.ModuleManifestV1) {
 				manifest.Requires = []moduleapi.PortRef{{
 					Name:         moduleapi.PortNameModelGenerate,
-					ExactVersion: moduleapi.PortVersionV1,
+					ExactVersion: moduleapi.PortVersionV2,
 				}}
 			},
 		},

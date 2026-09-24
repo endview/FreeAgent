@@ -737,29 +737,12 @@ func newChannelServiceFixture(
 		AdapterIdentity:    activation.AdapterIdentity,
 		ActivationRevision: activation.ActivationRevision,
 	}
-	if _, err := store.PutModelPriceSnapshot(
-		ctx,
-		corecontract.ModelPriceSnapshotV1{
-			SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-			PriceSnapshotID: "price-v1",
-			Provider:        "test-provider", Model: "test-model",
-			BillingVersion: "billing-v1", Currency: "USD",
-			PricingStatus: corecontract.PricingKnown,
-			Pricing: json.RawMessage(
-				`{"input_per_million":1,"output_per_million":2}`,
-			),
-		},
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion: moduleapi.ModelBindingConfigSchemaV1,
+	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
 			Provider:      "test-provider", Model: "test-model",
-			ModelBuildID: "build-v1", BillingVersion: "billing-v1",
-			PriceSnapshotID: "price-v1",
-			Parameters:      json.RawMessage(`{"temperature":0}`),
+			ModelBuildID: "build-v1",
+			Parameters:   json.RawMessage(`{"max_tokens":10}`),
 		},
 	)
 	if err != nil {
@@ -815,9 +798,7 @@ func newChannelServiceFixture(
 		channelAuthorityCanonical,
 	)
 	contextPolicy := putPolicy(t, store, "context-policy", corecontract.PolicyContext)
-	costPolicy := putPolicy(t, store, "cost-policy", corecontract.PolicyCost)
 	schedulingPolicy := putPolicy(t, store, "scheduling-policy", corecontract.PolicyScheduling)
-	budgetPolicy := putPolicy(t, store, "budget-policy", corecontract.PolicyCost)
 
 	channelBinding := controlcontract.BindingSpec{
 		Port: channelPort, InstanceID: provider.InstanceID,
@@ -840,11 +821,11 @@ func newChannelServiceFixture(
 	workspace := corecontract.WorkspaceRef{ID: workspaceID, Version: "v1", Digest: strings.Repeat("3", 64)}
 	profile := corecontract.ProfileRef{ID: profileID, Version: "v1", Digest: strings.Repeat("4", 64)}
 	control := controlcontract.ControlSnapshot{
-		SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+		SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 		SnapshotID:    "control-channel-disabled", TenantID: tenantID, Revision: 1,
 		Agents: []corecontract.AgentRef{agent},
 		Workspaces: []controlcontract.WorkspaceDefinition{{
-			Workspace: workspace, BudgetPolicy: budgetPolicy,
+			Workspace: workspace,
 			ChannelEndpoints: []controlcontract.ChannelEndpointDefinition{{
 				SchemaVersion: controlcontract.ChannelEndpointSchemaVersionV1,
 				EndpointID:    endpointID, Channel: "loopback-http",
@@ -855,7 +836,7 @@ func newChannelServiceFixture(
 			ChannelIdentities: identities,
 		}},
 		Profiles: []controlcontract.ProfileDefinition{{
-			Profile: profile, ContextPolicy: contextPolicy, CostPolicy: costPolicy,
+			Profile: profile, ContextPolicy: contextPolicy,
 			SchedulingPolicy: schedulingPolicy,
 			Bindings: []controlcontract.BindingSpec{{
 				Port: modelPort, InstanceID: provider.InstanceID,
@@ -1241,9 +1222,6 @@ func putPolicy(
 ) corecontract.PolicyRef {
 	t.Helper()
 	body := json.RawMessage(`{"enabled":true}`)
-	if policyType == corecontract.PolicyCost && id == "budget-policy" {
-		body = json.RawMessage(`{}`)
-	}
 	if policyType == corecontract.PolicyContext {
 		body = json.RawMessage(
 			`{"context_window_tokens":32768,` +

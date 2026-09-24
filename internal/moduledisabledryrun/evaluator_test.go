@@ -463,7 +463,7 @@ func freezeDisableFactsV1(
 	}
 	control, controlRef, _, err := controlcontract.NewControlSnapshot(
 		controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    "control-observed",
 			TenantID:      "tenant-a",
 			Revision:      pointer,
@@ -559,9 +559,6 @@ func profileV1(
 		ContextPolicy: corecontract.PolicyRef{
 			ID: "context." + id, Version: "v1", Digest: hashV1("2"),
 		},
-		CostPolicy: corecontract.PolicyRef{
-			ID: "cost." + id, Version: "v1", Digest: hashV1("3"),
-		},
 		SchedulingPolicy: corecontract.PolicyRef{
 			ID: "schedule." + id, Version: "v1", Digest: hashV1("4"),
 		},
@@ -575,9 +572,6 @@ func workspaceV1(
 	return controlcontract.WorkspaceDefinition{
 		Workspace: corecontract.WorkspaceRef{
 			ID: "workspace-a", Version: "v1", Digest: hashV1("5"),
-		},
-		BudgetPolicy: corecontract.PolicyRef{
-			ID: "budget.workspace-a", Version: "v1", Digest: hashV1("6"),
 		},
 		ChannelEndpoints: []controlcontract.ChannelEndpointDefinition{endpoint},
 		ChannelIdentities: []controlcontract.ChannelIdentityDefinition{{

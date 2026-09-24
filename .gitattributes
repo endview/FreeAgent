@@ -21,3 +21,4 @@ internal/controlweb/dist/*.html text eol=lf
 internal/controlweb/dist/assets/*.css text eol=lf
 internal/controlweb/dist/assets/*.js text eol=lf
 testdata/release/distributed-assets.v1.json text eol=lf
+testdata/release/docs-maturity-claims.v1.json text eol=lf

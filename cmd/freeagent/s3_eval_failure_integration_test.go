@@ -16,7 +16,6 @@ import (
 
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/internal/deepseekmodel"
 	"github.com/endview/freeagent/internal/modulehost"
 	"github.com/endview/freeagent/internal/s3eval"
@@ -111,19 +110,6 @@ func TestS3EvalCLIReviewerRejectStopsRepetitionsWithoutRootMerge(
 			resultRoles[corecontract.CompositeRunRoleRootV1] != 0 {
 			t.Fatalf("REJECT Result roles=%v", resultRoles)
 		}
-		assertS3CFailureReportEstimatedCost(t, family, "0.0004032")
-	}
-	derived := result.command.RepetitionReports[0].DerivedCostEstimates
-	if len(derived) != 12 {
-		t.Fatalf("REJECT derived cost count=%d, want 12", len(derived))
-	}
-	for _, estimate := range derived {
-		if estimate.Role == corecontract.CompositeRunRoleRootV1 ||
-			estimate.Estimate.Status != deepseekcost.StatusKnown ||
-			estimate.Estimate.Value == nil ||
-			*estimate.Estimate.Value != "0.0001008" {
-			t.Fatalf("REJECT derived cost=%+v", estimate)
-		}
 	}
 }
 
@@ -209,37 +195,9 @@ func TestS3EvalCLISpecialistTransportUnknownStopsWithoutReviewOrMerge(
 			family.Tokens.CacheHitRatio != nil {
 			t.Fatalf("UNKNOWN family tokens became numeric: %+v", family.Tokens)
 		}
-		assertS3CFailureReportCostsUnknown(t, family)
 	}
 	if len(unknownAttemptIDs) != s3eval.WorkspaceCount {
 		t.Fatalf("UNKNOWN Attempt IDs=%v", unknownAttemptIDs)
-	}
-
-	knownCosts, unknownCosts := 0, 0
-	for _, estimate := range repetition.DerivedCostEstimates {
-		switch estimate.Estimate.Status {
-		case deepseekcost.StatusKnown:
-			knownCosts++
-			if estimate.Estimate.Value == nil {
-				t.Fatalf("known cost has no value: %+v", estimate)
-			}
-		case deepseekcost.StatusUnknown:
-			unknownCosts++
-			if estimate.Estimate.Value != nil {
-				t.Fatalf("missing Usage became a numeric cost: %+v", estimate)
-			}
-		default:
-			t.Fatalf("unexpected cost status: %+v", estimate)
-		}
-	}
-	if len(repetition.DerivedCostEstimates) != 9 ||
-		knownCosts != 6 || unknownCosts != 3 {
-		t.Fatalf(
-			"derived costs total/known/UNKNOWN=%d/%d/%d",
-			len(repetition.DerivedCostEstimates),
-			knownCosts,
-			unknownCosts,
-		)
 	}
 
 	store, err := currentstore.OpenExistingCurrentStore(
@@ -388,7 +346,7 @@ func runS3CProductionFailureCLI(
 	if err := json.Unmarshal(output.Bytes(), &command); err != nil {
 		t.Fatalf("decode S3-C failure report: %v\n%s", err, output.String())
 	}
-	if command.SchemaVersion != s3EvalReportSchemaVersionV1 ||
+	if command.SchemaVersion != s3EvalReportSchemaVersionV2 ||
 		command.Experiment.RepetitionsRequested != 3 ||
 		command.Experiment.RepetitionsAttempted != 1 ||
 		len(command.RepetitionReports) != 1 ||
@@ -542,49 +500,4 @@ func usageTokensAllUnknown(tokens corecontract.UsageTokens) bool {
 	return tokens.Input == nil && tokens.CachedInput == nil &&
 		tokens.UncachedInput == nil && tokens.Output == nil &&
 		tokens.Reasoning == nil
-}
-
-func assertS3CFailureReportCostsUnknown(
-	t *testing.T,
-	family s3eval.FamilyReport,
-) {
-	t.Helper()
-	for name, cost := range map[string]s3eval.CostTotalReport{
-		"estimated":         family.Costs.Estimated,
-		"provider-reported": family.Costs.ProviderReported,
-		"reconciled":        family.Costs.Reconciled,
-	} {
-		if cost.Status != currentstore.CompositeFamilyCostUnknownV1 ||
-			cost.Value != nil || cost.Currency != "" || len(cost.Currencies) != 0 {
-			t.Fatalf("family %s %s cost=%+v", family.WorkspaceID, name, cost)
-		}
-	}
-}
-
-func assertS3CFailureReportEstimatedCost(
-	t *testing.T,
-	family s3eval.FamilyReport,
-	want string,
-) {
-	t.Helper()
-	estimated := family.Costs.Estimated
-	if estimated.Status != currentstore.CompositeFamilyCostKnownV1 ||
-		estimated.Value == nil || *estimated.Value != want ||
-		estimated.Currency != "CNY" || len(estimated.Currencies) != 0 {
-		t.Fatalf(
-			"family %s estimated cost=%+v, want KNOWN CNY %s",
-			family.WorkspaceID,
-			estimated,
-			want,
-		)
-	}
-	for name, cost := range map[string]s3eval.CostTotalReport{
-		"provider-reported": family.Costs.ProviderReported,
-		"reconciled":        family.Costs.Reconciled,
-	} {
-		if cost.Status != currentstore.CompositeFamilyCostUnknownV1 ||
-			cost.Value != nil || cost.Currency != "" || len(cost.Currencies) != 0 {
-			t.Fatalf("family %s %s cost=%+v", family.WorkspaceID, name, cost)
-		}
-	}
 }

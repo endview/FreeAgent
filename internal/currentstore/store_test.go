@@ -169,6 +169,44 @@ func TestOpenExistingNeverInitializesMissingEmptyOrForeignStore(t *testing.T) {
 	}
 }
 
+func TestFAC1StoreIsRejectedReadOnlyWithoutModification(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fac1.sqlite")
+	db, err := sql.Open("sqlite", sqliteURI(path, "rwc", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		PRAGMA application_id=1178682161;
+		PRAGMA user_version=1;
+		CREATE TABLE legacy_current_store_marker(id TEXT PRIMARY KEY);
+	`); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = InspectKnownSchemaVersionReadOnly(context.Background(), path)
+	var identityErr *IdentityError
+	if !errors.As(err, &identityErr) || identityErr.Field != "application_id" {
+		t.Fatalf("FAC1 rejection error = %v", err)
+	}
+	if _, err := OpenExistingCurrentStore(context.Background(), path); err == nil {
+		t.Fatal("OpenExistingCurrentStore accepted FAC1")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("FAC1 rejection modified the database")
+	}
+}
+
 func TestVerifyReadOnlyDoesNotChangeCleanDatabaseOrCreateSidecars(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "readonly.db")
 	if _, err := InitFreshCurrentStore(

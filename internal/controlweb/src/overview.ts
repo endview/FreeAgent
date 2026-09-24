@@ -12,6 +12,8 @@ import {
   type OverviewResponse,
   type WorkspaceRef
 } from "./contracts.ts";
+import { createI18nRuntime, type TranslationOptions } from "./i18n/core.ts";
+import { i18nResources } from "./i18n/resources.ts";
 
 export const OVERVIEW_PATH = "/control/api/v1/overview";
 const STRONG_ETAG_PATTERN = /^"[0-9a-f]{64}"$/u;
@@ -201,9 +203,20 @@ export type ScopeChoice = {
   source: "authorized" | "tenant-workspace";
 };
 
+type OverviewTranslator = (
+  key: string,
+  options?: TranslationOptions
+) => string;
+
+const defaultOverviewTranslator = createI18nRuntime(
+  "en-US",
+  i18nResources
+).t;
+
 export const buildScopeChoices = (
   authorizedScopes: readonly ControlScope[],
-  workspacesByTenant: ReadonlyMap<string, readonly WorkspaceRef[]>
+  workspacesByTenant: ReadonlyMap<string, readonly WorkspaceRef[]>,
+  translate: OverviewTranslator = defaultOverviewTranslator
 ): ScopeChoice[] => {
   const choices = new Map<string, ScopeChoice>();
   for (const scope of authorizedScopes) {
@@ -212,8 +225,13 @@ export const buildScopeChoices = (
       key,
       label:
         scope.kind === "TENANT"
-          ? `Tenant · ${scope.tenant_id}`
-          : `Workspace · ${scope.tenant_id} / ${scope.workspace_id ?? ""}`,
+          ? translate("scope.tenant", { values: { tenant: scope.tenant_id } })
+          : translate("scope.workspace", {
+              values: {
+                tenant: scope.tenant_id,
+                workspace: scope.workspace_id ?? ""
+              }
+            }),
       scope,
       source: "authorized"
     });
@@ -230,7 +248,9 @@ export const buildScopeChoices = (
       if (!choices.has(derivedKey)) {
         choices.set(derivedKey, {
           key: derivedKey,
-          label: `Workspace · ${scope.tenant_id} / ${workspace.id}`,
+          label: translate("scope.workspace", {
+            values: { tenant: scope.tenant_id, workspace: workspace.id }
+          }),
           scope: derived,
           source: "tenant-workspace"
         });
@@ -258,21 +278,29 @@ export type SearchResult = {
 
 export const overviewSearchResults = (
   overview: OverviewResponse,
-  rawSearch: string
+  rawSearch: string,
+  translate: OverviewTranslator = defaultOverviewTranslator
 ): SearchResult[] => {
   const rows: SearchResult[] = [
     ...overview.workspaces.map((item) => ({
       section: "workspaces" as const,
       id: item.id,
       title: item.id,
-      summary: `Workspace ${item.version}`,
+      summary: translate("overview.result.workspace", {
+        values: { version: item.version }
+      }),
       value: item
     })),
     ...overview.runs.map((item) => ({
       section: "runs" as const,
       id: item.run_id,
       title: item.run_id,
-      summary: `${item.state}${item.disposition ? ` · ${item.disposition}` : ""}`,
+      summary: translate("overview.result.run", {
+        values: {
+          state: item.state,
+          disposition: item.disposition ? ` · ${item.disposition}` : ""
+        }
+      }),
       value: item
     })),
     ...overview.unknown.map((item) => ({
@@ -286,21 +314,31 @@ export const overviewSearchResults = (
       section: "learning" as const,
       id: item.proposal_id,
       title: item.proposal_id,
-      summary: `${item.kind} · ${item.state}`,
+      summary: translate("overview.result.learning", {
+        values: { kind: item.kind, state: item.state }
+      }),
       value: item
     })),
     ...overview.module_candidates.map((item) => ({
       section: "module-candidates" as const,
       id: item.review_id,
       title: item.target_module_id,
-      summary: `${item.current_exact_version} → ${item.target_exact_version} · ${item.conclusion}`,
+      summary: translate("overview.result.moduleCandidate", {
+        values: {
+          current: item.current_exact_version,
+          target: item.target_exact_version,
+          conclusion: item.conclusion
+        }
+      }),
       value: item
     })),
     ...overview.usage.map((item) => ({
       section: "usage" as const,
       id: item.attempt_id,
       title: item.attempt_id,
-      summary: `${item.reconciliation_status} · run ${item.run_id}`,
+      summary: translate("overview.result.usage", {
+        values: { status: item.reconciliation_status, run: item.run_id }
+      }),
       value: item
     }))
   ];
@@ -349,10 +387,11 @@ export const parseDetailHash = (hash: string): DetailLink | null => {
 
 export const captureDetailSnapshot = (
   overview: OverviewResponse,
-  link: DetailLink
+  link: DetailLink,
+  translate: OverviewTranslator = defaultOverviewTranslator
 ): DetailSnapshot => ({
   link,
-  result: overviewSearchResults(overview, "").find(
+  result: overviewSearchResults(overview, "", translate).find(
     (item) => item.section === link.section && item.id === link.id
   ) ?? null,
   scope: overview.view.scope

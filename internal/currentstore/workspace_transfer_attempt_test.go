@@ -16,7 +16,6 @@ func TestWorkspaceTransferBeginPersistsOneAtomicRequestAndExactRetryReadsIt(
 	t *testing.T,
 ) {
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	input := newCompositeChildBeginInput(
 		t,
 		fixture.compositeAdmissionFixture,
@@ -101,7 +100,6 @@ func TestWorkspaceTransferConcurrentBeginCreatesOneAttemptAndEnvelope(
 	t *testing.T,
 ) {
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	input := newCompositeChildBeginInput(
 		t,
 		fixture.compositeAdmissionFixture,
@@ -155,7 +153,6 @@ func TestWorkspaceTransferBeginFailureRollsBackPayloadEnvelopeAndAttempt(
 	t *testing.T,
 ) {
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	input := newCompositeChildBeginInput(
 		t,
 		fixture.compositeAdmissionFixture,
@@ -198,7 +195,6 @@ func TestWorkspaceTransferExpiredBeginKeepsRequestClosureWithoutInvocation(
 	t *testing.T,
 ) {
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	input := newCompositeChildBeginInput(
 		t,
 		fixture.compositeAdmissionFixture,
@@ -658,7 +654,6 @@ func TestWorkspaceTransferRepairRequestRecompilesTaskAndClosesLineage(
 	t *testing.T,
 ) {
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	for index, child := range fixture.compiled.Children {
 		finishDecisionSpecialist(
 			t,
@@ -753,7 +748,6 @@ func beginWorkspaceTransferSpecialist(
 ) (*workspaceTransferStoreFixture, BeginModelDispatchResult, BeginModelDispatchInput) {
 	t.Helper()
 	fixture := newCommittedWorkspaceTransferStoreFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	input := newCompositeChildBeginInput(
 		t,
 		fixture.compositeAdmissionFixture,

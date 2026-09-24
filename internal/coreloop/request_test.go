@@ -445,14 +445,12 @@ func pureChatRunFixture(t *testing.T) currentstore.RunForLoop {
 	staticOne := staticContent(t, "system-one")
 	staticTwo := staticContent(t, "system-two")
 	staticThree := staticContent(t, "system-three")
-	config, configCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        "provider",
-			Model:           "model",
-			ModelBuildID:    "model-build-v1",
-			BillingVersion:  "billing-v1",
-			PriceSnapshotID: "price-v1",
+	config, configCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      "provider",
+			Model:         "model",
+			ModelBuildID:  "model-build-v1",
 			Parameters: []byte(
 				`{"temperature":0,"max_tokens":512}`,
 			),
@@ -567,7 +565,7 @@ func pureChatRunFixture(t *testing.T) currentstore.RunForLoop {
 	modelPlan := moduleapi.PortPlan{
 		Port: moduleapi.PortRef{
 			Name:         moduleapi.PortNameModelGenerate,
-			ExactVersion: moduleapi.PortVersionV1,
+			ExactVersion: moduleapi.PortVersionV2,
 		},
 		Bindings: []moduleapi.PortBinding{{
 			Provider:            testProvider("model", moduleapi.ExecutionTrustedInProcess),
@@ -629,7 +627,7 @@ func attachPureChatModelProfile(
 	for planIndex := range run.Member.PortPlans {
 		plan := &run.Member.PortPlans[planIndex]
 		if plan.Port.Name != moduleapi.PortNameModelGenerate ||
-			plan.Port.ExactVersion != moduleapi.PortVersionV1 {
+			plan.Port.ExactVersion != moduleapi.PortVersionV2 {
 			continue
 		}
 		if binding != nil || len(plan.Bindings) != 1 {
@@ -644,11 +642,11 @@ func attachPureChatModelProfile(
 	if !found || configContent.Kind != currentstore.ContentConfig {
 		t.Fatal("fixture model Binding CONFIG is absent")
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(
+	config, err := moduleapi.RestoreModelBindingConfigV2(
 		configContent.CanonicalBytes,
 	)
 	if err != nil {
-		t.Fatalf("RestoreModelBindingConfigV1: %v", err)
+		t.Fatalf("RestoreModelBindingConfigV2: %v", err)
 	}
 	profile := corecontract.ModelProfileV1{
 		SchemaVersion:          corecontract.ModelProfileSchemaVersionV1,

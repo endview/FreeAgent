@@ -5,16 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"strings"
 )
 
 const (
 	ModelGenerateRequestSchemaV1 = "model-generate-request/v1"
 	ModelGenerateOutputSchemaV1  = "model-generate-output/v1"
-	ModelUsageReceiptSchemaV1    = "model-usage-receipt/v1"
+	ModelUsageReceiptSchemaV2    = "model-usage-receipt/v2"
 )
 
-// ModelMessageRole is the closed role set for model.generate/v1.
+// ModelMessageRole is the closed role set for model.generate/v2.
 type ModelMessageRole string
 
 const (
@@ -57,7 +56,7 @@ type ModelActionRequestV1 struct {
 	CanonicalInput json.RawMessage `json:"canonical_input"`
 }
 
-// ModelGenerateRequestV1 is the exact model.generate/v1 port input.
+// ModelGenerateRequestV1 is the exact model.generate/v2 port input.
 // Provider/model selection and authority stay in the frozen PortBinding.
 type ModelGenerateRequestV1 struct {
 	SchemaVersion string                    `json:"schema_version"`
@@ -158,8 +157,8 @@ func RestoreModelGenerateRequestV1(
 	return rebuilt, nil
 }
 
-// ModelGenerateOutputV1 is the normalized successful model.generate/v1
-// output. Provider raw data belongs in ModelUsageReceiptV1, not prompt text.
+// ModelGenerateOutputV1 is the normalized successful model.generate/v2
+// output. Provider raw data belongs in ModelUsageReceiptV2, not prompt text.
 type ModelGenerateOutputV1 struct {
 	SchemaVersion     string                `json:"schema_version"`
 	AssistantText     string                `json:"assistant_text"`
@@ -311,29 +310,26 @@ func freezeModelActionDefinitionsV1(
 	return frozen, nil
 }
 
-// ModelUsageReceiptV1 carries normalized token semantics plus the exact raw
+// ModelUsageReceiptV2 carries normalized token semantics plus the exact raw
 // provider receipt. nil means unknown; a pointer to zero means reported zero.
-// ProviderReportedCost is denominated in the frozen ModelPriceSnapshot
-// currency selected for the Attempt.
-type ModelUsageReceiptV1 struct {
-	SchemaVersion        string          `json:"schema_version"`
-	InputTokens          *uint64         `json:"input_tokens"`
-	CachedInputTokens    *uint64         `json:"cached_input_tokens"`
-	UncachedInputTokens  *uint64         `json:"uncached_input_tokens"`
-	OutputTokens         *uint64         `json:"output_tokens"`
-	ReasoningTokens      *uint64         `json:"reasoning_tokens"`
-	ProviderReportedCost *string         `json:"provider_reported_cost"`
-	NormalizationNote    string          `json:"normalization_note,omitempty"`
-	RawReceipt           json.RawMessage `json:"raw_receipt"`
+type ModelUsageReceiptV2 struct {
+	SchemaVersion       string          `json:"schema_version"`
+	InputTokens         *uint64         `json:"input_tokens"`
+	CachedInputTokens   *uint64         `json:"cached_input_tokens"`
+	UncachedInputTokens *uint64         `json:"uncached_input_tokens"`
+	OutputTokens        *uint64         `json:"output_tokens"`
+	ReasoningTokens     *uint64         `json:"reasoning_tokens"`
+	NormalizationNote   string          `json:"normalization_note,omitempty"`
+	RawReceipt          json.RawMessage `json:"raw_receipt"`
 }
 
-func NewModelUsageReceiptV1(
-	input ModelUsageReceiptV1,
-) (ModelUsageReceiptV1, []byte, error) {
-	if input.SchemaVersion != ModelUsageReceiptSchemaV1 {
-		return ModelUsageReceiptV1{}, nil, fmt.Errorf(
+func NewModelUsageReceiptV2(
+	input ModelUsageReceiptV2,
+) (ModelUsageReceiptV2, []byte, error) {
+	if input.SchemaVersion != ModelUsageReceiptSchemaV2 {
+		return ModelUsageReceiptV2{}, nil, fmt.Errorf(
 			"model usage receipt schema_version must be %q",
-			ModelUsageReceiptSchemaV1,
+			ModelUsageReceiptSchemaV2,
 		)
 	}
 	for name, value := range map[string]*uint64{
@@ -344,7 +340,7 @@ func NewModelUsageReceiptV1(
 		"reasoning_tokens":      input.ReasoningTokens,
 	} {
 		if value != nil && *value > math.MaxInt64 {
-			return ModelUsageReceiptV1{}, nil, fmt.Errorf(
+			return ModelUsageReceiptV2{}, nil, fmt.Errorf(
 				"%s exceeds Current Store integer range",
 				name,
 			)
@@ -355,26 +351,9 @@ func NewModelUsageReceiptV1(
 		input.UncachedInputTokens != nil &&
 		*input.InputTokens !=
 			*input.CachedInputTokens+*input.UncachedInputTokens {
-		return ModelUsageReceiptV1{}, nil, fmt.Errorf(
+		return ModelUsageReceiptV2{}, nil, fmt.Errorf(
 			"input_tokens must equal cached plus uncached input",
 		)
-	}
-	if input.ProviderReportedCost != nil {
-		if err := validateBoundedText(
-			"provider_reported_cost",
-			*input.ProviderReportedCost,
-			MaxIdentifierBytes,
-			false,
-		); err != nil {
-			return ModelUsageReceiptV1{}, nil, err
-		}
-		if !canonicalNonNegativeDecimal(
-			*input.ProviderReportedCost,
-		) {
-			return ModelUsageReceiptV1{}, nil, fmt.Errorf(
-				"provider_reported_cost must be a canonical non-negative decimal",
-			)
-		}
 	}
 	if input.NormalizationNote != "" {
 		if err := validateBoundedText(
@@ -383,7 +362,7 @@ func NewModelUsageReceiptV1(
 			MaxTextBytes,
 			true,
 		); err != nil {
-			return ModelUsageReceiptV1{}, nil, err
+			return ModelUsageReceiptV2{}, nil, err
 		}
 	}
 	raw := input.RawReceipt
@@ -399,7 +378,7 @@ func NewModelUsageReceiptV1(
 		},
 	)
 	if err != nil {
-		return ModelUsageReceiptV1{}, nil, fmt.Errorf(
+		return ModelUsageReceiptV2{}, nil, fmt.Errorf(
 			"model raw usage receipt: %w",
 			err,
 		)
@@ -411,30 +390,26 @@ func NewModelUsageReceiptV1(
 	frozen.UncachedInputTokens = cloneModelUint64(input.UncachedInputTokens)
 	frozen.OutputTokens = cloneModelUint64(input.OutputTokens)
 	frozen.ReasoningTokens = cloneModelUint64(input.ReasoningTokens)
-	if input.ProviderReportedCost != nil {
-		cost := *input.ProviderReportedCost
-		frozen.ProviderReportedCost = &cost
-	}
 	canonical, err := marshalCanonicalModelWire(frozen)
 	if err != nil {
-		return ModelUsageReceiptV1{}, nil, err
+		return ModelUsageReceiptV2{}, nil, err
 	}
 	return frozen, canonical, nil
 }
 
-func RestoreModelUsageReceiptV1(
+func RestoreModelUsageReceiptV2(
 	canonical []byte,
-) (ModelUsageReceiptV1, error) {
-	var decoded ModelUsageReceiptV1
+) (ModelUsageReceiptV2, error) {
+	var decoded ModelUsageReceiptV2
 	if err := decodeExactModelWire(canonical, &decoded); err != nil {
-		return ModelUsageReceiptV1{}, err
+		return ModelUsageReceiptV2{}, err
 	}
-	rebuilt, rebuiltCanonical, err := NewModelUsageReceiptV1(decoded)
+	rebuilt, rebuiltCanonical, err := NewModelUsageReceiptV2(decoded)
 	if err != nil {
-		return ModelUsageReceiptV1{}, err
+		return ModelUsageReceiptV2{}, err
 	}
 	if !bytes.Equal(canonical, rebuiltCanonical) {
-		return ModelUsageReceiptV1{}, fmt.Errorf(
+		return ModelUsageReceiptV2{}, fmt.Errorf(
 			"model usage receipt is not frozen canonically",
 		)
 	}
@@ -444,7 +419,7 @@ func RestoreModelUsageReceiptV1(
 func marshalCanonicalModelWire(value any) ([]byte, error) {
 	encoded, err := json.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("marshal model.generate/v1 wire value: %w", err)
+		return nil, fmt.Errorf("marshal model.generate/v2 wire value: %w", err)
 	}
 	canonical, err := CanonicalJSON(encoded)
 	if err != nil {
@@ -463,12 +438,12 @@ func decodeExactModelWire(canonical []byte, target any) error {
 		},
 	)
 	if err != nil || !bytes.Equal(checked, canonical) {
-		return fmt.Errorf("model.generate/v1 wire value is not canonical")
+		return fmt.Errorf("model.generate/v2 wire value is not canonical")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(canonical))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("decode model.generate/v1 wire value: %w", err)
+		return fmt.Errorf("decode model.generate/v2 wire value: %w", err)
 	}
 	return nil
 }
@@ -479,39 +454,4 @@ func cloneModelUint64(value *uint64) *uint64 {
 	}
 	cloned := *value
 	return &cloned
-}
-
-func canonicalNonNegativeDecimal(value string) bool {
-	if value == "0" {
-		return true
-	}
-	integer := value
-	fraction := ""
-	if separator := strings.IndexByte(value, '.'); separator >= 0 {
-		if separator == 0 ||
-			separator == len(value)-1 ||
-			strings.IndexByte(value[separator+1:], '.') >= 0 {
-			return false
-		}
-		integer = value[:separator]
-		fraction = value[separator+1:]
-	}
-	if integer == "" ||
-		(integer[0] == '0' && len(integer) > 1) {
-		return false
-	}
-	for index := range integer {
-		if integer[index] < '0' || integer[index] > '9' {
-			return false
-		}
-	}
-	if fraction == "" {
-		return integer[0] != '0'
-	}
-	for index := range fraction {
-		if fraction[index] < '0' || fraction[index] > '9' {
-			return false
-		}
-	}
-	return fraction[len(fraction)-1] != '0'
 }

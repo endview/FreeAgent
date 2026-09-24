@@ -134,7 +134,7 @@ func ClassifyExactKnowledgeManifestDeclarationV1(
 		return KnowledgeManifestGovernedV1, nil
 	}
 	return "", fmt.Errorf(
-		"Knowledge manifest must be exactly legacy permissionless or governed with requires model.generate/v1 and permission knowledge.read",
+		"Knowledge manifest must be exactly legacy permissionless or governed with requires model.generate/v2 and permission knowledge.read",
 	)
 }
 
@@ -146,7 +146,7 @@ func ExactKnowledgeManifestProvidesV1() []PortRef {
 // ExactModelGeneratePortV1 returns the exact model dependency used by the
 // governed Knowledge declaration.
 func ExactModelGeneratePortV1() PortRef {
-	return PortRef{Name: PortNameModelGenerate, ExactVersion: PortVersionV1}
+	return PortRef{Name: PortNameModelGenerate, ExactVersion: PortVersionV2}
 }
 
 // ExactContextProvidePortV1 returns the exact Knowledge provider Port.

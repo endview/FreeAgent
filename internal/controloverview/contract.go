@@ -84,18 +84,18 @@ type ModuleCandidateV1 struct {
 // UsageV1 preserves nil-is-unknown token and cost semantics.  It contains no
 // raw receipt reference and no provider/model identity.
 type UsageV1 struct {
-	AttemptID            string  `json:"attempt_id"`
-	RunID                string  `json:"run_id"`
-	TenantID             string  `json:"tenant_id"`
-	WorkspaceID          string  `json:"workspace_id"`
-	Revision             uint64  `json:"revision"`
-	InputTokens          *uint64 `json:"input_tokens"`
-	CachedInputTokens    *uint64 `json:"cached_input_tokens"`
-	UncachedInputTokens  *uint64 `json:"uncached_input_tokens"`
-	OutputTokens         *uint64 `json:"output_tokens"`
-	ReasoningTokens      *uint64 `json:"reasoning_tokens"`
-	ReconciliationStatus string  `json:"reconciliation_status"`
-	UpdatedAtUnixMicros  uint64  `json:"updated_at_unix_micros"`
+	AttemptID           string  `json:"attempt_id"`
+	RunID               string  `json:"run_id"`
+	TenantID            string  `json:"tenant_id"`
+	WorkspaceID         string  `json:"workspace_id"`
+	Revision            uint64  `json:"revision"`
+	InputTokens         *uint64 `json:"input_tokens"`
+	CachedInputTokens   *uint64 `json:"cached_input_tokens"`
+	UncachedInputTokens *uint64 `json:"uncached_input_tokens"`
+	OutputTokens        *uint64 `json:"output_tokens"`
+	ReasoningTokens     *uint64 `json:"reasoning_tokens"`
+	UsageStatus         string  `json:"usage_status"`
+	UpdatedAtUnixMicros uint64  `json:"updated_at_unix_micros"`
 }
 
 // SnapshotV1 is created from one coherent Current Store read transaction.

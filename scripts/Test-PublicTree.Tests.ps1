@@ -305,6 +305,9 @@ try {
     Write-TestText -Path (Join-Path $clean 'docs/boundaries.md') -Text ($embeddedShort + "`n" + $embeddedOwner + "`n")
     Write-TestText -Path (Join-Path $clean 'docs/license-identifier.ps1') -Text "LicenseIdentifier='AGPL-3.0-only'`n"
     Write-TestText -Path (Join-Path $clean 'docs/auth-language.md') -Text "Authorization-sk-example-secret-private`nBearer authentication`nBearer redacted`n"
+    foreach ($frontendArtifact in @('node_modules', '.npm-cache', '.vite')) {
+        Write-TestText -Path (Join-Path $clean ('internal/controlweb/' + $frontendArtifact + '/fixture.txt')) -Text 'token=not-a-public-secret'
+    }
     Write-TestText -Path (Join-Path $clean '.github/actions/local/action.yml') -Text "name: local`nruns:`n  using: composite`n  steps:`n    - shell: bash`n      run: echo ok`n"
     $sha2 = '2' * 40
     Write-TestText -Path (Join-Path $clean '.github/workflows/reusable.yml') -Text "name: reusable`non:`n  workflow_call:`njobs:`n  noop:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo ok`n"

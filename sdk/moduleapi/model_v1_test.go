@@ -181,16 +181,14 @@ func TestModelGenerateOutputV1RoundTrip(t *testing.T) {
 	}
 }
 
-func TestModelUsageReceiptV1PreservesUnknownAndReportedZero(t *testing.T) {
+func TestModelUsageReceiptV2PreservesUnknownAndReportedZero(t *testing.T) {
 	zero := uint64(0)
-	cost := "0"
-	receipt, canonical, err := NewModelUsageReceiptV1(
-		ModelUsageReceiptV1{
-			SchemaVersion:        ModelUsageReceiptSchemaV1,
-			InputTokens:          nil,
-			OutputTokens:         &zero,
-			ProviderReportedCost: &cost,
-			RawReceipt:           json.RawMessage(`{"output_tokens":0}`),
+	receipt, canonical, err := NewModelUsageReceiptV2(
+		ModelUsageReceiptV2{
+			SchemaVersion: ModelUsageReceiptSchemaV2,
+			InputTokens:   nil,
+			OutputTokens:  &zero,
+			RawReceipt:    json.RawMessage(`{"output_tokens":0}`),
 		},
 	)
 	if err != nil {
@@ -201,76 +199,21 @@ func TestModelUsageReceiptV1PreservesUnknownAndReportedZero(t *testing.T) {
 		*receipt.OutputTokens != 0 {
 		t.Fatalf("receipt=%+v", receipt)
 	}
-	restored, err := RestoreModelUsageReceiptV1(canonical)
+	restored, err := RestoreModelUsageReceiptV2(canonical)
 	if err != nil || restored.InputTokens != nil {
 		t.Fatalf("restored=%+v error=%v", restored, err)
 	}
-	if restored.ProviderReportedCost == nil ||
-		*restored.ProviderReportedCost != "0" {
-		t.Fatalf("restored cost=%v", restored.ProviderReportedCost)
+	if restored.OutputTokens == nil || *restored.OutputTokens != 0 {
+		t.Fatalf("restored=%+v", restored)
 	}
 }
 
-func TestModelUsageReceiptV1CanonicalProviderReportedCost(t *testing.T) {
-	valid := []string{
-		"0",
-		"1",
-		"10",
-		"0.1",
-		"1.01",
-		"10.001",
-	}
-	for _, cost := range valid {
-		t.Run("valid_"+cost, func(t *testing.T) {
-			_, canonical, err := NewModelUsageReceiptV1(
-				ModelUsageReceiptV1{
-					SchemaVersion:        ModelUsageReceiptSchemaV1,
-					ProviderReportedCost: &cost,
-				},
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
-			restored, err := RestoreModelUsageReceiptV1(canonical)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if restored.ProviderReportedCost == nil ||
-				*restored.ProviderReportedCost != cost {
-				t.Fatalf("restored cost=%v", restored.ProviderReportedCost)
-			}
-		})
-	}
-
-	invalid := []string{
-		"",
-		"-1",
-		"+1",
-		"NaN",
-		"Infinity",
-		"1e3",
-		"01",
-		"00.1",
-		".1",
-		"1.",
-		"0.0",
-		"0.10",
-		"1.20",
-		"1..2",
-		" 1",
-		"1 ",
-	}
-	for _, cost := range invalid {
-		t.Run("invalid_"+cost, func(t *testing.T) {
-			if _, _, err := NewModelUsageReceiptV1(
-				ModelUsageReceiptV1{
-					SchemaVersion:        ModelUsageReceiptSchemaV1,
-					ProviderReportedCost: &cost,
-				},
-			); err == nil {
-				t.Fatalf("accepted provider-reported cost %q", cost)
-			}
-		})
+func TestRestoreModelUsageReceiptV2RejectsRetiredCostField(t *testing.T) {
+	legacy := []byte(
+		`{"cached_input_tokens":null,"input_tokens":null,"normalization_note":"","output_tokens":null,"provider_reported_cost":"0","raw_receipt":null,"reasoning_tokens":null,"schema_version":"model-usage-receipt/v2","uncached_input_tokens":null}`,
+	)
+	if _, err := RestoreModelUsageReceiptV2(legacy); err == nil {
+		t.Fatal("retired provider_reported_cost field accepted")
 	}
 }
 
@@ -303,9 +246,9 @@ func TestModelGenerateV1RejectsInvalidShapes(t *testing.T) {
 	}
 	one := uint64(1)
 	two := uint64(2)
-	if _, _, err := NewModelUsageReceiptV1(
-		ModelUsageReceiptV1{
-			SchemaVersion:       ModelUsageReceiptSchemaV1,
+	if _, _, err := NewModelUsageReceiptV2(
+		ModelUsageReceiptV2{
+			SchemaVersion:       ModelUsageReceiptSchemaV2,
 			InputTokens:         &one,
 			CachedInputTokens:   &one,
 			UncachedInputTokens: &two,

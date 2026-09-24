@@ -469,8 +469,8 @@ func workspaceTransferTestRootManifestV1(
 ) corecontract.RunManifest {
 	t.Helper()
 	root, _, err := corecontract.NewRunManifest(corecontract.RunManifest{
-		SchemaVersion:         corecontract.RunManifestSchemaVersionV1,
-		CoreRuntimeVersion:    corecontract.CoreRuntimeVersionV1,
+		SchemaVersion:         corecontract.RunManifestSchemaVersionV2,
+		CoreRuntimeVersion:    corecontract.CoreRuntimeVersionV2,
 		AdmissionKey:          "root-admission",
 		AdmissionIntentDigest: testDigest("1"),
 		RunID:                 "root-run",
@@ -483,7 +483,6 @@ func workspaceTransferTestRootManifestV1(
 		PrimaryMemberID:   "root-member",
 		TaskInputRef:      input.TaskInputRef,
 		TaskInputDigest:   input.TaskInputRef,
-		BudgetPolicy:      input.ContextPolicyRef,
 		CancellationScope: corecontract.CancellationScopeFamilyV1,
 		Deadline:          time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC),
 		RecoveryRootRef:   "recovery/root-run",
@@ -517,8 +516,8 @@ func workspaceTransferTestChildManifestV1(
 		workspace = planned.Transfer.TargetWorkspace
 	}
 	child, _, err := corecontract.NewRunManifest(corecontract.RunManifest{
-		SchemaVersion:         corecontract.RunManifestSchemaVersionV1,
-		CoreRuntimeVersion:    corecontract.CoreRuntimeVersionV1,
+		SchemaVersion:         corecontract.RunManifestSchemaVersionV2,
+		CoreRuntimeVersion:    corecontract.CoreRuntimeVersionV2,
 		AdmissionKey:          planned.AdmissionKey,
 		AdmissionIntentDigest: testDigest("3"),
 		RunID:                 planned.RunID,
@@ -533,7 +532,6 @@ func workspaceTransferTestChildManifestV1(
 		TaskInputRef:      input.TaskInputRef,
 		TaskInputDigest:   input.TaskInputRef,
 		ParentRunID:       root.RunID,
-		BudgetPolicy:      input.ContextPolicyRef,
 		CancellationScope: corecontract.CancellationScopeInheritedV1,
 		Deadline:          root.Deadline,
 		RecoveryRootRef:   "recovery/" + planned.RunID,

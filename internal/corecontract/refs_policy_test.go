@@ -78,10 +78,10 @@ func TestPolicyDocumentRejectsAliasAndReferenceDrift(t *testing.T) {
 		t.Fatal("non-object policy body accepted")
 	}
 	_, ref, canonical, err := NewPolicyDocument(
-		"freeagent.policy.cost",
+		"freeagent.policy.context",
 		"1",
-		PolicyCost,
-		json.RawMessage(`{"currency":"USD"}`),
+		PolicyContext,
+		json.RawMessage(`{"context_window_tokens":4096}`),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestPolicyDocumentRejectsAliasAndReferenceDrift(t *testing.T) {
 	unknown := bytes.Replace(
 		canonical,
 		[]byte(`"version":"1"`),
-		[]byte(`"alias":"cost","version":"1"`),
+		[]byte(`"alias":"context","version":"1"`),
 		1,
 	)
 	if _, err := RestorePolicyDocument(unknown, ref); err == nil {

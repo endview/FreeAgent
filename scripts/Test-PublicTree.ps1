@@ -1303,7 +1303,7 @@ function Test-GoNonCredentialSemanticAssignment {
     if ($semanticName -eq 'api_key_resolver' -and $null -eq $literal) {
         $resolverExpression = [regex]::Replace($Value, '\s+', '')
         if (
-            $resolverExpression -match '^deepseekmodel\.APIKeyResolverFunc\(func\(' -and
+            $resolverExpression -match '^(?:deepseekmodel|zhipumodel)\.APIKeyResolverFunc\(func\(' -and
             (Test-GoProjectedExpressionBalanced -Value $resolverExpression)
         ) {
             foreach ($byteLiteral in [regex]::Matches(
@@ -1479,6 +1479,7 @@ function Test-CredentialSemanticMetadataAssignmentSafe {
 
     $errorMetadata = @(
         [pscustomobject]@{ Name = 'ErrAPIKeyResolve'; Message = 'deepseekmodel: API key resolution failed' },
+        [pscustomobject]@{ Name = 'ErrAPIKeyResolve'; Message = 'zhipumodel: API key resolution failed' },
         [pscustomobject]@{ Name = 'ErrSecretValueInvalid'; Message = 'moduleapi: invalid SecretValue' },
         [pscustomobject]@{ Name = 'ErrSecretValueDestroyed'; Message = 'moduleapi: SecretValue is destroyed' },
         [pscustomobject]@{ Name = 'ErrSecretValueSerialization'; Message = 'moduleapi: SecretValue serialization is forbidden' },
@@ -2058,6 +2059,9 @@ function Visit-PublicTreeDirectory {
                 ($segments -contains '.construction') -or
                 ($segments -contains '.superpowers') -or
                 ($segments -contains 'release-evidence') -or
+                $relative -ieq 'internal/controlweb/node_modules' -or
+                $relative -ieq 'internal/controlweb/.npm-cache' -or
+                $relative -ieq 'internal/controlweb/.vite' -or
                 (@('bin', 'data', 'logs', 'storage', 'cache', 'evidence', 'backup', 'backups', 'profiles', 'traces') -contains $segments[0]) -or
                 $relative -ieq 'docs/superpowers' -or
                 $relative -ieq 'docs/design' -or

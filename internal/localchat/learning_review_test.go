@@ -361,19 +361,17 @@ func publishLearningReviewerControl(
 		t.Fatal("base model Provider is absent from Catalog")
 	}
 	provider := entry.Activation
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        "test-provider",
-			Model:           "test-model",
-			ModelBuildID:    "test-model-build-v1",
-			BillingVersion:  "billing-v1",
-			PriceSnapshotID: "price-chat-v1",
-			Parameters:      json.RawMessage(`{"max_tokens":512,"temperature":0}`),
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      "test-provider",
+			Model:         "test-model",
+			ModelBuildID:  "test-model-build-v1",
+			Parameters:    json.RawMessage(`{"max_tokens":512,"temperature":0}`),
 		},
 	)
 	if err != nil {
-		t.Fatalf("New reviewer ModelBindingConfigV1: %v", err)
+		t.Fatalf("New reviewer ModelBindingConfigV2: %v", err)
 	}
 	profile.Bindings[0].ConfigRef = putChatContent(
 		t,

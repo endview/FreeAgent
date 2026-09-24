@@ -405,23 +405,12 @@ func verifyControlContentClosure(
 	queryer publicationQueryer,
 	control controlcontract.ControlSnapshot,
 ) error {
-	for _, workspace := range control.Workspaces {
-		if err := verifyPublicationPolicy(
-			ctx,
-			queryer,
-			workspace.BudgetPolicy,
-			corecontract.PolicyCost,
-		); err != nil {
-			return err
-		}
-	}
 	for _, profile := range control.Profiles {
 		for _, policy := range []struct {
 			ref  corecontract.PolicyRef
 			kind corecontract.PolicyType
 		}{
 			{ref: profile.ContextPolicy, kind: corecontract.PolicyContext},
-			{ref: profile.CostPolicy, kind: corecontract.PolicyCost},
 			{ref: profile.SchedulingPolicy, kind: corecontract.PolicyScheduling},
 		} {
 			if err := verifyPublicationPolicy(
@@ -661,7 +650,7 @@ func verifyControlPortBindingContracts(
 
 			switch {
 			case binding.Port.Name == moduleapi.PortNameModelGenerate &&
-				binding.Port.ExactVersion == moduleapi.PortVersionV1:
+				binding.Port.ExactVersion == moduleapi.PortVersionV2:
 				if err := verifyModelBindingV1(
 					ctx,
 					queryer,
@@ -732,20 +721,9 @@ func verifyModelBindingV1(
 	if err != nil || configRecord.MediaType != admissionJSONMediaType {
 		return errors.Join(err, errors.New("model CONFIG is unavailable"))
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(configRecord.CanonicalBytes)
+	config, err := moduleapi.RestoreModelBindingConfigV2(configRecord.CanonicalBytes)
 	if err != nil {
 		return err
-	}
-	price, err := queryModelPriceSnapshot(ctx, queryer, config.PriceSnapshotID)
-	if err != nil {
-		return fmt.Errorf("model PriceSnapshot is unavailable: %w", err)
-	}
-	if price.Snapshot.Provider != config.Provider ||
-		price.Snapshot.Model != config.Model ||
-		price.Snapshot.BillingVersion != config.BillingVersion {
-		return errors.New(
-			"model PriceSnapshot provider/model/billing differs from CONFIG",
-		)
 	}
 	authorityRecord, err := requirePublicationContent(
 		ctx,
@@ -953,12 +931,12 @@ func verifyControlModelProfiles(
 		for index := range profileDefinition.Bindings {
 			candidate := &profileDefinition.Bindings[index]
 			if candidate.Port.Name != moduleapi.PortNameModelGenerate ||
-				candidate.Port.ExactVersion != moduleapi.PortVersionV1 {
+				candidate.Port.ExactVersion != moduleapi.PortVersionV2 {
 				continue
 			}
 			if request != nil {
 				return fmt.Errorf(
-					"%w: profiled assembly %s has more than one model.generate/v1 Binding",
+					"%w: profiled assembly %s has more than one model.generate/v2 Binding",
 					ErrPublicationConflict,
 					profileDefinition.Profile.ID,
 				)
@@ -967,7 +945,7 @@ func verifyControlModelProfiles(
 		}
 		if request == nil {
 			return fmt.Errorf(
-				"%w: profiled assembly %s lacks model.generate/v1",
+				"%w: profiled assembly %s lacks model.generate/v2",
 				ErrPublicationConflict,
 				profileDefinition.Profile.ID,
 			)
@@ -1001,7 +979,7 @@ func verifyControlModelProfiles(
 				ErrPublicationConflict,
 			)
 		}
-		config, err := moduleapi.RestoreModelBindingConfigV1(
+		config, err := moduleapi.RestoreModelBindingConfigV2(
 			configRecord.CanonicalBytes,
 		)
 		if err != nil {
@@ -1422,9 +1400,8 @@ func verifyControlCatalogPublicationClosureV1(
 // VerifyPublishedControlCatalogClosureV1 replays the complete read-only
 // publication gate for an already-current Control/Catalog pair. Backup and
 // restore use it so a current binding that has not produced a Run yet still
-// proves its Content, activation, Port, PriceSnapshot, authority, Knowledge,
-// and optional ModelProfile closure. It performs no writes and constructs no
-// Adapter.
+// proves its Content, activation, Port, authority, Knowledge, and optional
+// ModelProfile closure. It performs no writes and constructs no Adapter.
 func VerifyPublishedControlCatalogClosureV1(
 	ctx context.Context,
 	queryer interface {

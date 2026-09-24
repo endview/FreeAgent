@@ -564,7 +564,6 @@ func TestCompositeDecisionSubsetAndAllRepairReviewerActivationIsDelayedAndIdempo
 	for _, affectedCount := range []int{1, 2} {
 		t.Run(fmt.Sprintf("affected-%d", affectedCount), func(t *testing.T) {
 			fixture := newCommittedCompositeDecisionStoreFixture(t, 2)
-			putCompositeModelPrice(t, fixture.store)
 			for index, child := range fixture.compiled.Children {
 				finishDecisionSpecialist(
 					t,
@@ -695,7 +694,6 @@ func TestCompositeDecisionSubsetAndAllRepairReviewerActivationIsDelayedAndIdempo
 
 func TestCompositeDecisionStrictActivationEventTamperIsRejected(t *testing.T) {
 	fixture := newCommittedCompositeDecisionStoreFixture(t, 2)
-	putCompositeModelPrice(t, fixture.store)
 	for index, child := range fixture.compiled.Children {
 		finishDecisionSpecialist(
 			t,
@@ -755,7 +753,6 @@ func TestCompositeDecisionStrictActivationEventTamperIsRejected(t *testing.T) {
 
 func TestCompositeDecisionDormantDriftRollsBackWholeTransition(t *testing.T) {
 	fixture := newCommittedCompositeDecisionStoreFixture(t, 2)
-	putCompositeModelPrice(t, fixture.store)
 	for index, child := range fixture.compiled.Children {
 		finishDecisionSpecialist(
 			t,
@@ -829,7 +826,6 @@ func TestCompositeDecisionDormantDriftRollsBackWholeTransition(t *testing.T) {
 
 func TestCompositeDecisionSkippedEventLineageTamperIsRejected(t *testing.T) {
 	fixture := newCommittedCompositeDecisionStoreFixture(t, 2)
-	putCompositeModelPrice(t, fixture.store)
 	for index, child := range fixture.compiled.Children {
 		finishDecisionSpecialist(
 			t,
@@ -1262,7 +1258,6 @@ func TestCompositeDecisionFamilyDispatchCapReachedByProductionLifecycle(
 	for _, memberCount := range []int{2, corecontract.CompositeMaxChildrenV1} {
 		t.Run(fmt.Sprintf("N-%d", memberCount), func(t *testing.T) {
 			fixture := newCommittedCompositeDecisionStoreFixture(t, memberCount)
-			putCompositeModelPrice(t, fixture.store)
 			limit := int(
 				fixture.compiled.Parent.RunManifest.Composite.Plan.
 					FamilyModelDispatchLimit,
@@ -1428,7 +1423,6 @@ func TestCompositeDecisionReviewerUnknownCannotCreateSemanticReplay(
 	t *testing.T,
 ) {
 	fixture := newCommittedCompositeDecisionStoreFixture(t, 2)
-	putCompositeModelPrice(t, fixture.store)
 	for index, child := range fixture.compiled.Children {
 		finishDecisionSpecialist(
 			t,

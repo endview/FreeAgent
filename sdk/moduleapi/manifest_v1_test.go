@@ -458,7 +458,7 @@ func validManifestStruct() ModuleManifestV1 {
 			Entrypoint: "builtin.provider",
 		},
 		Provides: []PortRef{
-			{Name: PortNameModelGenerate, ExactVersion: PortVersionV1},
+			{Name: PortNameModelGenerate, ExactVersion: PortVersionV2},
 		},
 		RequestedPermissions: []Permission{"network.http"},
 	}
@@ -477,7 +477,7 @@ func validManifestValue() map[string]any {
 		"provides": []any{
 			map[string]any{
 				"name":          PortNameModelGenerate,
-				"exact_version": PortVersionV1,
+				"exact_version": PortVersionV2,
 			},
 		},
 	}

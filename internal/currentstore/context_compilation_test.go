@@ -783,8 +783,8 @@ func validContextCompilationCanonical(
 			ContextEstimatorCanonicalJSONUTF8ByteUpperBoundV1,
 		SummaryAlgorithmVersion: corecontract.
 			ContextSummaryHeadTailExtractiveV1,
-		InputBudgetTokens:      1000,
-		RestoreWatermarkTokens: 850,
+		InputBudgetTokens:      936,
+		RestoreWatermarkTokens: 795,
 		OriginalEstimateTokens: 900,
 		Drops:                  []corecontract.ContextCompilationDropV1{},
 		FinalEstimateTokens:    900,
@@ -812,9 +812,9 @@ func setContextCompilationDrop(
 		UnitKind:             kind,
 		UnitDigest:           digest,
 		BeforeEstimateTokens: 1100,
-		AfterEstimateTokens:  800,
+		AfterEstimateTokens:  700,
 	}}
-	value.FinalEstimateTokens = 800
+	value.FinalEstimateTokens = 700
 	value.StopReason = corecontract.ContextCompilationDropToWatermark
 }
 

@@ -198,7 +198,7 @@ func TestModuleUpgradeApplyCurrentDriftStopsBeforeStageOrPublication(
 			); got != 0 {
 				t.Fatalf("drifted Apply persisted target Activation count=%d", got)
 			}
-			assertModuleUpgradeApplySchema41V1(t, fixture.databasePath)
+			assertModuleUpgradeApplySchemaFAC2V1(t, fixture.databasePath)
 		})
 	}
 }
@@ -326,7 +326,7 @@ func TestApprovedModuleUpgradeApplyBackupVerifyRestorePreservesExactEvidence(
 			afterApproval.Input,
 		)
 	}
-	assertModuleUpgradeApplySchema41V1(t, restoredDatabase)
+	assertModuleUpgradeApplySchemaFAC2V1(t, restoredDatabase)
 }
 
 func TestModuleUpgradeApplyDefaultOffPureChatTouchesNoStoreOrFile(
@@ -386,7 +386,7 @@ func TestModuleUpgradeApplyDefaultOffPureChatTouchesNoStoreOrFile(
 			afterCatalog,
 		)
 	}
-	assertModuleUpgradeApplySchema41V1(t, databasePath)
+	assertModuleUpgradeApplySchemaFAC2V1(t, databasePath)
 }
 
 type moduleUpgradeApplyAcceptedFixtureV1 struct {
@@ -533,7 +533,7 @@ func moduleUpgradeApplyTargetActivationCountV1(
 	return count
 }
 
-func assertModuleUpgradeApplySchema41V1(t *testing.T, databasePath string) {
+func assertModuleUpgradeApplySchemaFAC2V1(t *testing.T, databasePath string) {
 	t.Helper()
 	database, err := sql.Open("sqlite", crashSQLiteURI(databasePath, "ro"))
 	if err != nil {
@@ -548,8 +548,8 @@ func assertModuleUpgradeApplySchema41V1(t *testing.T, databasePath string) {
 	`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 43 {
-		t.Fatalf("ordinary table count=%d want=41", count)
+	if count != 42 {
+		t.Fatalf("ordinary table count=%d want=42", count)
 	}
 	if err := database.QueryRow(`
 		SELECT COUNT(*)

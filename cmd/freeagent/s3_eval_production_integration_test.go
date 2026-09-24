@@ -15,7 +15,6 @@ import (
 
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/internal/deepseekmodel"
 	"github.com/endview/freeagent/internal/runscheduler"
 	"github.com/endview/freeagent/internal/s3eval"
@@ -161,53 +160,6 @@ func TestS3EvalProductionCompositionDeepSeekReviewerLongChain(t *testing.T) {
 	}
 	assertS3CProductionExperimentReport(t, report)
 	assertS3CDeepSeekCallDataflow(t, calls)
-
-	estimates, err := deriveS3EvalDeepSeekCosts(
-		ctx,
-		report,
-		composition.store,
-	)
-	if err != nil {
-		t.Fatalf("derive observer-only S3-C costs: %v", err)
-	}
-	if len(estimates) != 15 {
-		t.Fatalf("derived costs=%d, want 15 per-Attempt facts", len(estimates))
-	}
-	workspaceCosts := make(map[string]int)
-	for _, estimate := range estimates {
-		if estimate.Estimate.Status != deepseekcost.StatusKnown ||
-			estimate.Estimate.Value == nil ||
-			*estimate.Estimate.Value != "0.0001008" ||
-			estimate.Estimate.Currency != "CNY" ||
-			estimate.AttemptID == "" || estimate.RunID == "" {
-			t.Fatalf("derived Attempt cost for %s=%+v", estimate.WorkspaceID, estimate)
-		}
-		workspaceCosts[estimate.WorkspaceID]++
-	}
-	for _, family := range report.Families {
-		if workspaceCosts[family.WorkspaceID] != 5 {
-			t.Fatalf("Workspace %s derived Attempt costs=%d, want 5", family.WorkspaceID, workspaceCosts[family.WorkspaceID])
-		}
-	}
-
-	// The observer derivation is detached, while the same frozen calculation is
-	// now committed synchronously with Usage. Re-read the authoritative ledger
-	// to prove the family total matches five immutable Attempt estimates and
-	// that absent provider-reported/reconciled facts remain UNKNOWN.
-	for _, family := range report.Families {
-		projection, err := composition.store.GetCompositeFamilyUsageProjection(
-			ctx,
-			family.RootRunID,
-		)
-		if err != nil {
-			t.Fatalf("re-read family %s Usage: %v", family.WorkspaceID, err)
-		}
-		assertS3CAuthoritativeEstimatedCost(
-			t,
-			projection.Aggregate,
-			"0.000504",
-		)
-	}
 }
 
 func TestS3EvalCLIProductionDeepSeekProReviewerOffTrap(t *testing.T) {
@@ -320,7 +272,7 @@ func TestS3EvalCLIProductionDeepSeekProReviewerOffTrap(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &commandReport); err != nil {
 		t.Fatalf("decode S3-C Pro Reviewer-off CLI report: %v\n%s", err, output.String())
 	}
-	if commandReport.SchemaVersion != s3EvalReportSchemaVersionV1 ||
+	if commandReport.SchemaVersion != s3EvalReportSchemaVersionV2 ||
 		commandReport.FirstError != "" ||
 		commandReport.Experiment.RepetitionsRequested != 2 ||
 		commandReport.Experiment.RepetitionsAttempted != 2 ||
@@ -362,20 +314,6 @@ func TestS3EvalCLIProductionDeepSeekProReviewerOffTrap(t *testing.T) {
 			}
 			seenRootRunIDs[family.RootRunID] = struct{}{}
 		}
-
-		estimates := repetition.DerivedCostEstimates
-		if len(estimates) != 12 {
-			t.Fatalf("Pro Reviewer-off repetition %d derived costs=%d, want 12", index+1, len(estimates))
-		}
-		for _, estimate := range estimates {
-			if estimate.Model != deepseekmodel.ModelV4Pro ||
-				estimate.Estimate.Status != deepseekcost.StatusKnown ||
-				estimate.Estimate.Value == nil ||
-				*estimate.Estimate.Value != "0.000301" ||
-				estimate.Estimate.Currency != "CNY" {
-				t.Fatalf("Pro Reviewer-off Attempt cost=%+v", estimate)
-			}
-		}
 	}
 }
 
@@ -405,15 +343,6 @@ func assertS3CReviewerOffProductionReport(
 		if family.Tokens.CacheHitRatio == nil || *family.Tokens.CacheHitRatio != 0.4 {
 			t.Fatalf("Pro Reviewer-off family %s cache ratio=%v", family.WorkspaceID, family.Tokens.CacheHitRatio)
 		}
-		if family.Costs.Estimated.Status != currentstore.CompositeFamilyCostKnownV1 ||
-			family.Costs.Estimated.Value == nil ||
-			*family.Costs.Estimated.Value != "0.001204" ||
-			family.Costs.Estimated.Currency != "CNY" ||
-			family.Costs.ProviderReported.Status != currentstore.CompositeFamilyCostUnknownV1 ||
-			family.Costs.Reconciled.Status != currentstore.CompositeFamilyCostUnknownV1 {
-			t.Fatalf("Pro Reviewer-off family %s authoritative costs=%+v", family.WorkspaceID, family.Costs)
-		}
-
 		attemptRoles := map[corecontract.CompositeRunRoleV1]int{}
 		var childLastOrder, rootOrder uint64
 		for _, attempt := range family.Attempts {
@@ -498,15 +427,6 @@ func assertS3CProductionExperimentReport(
 			*family.Tokens.CacheHitRatio != 0.4 {
 			t.Fatalf("family %s cache ratio=%v", family.WorkspaceID, family.Tokens.CacheHitRatio)
 		}
-		if family.Costs.Estimated.Status != currentstore.CompositeFamilyCostKnownV1 ||
-			family.Costs.Estimated.Value == nil ||
-			*family.Costs.Estimated.Value != "0.000504" ||
-			family.Costs.Estimated.Currency != "CNY" ||
-			family.Costs.ProviderReported.Status != currentstore.CompositeFamilyCostUnknownV1 ||
-			family.Costs.Reconciled.Status != currentstore.CompositeFamilyCostUnknownV1 {
-			t.Fatalf("family %s authoritative costs=%+v", family.WorkspaceID, family.Costs)
-		}
-
 		roles := map[corecontract.CompositeRunRoleV1]int{}
 		var childLastOrder, reviewerOrder, rootOrder uint64
 		for _, attempt := range family.Attempts {
@@ -523,10 +443,7 @@ func assertS3CProductionExperimentReport(
 			}
 			if attempt.State != corecontract.ModelAttemptSucceeded ||
 				attempt.Provider != deepseekmodel.ProviderNameV1 ||
-				attempt.Model != deepseekmodel.ModelV4Flash ||
-				attempt.PriceSnapshotID == "" ||
-				!moduleapi.ValidSHA256(attempt.PriceSnapshotDigest) ||
-				attempt.Currency != "CNY" {
+				attempt.Model != deepseekmodel.ModelV4Flash {
 				t.Fatalf("family %s Attempt=%+v", family.WorkspaceID, attempt)
 			}
 		}
@@ -666,29 +583,6 @@ func assertS3CFairServiceOrder(
 			longestCount,
 			report.Fairness.FirstServedWorkspace,
 		)
-	}
-}
-
-func assertS3CAuthoritativeEstimatedCost(
-	t *testing.T,
-	aggregate currentstore.CompositeFamilyUsageAggregateV1,
-	want string,
-) {
-	t.Helper()
-	estimated := aggregate.EstimatedCost
-	if estimated.Status != currentstore.CompositeFamilyCostKnownV1 ||
-		estimated.Value == nil || *estimated.Value != want ||
-		estimated.Currency != "CNY" || len(estimated.Currencies) != 0 {
-		t.Fatalf("authoritative estimated cost=%+v, want KNOWN CNY %s", estimated, want)
-	}
-	for name, cost := range map[string]currentstore.CompositeFamilyCostTotalV1{
-		"provider-reported": aggregate.ProviderReportedCost,
-		"reconciled":        aggregate.ReconciledCost,
-	} {
-		if cost.Status != currentstore.CompositeFamilyCostUnknownV1 ||
-			cost.Value != nil || cost.Currency != "" || len(cost.Currencies) != 0 {
-			t.Fatalf("authoritative %s cost=%+v, want UNKNOWN", name, cost)
-		}
 	}
 }
 

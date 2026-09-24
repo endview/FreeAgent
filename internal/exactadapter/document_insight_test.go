@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	documentInsightArtifactDigestV1 = "838ff9ddd45186f0cdb26021d16902b2bfd7581c2dc0d7b72014cf4f48d0f7ea"
-	documentInsightArtifactSizeV1   = uint64(1097)
+	documentInsightArtifactDigestV2 = "9cf2e60f4b6d30cfd93ea93245f4a6eadbd4f365b93f06b7decb389c4f4d4bfa"
+	documentInsightArtifactSizeV2   = uint64(1097)
 )
 
 func TestDocumentInsightArtifactClosesManifestSourceAndAdapter(t *testing.T) {
@@ -28,7 +28,7 @@ func TestDocumentInsightArtifactClosesManifestSourceAndAdapter(t *testing.T) {
 		"examples",
 		"bootstrap-artifacts",
 		"freeagent.builtin.document-insight",
-		"1.0.0",
+		"2.0.0",
 	)
 	report, err := moduleconformance.VerifyDirectory(
 		context.Background(),
@@ -38,9 +38,9 @@ func TestDocumentInsightArtifactClosesManifestSourceAndAdapter(t *testing.T) {
 		t.Fatalf("VerifyDirectory: %v", err)
 	}
 	if report.Module.ID != "freeagent.builtin.document-insight" ||
-		report.Module.ExactVersion != "1.0.0" ||
-		report.ArtifactDigest != documentInsightArtifactDigestV1 ||
-		report.ArtifactSizeBytes != documentInsightArtifactSizeV1 ||
+		report.Module.ExactVersion != "2.0.0" ||
+		report.ArtifactDigest != documentInsightArtifactDigestV2 ||
+		report.ArtifactSizeBytes != documentInsightArtifactSizeV2 ||
 		report.CoveredFileCount != 2 ||
 		report.RuntimeRequest.Mode !=
 			string(moduleapi.RuntimeModeRequestTrustedInProcess) ||
@@ -220,7 +220,7 @@ func TestDocumentInsightGenericActionInvocationRemainsForbidden(t *testing.T) {
 		Invocation: modulehost.ModuleInvocation{
 			Port: moduleapi.PortRef{
 				Name:         moduleapi.PortNameModelGenerate,
-				ExactVersion: moduleapi.PortVersionV1,
+				ExactVersion: moduleapi.PortVersionV2,
 			},
 		},
 	}

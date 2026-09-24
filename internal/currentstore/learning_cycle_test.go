@@ -1308,7 +1308,7 @@ func newLearningCycleConflictReviewFixture(
 			ProfileID:     reviewerProfile.ID,
 			TaskInputRef:  task.Digest,
 			RequestedPorts: []moduleapi.PortRef{{
-				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1,
+				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2,
 			}},
 			Deadline:          time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond),
 			CancellationScope: "run",
@@ -1578,7 +1578,7 @@ func (fixture *learningCycleExecutionFixture) compileAdmission(
 			ProfileID:     fixture.schedule.Schedule.ProfileID,
 			TaskInputRef:  taskContent.Digest,
 			RequestedPorts: []moduleapi.PortRef{{
-				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1,
+				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2,
 			}},
 			Deadline:          deadline,
 			CancellationScope: "run",

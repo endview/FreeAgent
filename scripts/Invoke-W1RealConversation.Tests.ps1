@@ -113,7 +113,7 @@ function Test-BytesContain {
 function New-TestSeed {
     param([Parameter(Mandatory = $true)][string]$Path)
     $json = @'
-{"schema_version":"freeagent.bootstrap-seed/v1","seed_id":"freeagent.w1.offline","seed_revision":1,"tenant_id":"default","default_assembly":{"workspace_id":"local-chat","agent_id":"assistant","profile_id":"deepseek-chat"},"definitions":{"workspace":{"id":"local-chat","version":"1","body":{"name":"Local Chat"},"budget_policy_alias":"budget"},"agent":{"id":"assistant","version":"1","body":{"name":"Assistant","kind":"GENERAL"}},"profile":{"id":"deepseek-chat","version":"1","body":{"name":"DeepSeek Chat","mode":"PURE_CHAT"},"context_policy_alias":"context","cost_policy_alias":"cost","scheduling_policy_alias":"schedule"}},"model_binding":{"port":{"name":"model.generate","exact_version":"v1"},"instance_id":"model-deepseek","failure_policy":"REQUIRED","config":{"schema_version":"model-binding-config/v1","provider":"deepseek","model":"deepseek-v4-flash","model_build_id":"offline-build","billing_version":"offline-price","price_snapshot_id":"offline-price","parameters":{}}}}
+{"schema_version":"freeagent.bootstrap-seed/v2","seed_id":"freeagent.w1.offline","seed_revision":1,"tenant_id":"default","default_assembly":{"workspace_id":"local-chat","agent_id":"assistant","profile_id":"deepseek-chat"},"definitions":{"workspace":{"id":"local-chat","version":"1","body":{"name":"Local Chat"}},"agent":{"id":"assistant","version":"1","body":{"name":"Assistant","kind":"GENERAL"}},"profile":{"id":"deepseek-chat","version":"1","body":{"name":"DeepSeek Chat","mode":"PURE_CHAT"},"context_policy_alias":"context","scheduling_policy_alias":"schedule"}},"model_binding":{"port":{"name":"model.generate","exact_version":"v2"},"instance_id":"model-deepseek","failure_policy":"REQUIRED","config":{"schema_version":"model-binding-config/v2","provider":"deepseek","model":"deepseek-v4-flash","model_build_id":"offline-build","parameters":{"max_tokens":4096}}}}
 '@
     [IO.File]::WriteAllText($Path, $json, $script:Utf8NoBom)
 }
@@ -297,7 +297,6 @@ public static class FakeW1FreeAgent
     private static string Usage(
         int turn,
         bool drift,
-        bool priceDrift,
         bool omit)
     {
         if (omit) return "null";
@@ -305,29 +304,19 @@ public static class FakeW1FreeAgent
         {
             return "{\"input_tokens\":null,\"cached_input_tokens\":null," +
                 "\"uncached_input_tokens\":null,\"output_tokens\":null," +
-                "\"reasoning_tokens\":null,\"estimated_cost\":null," +
-                "\"provider_reported_cost\":null,\"reconciled_cost\":null," +
-                "\"status\":\"NO_USAGE_REPORTED\"," +
-                "\"price_snapshot_id\":\"offline-price\",\"currency\":\"CNY\"}";
+                "\"reasoning_tokens\":null," +
+                "\"status\":\"NO_USAGE_REPORTED\"}";
         }
         int input = 100 + turn;
         int cached = turn % 2 == 0 ? 40 : 0;
         if (drift) cached++;
         int uncached = input - (turn % 2 == 0 ? 40 : 0);
-        string estimated = ((decimal)turn / 1000000m).ToString(
-            "0.000000",
-            CultureInfo.InvariantCulture);
-        string priceIdentity = priceDrift ? "offline-price-v2" : "offline-price";
         return "{\"input_tokens\":" + input.ToString(CultureInfo.InvariantCulture) +
             ",\"cached_input_tokens\":" + cached.ToString(CultureInfo.InvariantCulture) +
             ",\"uncached_input_tokens\":" + uncached.ToString(CultureInfo.InvariantCulture) +
             ",\"output_tokens\":" + (20 + turn).ToString(CultureInfo.InvariantCulture) +
             ",\"reasoning_tokens\":" + (turn % 7).ToString(CultureInfo.InvariantCulture) +
-            ",\"estimated_cost\":\"" + estimated + "\"," +
-            "\"provider_reported_cost\":null,\"reconciled_cost\":null," +
-            "\"status\":\"PROVIDER_REPORTED\"," +
-            "\"price_snapshot_id\":\"" + priceIdentity +
-            "\",\"currency\":\"CNY\"}";
+            ",\"status\":\"PROVIDER_REPORTED\"}";
     }
 
     private static void WriteChat(
@@ -335,7 +324,6 @@ public static class FakeW1FreeAgent
         string request,
         Record record,
         bool drift,
-        bool priceDrift,
         bool omitUsage)
     {
         Out("{\"request_id\":\"" + Json(request) +
@@ -349,7 +337,6 @@ public static class FakeW1FreeAgent
             "\"usage\":" + Usage(
                 record.Turn,
                 drift,
-                priceDrift,
                 omitUsage) + "}");
     }
 
@@ -411,7 +398,6 @@ public static class FakeW1FreeAgent
                         request,
                         existing,
                         mode == "retry-usage-drift",
-                        false,
                         false);
                     return 0;
                 }
@@ -456,7 +442,6 @@ public static class FakeW1FreeAgent
                     request,
                     record,
                     false,
-                    mode == "price-drift-turn-3" && turn == 3,
                     mode == "missing-usage-turn-3" && turn == 3);
                 return 0;
             }
@@ -722,9 +707,6 @@ try {
             -Actual $usage.expected_original_attempts
         Assert-Equal -Name 'usage original attempts only' -Expected 50 `
             -Actual $usage.original_attempts_observed
-        Assert-Equal -Name 'usage price snapshot frozen' `
-            -Expected 'offline-price' `
-            -Actual $usage.price_snapshot_id
         Assert-Equal -Name 'provider reported statuses' -Expected 45 `
             -Actual $usage.status_counts.provider_reported
         Assert-Equal -Name 'no report statuses' -Expected 5 `
@@ -765,26 +747,6 @@ try {
                 [double]0.444444444444
             ) -lt 0.000000000001
         )
-        Assert-Equal -Name 'estimated cost total' -Expected '0.001125' `
-            -Actual $usage.estimated_cost.total
-        Assert-Equal -Name 'estimated cost currency' -Expected 'CNY' `
-            -Actual $usage.estimated_cost.currency
-        Assert-Equal -Name 'estimated cost known' -Expected 45 `
-            -Actual $usage.estimated_cost.known_attempts
-        Assert-Equal -Name 'estimated cost unknown' -Expected 5 `
-            -Actual $usage.estimated_cost.unknown_attempts
-        Assert-Equal -Name 'provider cost stays unknown' -Expected $null `
-            -Actual $usage.provider_reported_cost.total
-        Assert-Equal -Name 'provider cost unknown coverage' -Expected 50 `
-            -Actual $usage.provider_reported_cost.unknown_attempts
-        Assert-Equal -Name 'reconciled cost stays unknown' -Expected $null `
-            -Actual $usage.reconciled_cost.total
-        Assert-Equal -Name 'reconciled cost unknown coverage' -Expected 50 `
-            -Actual $usage.reconciled_cost.unknown_attempts
-        Assert-Equal -Name 'complete requested usage' -Expected 45 `
-            -Actual $usage.unknown_coverage.attempts_with_complete_requested_usage
-        Assert-Equal -Name 'requested usage unknown' -Expected 5 `
-            -Actual $usage.unknown_coverage.attempts_with_any_requested_unknown
         Assert-Equal -Name 'complete usage facts' -Expected 45 `
             -Actual $usage.unknown_coverage.attempts_with_complete_usage_facts
         Assert-Equal -Name 'no usage facts' -Expected 5 `
@@ -848,28 +810,6 @@ try {
         Assert-EvidenceContainsNoRuntimeValue -Path $result.Summary.evidence_path
     }
 
-    Invoke-Case 'price snapshot identity is frozen across original attempts' {
-        $log = Join-Path $suiteRoot 'price-drift.log'
-        $result = Invoke-TestRunner `
-            -FakeExecutable $fake `
-            -Seed $seed `
-            -Mode 'price-drift-turn-3' `
-            -InvocationLog $log
-        Assert-True -Name 'price drift is nonzero' -Condition ($result.ExitCode -ne 0)
-        Assert-Equal -Name 'price drift code' `
-            -Expected 'USAGE_PRICE_SNAPSHOT_DRIFT' `
-            -Actual $result.Summary.failure_code
-        Assert-Equal -Name 'price drift keeps first identity' `
-            -Expected 'offline-price' `
-            -Actual $result.Summary.usage.price_snapshot_id
-        Assert-Equal -Name 'price drift observes two valid usages' -Expected 2 `
-            -Actual $result.Summary.usage.original_attempts_observed
-        $lines = @([IO.File]::ReadAllLines($log, $script:Utf8NoBom))
-        Assert-Equal -Name 'price drift made three calls' -Expected 3 -Actual @(
-            $lines | Where-Object { $_ -like 'chat-new|*' }
-        ).Count
-    }
-
     Invoke-Case 'every successful original turn requires authoritative usage' {
         $log = Join-Path $suiteRoot 'missing-usage.log'
         $result = Invoke-TestRunner `
@@ -927,8 +867,10 @@ try {
             -Actual $result.Summary.failure_code
         Assert-Equal -Name 'usage drift original attempts only' -Expected 25 `
             -Actual $result.Summary.usage.original_attempts_observed
-        Assert-Equal -Name 'usage drift no duplicate cost' -Expected '0.000295' `
-            -Actual $result.Summary.usage.estimated_cost.total
+        Assert-Equal -Name 'usage drift no duplicate tokens' -Expected 2595 `
+            -Actual $result.Summary.usage.tokens.input_tokens.total
+        Assert-Equal -Name 'usage drift no duplicate known attempts' -Expected 23 `
+            -Actual $result.Summary.usage.tokens.input_tokens.known_attempts
         $lines = @([IO.File]::ReadAllLines($log, $script:Utf8NoBom))
         Assert-Equal -Name 'usage drift has 25 calls' -Expected 25 -Actual @(
             $lines | Where-Object { $_ -like 'chat-new|*' }

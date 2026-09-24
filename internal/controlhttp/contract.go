@@ -23,6 +23,9 @@ const (
 	StaticUITanStackQueryJSPathV1           = "/control/ui/assets/tanstack-query.js"
 	OverviewPathV1                          = "/control/api/v1/overview"
 	ModulesPathV1                           = "/control/api/v1/modules"
+	ModuleUpgradeReviewsPathV1              = "/control/api/v1/module-upgrade-reviews"
+	UnknownOutcomesPathV1                   = "/control/api/v1/unknown-outcomes"
+	StoreManagementPathV1                   = "/control/api/v1/store-management"
 	ModuleDisableDryRunPathV1               = "/control/api/v1/modules/disable/dry-run"
 	ModuleDisableConfirmationPathV1         = "/control/api/v1/modules/disable/confirmation"
 	ModuleDisableMutatePathV1               = "/control/api/v1/modules/disable/mutate"
@@ -45,6 +48,11 @@ const (
 	SessionResumeResponseSchemaV1                  = "control-session-resumed/v1"
 	OverviewHTTPResponseSchemaV1                   = "control-http-overview/v1"
 	ModulesHTTPPageSchemaV1                        = "control-http-modules-page/v1"
+	ModuleUpgradeReviewListSchemaVersionV1         = "control-module-upgrade-review-list/v1"
+	ModuleUpgradeReviewDetailSchemaVersionV1       = "control-module-upgrade-review-detail/v1"
+	UnknownOutcomeListSchemaVersionV1              = "control-unknown-outcome-list/v1"
+	UnknownOutcomeDetailSchemaVersionV1            = "control-unknown-outcome-detail/v1"
+	StoreManagementSchemaVersionV1                 = "control-store-management/v1"
 	ModuleDisableConfirmationResultSchemaVersionV1 = "control-module-disable-confirmation-result/v1"
 	ModuleDisableMutationResultSchemaVersionV1     = "control-module-disable-mutation-result/v1"
 
@@ -97,6 +105,34 @@ type ModulesServiceV1 interface {
 		context.Context,
 		controlapp.GetModuleInputV1,
 	) (controlapp.ModuleDetailResultV1, error)
+}
+
+// ModuleUpgradeReviewServiceV1 is the P4 read-only dependency. It exposes
+// only bounded, tenant-scoped projections; it has no mutation or Apply method.
+type ModuleUpgradeReviewServiceV1 interface {
+	ListModuleUpgradeReviewsV1(
+		context.Context,
+		controlapp.ModuleUpgradeReviewListInputV1,
+	) (controlapp.ModuleUpgradeReviewListResultV1, error)
+	GetModuleUpgradeReviewV1(
+		context.Context,
+		controlapp.GetModuleUpgradeReviewInputV1,
+	) (controlapp.ModuleUpgradeReviewDetailResultV1, error)
+}
+
+type ControlManagementServiceV1 interface {
+	ListUnknownOutcomesV1(
+		context.Context,
+		controlapp.UnknownOutcomeListInputV1,
+	) (controlapp.UnknownOutcomeListResultV1, error)
+	GetUnknownOutcomeV1(
+		context.Context,
+		controlapp.UnknownOutcomeDetailInputV1,
+	) (controlapp.UnknownOutcomeDetailResultV1, error)
+	GetStoreManagementV1(
+		context.Context,
+		controlapp.StoreManagementInputV1,
+	) (controlapp.StoreManagementResultV1, error)
 }
 
 // OverviewServiceV1 is the complete application dependency of the first Web
@@ -239,6 +275,8 @@ type ConfigV1 struct {
 	StaticAssets              StaticAssetResolverV1
 	Overview                  OverviewServiceV1
 	Modules                   ModulesServiceV1
+	ModuleUpgradeReviews      ModuleUpgradeReviewServiceV1
+	Management                ControlManagementServiceV1
 	ModuleDisableDryRun       ModuleDisableDryRunServiceV1
 	ModuleDisableConfirmation ModuleDisableConfirmationServiceV1
 	ModuleDisableMutation     ModuleDisableMutationServiceV1

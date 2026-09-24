@@ -131,7 +131,7 @@ func prepareChatRequestWithDynamicContextV1(
 	if err != nil {
 		return preparedPureChatRequestV1{}, err
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		modelConfigContent.CanonicalBytes,
 	)
 	if err != nil {
@@ -1738,7 +1738,7 @@ func contextReadInvocationIDV1(
 func restoreFrozenModelProfile(
 	run currentstore.RunForLoop,
 	binding moduleapi.PortBinding,
-	config moduleapi.ModelBindingConfigV1,
+	config moduleapi.ModelBindingConfigV2,
 ) (*corecontract.ModelProfileRef, []byte, error) {
 	if run.Member.ModelProfile == nil {
 		return nil, nil, nil
@@ -2010,13 +2010,13 @@ func exactModelGenerateBinding(
 	var binding moduleapi.PortBinding
 	for _, plan := range run.Member.PortPlans {
 		if plan.Port.Name != moduleapi.PortNameModelGenerate ||
-			plan.Port.ExactVersion != moduleapi.PortVersionV1 {
+			plan.Port.ExactVersion != moduleapi.PortVersionV2 {
 			continue
 		}
 		planCount++
 		if len(plan.Bindings) != 1 {
 			return moduleapi.PortBinding{}, fmt.Errorf(
-				"%w: model.generate/v1 must have exactly one Binding",
+				"%w: model.generate/v2 must have exactly one Binding",
 				ErrInvalidPureChatRequest,
 			)
 		}
@@ -2024,7 +2024,7 @@ func exactModelGenerateBinding(
 	}
 	if planCount != 1 {
 		return moduleapi.PortBinding{}, fmt.Errorf(
-			"%w: model.generate/v1 must have exactly one PortPlan",
+			"%w: model.generate/v2 must have exactly one PortPlan",
 			ErrInvalidPureChatRequest,
 		)
 	}

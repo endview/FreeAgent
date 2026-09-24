@@ -497,7 +497,7 @@ func isLoopbackRemote(remoteAddress string) bool {
 	if index := strings.LastIndexByte(host, '%'); index >= 0 {
 		host = host[:index]
 	}
-	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+	return net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
 }
 
 // ValidateLoopbackAddress rejects wildcard and externally reachable binds.
@@ -512,9 +512,6 @@ func ValidateLoopbackAddress(address string) error {
 		)
 	}
 	host = strings.Trim(strings.TrimSpace(host), "[]")
-	if strings.EqualFold(host, "localhost") {
-		return nil
-	}
 	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
 		return nil
 	}

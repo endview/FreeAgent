@@ -87,7 +87,7 @@ func modelAfterActionFixture(t *testing.T) currentstore.RunForLoop {
 			Messages: []moduleapi.ModelMessageV1{{
 				Role: moduleapi.ModelRoleUser, Content: "count this",
 			}},
-			Parameters: json.RawMessage(`{"temperature":0}`),
+			Parameters: json.RawMessage(`{"max_tokens":512,"temperature":0}`),
 			Actions:    actions,
 		},
 	)
@@ -177,7 +177,7 @@ func modelAfterActionFixture(t *testing.T) currentstore.RunForLoop {
 		Frame: currentstore.LoopFrameRecord{
 			RunID:                    "run-test",
 			Step:                     corecontract.ModelReadyAfterActionLoopStep,
-			BudgetStateRef:           "usage-ledger/v1/run-test/1",
+			UsageLedgerRef:           "usage-ledger/v1/run-test/1",
 			Continuation:             continuation,
 			PendingDispatchAttemptID: "action-attempt-1",
 		},
@@ -205,7 +205,7 @@ func modelAfterActionFixture(t *testing.T) currentstore.RunForLoop {
 				DefinitionDigest:     definition.DefinitionDigest,
 				EffectClass:          definition.EffectClass,
 				MaxResultBytes:       definition.MaxResultBytes,
-				BudgetStateRef:       "usage-ledger/v1/run-test/1",
+				UsageLedgerRef:       "usage-ledger/v1/run-test/1",
 				State:                currentstore.ActionDispatchSucceeded,
 				ResultRef:            resultDigest,
 			},

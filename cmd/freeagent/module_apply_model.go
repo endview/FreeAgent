@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/endview/freeagent/internal/controlcontract"
 	"github.com/endview/freeagent/internal/corecontract"
@@ -68,8 +67,8 @@ func validateModuleApplyModelSecretGrantV1(
 }
 
 func validateModuleApplyModelStoreClosureV1(
-	ctx context.Context,
-	view moduleApplyReadViewV1,
+	_ context.Context,
+	_ moduleApplyReadViewV1,
 	plan moduleApplyPlanV1,
 	control controlcontract.ControlSnapshot,
 ) error {
@@ -104,20 +103,6 @@ func validateModuleApplyModelStoreClosureV1(
 		return errors.New(
 			"first Model replacement slice must retain the exact active provider instance",
 		)
-	}
-
-	config, err := moduleapi.RestoreModelBindingConfigV1(plan.Binding.Config)
-	if err != nil {
-		return err
-	}
-	price, err := view.GetModelPriceSnapshot(ctx, config.PriceSnapshotID)
-	if err != nil {
-		return fmt.Errorf("Model PriceSnapshot is unavailable: %w", err)
-	}
-	if price.Snapshot.Provider != config.Provider ||
-		price.Snapshot.Model != config.Model ||
-		price.Snapshot.BillingVersion != config.BillingVersion {
-		return errors.New("Model PriceSnapshot does not match provider/model/billing")
 	}
 
 	provider := moduleapi.ActivatedModuleRef{
@@ -161,7 +146,7 @@ func moduleApplyPlannedModelProfileV1(
 	if err != nil || !bytes.Equal(canonical, plan.ModelProfile) {
 		return nil, nil, errors.Join(err, errors.New("planned ModelProfile is not canonical"))
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(plan.Binding.Config)
+	config, err := moduleapi.RestoreModelBindingConfigV2(plan.Binding.Config)
 	if err != nil {
 		return nil, nil, err
 	}

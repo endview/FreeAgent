@@ -61,6 +61,8 @@ type HandlerV1 struct {
 	staticAssets              StaticAssetResolverV1
 	overview                  OverviewServiceV1
 	modules                   ModulesServiceV1
+	moduleUpgradeReviews      ModuleUpgradeReviewServiceV1
+	management                ControlManagementServiceV1
 	moduleDisableDryRun       ModuleDisableDryRunServiceV1
 	moduleDisableConfirmation ModuleDisableConfirmationServiceV1
 	moduleDisableMutation     ModuleDisableMutationServiceV1
@@ -137,6 +139,8 @@ func NewHandlerV1(config ConfigV1) (*HandlerV1, error) {
 		staticAssets:              staticAssets,
 		overview:                  overview,
 		modules:                   config.Modules,
+		moduleUpgradeReviews:      config.ModuleUpgradeReviews,
+		management:                config.Management,
 		moduleDisableDryRun:       config.ModuleDisableDryRun,
 		moduleDisableConfirmation: confirmation,
 		moduleDisableMutation:     mutation,
@@ -231,6 +235,66 @@ func (handler *HandlerV1) ServeHTTP(writer http.ResponseWriter, request *http.Re
 			return
 		}
 		handler.serveModulesListV1(writer, request)
+	case path == ModuleUpgradeReviewsPathV1:
+		if handler.moduleUpgradeReviews == nil {
+			handler.writeErrorV1(writer, controlapicontract.ErrorNotFoundV1, 0)
+			return
+		}
+		if request.Method != http.MethodGet {
+			writer.Header().Set("Allow", http.MethodGet)
+			handler.writeErrorV1(writer, controlapicontract.ErrorInvalidRequestV1, 0)
+			return
+		}
+		handler.serveModuleUpgradeReviewListV1(writer, request)
+	case strings.HasPrefix(path, ModuleUpgradeReviewsPathV1+"/"):
+		if handler.moduleUpgradeReviews == nil {
+			handler.writeErrorV1(writer, controlapicontract.ErrorNotFoundV1, 0)
+			return
+		}
+		if request.Method != http.MethodGet {
+			writer.Header().Set("Allow", http.MethodGet)
+			handler.writeErrorV1(writer, controlapicontract.ErrorInvalidRequestV1, 0)
+			return
+		}
+		reviewID := strings.TrimPrefix(path, ModuleUpgradeReviewsPathV1+"/")
+		if !moduleapi.ValidSHA256(reviewID) || strings.ContainsRune(reviewID, '/') {
+			handler.writeErrorV1(writer, controlapicontract.ErrorNotFoundV1, 0)
+			return
+		}
+		handler.serveModuleUpgradeReviewDetailV1(writer, request, reviewID)
+	case path == UnknownOutcomesPathV1:
+		if handler.management == nil {
+			handler.writeErrorV1(writer, controlapicontract.ErrorNotFoundV1, 0)
+			return
+		}
+		if request.Method != http.MethodGet {
+			writer.Header().Set("Allow", http.MethodGet)
+			handler.writeErrorV1(writer, controlapicontract.ErrorInvalidRequestV1, 0)
+			return
+		}
+		handler.serveUnknownOutcomeListV1(writer, request)
+	case strings.HasPrefix(path, UnknownOutcomesPathV1+"/"):
+		if handler.management == nil {
+			handler.writeErrorV1(writer, controlapicontract.ErrorNotFoundV1, 0)
+			return
+		}
+		if request.Method != http.MethodGet {
+			writer.Header().Set("Allow", http.MethodGet)
+			handler.writeErrorV1(writer, controlapicontract.ErrorInvalidRequestV1, 0)
+			return
+		}
+		handler.serveUnknownOutcomeDetailV1(writer, request, strings.TrimPrefix(path, UnknownOutcomesPathV1+"/"))
+	case path == StoreManagementPathV1:
+		if handler.management == nil {
+			handler.writeErrorV1(writer, controlapicontract.ErrorNotFoundV1, 0)
+			return
+		}
+		if request.Method != http.MethodGet {
+			writer.Header().Set("Allow", http.MethodGet)
+			handler.writeErrorV1(writer, controlapicontract.ErrorInvalidRequestV1, 0)
+			return
+		}
+		handler.serveStoreManagementV1(writer, request)
 	case path == OverviewPathV1:
 		if handler.overview == nil {
 			handler.writeErrorV1(writer, controlapicontract.ErrorNotFoundV1, 0)

@@ -120,7 +120,7 @@ func (reader *testPublishedBasisReaderV1) VerifyPublishedControlCatalogClosureV1
 
 func newTestPublishedBasisReaderV1() *testPublishedBasisReaderV1 {
 	controlInput := controlcontract.ControlSnapshot{
-		SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+		SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 		SnapshotID:    "control-a",
 		TenantID:      testTenantIDV1,
 		Revision:      7,
@@ -131,7 +131,6 @@ func newTestPublishedBasisReaderV1() *testPublishedBasisReaderV1 {
 			{
 				Profile:          testProfileRefV1("profile-a", "2"),
 				ContextPolicy:    testPolicyRefV1("context-policy", "3"),
-				CostPolicy:       testPolicyRefV1("cost-policy", "4"),
 				SchedulingPolicy: testPolicyRefV1("schedule-policy", "5"),
 				Bindings: []controlcontract.BindingSpec{
 					testBindingV1(
@@ -146,8 +145,7 @@ func newTestPublishedBasisReaderV1() *testPublishedBasisReaderV1 {
 			testWorkspaceV1(testWorkspaceAV1, testChannelAInstance, "endpoint-a", "7"),
 			testWorkspaceV1(testWorkspaceBV1, testChannelBInstance, "endpoint-b", "8"),
 			{
-				Workspace:    testWorkspaceRefV1(testWorkspaceEmptyV1, "9"),
-				BudgetPolicy: testPolicyRefV1("budget-empty", "a"),
+				Workspace: testWorkspaceRefV1(testWorkspaceEmptyV1, "9"),
 			},
 		},
 	}
@@ -292,8 +290,7 @@ func testWorkspaceV1(
 	digestCharacter string,
 ) controlcontract.WorkspaceDefinition {
 	return controlcontract.WorkspaceDefinition{
-		Workspace:    testWorkspaceRefV1(workspaceID, digestCharacter),
-		BudgetPolicy: testPolicyRefV1("budget-"+workspaceID, digestCharacter),
+		Workspace: testWorkspaceRefV1(workspaceID, digestCharacter),
 		ChannelEndpoints: []controlcontract.ChannelEndpointDefinition{
 			{
 				SchemaVersion:   controlcontract.ChannelEndpointSchemaVersionV1,
@@ -320,10 +317,14 @@ func testBindingV1(
 	instanceID string,
 	digestCharacter string,
 ) controlcontract.BindingSpec {
+	version := moduleapi.PortVersionV1
+	if portName == moduleapi.PortNameModelGenerate {
+		version = moduleapi.PortVersionV2
+	}
 	return controlcontract.BindingSpec{
 		Port: moduleapi.PortRef{
 			Name:         portName,
-			ExactVersion: moduleapi.PortVersionV1,
+			ExactVersion: version,
 		},
 		InstanceID:          instanceID,
 		ConfigRef:           testHashV1(digestCharacter),
@@ -339,6 +340,10 @@ func testCatalogEntryV1(
 	portName string,
 	digestCharacter string,
 ) controlcontract.CatalogEntry {
+	version := moduleapi.PortVersionV1
+	if portName == moduleapi.PortNameModelGenerate {
+		version = moduleapi.PortVersionV2
+	}
 	return controlcontract.CatalogEntry{
 		Activation: moduleapi.ActivatedModuleRef{
 			ModuleID:           moduleID,
@@ -350,7 +355,7 @@ func testCatalogEntryV1(
 			ActivationRevision: 1,
 		},
 		Provides: []moduleapi.PortRef{
-			{Name: portName, ExactVersion: moduleapi.PortVersionV1},
+			{Name: portName, ExactVersion: version},
 		},
 	}
 }

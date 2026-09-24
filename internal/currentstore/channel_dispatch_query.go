@@ -81,7 +81,7 @@ func queryChannelDispatchRecord(
 			logical_step_id, source_model_attempt_id, frame_revision,
 			member_snapshot_digest, binding_index, binding_json,
 			channel_endpoint_id, channel_ingress_key, channel_proposal_ref,
-			effect_class, max_result_bytes, deadline, budget_state_ref,
+			effect_class, max_result_bytes, deadline, usage_ledger_ref,
 			state, external_operation_id, provider_receipt_ref, result_ref,
 			error_classification, reconciliation_evidence_ref, unknown_reason,
 			revision, created_at, updated_at
@@ -106,7 +106,7 @@ func queryChannelDispatchRecord(
 		&record.EffectClass,
 		&maxResultBytes,
 		&deadline,
-		&record.BudgetStateRef,
+		&record.UsageLedgerRef,
 		&state,
 		&externalOperationID,
 		&providerReceiptRef,
@@ -184,8 +184,8 @@ func queryChannelDispatchRecord(
 	if err != nil {
 		return ChannelDispatchRecord{}, channelAttemptIntegrity(attemptID, "deadline")
 	}
-	if _, err := corecontract.ParseBudgetStateRefV1(record.BudgetStateRef, record.RunID); err != nil {
-		return ChannelDispatchRecord{}, channelAttemptIntegrity(attemptID, "BudgetStateRef")
+	if _, err := corecontract.ParseUsageLedgerRefV1(record.UsageLedgerRef, record.RunID); err != nil {
+		return ChannelDispatchRecord{}, channelAttemptIntegrity(attemptID, "UsageLedgerRef")
 	}
 	record.ExternalOperationID = externalOperationID.String
 	record.ProviderReceiptRef = providerReceiptRef.String

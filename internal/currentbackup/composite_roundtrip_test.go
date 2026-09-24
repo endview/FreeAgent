@@ -1147,7 +1147,6 @@ func newCompositeBackupFixtureWithReviewerAndTransfer(
 			control.Workspaces,
 			controlcontract.WorkspaceDefinition{
 				Workspace:      targetWorkspace,
-				BudgetPolicy:   control.Workspaces[0].BudgetPolicy,
 				TransferGrants: []corecontract.WorkspaceTransferGrantV1{targetGrant},
 			},
 		)
@@ -1203,7 +1202,7 @@ func newCompositeBackupFixtureWithReviewerAndTransfer(
 			AgentID:           assembly.AgentID,
 			ProfileID:         coordinatorProfile.Profile.ID,
 			TaskInputRef:      taskDigest,
-			RequestedPorts:    []moduleapi.PortRef{{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1}},
+			RequestedPorts:    []moduleapi.PortRef{{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2}},
 			Deadline:          deadline,
 			CancellationScope: corecontract.CancellationScopeFamilyV1,
 			ExplicitLimits:    []byte(`{}`),
@@ -1608,7 +1607,7 @@ func filterCompositeModelBinding(
 	filtered := make([]controlcontract.BindingSpec, 0, 1)
 	for _, binding := range bindings {
 		if binding.Port.Name == moduleapi.PortNameModelGenerate &&
-			binding.Port.ExactVersion == moduleapi.PortVersionV1 {
+			binding.Port.ExactVersion == moduleapi.PortVersionV2 {
 			filtered = append(filtered, binding)
 		}
 	}
@@ -2064,7 +2063,7 @@ func beginCompositePendingChild(
 	var modelBinding *moduleapi.PortBinding
 	for _, plan := range run.Member.PortPlans {
 		if plan.Port.Name == moduleapi.PortNameModelGenerate &&
-			plan.Port.ExactVersion == moduleapi.PortVersionV1 &&
+			plan.Port.ExactVersion == moduleapi.PortVersionV2 &&
 			len(plan.Bindings) == 1 {
 			binding := plan.Bindings[0]
 			modelBinding = &binding
@@ -2078,7 +2077,7 @@ func beginCompositePendingChild(
 	if !found || modelConfigContent.Kind != currentstore.ContentConfig {
 		t.Fatalf("pending Composite model config=%+v found=%v", modelConfigContent, found)
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(modelConfigContent.CanonicalBytes)
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(modelConfigContent.CanonicalBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2327,7 +2326,7 @@ func tamperCompositeRepairReadyWithoutActivation(
 	`, runID)
 	_, frameErr := database.Exec(`
 		UPDATE loop_frames
-		SET step=?, budget_state_ref=?, continuation=?,
+		SET step=?, usage_ledger_ref=?, continuation=?,
 		    pending_attempt_id=NULL, pending_dispatch_attempt_id=NULL,
 		    waiting_reason=NULL
 		WHERE run_id=?
@@ -2930,8 +2929,8 @@ func assertCompositeRawDispatchRejected(t *testing.T, fixture compositeBackupFix
 			attempt_id, logical_operation_key, run_id, member_id,
 			logical_step_id, frame_revision, member_snapshot_digest,
 			binding_json, context_compilation_ref, request_ref, request_digest,
-			provider, model, parameters_json, deadline, budget_json,
-			billing_version, price_snapshot_id, source_dispatch_attempt_id,
+			provider, model, parameters_json, deadline, usage_ledger_ref,
+			source_dispatch_attempt_id,
 			state, provider_request_id, provider_receipt_ref, result_ref,
 			error_classification, reconciliation_evidence_ref, unknown_reason,
 			revision, created_at, updated_at
@@ -2939,8 +2938,7 @@ func assertCompositeRawDispatchRejected(t *testing.T, fixture compositeBackupFix
 		SELECT
 			?, ?, run_id, member_id, ?, frame_revision, member_snapshot_digest,
 			binding_json, context_compilation_ref, request_ref, request_digest,
-			provider, model, parameters_json, deadline, budget_json,
-			billing_version, price_snapshot_id, NULL,
+			provider, model, parameters_json, deadline, usage_ledger_ref, NULL,
 			'PENDING', NULL, NULL, NULL, NULL, NULL, NULL,
 			0, created_at+1, updated_at+1
 		FROM model_dispatch_attempts

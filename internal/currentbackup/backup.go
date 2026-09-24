@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/endview/freeagent/internal/currentstore"
 	"github.com/endview/freeagent/internal/moduleartifactstore"
 	"github.com/endview/freeagent/sdk/moduleapi"
 )
@@ -26,13 +27,44 @@ func CreateBundle(
 	destination string,
 	toolVersion string,
 ) (result Manifest, returnErr error) {
+	err := currentstore.WithOfflineLease(
+		ctx,
+		sourceDB,
+		func(lease *currentstore.OfflineLease) error {
+			var err error
+			result, err = CreateBundleFromOfflineLease(
+				ctx,
+				lease,
+				artifactRoot,
+				destination,
+				toolVersion,
+			)
+			return err
+		},
+	)
+	if errors.Is(err, currentstore.ErrOwnerActive) {
+		return Manifest{}, fmt.Errorf("%w: %s", ErrSourceActive, sourceDB)
+	}
+	return result, err
+}
+
+// CreateBundleFromOfflineLease creates and verifies a complete bundle while a
+// caller retains the Store writer fence. This keeps a mandatory pre-migration
+// backup and the following migration in one exclusive interval.
+func CreateBundleFromOfflineLease(
+	ctx context.Context,
+	lease *currentstore.OfflineLease,
+	artifactRoot string,
+	destination string,
+	toolVersion string,
+) (result Manifest, returnErr error) {
 	if ctx == nil {
 		return Manifest{}, fmt.Errorf("%w: context is nil", ErrInvalidInput)
 	}
 	if err := validateOpaque("tool version", toolVersion); err != nil {
 		return Manifest{}, err
 	}
-	sourcePath, err := resolveExistingRegularFile(sourceDB, "source database")
+	sourcePath, err := lease.Path()
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -56,16 +88,6 @@ func CreateBundle(
 		)
 	}
 
-	fence, err := acquireOfflineFence(sourcePath)
-	if err != nil {
-		return Manifest{}, err
-	}
-	fenceHeld := true
-	defer func() {
-		if fenceHeld {
-			returnErr = errors.Join(returnErr, fence.close())
-		}
-	}()
 	if err := ctx.Err(); err != nil {
 		return Manifest{}, err
 	}
@@ -193,13 +215,6 @@ func CreateBundle(
 		return Manifest{}, fmt.Errorf("currentbackup: clean source read residue: %w", err)
 	}
 	sourceSidecarsCleaned = true
-	// Release the source fence before publication so a release failure cannot
-	// turn an otherwise successful call into an error with a formal bundle
-	// already visible at destination.
-	if err := fence.close(); err != nil {
-		return Manifest{}, fmt.Errorf("currentbackup: release source fence: %w", err)
-	}
-	fenceHeld = false
 	if err := publishNoReplace(temporaryPath, destinationPath); err != nil {
 		return Manifest{}, fmt.Errorf("currentbackup: publish bundle: %w", err)
 	}
@@ -630,6 +645,30 @@ func RestoreBundle(
 		!reflect.DeepEqual(stagedState.Current, manifest.Current) {
 		return fmt.Errorf("%w: staged database differs from manifest", ErrIntegrity)
 	}
+	if stagedState.Identity.UserVersion < currentstore.UserVersion {
+		err := currentstore.WithOfflineLease(
+			ctx,
+			databaseStage,
+			func(lease *currentstore.OfflineLease) error {
+				_, err := currentstore.MigrateOfflineCurrentStore(ctx, lease)
+				return err
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("currentbackup: migrate staged restore: %w", err)
+		}
+		if err := os.Remove(databaseStage + ".freeagent.owner.lock"); err != nil &&
+			!errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("currentbackup: remove staged migration lock: %w", err)
+		}
+		if err := syncDirectory(databaseStageRoot); err != nil {
+			return fmt.Errorf("currentbackup: sync staged migration directory: %w", err)
+		}
+		stagedState, err = inspectSnapshot(ctx, databaseStage)
+		if err != nil {
+			return err
+		}
+	}
 	installedArtifacts := make(map[string]struct{}, len(stagedState.Installations))
 	for _, installation := range stagedState.Installations {
 		installedArtifacts[installation.ArtifactDigest] = struct{}{}
@@ -663,10 +702,20 @@ func RestoreBundle(
 	if err := syncRegularFile(databaseStage); err != nil {
 		return err
 	}
+	stagedDatabaseIdentity, err := hashRegularFileContext(
+		ctx,
+		databaseStage,
+		maxDatabaseBytes,
+	)
+	if err != nil {
+		return err
+	}
 	stagedState, err = verifyStagedRestore(
 		ctx,
 		databaseStage,
 		artifactStage,
+		stagedDatabaseIdentity,
+		stagedState,
 		manifest,
 	)
 	if err != nil {
@@ -706,6 +755,8 @@ func RestoreBundle(
 				ctx,
 				databaseStage,
 				artifactTarget,
+				stagedDatabaseIdentity,
+				stagedState,
 				manifest,
 			); err != nil {
 				return err
@@ -737,17 +788,15 @@ func RestoreBundle(
 			if err != nil {
 				return err
 			}
-			if finalDatabaseIdentity.SHA256 != manifest.Database.SHA256 ||
-				finalDatabaseIdentity.SizeBytes != manifest.Database.SizeBytes {
+			if finalDatabaseIdentity.SHA256 != stagedDatabaseIdentity.SHA256 ||
+				finalDatabaseIdentity.SizeBytes != stagedDatabaseIdentity.SizeBytes {
 				return fmt.Errorf("%w: published database digest differs", ErrIntegrity)
 			}
 			finalState, err := inspectSnapshot(ctx, databaseTarget)
 			if err != nil {
 				return err
 			}
-			if finalState.Identity != manifest.StoreIdentity ||
-				finalState.AttemptCounts != manifest.AttemptCounts ||
-				!reflect.DeepEqual(finalState.Current, manifest.Current) {
+			if !reflect.DeepEqual(finalState, stagedState) {
 				return fmt.Errorf("%w: published restore differs", ErrIntegrity)
 			}
 			finalArtifacts := make(map[string]verifiedArtifact, len(manifest.Artifacts))
@@ -793,14 +842,15 @@ func verifyStagedRestore(
 	ctx context.Context,
 	databasePath string,
 	artifactRoot string,
+	expectedDatabase fileIdentity,
+	expectedState snapshotState,
 	manifest Manifest,
 ) (snapshotState, error) {
 	databaseIdentity, err := hashRegularFileContext(ctx, databasePath, maxDatabaseBytes)
 	if err != nil {
 		return snapshotState{}, err
 	}
-	if databaseIdentity.SHA256 != manifest.Database.SHA256 ||
-		databaseIdentity.SizeBytes != manifest.Database.SizeBytes {
+	if databaseIdentity != expectedDatabase {
 		return snapshotState{}, fmt.Errorf("%w: staged database digest differs", ErrIntegrity)
 	}
 	if err := verifyNoSQLiteSidecars(databasePath); err != nil {
@@ -810,9 +860,7 @@ func verifyStagedRestore(
 	if err != nil {
 		return snapshotState{}, err
 	}
-	if state.Identity != manifest.StoreIdentity ||
-		state.AttemptCounts != manifest.AttemptCounts ||
-		!reflect.DeepEqual(state.Current, manifest.Current) {
+	if !reflect.DeepEqual(state, expectedState) {
 		return snapshotState{}, fmt.Errorf("%w: staged database differs from manifest", ErrIntegrity)
 	}
 	artifacts := make(map[string]verifiedArtifact, len(manifest.Artifacts))

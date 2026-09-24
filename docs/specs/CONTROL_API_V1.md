@@ -1,13 +1,15 @@
 # CONTROL_API_V1
 
-状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`；W6-4 的默认关闭 Control/Web Shell、strict Modules list/detail 与唯一 `MODULE_DISABLE` UI 继续作为历史 accepted 边界。W6-5 不新增任何 Control operation、HTTP route、upload、UI、listener、Application Service 或在线 authority；它只新增独立、默认关闭的可信本地 Operator CLI，接纳 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` exact entry 为 server-owned inert Artifact。W6-2/W6-3 的 confirmation、durable receipt、同事务 publication 与 read-only Overview 边界保持不变；无其他 mutation、SSE、后台 worker或第二 Store/writer。  
+> Current phase override (2026-09-22): P2 Control UI i18n is accepted; the next entry is `P3_SECOND_PROVIDER_NEXT`.
+
+状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_NEXT`；W6-4 的默认关闭 Control/Web Shell、strict Modules list/detail 与唯一 `MODULE_DISABLE` UI 继续作为历史 accepted 边界。W6-5 不新增任何 Control operation、HTTP route、upload、UI、listener、Application Service 或在线 authority；它只新增独立、默认关闭的可信本地 Operator CLI，接纳 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` exact entry 为 server-owned inert Artifact。W6.6 只从该 Artifact/Admission 生成持久 Review/Decision，调用方不提供 artifact path、URL、signature bytes 或 target facts；不自动 Install、Activate、Bind、Grant、Apply、Execute，也不调用 Provider。W6-2/W6-3 的 confirmation、durable receipt、同事务 publication 与 read-only Overview 边界保持不变；无其他 mutation、SSE、后台 worker或第二 Store/writer。
 规范词：本文中的“必须”“不得”“应当”均为实现约束。
 
 ## 1. 目标与边界
 
 本规格冻结 Control Plane 的纯数据合同、授权边界和威胁模型，并记录 W6-1 已验收的窄生产消费链、W6-2
 confirmation/receipt/mutation wiring、W6-3 Web Shell/read-only Overview 与 W6-4 strict Modules UI；W6-5
-只在本文冻结“不得经 Control 暴露 artifact ingress”的跨层边界。Control 是 Core
+只在本文冻结“不得经 Control 暴露 artifact ingress 或 W6.6 Review/Decision mutation”的跨层边界。Control 是 Core
 之上的可选观察与运维入口，不是第二 Runtime、第二 Store、第二 writer、第二
 Gateway 或新的事实源。
 
@@ -861,7 +863,7 @@ SSE_WORKER = NONE
 <code>W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT</code> 只表示 W6-4 收口时的历史下一入口；W6-4
 本身不实现 artifact ingress。
 
-当前 marker 固定为：
+W6-5 历史 marker 固定为：
 
 ~~~text
 W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE
@@ -878,6 +880,25 @@ STORE_SCHEMA = 43_TABLES_25_EXPLICIT_INDEXES_64_TRIGGERS
 SCHEMA_FINGERPRINT = 47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d
 MIGRATION_BYTES = 150301
 MIGRATION_SHA256 = 6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86
+~~~
+
+当前 marker 固定为：
+
+~~~text
+W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE
+→ P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE
+→ P3_SECOND_PROVIDER_NEXT
+CONTROL_HTTP_UPGRADE_REVIEW = NONE
+REVIEW_ENTRY = TRUSTED_LOCAL_OPERATOR_CLI_DEFAULT_OFF
+CALLER_ARTIFACT_PATH_URL_SIGNATURE_TARGET_FACTS = NONE
+REVIEW_INPUT = STORE_OWNED_ADMISSION_AND_SERVER_OWNED_ARTIFACT
+REVIEW_DECISION = DURABLE_CONTENT_ID_EXACT_RETRY
+AUTOMATIC_INSTALL_ACTIVATE_BIND_GRANT_APPLY_EXECUTE = NONE
+PROVIDER_CALL = NONE
+STORE_SCHEMA = FAC2_USER_VERSION_2_42_TABLES_26_EXPLICIT_INDEXES_64_TRIGGERS
+SCHEMA_FINGERPRINT = d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e
+MIGRATION_0002_BYTES = 7173
+MIGRATION_0002_SHA256 = 3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb
 ~~~
 
 ## 12. W6-4 Modules 配置/写入 UI 历史已验收合同
@@ -976,7 +997,7 @@ staging/install/activation、grant、自动升级或远程 Control authority。
 
 ## 13. W6-5 server-owned module artifact ingress 已验收合同
 
-当前状态是 `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE /
+历史状态是 `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE /
 W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。该切片不是新的 Control operation：
 
 - 不新增 HTTP route、upload、Web UI、remote listener、session/CSRF surface、SSE 或 worker；现有 Control
@@ -1010,5 +1031,17 @@ W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。该切片不是新的 Control op
   `47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d`，migration 150,301 bytes /
   SHA-256 `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`。
 
-`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` 只允许下一轮独立设计消费已接纳 Artifact；不得借该 marker
+`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` 是 W6-5 收口时的历史 marker；不得借该 marker
 在 W6-5 中新增 Review、Install、Activate、Bind、grant、Apply、execute 或在线 mutation。
+
+## 14. W6.6 server-owned Upgrade Review 已验收跨层边界
+
+W6.6 的可信本地 Operator CLI 已完成 server-owned Review/Decision 闭环，但仍不是 Control HTTP
+operation。调用方只提交 Tenant、scope、Admission/Review identity、operator principal、request digest
+和 Decision reason；服务端读取 Admission 与 Artifact，复验 current basis 并复用 W2-U3 evaluator。
+Review/Decision 持久化并按 content identity exact retry；跨 Tenant、stale basis、Artifact tamper、Review
+integrity 与不合格 Decision 均失败关闭。该切片没有 HTTP/upload/UI/SSE/worker，不自动 Install、Activate、
+Bind、Grant、Apply、Execute，不调用 Provider，也不创建 Runtime/Attempt/Usage/Effect。
+
+Control UI 的 P2 i18n 已完成，下一入口是 `P3_SECOND_PROVIDER_NEXT`。P2 只国际化现有页面，不因 W6.6 已验收而开放
+Upgrade Review mutation；Review/Decision 与 Artifact UI 仍由 P4 在统一 application/control service 之上单独验收。

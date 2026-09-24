@@ -23,53 +23,6 @@ const (
 type currentBackupWindowsMoveFileEx func(*uint16, *uint16, uint32) error
 type currentBackupWindowsSleep func(time.Duration)
 
-type offlineFence struct {
-	file       *os.File
-	overlapped windows.Overlapped
-}
-
-func acquireOfflineFence(databasePath string) (*offlineFence, error) {
-	path := databasePath + ".freeagent.owner.lock"
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("currentbackup: open owner fence: %w", err)
-	}
-	fence := &offlineFence{file: file}
-	err = windows.LockFileEx(
-		windows.Handle(file.Fd()),
-		windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY,
-		0,
-		1,
-		0,
-		&fence.overlapped,
-	)
-	if err == nil {
-		return fence, nil
-	}
-	_ = file.Close()
-	if errors.Is(err, windows.ERROR_LOCK_VIOLATION) ||
-		errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
-		return nil, fmt.Errorf("%w: %s", ErrSourceActive, databasePath)
-	}
-	return nil, fmt.Errorf("currentbackup: lock owner fence: %w", err)
-}
-
-func (fence *offlineFence) close() error {
-	if fence == nil || fence.file == nil {
-		return nil
-	}
-	unlockErr := windows.UnlockFileEx(
-		windows.Handle(fence.file.Fd()),
-		0,
-		1,
-		0,
-		&fence.overlapped,
-	)
-	closeErr := fence.file.Close()
-	fence.file = nil
-	return errors.Join(unlockErr, closeErr)
-}
-
 func openedFileLinkCount(file *os.File) (uint64, error) {
 	var information windows.ByHandleFileInformation
 	if err := windows.GetFileInformationByHandle(

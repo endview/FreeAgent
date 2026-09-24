@@ -317,7 +317,6 @@ func TestCompositeReopenMatrixPreservesLedgerAndNeverRegrantsPendingMerge(
 
 	t.Run("one Child succeeded", func(t *testing.T) {
 		fixture := newCommittedCompositeRuntimeFixture(t)
-		putCompositeModelPrice(t, fixture.store)
 		finishCompositeChildForAcceptance(t, fixture, 0)
 		before := compositeModelAttemptCount(t, fixture.store)
 		reopenCompositeAcceptanceStore(t, fixture)
@@ -349,7 +348,6 @@ func TestCompositeReopenMatrixPreservesLedgerAndNeverRegrantsPendingMerge(
 
 	t.Run("merge PENDING becomes UNKNOWN without replay permit", func(t *testing.T) {
 		fixture := newCommittedCompositeRuntimeFixture(t)
-		putCompositeModelPrice(t, fixture.store)
 		for index := range fixture.compiled.Children {
 			finishCompositeChildForAcceptance(t, fixture, index)
 		}
@@ -461,7 +459,6 @@ func TestCompositeRootRejectsTerminalChildResultPointingAtNonResultContent(
 	t *testing.T,
 ) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	attemptID := finishCompositeChildForAcceptance(t, fixture, 0)
 	rootLease := acquireCompositeTestLease(
 		t,

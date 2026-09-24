@@ -67,7 +67,7 @@ var (
 var (
 	modelGeneratePortV1 = moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}
 	channelTransportPortV1 = moduleapi.PortRef{
 		Name:         moduleapi.PortNameChannelTransport,

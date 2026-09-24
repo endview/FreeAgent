@@ -429,7 +429,7 @@ func validChannelGatewayClosure(
 		EffectClass:          moduleapi.EffectIrreversibleWrite,
 		MaxResultBytes:       moduleapi.MaxChannelProviderReceiptBytesV1,
 		Deadline:             deadline,
-		BudgetStateRef:       "budget-state-1",
+		UsageLedgerRef:       "usage-ledger-1",
 		State:                currentstore.DispatchPending,
 		Revision:             0,
 	}
@@ -466,7 +466,7 @@ func validChannelGatewayClosure(
 			RunID:                    lease.RunID,
 			Revision:                 lease.FrameRevision,
 			Step:                     corecontract.ChannelPendingLoopStep,
-			BudgetStateRef:           attempt.BudgetStateRef,
+			UsageLedgerRef:           attempt.UsageLedgerRef,
 			Continuation:             continuation,
 			PendingDispatchAttemptID: attempt.AttemptID,
 		},

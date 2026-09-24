@@ -12,7 +12,7 @@
     "requested_skills",
     "requested_mcp_servers",
     "required_capabilities",
-    "budget_ceiling",
+    "resource_limit_ceiling",
     "evidence",
     "hash"
   ],
@@ -54,8 +54,8 @@
         "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/dottedIdentifier"
       }
     },
-    "budget_ceiling": {
-      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/budgetPolicy"
+    "resource_limit_ceiling": {
+      "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/resourceLimitPolicy"
     },
     "evidence": {
       "$ref": "https://schemas.freeagent.io/config/v1alpha1/workspace.schema.json#/$defs/taskEvidence"

@@ -537,9 +537,7 @@ func prepareRunAdmission(
 			corecontract.RunManifest{}, nil, nil, nil, err
 	}
 	for _, policy := range []corecontract.PolicyRef{
-		manifest.BudgetPolicy,
 		member.ContextPolicy,
-		member.CostPolicy,
 		member.SchedulingPolicy,
 	} {
 		if err := addRequiredAdmissionContent(
@@ -1155,7 +1153,7 @@ func insertInitialAdmissionFrame(
 	}
 	result, err := connection.ExecContext(ctx, `
 		INSERT INTO loop_frames(
-			run_id, frame_revision, step, budget_state_ref,
+			run_id, frame_revision, step, usage_ledger_ref,
 			continuation, pending_attempt_id, waiting_reason,
 			last_authoritative_event, lease_owner, lease_epoch,
 			lease_expiry

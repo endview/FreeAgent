@@ -776,8 +776,7 @@ func newMemoryOutcomeHarnessWithSummaryBytes(
 	control.Workspaces = append(
 		control.Workspaces,
 		controlcontract.WorkspaceDefinition{
-			Workspace:    secondaryWorkspace,
-			BudgetPolicy: control.Workspaces[0].BudgetPolicy,
+			Workspace: secondaryWorkspace,
 		},
 	)
 	authority, authorityCanonical, err :=
@@ -884,12 +883,6 @@ func newMemoryOutcomeHarnessWithSummaryBytes(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.store.PutModelPriceSnapshot(
-		context.Background(),
-		testModelPriceSnapshot(),
-	); err != nil {
-		t.Fatal(err)
-	}
 	return &memoryOutcomeHarness{
 		store:                fixture.store,
 		fixture:              fixture,
@@ -932,7 +925,7 @@ func (harness *memoryOutcomeHarness) beginRun(
 	intent.RequestedPorts = []moduleapi.PortRef{
 		{
 			Name:         moduleapi.PortNameModelGenerate,
-			ExactVersion: moduleapi.PortVersionV1,
+			ExactVersion: moduleapi.PortVersionV2,
 		},
 		harness.contextPort,
 	}

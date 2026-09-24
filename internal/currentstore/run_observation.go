@@ -57,7 +57,7 @@ type runObservationCanonicalV1 struct {
 	CreatedAtUnixMicros           uint64                     `json:"created_at_unix_micros"`
 	UpdatedAtUnixMicros           uint64                     `json:"updated_at_unix_micros"`
 	FrameStep                     string                     `json:"frame_step"`
-	BudgetStateRef                string                     `json:"budget_state_ref"`
+	UsageLedgerRef                string                     `json:"usage_ledger_ref"`
 	ContinuationDigest            string                     `json:"continuation_digest"`
 	ContinuationSizeBytes         uint32                     `json:"continuation_size_bytes"`
 	ContinuationAttemptKind       corecontract.AttemptKindV1 `json:"continuation_attempt_kind,omitempty"`
@@ -200,7 +200,7 @@ func appendRunObservationV1(
 		admission_intent_digest,manifest_digest,member_id,member_digest,
 		has_action_port,has_channel_port,
 		run_state,disposition,run_revision,cancel_request_ref,created_at,updated_at,
-		frame_step,budget_state_ref,continuation_digest,continuation_size_bytes,
+		frame_step,usage_ledger_ref,continuation_digest,continuation_size_bytes,
 		continuation_attempt_kind,continuation_logical_step_id,
 		continuation_attempt_id,continuation_core_failure_reason,
 		pending_model_attempt_id,pending_dispatch_attempt_id,waiting_reason,
@@ -220,7 +220,7 @@ func appendRunObservationV1(
 		int64(record.Snapshot.RunRevision),
 		nullableRunObservationStringV1(record.Snapshot.CancelRequestRef),
 		int64(record.Snapshot.CreatedAtUnixMicros), int64(record.Snapshot.UpdatedAtUnixMicros),
-		record.Snapshot.FrameStep, record.Snapshot.BudgetStateRef,
+		record.Snapshot.FrameStep, record.Snapshot.UsageLedgerRef,
 		record.Snapshot.ContinuationDigest, int64(record.Snapshot.ContinuationSizeBytes),
 		nullableRunObservationStringV1(string(record.Snapshot.ContinuationAttemptKind)),
 		nullableRunObservationStringV1(record.Snapshot.ContinuationLogicalStepID),
@@ -354,7 +354,7 @@ func loadCurrentRunObservationV1(
 		r.run_id,r.tenant_id,r.workspace_id,r.admission_key,r.admission_intent_digest,
 		manifest.digest,r.state,r.disposition,r.revision,
 		r.cancel_request_ref,r.created_at,r.updated_at,
-		frame.frame_revision,frame.step,frame.budget_state_ref,frame.continuation,
+		frame.frame_revision,frame.step,frame.usage_ledger_ref,frame.continuation,
 		frame.pending_attempt_id,frame.pending_dispatch_attempt_id,frame.waiting_reason,
 		frame.last_authoritative_event,event.to_revision,event.event_kind,event.payload_digest
 		FROM runs AS r
@@ -368,7 +368,7 @@ func loadCurrentRunObservationV1(
 		&record.Snapshot.AdmissionIntentDigest, &record.Snapshot.ManifestDigest,
 		&record.Snapshot.RunState, &disposition, &runRevision,
 		&cancel, &created, &updated, &frameRevision, &record.Snapshot.FrameStep,
-		&record.Snapshot.BudgetStateRef, &continuation, &pendingModel,
+		&record.Snapshot.UsageLedgerRef, &continuation, &pendingModel,
 		&pendingDispatch, &waiting, &sourceSequence, &sourceFrameRevision,
 		&record.Snapshot.SourceEventKind, &record.Snapshot.SourceEventPayloadDigest,
 	)
@@ -411,7 +411,7 @@ func loadCurrentRunObservationV1(
 	}
 	frame := LoopFrameRecord{
 		RunID: runID, Step: record.Snapshot.FrameStep,
-		BudgetStateRef: record.Snapshot.BudgetStateRef,
+		UsageLedgerRef: record.Snapshot.UsageLedgerRef,
 		Continuation:   continuation, PendingAttemptID: pendingModel.String,
 		PendingDispatchAttemptID: pendingDispatch.String, WaitingReason: waiting.String,
 		LastAuthoritativeEvent: uint64(sourceSequence),
@@ -489,7 +489,7 @@ func loadRunObservationSnapshotV1(
 		admission_intent_digest,manifest_digest,member_id,member_digest,
 		has_action_port,has_channel_port,
 		run_state,disposition,run_revision,cancel_request_ref,created_at,updated_at,
-		frame_step,budget_state_ref,continuation_digest,continuation_size_bytes,
+		frame_step,usage_ledger_ref,continuation_digest,continuation_size_bytes,
 		continuation_attempt_kind,continuation_logical_step_id,
 		continuation_attempt_id,continuation_core_failure_reason,
 		pending_model_attempt_id,pending_dispatch_attempt_id,waiting_reason,
@@ -505,7 +505,7 @@ func loadRunObservationSnapshotV1(
 		&record.Snapshot.MemberDigest, &record.Snapshot.HasActionPort,
 		&record.Snapshot.HasChannelPort, &record.Snapshot.RunState, &disposition,
 		&runRevision, &cancel, &created, &updated, &record.Snapshot.FrameStep,
-		&record.Snapshot.BudgetStateRef, &record.Snapshot.ContinuationDigest,
+		&record.Snapshot.UsageLedgerRef, &record.Snapshot.ContinuationDigest,
 		&continuationSize, &continuationKind, &continuationStep, &continuationAttempt,
 		&continuationFailure, &pendingModel, &pendingDispatch, &waiting,
 		&eventSequence, &eventFrameRevision, &record.Snapshot.SourceEventKind,
@@ -909,7 +909,7 @@ func validateRunObservationCanonicalV1(snapshot runObservationCanonicalV1) error
 		!validOverviewTextV1(snapshot.RunState) ||
 		(snapshot.Disposition != "" && !validOverviewTextV1(snapshot.Disposition)) ||
 		!validOverviewTextV1(snapshot.FrameStep) ||
-		!validOverviewTextV1(snapshot.BudgetStateRef) ||
+		!validOverviewTextV1(snapshot.UsageLedgerRef) ||
 		!validOverviewTextV1(snapshot.SourceEventKind) ||
 		(snapshot.PreviousSnapshotDigest != "" &&
 			!moduleapi.ValidSHA256(snapshot.PreviousSnapshotDigest)) ||
@@ -984,7 +984,7 @@ func validateRunObservationAdvanceV1(
 			snapshot.SourceEventLogicalStepID != old.SourceEventLogicalStepID ||
 			snapshot.RunState != old.RunState || snapshot.Disposition != old.Disposition ||
 			snapshot.RunRevision != old.RunRevision || snapshot.FrameStep != old.FrameStep ||
-			snapshot.BudgetStateRef != old.BudgetStateRef ||
+			snapshot.UsageLedgerRef != old.UsageLedgerRef ||
 			snapshot.ContinuationDigest != old.ContinuationDigest ||
 			snapshot.ContinuationSizeBytes != old.ContinuationSizeBytes ||
 			snapshot.PendingModelAttemptID != old.PendingModelAttemptID ||

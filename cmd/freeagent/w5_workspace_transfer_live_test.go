@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 	"github.com/endview/freeagent/internal/controlcontract"
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/internal/localchat"
 	"github.com/endview/freeagent/sdk/moduleapi"
 )
@@ -332,14 +330,7 @@ func TestW5X1DLiveDeepSeekWorkspaceTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("project W5-X1D live Usage: %v", err)
 	}
-	price, err := composition.store.GetModelPriceSnapshot(
-		ctx,
-		"price-deepseek-v4-flash-2026-08-04",
-	)
-	if err != nil {
-		t.Fatalf("load W5-X1D frozen PriceSnapshot: %v", err)
-	}
-	metrics := summarizeW5LiveUsage(t, usage, price.Snapshot)
+	metrics := summarizeW5LiveUsage(t, usage)
 	if metrics.Attempts != 4 || metrics.Succeeded != 4 {
 		t.Fatalf("live Usage attempts=%+v want four succeeded Attempts", metrics)
 	}
@@ -388,7 +379,7 @@ func TestW5X1DLiveDeepSeekWorkspaceTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("project exact retry Usage: %v", err)
 	}
-	retryMetrics := summarizeW5LiveUsage(t, retryUsage, price.Snapshot)
+	retryMetrics := summarizeW5LiveUsage(t, retryUsage)
 	if retryUsage.Aggregate.AttemptSlotsUsed < usage.Aggregate.AttemptSlotsUsed {
 		t.Fatal("exact retry reduced the authoritative model Attempt count")
 	}
@@ -631,18 +622,16 @@ func publishW5LiveWorkspaceTransfer(
 		targetWorkspace,
 	}
 
-	jsonConfig := moduleapi.ModelBindingConfigV1{
-		SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-		Provider:        "deepseek",
-		Model:           "deepseek-v4-flash",
-		ModelBuildID:    localDeepSeekFlashBuild,
-		BillingVersion:  "deepseek-public-price-2026-08-04",
-		PriceSnapshotID: "price-deepseek-v4-flash-2026-08-04",
+	jsonConfig := moduleapi.ModelBindingConfigV2{
+		SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+		Provider:      "deepseek",
+		Model:         "deepseek-v4-flash",
+		ModelBuildID:  localDeepSeekFlashBuild,
 		Parameters: json.RawMessage(
 			`{"max_tokens":1024,"response_format":{"type":"json_object"},"temperature":0,"thinking":{"type":"disabled"}}`,
 		),
 	}
-	_, jsonConfigCanonical, err := moduleapi.NewModelBindingConfigV1(jsonConfig)
+	_, jsonConfigCanonical, err := moduleapi.NewModelBindingConfigV2(jsonConfig)
 	if err != nil {
 		t.Fatalf("freeze W5-X1D JSON model Config: %v", err)
 	}
@@ -1204,40 +1193,23 @@ func restoreW5LiveCompilation(
 }
 
 type w5LiveUsageSummary struct {
-	Attempts                   uint32 `json:"attempts"`
-	Succeeded                  uint32 `json:"succeeded"`
-	InputTokens                uint64 `json:"input_tokens"`
-	CachedInputTokens          uint64 `json:"cached_input_tokens"`
-	UncachedInputTokens        uint64 `json:"uncached_input_tokens"`
-	OutputTokens               uint64 `json:"output_tokens"`
-	ReasoningTokensStatus      string `json:"reasoning_tokens_status"`
-	ReasoningTokens            uint64 `json:"reasoning_tokens,omitempty"`
-	RequestCacheHits           uint32 `json:"request_cache_hits"`
-	TokenWeightedCacheHitRate  string `json:"token_weighted_cache_hit_rate"`
-	EstimatedCostStatus        string `json:"estimated_cost_status"`
-	EstimatedCostCNY           string `json:"estimated_cost_cny,omitempty"`
-	EstimatedCostCurrency      string `json:"estimated_cost_currency,omitempty"`
-	EstimatedCostFormula       string `json:"estimated_cost_formula,omitempty"`
-	PriceSnapshotID            string `json:"price_snapshot_id"`
-	PriceSnapshotDigest        string `json:"price_snapshot_digest"`
-	ProviderReportedCostStatus string `json:"provider_reported_cost_status"`
-	ReconciledCostStatus       string `json:"reconciled_cost_status"`
+	Attempts                  uint32 `json:"attempts"`
+	Succeeded                 uint32 `json:"succeeded"`
+	InputTokens               uint64 `json:"input_tokens"`
+	CachedInputTokens         uint64 `json:"cached_input_tokens"`
+	UncachedInputTokens       uint64 `json:"uncached_input_tokens"`
+	OutputTokens              uint64 `json:"output_tokens"`
+	ReasoningTokensStatus     string `json:"reasoning_tokens_status"`
+	ReasoningTokens           uint64 `json:"reasoning_tokens,omitempty"`
+	RequestCacheHits          uint32 `json:"request_cache_hits"`
+	TokenWeightedCacheHitRate string `json:"token_weighted_cache_hit_rate"`
 }
 
 func summarizeW5LiveUsage(
 	t *testing.T,
 	projection currentstore.CompositeFamilyUsageProjectionV1,
-	price corecontract.ModelPriceSnapshotV1,
 ) w5LiveUsageSummary {
 	t.Helper()
-	if price.PriceSnapshotID != "price-deepseek-v4-flash-2026-08-04" ||
-		price.Provider != "deepseek" || price.Model != "deepseek-v4-flash" ||
-		price.BillingVersion != "deepseek-public-price-2026-08-04" ||
-		price.Currency != "CNY" ||
-		price.PricingStatus != corecontract.PricingKnown ||
-		!moduleapi.ValidSHA256(price.Digest) {
-		t.Fatal("W5-X1D frozen PriceSnapshot identity or pricing status differs")
-	}
 	expectedRuns := []struct {
 		role       corecontract.CompositeRunRoleV1
 		slot       string
@@ -1275,36 +1247,6 @@ func summarizeW5LiveUsage(
 		*aggregate.TokenTotals.Reasoning > *aggregate.TokenTotals.Output {
 		t.Fatal("W5-X1D aggregate reasoning tokens exceed output tokens")
 	}
-	aggregateEstimate, err := deepseekcost.Calculate(
-		price,
-		corecontract.UsageTokens{
-			Input:         aggregate.TokenTotals.Input,
-			CachedInput:   aggregate.TokenTotals.CachedInput,
-			UncachedInput: aggregate.TokenTotals.UncachedInput,
-			Output:        aggregate.TokenTotals.Output,
-			Reasoning:     aggregate.TokenTotals.Reasoning,
-		},
-	)
-	if err != nil || aggregateEstimate.Status != deepseekcost.StatusKnown ||
-		aggregateEstimate.Value == nil || *aggregateEstimate.Value == "0" ||
-		aggregate.EstimatedCost.Status != currentstore.CompositeFamilyCostKnownV1 ||
-		aggregate.EstimatedCost.Value == nil ||
-		*aggregate.EstimatedCost.Value != *aggregateEstimate.Value ||
-		aggregate.EstimatedCost.Currency != price.Currency ||
-		len(aggregate.EstimatedCost.Currencies) != 0 {
-		t.Fatal("W5-X1D aggregate estimated cost does not match frozen token pricing")
-	}
-	if aggregate.ProviderReportedCost.Status !=
-		currentstore.CompositeFamilyCostUnknownV1 ||
-		aggregate.ProviderReportedCost.Value != nil ||
-		aggregate.ProviderReportedCost.Currency != "" ||
-		len(aggregate.ProviderReportedCost.Currencies) != 0 ||
-		aggregate.ReconciledCost.Status != currentstore.CompositeFamilyCostUnknownV1 ||
-		aggregate.ReconciledCost.Value != nil ||
-		aggregate.ReconciledCost.Currency != "" ||
-		len(aggregate.ReconciledCost.Currencies) != 0 {
-		t.Fatal("W5-X1D absent provider/reconciled costs were not preserved as UNKNOWN")
-	}
 	const expectedAttempts = uint32(4)
 	if aggregate.AttemptSlotsUsed != expectedAttempts {
 		t.Fatalf(
@@ -1314,19 +1256,11 @@ func summarizeW5LiveUsage(
 		)
 	}
 	result := w5LiveUsageSummary{
-		Attempts:                   aggregate.AttemptSlotsUsed,
-		InputTokens:                *aggregate.TokenTotals.Input,
-		CachedInputTokens:          *aggregate.TokenTotals.CachedInput,
-		UncachedInputTokens:        *aggregate.TokenTotals.UncachedInput,
-		OutputTokens:               *aggregate.TokenTotals.Output,
-		EstimatedCostStatus:        string(aggregate.EstimatedCost.Status),
-		EstimatedCostCNY:           *aggregate.EstimatedCost.Value,
-		EstimatedCostCurrency:      aggregate.EstimatedCost.Currency,
-		EstimatedCostFormula:       deepseekcost.EstimateFormulaV1,
-		PriceSnapshotID:            price.PriceSnapshotID,
-		PriceSnapshotDigest:        price.Digest,
-		ProviderReportedCostStatus: string(aggregate.ProviderReportedCost.Status),
-		ReconciledCostStatus:       string(aggregate.ReconciledCost.Status),
+		Attempts:            aggregate.AttemptSlotsUsed,
+		InputTokens:         *aggregate.TokenTotals.Input,
+		CachedInputTokens:   *aggregate.TokenTotals.CachedInput,
+		UncachedInputTokens: *aggregate.TokenTotals.UncachedInput,
+		OutputTokens:        *aggregate.TokenTotals.Output,
 	}
 	if aggregate.TokenTotals.Reasoning == nil {
 		result.ReasoningTokensStatus = "UNKNOWN"
@@ -1342,7 +1276,6 @@ func summarizeW5LiveUsage(
 		reasoning     uint64
 	}
 	reasoningKnown := true
-	independentEstimatedCost := new(big.Rat)
 	addUsageTokenCount := func(field string, total *uint64, value uint64) {
 		if ^uint64(0)-*total < value {
 			t.Fatalf("W5-X1D independent %s token sum overflowed", field)
@@ -1367,9 +1300,6 @@ func summarizeW5LiveUsage(
 		tokens := attempt.Usage.Tokens
 		if attempt.State != corecontract.ModelAttemptSucceeded ||
 			attempt.Provider != "deepseek" || attempt.Model != "deepseek-v4-flash" ||
-			attempt.PriceSnapshotID != price.PriceSnapshotID ||
-			attempt.PriceSnapshotDigest != price.Digest ||
-			attempt.Currency != price.Currency ||
 			!moduleapi.ValidSHA256(attempt.RequestDigest) ||
 			tokens.Input == nil || tokens.CachedInput == nil ||
 			tokens.UncachedInput == nil || tokens.Output == nil ||
@@ -1378,25 +1308,9 @@ func summarizeW5LiveUsage(
 			(tokens.Reasoning != nil && *tokens.Reasoning > *tokens.Output) ||
 			attempt.Usage.RawReceiptRef == "" ||
 			!moduleapi.ValidSHA256(attempt.Usage.RawReceiptRef) ||
-			attempt.Usage.ReconciliationStatus != "PROVIDER_REPORTED" ||
-			attempt.Usage.ProviderReportedCost != nil ||
-			attempt.Usage.ReconciledCost != nil {
+			attempt.Usage.UsageStatus != "PROVIDER_REPORTED" {
 			t.Fatalf("W5-X1D Attempt at frozen index %d has an invalid Usage closure", index)
 		}
-		expected, estimateErr := deepseekcost.Calculate(price, tokens)
-		if estimateErr != nil || expected.Status != deepseekcost.StatusKnown ||
-			expected.Value == nil || attempt.Usage.EstimatedCost == nil ||
-			*attempt.Usage.EstimatedCost != *expected.Value {
-			t.Fatalf("W5-X1D Attempt at frozen index %d has the wrong estimated cost", index)
-		}
-		attemptCost, ok := new(big.Rat).SetString(*attempt.Usage.EstimatedCost)
-		if !ok {
-			t.Fatalf(
-				"W5-X1D Attempt at frozen index %d has a non-numeric estimated cost",
-				index,
-			)
-		}
-		independentEstimatedCost.Add(independentEstimatedCost, attemptCost)
 		addUsageTokenCount("input", &independentlySummed.input, *tokens.Input)
 		addUsageTokenCount("cached input", &independentlySummed.cachedInput, *tokens.CachedInput)
 		addUsageTokenCount(
@@ -1428,12 +1342,6 @@ func summarizeW5LiveUsage(
 		}
 	} else if aggregate.TokenTotals.Reasoning != nil {
 		t.Fatal("W5-X1D aggregate reasoning became KNOWN when an Attempt was UNKNOWN")
-	}
-	aggregateEstimatedCost, ok := new(big.Rat).SetString(
-		*aggregate.EstimatedCost.Value,
-	)
-	if !ok || independentEstimatedCost.Cmp(aggregateEstimatedCost) != 0 {
-		t.Fatal("W5-X1D aggregate estimated cost does not equal the four Attempt sum")
 	}
 	if result.InputTokens == 0 {
 		result.TokenWeightedCacheHitRate = "0.000000%"

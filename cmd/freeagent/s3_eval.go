@@ -10,15 +10,13 @@ import (
 	"strings"
 
 	"github.com/endview/freeagent/internal/corecontract"
-	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/internal/runscheduler"
 	"github.com/endview/freeagent/internal/s3eval"
 	"github.com/endview/freeagent/sdk/loopapi"
 )
 
 const (
-	s3EvalReportSchemaVersionV1 = "freeagent.s3-eval-report/v1"
+	s3EvalReportSchemaVersionV2 = "freeagent.s3-eval-report/v2"
 	maximumS3ScenarioBytes      = 1 << 20
 	maximumS3Repetitions        = 100
 )
@@ -53,14 +51,6 @@ type s3EvalRuntime struct {
 	close func() error
 	chat  s3eval.ChatFunc
 	usage s3eval.CompositeUsageReader
-	price s3EvalPriceReader
-}
-
-type s3EvalPriceReader interface {
-	GetModelPriceSnapshot(
-		context.Context,
-		string,
-	) (currentstore.ModelPriceSnapshotRecord, error)
 }
 
 type s3EvalExperimentCommandFact struct {
@@ -81,25 +71,9 @@ type s3EvalRuntimeCommandFact struct {
 }
 
 type s3EvalRepetitionCommandReport struct {
-	Repetition           uint64                         `json:"repetition"`
-	Report               s3eval.ExperimentReport        `json:"report"`
-	DerivedCostEstimates []s3EvalDerivedCostCommandFact `json:"derived_cost_estimates"`
-	Error                string                         `json:"error"`
-}
-
-// s3EvalDerivedCostCommandFact is an observer-only per-Attempt estimate from
-// the exact frozen PriceSnapshot and normalized tokens. Per-Attempt scope is
-// intentional: one Composite family may freely use different models or price
-// snapshots. It is deliberately separate from authoritative model_usage
-// estimated/provider/reconciled columns.
-type s3EvalDerivedCostCommandFact struct {
-	WorkspaceID string                          `json:"workspace_id"`
-	RootRunID   string                          `json:"root_run_id"`
-	RunID       string                          `json:"run_id"`
-	Role        corecontract.CompositeRunRoleV1 `json:"role"`
-	AttemptID   string                          `json:"attempt_id"`
-	Model       string                          `json:"model"`
-	Estimate    deepseekcost.Estimate           `json:"estimate"`
+	Repetition uint64                  `json:"repetition"`
+	Report     s3eval.ExperimentReport `json:"report"`
+	Error      string                  `json:"error"`
 }
 
 type s3EvalCommandReport struct {
@@ -238,15 +212,6 @@ func runS3EvalWithDependencies(
 		repetitionReport := s3EvalRepetitionCommandReport{
 			Repetition: repetition,
 			Report:     experimentReport,
-		}
-		costEstimates, costErr := deriveS3EvalDeepSeekCosts(
-			ctx,
-			experimentReport,
-			runtime.price,
-		)
-		repetitionReport.DerivedCostEstimates = costEstimates
-		if costErr != nil {
-			runErr = errors.Join(runErr, costErr)
 		}
 		if identityErr := identities.Observe(experimentReport); identityErr != nil {
 			runErr = errors.Join(runErr, identityErr)
@@ -560,89 +525,7 @@ func openProductionS3EvalRuntime(
 		close: composition.Close,
 		chat:  composition.composite.Chat,
 		usage: composition.store,
-		price: composition.store,
 	}, nil
-}
-
-func deriveS3EvalDeepSeekCosts(
-	ctx context.Context,
-	report s3eval.ExperimentReport,
-	prices s3EvalPriceReader,
-) ([]s3EvalDerivedCostCommandFact, error) {
-	results := make([]s3EvalDerivedCostCommandFact, 0, len(report.ServiceOrder))
-	priceRecords := make(map[string]currentstore.ModelPriceSnapshotRecord)
-	foundErrors := make([]error, 0)
-	for _, family := range report.Families {
-		for _, attempt := range family.Attempts {
-			if attempt.Provider != deepseekcost.ProviderDeepSeekV1 {
-				continue
-			}
-			if prices == nil {
-				foundErrors = append(foundErrors, fmt.Errorf(
-					"S3-C cost evidence for Workspace %q has no PriceSnapshot reader",
-					family.WorkspaceID,
-				))
-				continue
-			}
-			if attempt.PriceSnapshotID == "" ||
-				attempt.PriceSnapshotDigest == "" || attempt.Currency == "" {
-				foundErrors = append(foundErrors, fmt.Errorf(
-					"S3-C cost evidence for Workspace %q Attempt %q is incomplete",
-					family.WorkspaceID,
-					attempt.AttemptID,
-				))
-				continue
-			}
-			record, found := priceRecords[attempt.PriceSnapshotID]
-			if !found {
-				var err error
-				record, err = prices.GetModelPriceSnapshot(ctx, attempt.PriceSnapshotID)
-				if err != nil {
-					foundErrors = append(foundErrors, fmt.Errorf(
-						"S3-C load PriceSnapshot %q: %w",
-						attempt.PriceSnapshotID,
-						err,
-					))
-					continue
-				}
-				priceRecords[attempt.PriceSnapshotID] = record
-			}
-			if record.Snapshot.Digest != attempt.PriceSnapshotDigest ||
-				record.Snapshot.Currency != attempt.Currency ||
-				record.Snapshot.Provider != attempt.Provider ||
-				record.Snapshot.Model != attempt.Model {
-				foundErrors = append(foundErrors, fmt.Errorf(
-					"S3-C PriceSnapshot %q does not close persisted Attempt %q",
-					attempt.PriceSnapshotID,
-					attempt.AttemptID,
-				))
-				continue
-			}
-			estimate, err := deepseekcost.Calculate(
-				record.Snapshot,
-				attempt.Tokens.Clone(),
-			)
-			if err != nil {
-				foundErrors = append(foundErrors, fmt.Errorf(
-					"S3-C calculate DeepSeek cost for Workspace %q Attempt %q: %w",
-					family.WorkspaceID,
-					attempt.AttemptID,
-					err,
-				))
-				continue
-			}
-			results = append(results, s3EvalDerivedCostCommandFact{
-				WorkspaceID: family.WorkspaceID,
-				RootRunID:   family.RootRunID,
-				RunID:       attempt.RunID,
-				Role:        attempt.Role,
-				AttemptID:   attempt.AttemptID,
-				Model:       attempt.Model,
-				Estimate:    estimate,
-			})
-		}
-	}
-	return results, errors.Join(foundErrors...)
 }
 
 func readS3EvalScenario(path string) (s3eval.ScenarioV1, error) {
@@ -713,7 +596,7 @@ func newS3EvalCommandReport(
 	deepSeekEnabled bool,
 ) s3EvalCommandReport {
 	report := s3EvalCommandReport{
-		SchemaVersion: s3EvalReportSchemaVersionV1,
+		SchemaVersion: s3EvalReportSchemaVersionV2,
 		Experiment: s3EvalExperimentCommandFact{
 			ID:                   scenario.ExperimentID,
 			RepetitionsRequested: repetitions,

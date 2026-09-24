@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -36,7 +35,6 @@ func TestCompositeFamilyUsageProjectionDecisionApproveKeepsSkippedRepairs(
 	t *testing.T,
 ) {
 	fixture := newCommittedCompositeDecisionStoreFixture(t, 2)
-	putCompositeModelPrice(t, fixture.store)
 	for index, child := range fixture.compiled.Children {
 		finishDecisionSpecialist(t, fixture, child, "usage-approve-child-"+string(rune('0'+index)))
 	}
@@ -87,7 +85,6 @@ func TestCompositeFamilyUsageProjectionDecisionSubsetAndAllRepairAttempts(
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newCommittedCompositeDecisionStoreFixture(t, 2)
-			putCompositeModelPrice(t, fixture.store)
 			for index, child := range fixture.compiled.Children {
 				finishDecisionSpecialist(
 					t,
@@ -187,7 +184,6 @@ func TestCompositeFamilyUsageProjectionCompleteKnownSumsAndReadOnlyRetry(
 	t *testing.T,
 ) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	first := commitCompositeUsageSuccess(
 		t,
 		fixture,
@@ -196,7 +192,6 @@ func TestCompositeFamilyUsageProjectionCompleteKnownSumsAndReadOnlyRetry(
 		corecontract.PureChatModelLogicalStepIDV1,
 		usageProjectionReceipt{
 			Input: 10, Cached: 4, Uncached: 6, Output: 2, Reasoning: uint64Pointer(1),
-			ProviderCost: stringPointer("0.1"),
 		},
 	)
 	second := commitCompositeUsageSuccess(
@@ -207,11 +202,8 @@ func TestCompositeFamilyUsageProjectionCompleteKnownSumsAndReadOnlyRetry(
 		corecontract.PureChatModelLogicalStepIDV1,
 		usageProjectionReceipt{
 			Input: 20, Cached: 5, Uncached: 15, Output: 3, Reasoning: uint64Pointer(2),
-			ProviderCost: stringPointer("0.2"),
 		},
 	)
-	setUsageProjectionCosts(t, fixture, first, "1.25", "0.25")
-	setUsageProjectionCosts(t, fixture, second, "2.75", "0.5")
 
 	before := usageProjectionStorageFingerprint(t, fixture.store)
 	firstProjection, err := fixture.store.GetCompositeFamilyUsageProjection(
@@ -289,14 +281,10 @@ func TestCompositeFamilyUsageProjectionCompleteKnownSumsAndReadOnlyRetry(
 		uint64Value(aggregate.TokenTotals.Reasoning) != 3 {
 		t.Fatalf("token aggregate=%+v", aggregate)
 	}
-	assertKnownCompositeCost(t, aggregate.EstimatedCost, "4", "CNY")
-	assertKnownCompositeCost(t, aggregate.ProviderReportedCost, "0.3", "CNY")
-	assertKnownCompositeCost(t, aggregate.ReconciledCost, "0.75", "CNY")
 }
 
 func TestCompositeFamilyUsageProjectionKeepsEachMixedNullUnknown(t *testing.T) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	commitCompositeUsageSuccess(
 		t,
 		fixture,
@@ -305,7 +293,6 @@ func TestCompositeFamilyUsageProjectionKeepsEachMixedNullUnknown(t *testing.T) {
 		corecontract.PureChatModelLogicalStepIDV1,
 		usageProjectionReceipt{
 			Input: 10, Cached: 4, Uncached: 6, Output: 2, Reasoning: uint64Pointer(1),
-			ProviderCost: stringPointer("0.1"),
 		},
 	)
 	commitCompositeUsageSuccess(
@@ -316,7 +303,7 @@ func TestCompositeFamilyUsageProjectionKeepsEachMixedNullUnknown(t *testing.T) {
 		corecontract.PureChatModelLogicalStepIDV1,
 		usageProjectionReceipt{
 			Input: 20, Cached: 5, Uncached: 15, Output: 3,
-			Reasoning: nil, ProviderCost: nil,
+			Reasoning: nil,
 		},
 	)
 
@@ -334,14 +321,10 @@ func TestCompositeFamilyUsageProjectionKeepsEachMixedNullUnknown(t *testing.T) {
 	if projection.Aggregate.TokenTotals.Reasoning != nil {
 		t.Fatalf("mixed NULL reasoning became known: %+v", projection.Aggregate.TokenTotals)
 	}
-	assertUnknownCompositeCost(t, projection.Aggregate.ProviderReportedCost)
-	assertUnknownCompositeCost(t, projection.Aggregate.EstimatedCost)
-	assertUnknownCompositeCost(t, projection.Aggregate.ReconciledCost)
 }
 
 func TestCompositeFamilyUsageProjectionUnknownAndPendingConsumeSlots(t *testing.T) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	unknownInput := newCompositeChildBeginInput(
 		t,
 		fixture,
@@ -405,78 +388,6 @@ func TestCompositeFamilyUsageProjectionUnknownAndPendingConsumeSlots(t *testing.
 	if projection.Aggregate.TokenTotals.Input != nil ||
 		projection.Aggregate.TokenTotals.Output != nil {
 		t.Fatalf("UNKNOWN/PENDING tokens became zero: %+v", projection.Aggregate.TokenTotals)
-	}
-	assertUnknownCompositeCost(t, projection.Aggregate.ProviderReportedCost)
-}
-
-func TestCompositeFamilyUsageProjectionDoesNotCombineMixedCurrencies(
-	t *testing.T,
-) {
-	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
-	first := commitCompositeUsageSuccess(
-		t,
-		fixture,
-		0,
-		"attempt-usage-currency-cny",
-		corecontract.PureChatModelLogicalStepIDV1,
-		usageProjectionReceipt{
-			Input: 10, Cached: 4, Uncached: 6, Output: 2, Reasoning: uint64Pointer(1),
-			ProviderCost: stringPointer("0.1"),
-		},
-	)
-	second := commitCompositeUsageSuccess(
-		t,
-		fixture,
-		1,
-		"attempt-usage-currency-eur",
-		corecontract.PureChatModelLogicalStepIDV1,
-		usageProjectionReceipt{
-			Input: 20, Cached: 5, Uncached: 15, Output: 3, Reasoning: uint64Pointer(2),
-			ProviderCost: stringPointer("0.2"),
-		},
-	)
-	euroPrice := testModelPriceSnapshot()
-	euroPrice.PriceSnapshotID = "price-deepseek-v4-eur"
-	euroPrice.Currency = "EUR"
-	if _, err := fixture.store.PutModelPriceSnapshot(
-		context.Background(),
-		euroPrice,
-	); err != nil {
-		t.Fatal(err)
-	}
-	execClosedFileTamperV1(
-		t,
-		fixture.store,
-		[]string{"model_dispatch_attempts_observation_update_guard"},
-		`
-		UPDATE model_dispatch_attempts
-		SET price_snapshot_id=?
-		WHERE attempt_id=?
-	`,
-		euroPrice.PriceSnapshotID,
-		second,
-	)
-	setUsageProjectionCosts(t, fixture, first, "1", "0.1")
-	setUsageProjectionCosts(t, fixture, second, "2", "0.2")
-
-	projection, err := fixture.store.GetCompositeFamilyUsageProjection(
-		context.Background(),
-		fixture.compiled.Parent.RunManifest.RunID,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, cost := range map[string]CompositeFamilyCostTotalV1{
-		"estimated":         projection.Aggregate.EstimatedCost,
-		"provider_reported": projection.Aggregate.ProviderReportedCost,
-		"reconciled":        projection.Aggregate.ReconciledCost,
-	} {
-		if cost.Status != CompositeFamilyCostMixedCurrencyV1 ||
-			cost.Value != nil || cost.Currency != "" ||
-			!reflect.DeepEqual(cost.Currencies, []string{"CNY", "EUR"}) {
-			t.Fatalf("%s mixed-currency aggregate=%+v", name, cost)
-		}
 	}
 }
 
@@ -543,7 +454,6 @@ func TestCompositeFamilyUsageProjectionRejectsNonRootTamperAndClosesAtCap(
 
 	t.Run("Decision repair Specialist logical step", func(t *testing.T) {
 		fixture := newCommittedCompositeDecisionStoreFixture(t, 2)
-		putCompositeModelPrice(t, fixture.store)
 		for index, child := range fixture.compiled.Children {
 			finishDecisionSpecialist(
 				t,
@@ -596,7 +506,6 @@ func TestCompositeFamilyUsageProjectionRejectsNonRootTamperAndClosesAtCap(
 
 	t.Run("production lifecycle reaches frozen cap", func(t *testing.T) {
 		fixture := newCommittedCompositeRuntimeFixture(t)
-		putCompositeModelPrice(t, fixture.store)
 		finishCompositeChildForAcceptance(t, fixture, 0)
 		finishCompositeChildForAcceptance(t, fixture, 1)
 		_, begin := beginCompositeRootForCapTest(
@@ -620,56 +529,12 @@ func TestCompositeFamilyUsageProjectionRejectsNonRootTamperAndClosesAtCap(
 	})
 }
 
-func TestCompositeFamilyUsageProjectionRejectsNonCanonicalCostFact(t *testing.T) {
-	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
-	commitCompositeUsageSuccess(
-		t,
-		fixture,
-		0,
-		"attempt-usage-missing-cost-before-bad-cost",
-		corecontract.PureChatModelLogicalStepIDV1,
-		usageProjectionReceipt{
-			Input: 10, Cached: 4, Uncached: 6, Output: 2, Reasoning: uint64Pointer(1),
-			ProviderCost: stringPointer("0.1"),
-		},
-	)
-	attemptID := commitCompositeUsageSuccess(
-		t,
-		fixture,
-		1,
-		"attempt-usage-bad-cost",
-		corecontract.PureChatModelLogicalStepIDV1,
-		usageProjectionReceipt{
-			Input: 10, Cached: 4, Uncached: 6, Output: 2, Reasoning: uint64Pointer(1),
-			ProviderCost: stringPointer("0.1"),
-		},
-	)
-	execClosedFileTamperV1(
-		t,
-		fixture.store,
-		[]string{"model_usage_observation_update_guard"},
-		`
-		UPDATE model_usage SET estimated_cost='01.0' WHERE attempt_id=?
-	`,
-		attemptID,
-	)
-	if _, err := fixture.store.GetCompositeFamilyUsageProjection(
-		context.Background(),
-		fixture.compiled.Parent.RunManifest.RunID,
-	); !errors.Is(err, ErrCompositeUsageProjectionIntegrity) ||
-		!strings.Contains(err.Error(), "non-canonical cost") {
-		t.Fatalf("non-canonical cost error=%v", err)
-	}
-}
-
 type usageProjectionReceipt struct {
-	Input        uint64
-	Cached       uint64
-	Uncached     uint64
-	Output       uint64
-	Reasoning    *uint64
-	ProviderCost *string
+	Input     uint64
+	Cached    uint64
+	Uncached  uint64
+	Output    uint64
+	Reasoning *uint64
 }
 
 func commitCompositeUsageSuccess(
@@ -703,15 +568,14 @@ func commitCompositeUsageSuccess(
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion:        moduleapi.ModelUsageReceiptSchemaV1,
-			InputTokens:          &usage.Input,
-			CachedInputTokens:    &usage.Cached,
-			UncachedInputTokens:  &usage.Uncached,
-			OutputTokens:         &usage.Output,
-			ReasoningTokens:      usage.Reasoning,
-			ProviderReportedCost: usage.ProviderCost,
+	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV2,
+			InputTokens:         &usage.Input,
+			CachedInputTokens:   &usage.Cached,
+			UncachedInputTokens: &usage.Uncached,
+			OutputTokens:        &usage.Output,
+			ReasoningTokens:     usage.Reasoning,
 			RawReceipt: json.RawMessage(
 				`{"attempt_id":"` + attemptID + `"}`,
 			),
@@ -737,29 +601,6 @@ func commitCompositeUsageSuccess(
 		t.Fatal(err)
 	}
 	return attemptID
-}
-
-func setUsageProjectionCosts(
-	t *testing.T,
-	fixture *compositeAdmissionFixture,
-	attemptID string,
-	estimated string,
-	reconciled string,
-) {
-	t.Helper()
-	execClosedFileTamperV1(
-		t,
-		fixture.store,
-		[]string{"model_usage_observation_update_guard"},
-		`
-		UPDATE model_usage
-		SET estimated_cost=?, reconciled_cost=?
-		WHERE attempt_id=?
-	`,
-		estimated,
-		reconciled,
-		attemptID,
-	)
 }
 
 func finishDecisionUsageRoot(
@@ -932,31 +773,7 @@ func usageProjectionStorageFingerprint(
 	return result
 }
 
-func assertKnownCompositeCost(
-	t *testing.T,
-	cost CompositeFamilyCostTotalV1,
-	wantValue string,
-	wantCurrency string,
-) {
-	t.Helper()
-	if cost.Status != CompositeFamilyCostKnownV1 ||
-		cost.Value == nil || *cost.Value != wantValue ||
-		cost.Currency != wantCurrency || len(cost.Currencies) != 0 {
-		t.Fatalf("known cost=%+v want %s %s", cost, wantValue, wantCurrency)
-	}
-}
-
-func assertUnknownCompositeCost(t *testing.T, cost CompositeFamilyCostTotalV1) {
-	t.Helper()
-	if cost.Status != CompositeFamilyCostUnknownV1 ||
-		cost.Value != nil || cost.Currency != "" || len(cost.Currencies) != 0 {
-		t.Fatalf("unknown cost contains invented facts: %+v", cost)
-	}
-}
-
 func uint64Pointer(value uint64) *uint64 { return &value }
-
-func stringPointer(value string) *string { return &value }
 
 func uint64Value(value *uint64) uint64 {
 	if value == nil {

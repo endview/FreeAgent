@@ -745,7 +745,6 @@ func newFairSchedulerFixture(
 					Version: "v1",
 					Digest:  strings.Repeat(fmt.Sprintf("%x", index+4), 64),
 				},
-				BudgetPolicy: control.Workspaces[0].BudgetPolicy,
 			},
 		)
 	}

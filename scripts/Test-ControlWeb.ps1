@@ -34,12 +34,15 @@ $expectedInputs = @(
     'src/i18n/provider.tsx',
     'src/i18n/resources.ts',
     'src/main.tsx',
+    'src/management-ui.tsx',
+    'src/management.ts',
     'src/modules-ui.tsx',
     'src/modules.ts',
     'src/overview.ts',
     'src/session.ts',
     'src/styles.css',
     'src/ui.tsx',
+    'src/upgrade-reviews-ui.tsx',
     'tests/controlweb.test.tsx',
     'tests/i18n.test.tsx',
     'tests/modules.test.tsx',
@@ -138,10 +141,16 @@ function Get-NpmVersion([string]$Node, [string]$Npm) {
 function Get-ExactFiles([string]$Base, [string[]]$Expected, [string]$Code, [string]$Label) {
     $actual = @(
         Get-ChildItem -LiteralPath $Base -File -Recurse -Force | ForEach-Object {
+            $relative = Get-RelativeSlashPath $Base $_.FullName
+            # Local dependencies are ignored here; the release project is rebuilt
+            # from the exact allowlist below with npm ci.
+            if ($relative.StartsWith('node_modules/', [StringComparison]::Ordinal)) {
+                return
+            }
             if (($null -ne $_.LinkType) -or (($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
                 Fail $Code "$Label contains a reparse file"
             }
-            Get-RelativeSlashPath $Base $_.FullName
+            $relative
         } | Sort-Object -CaseSensitive
     )
     $orderedExpected = @($Expected | Sort-Object -CaseSensitive)

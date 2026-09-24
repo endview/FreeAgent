@@ -474,7 +474,7 @@ func TestModuleHistoryRevalidatesEveryCatalogEntryForCachedPackage(t *testing.T)
 			mutate: func(_ *moduleapi.ActivatedModuleRef, provides *[]moduleapi.PortRef) {
 				*provides = append(*provides, moduleapi.PortRef{
 					Name:         moduleapi.PortNameModelGenerate,
-					ExactVersion: moduleapi.PortVersionV1,
+					ExactVersion: moduleapi.PortVersionV2,
 				})
 			},
 		},
@@ -665,7 +665,7 @@ func TestModuleOperatorSameExactPortSetRejectsDuplicates(t *testing.T) {
 	}
 	modelPort := moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}
 	for _, test := range []struct {
 		name  string
@@ -729,7 +729,7 @@ func TestModuleInspectRejectsUnboundCatalogEntryWithIncompleteProvides(t *testin
 		filepath.Dir(exampleSeedPath(t)),
 		"bootstrap-artifacts",
 		localEchoModuleID,
-		moduleApplyTestVersion,
+		localEchoModuleVersion,
 	)
 	stagedDirectory := filepath.Join(root, "multi-port-model")
 	copyModuleApplyTestTreeV1(t, sourceDirectory, stagedDirectory)
@@ -854,7 +854,7 @@ func TestModuleInspectRejectsUnboundCatalogEntryWithIncompleteProvides(t *testin
 				string(entry.Activation.ExecutionClass),
 				entry.Activation.AdapterIdentity,
 				localEchoModuleID,
-				moduleApplyTestVersion,
+				localEchoModuleVersion,
 			)
 			if err != nil {
 				return err
@@ -867,7 +867,7 @@ func TestModuleInspectRejectsUnboundCatalogEntryWithIncompleteProvides(t *testin
 				UPDATE module_installations
 				SET manifest_ref=?, artifact_digest=?
 				WHERE module_id=? AND exact_version=?
-			`, manifestRef, artifactDigest, localEchoModuleID, moduleApplyTestVersion); err != nil {
+			`, manifestRef, artifactDigest, localEchoModuleID, localEchoModuleVersion); err != nil {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `

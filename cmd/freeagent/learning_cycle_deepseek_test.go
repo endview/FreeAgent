@@ -119,8 +119,7 @@ func TestW4L4FakeDeepSeekLearningCycleKeepsStrictResultContract(t *testing.T) {
 			if dispatch.Attempt.State != corecontract.ModelAttemptSucceeded ||
 				dispatch.Attempt.RunID != first.Task.RunID ||
 				dispatch.Usage.Tokens.Input == nil ||
-				dispatch.Usage.Tokens.Output == nil ||
-				dispatch.Usage.EstimatedCost == nil {
+				dispatch.Usage.Tokens.Output == nil {
 				t.Fatalf("fake DeepSeek Attempt/Usage=%+v", dispatch)
 			}
 
@@ -170,14 +169,12 @@ func openW4LearningCycleFakeComposition(
 	}); err != nil {
 		t.Fatalf("initialize fake Learning cycle data: %v", err)
 	}
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        deepseekmodel.ProviderNameV1,
-			Model:           deepseekmodel.ModelV4Flash,
-			ModelBuildID:    localDeepSeekFlashBuild,
-			BillingVersion:  "deepseek-public-price-2026-08-04",
-			PriceSnapshotID: "price-deepseek-v4-flash-2026-08-04",
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      deepseekmodel.ProviderNameV1,
+			Model:         deepseekmodel.ModelV4Flash,
+			ModelBuildID:  localDeepSeekFlashBuild,
 			Parameters: json.RawMessage(
 				`{"max_tokens":512,"response_format":{"type":"json_object"},"temperature":0,"thinking":{"type":"disabled"}}`,
 			),

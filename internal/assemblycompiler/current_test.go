@@ -578,7 +578,7 @@ func currentControlCatalog(
 ) ([]byte, controlcontract.ControlSnapshotRef, []byte, controlcontract.CatalogGenerationRef) {
 	t.Helper()
 	control := controlcontract.ControlSnapshot{
-		SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+		SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 		SnapshotID:    "control-1",
 		TenantID:      "tenant-1",
 		Revision:      1,
@@ -590,7 +590,6 @@ func currentControlCatalog(
 				Workspace: corecontract.WorkspaceRef{
 					ID: "workspace.main", Version: "1", Digest: hash("3"),
 				},
-				BudgetPolicy: policy("policy.budget", "4"),
 			},
 		},
 		Profiles: []controlcontract.ProfileDefinition{
@@ -599,7 +598,6 @@ func currentControlCatalog(
 					ID: "profile.chat", Version: "1", Digest: hash("5"),
 				},
 				ContextPolicy:    policy("policy.context", "6"),
-				CostPolicy:       policy("policy.cost", "7"),
 				SchedulingPolicy: policy("policy.scheduling", "8"),
 				Bindings: []controlcontract.BindingSpec{
 					binding(
@@ -1028,8 +1026,12 @@ func policy(id string, character string) corecontract.PolicyRef {
 }
 
 func currentPort(name string) moduleapi.PortRef {
+	version := moduleapi.PortVersionV1
+	if name == moduleapi.PortNameModelGenerate {
+		version = moduleapi.PortVersionV2
+	}
 	return moduleapi.PortRef{
-		Name: name, ExactVersion: moduleapi.PortVersionV1,
+		Name: name, ExactVersion: version,
 	}
 }
 

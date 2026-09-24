@@ -149,7 +149,7 @@ func verifyRunObservationHistoricalProjectionV1(
 	current runObservationRecordV1,
 ) error {
 	s := current.Snapshot
-	budgetSequence, err := corecontract.ParseBudgetStateRefV1(s.BudgetStateRef, s.RunID)
+	budgetSequence, err := corecontract.ParseUsageLedgerRefV1(s.UsageLedgerRef, s.RunID)
 	if err != nil {
 		return fmt.Errorf("%w: historical Run budget projection: %v", ErrLoopIntegrity, err)
 	}
@@ -158,7 +158,7 @@ func verifyRunObservationHistoricalProjectionV1(
 		return fmt.Errorf("%w: historical Run continuation: %v", ErrLoopIntegrity, err)
 	}
 	frame := LoopFrameRecord{
-		RunID: s.RunID, Step: s.FrameStep, BudgetStateRef: s.BudgetStateRef,
+		RunID: s.RunID, Step: s.FrameStep, UsageLedgerRef: s.UsageLedgerRef,
 		Continuation: current.Continuation, PendingAttemptID: s.PendingModelAttemptID,
 		PendingDispatchAttemptID: s.PendingDispatchAttemptID,
 		WaitingReason:            s.WaitingReason, LastAuthoritativeEvent: s.SourceEventSequence,
@@ -179,7 +179,7 @@ func verifyRunObservationHistoricalProjectionV1(
 		)
 	}
 	p := previous.Snapshot
-	previousBudget, err := corecontract.ParseBudgetStateRefV1(p.BudgetStateRef, p.RunID)
+	previousBudget, err := corecontract.ParseUsageLedgerRefV1(p.UsageLedgerRef, p.RunID)
 	if err != nil {
 		return fmt.Errorf("%w: previous historical Run budget projection: %v", ErrLoopIntegrity, err)
 	}
@@ -515,7 +515,7 @@ func verifyRunObservationHistoricalProjectionV1(
 		} else {
 			err = ErrLoopIntegrity
 		}
-		if err != nil || wantBudget != s.BudgetStateRef || !bytes.Equal(wantContinuation, current.Continuation) ||
+		if err != nil || wantBudget != s.UsageLedgerRef || !bytes.Equal(wantContinuation, current.Continuation) ||
 			s.PendingModelAttemptID != "" || s.PendingDispatchAttemptID != "" {
 			return fmt.Errorf("%w: historical composite activation projection: %v", ErrLoopIntegrity, err)
 		}
@@ -608,7 +608,7 @@ func verifyHistoricalRunDispatchResourceV1(
 	return nil
 }
 
-// historicalRunBudgetFromModelResourceV1 binds the Run's BudgetStateRef to
+// historicalRunBudgetFromModelResourceV1 binds the Run's UsageLedgerRef to
 // the one MODEL resource mutation carried by the same immutable Run
 // observation. A nil Usage ledger sequence means that mutation did not
 // allocate a new ledger entry, so the preceding Run budget remains current.
@@ -700,7 +700,7 @@ func overviewModelUsageEventMatchesResourceV1(
 	return usage != nil && resource.UsageRevision != nil &&
 		usage.Revision == *resource.UsageRevision &&
 		overviewOptionalUintEqualV1(usage.LedgerSequence, resource.UsageLedgerSequence) &&
-		usage.ReconciliationStatus == resource.UsageStatus &&
+		usage.UsageStatus == resource.UsageStatus &&
 		overviewOptionalUintEqualV1(usage.Tokens.Input, resource.InputTokens) &&
 		overviewOptionalUintEqualV1(usage.Tokens.CachedInput, resource.CachedInputTokens) &&
 		overviewOptionalUintEqualV1(usage.Tokens.UncachedInput, resource.UncachedInputTokens) &&
@@ -746,7 +746,7 @@ func verifyRunObservationAdmissionProjectionV1(
 	if err != nil || s.RunState != wantState || s.Disposition != wantDisposition ||
 		s.FrameStep != wantStep || s.WaitingReason != wantWaiting ||
 		s.PendingModelAttemptID != "" || s.PendingDispatchAttemptID != "" ||
-		s.BudgetStateRef != wantBudget || !bytes.Equal(current.Continuation, wantContinuation) {
+		s.UsageLedgerRef != wantBudget || !bytes.Equal(current.Continuation, wantContinuation) {
 		return fmt.Errorf("%w: historical admission projection: %v", ErrLoopIntegrity, err)
 	}
 	return nil
@@ -1379,7 +1379,8 @@ func validateOverviewResourceGenesisShapeV1(s overviewResourceCanonicalV1) error
 func overviewResourceGenesisTransitionV1(kind, transition string) bool {
 	switch kind {
 	case overviewResourceModelV1:
-		return transition == overviewTransitionModelBeginV1 || transition == overviewTransitionModelExpiredV1
+		return transition == overviewTransitionModelBeginV1 ||
+			transition == overviewTransitionModelExpiredV1
 	case overviewResourceActionV1:
 		return transition == overviewTransitionActionBeginV1
 	case overviewResourceChannelV1:
@@ -1427,7 +1428,7 @@ func validateOverviewResourceTransitionShapeV1(s overviewResourceCanonicalV1) er
 				return fmt.Errorf("%w: pending Model Usage observation", ErrLoopIntegrity)
 			}
 		case "MODEL_UNKNOWN":
-			if s.UsageStatus != modelUsageStatusReconciliation {
+			if s.UsageStatus != modelUsageStatusReconciliationPending {
 				return fmt.Errorf("%w: unknown Model Usage observation", ErrLoopIntegrity)
 			}
 		case "SUCCEEDED", "FAILED":

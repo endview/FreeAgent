@@ -17,26 +17,23 @@ import (
 )
 
 const (
-	modelUsageStatusPending        = "PENDING"
-	modelUsageStatusReported       = "PROVIDER_REPORTED"
-	modelUsageStatusNoReport       = "NO_USAGE_REPORTED"
-	modelUsageStatusReconciliation = "PENDING_RECONCILIATION"
-	modelUnknownWaitingReason      = "MODEL_UNKNOWN"
+	modelUsageStatusPending               = "PENDING"
+	modelUsageStatusReported              = "PROVIDER_REPORTED"
+	modelUsageStatusNoReport              = "NO_USAGE_REPORTED"
+	modelUsageStatusReconciliationPending = "PENDING_RECONCILIATION"
+	modelUnknownWaitingReason             = "MODEL_UNKNOWN"
 )
 
 // ModelUsageRecord is the detached authoritative Usage row for one model
-// Attempt. Nil token and cost pointers are UNKNOWN; a non-nil zero is known.
+// Attempt. Nil token pointers are UNKNOWN; a non-nil zero is known.
 type ModelUsageRecord struct {
-	AttemptID            string
-	RunID                string
-	LedgerSequence       *uint64
-	Revision             uint64
-	Tokens               corecontract.UsageTokens
-	EstimatedCost        *string
-	ProviderReportedCost *string
-	ReconciledCost       *string
-	ReconciliationStatus string
-	RawReceiptRef        string
+	AttemptID      string
+	RunID          string
+	LedgerSequence *uint64
+	Revision       uint64
+	Tokens         corecontract.UsageTokens
+	UsageStatus    string
+	RawReceiptRef  string
 }
 
 // ModelDispatchRecord is the narrow typed recovery projection for an Attempt
@@ -78,7 +75,7 @@ type preparedModelDispatchOutcome struct {
 	output              moduleapi.ModelGenerateOutputV1
 	outputCanonical     []byte
 	resultContent       *preparedAdmissionContent
-	usage               moduleapi.ModelUsageReceiptV1
+	usage               moduleapi.ModelUsageReceiptV2
 	usageCanonical      []byte
 	receiptContent      *preparedAdmissionContent
 	providerRequestID   string
@@ -302,7 +299,7 @@ func (store *Store) CommitModelDispatchOutcome(
 		ctx,
 		connection,
 		run.RunID,
-		run.Frame.BudgetStateRef,
+		run.Frame.UsageLedgerRef,
 	)
 	if err != nil {
 		return CommitModelDispatchOutcomeResult{}, err
@@ -348,20 +345,8 @@ func (store *Store) CommitModelDispatchOutcome(
 	if err != nil {
 		return CommitModelDispatchOutcomeResult{}, err
 	}
-	if err := applyFrozenModelEstimatedCost(
-		ctx,
-		connection,
-		current,
-		&merged,
-	); err != nil {
-		return CommitModelDispatchOutcomeResult{}, fmt.Errorf(
-			"%w: estimated cost: %v",
-			ErrModelDispatchIntegrity,
-			err,
-		)
-	}
 	if merged.Usage.LedgerSequence == nil &&
-		modelUsageHasBillableFact(merged.Usage) {
+		modelUsageHasReportedTokens(merged.Usage) {
 		if ledgerHead >= math.MaxInt64 {
 			return CommitModelDispatchOutcomeResult{}, fmt.Errorf(
 				"%w: Usage ledger sequence cannot advance",
@@ -371,15 +356,15 @@ func (store *Store) CommitModelDispatchOutcome(
 		sequence := ledgerHead + 1
 		merged.Usage.LedgerSequence = &sequence
 	}
-	nextBudgetRef := run.Frame.BudgetStateRef
+	nextBudgetRef := run.Frame.UsageLedgerRef
 	if merged.Usage.LedgerSequence != nil {
-		nextBudgetRef, err = corecontract.NewBudgetStateRefV1(
+		nextBudgetRef, err = corecontract.NewUsageLedgerRefV1(
 			run.RunID,
 			*merged.Usage.LedgerSequence,
 		)
 		if err != nil {
 			return CommitModelDispatchOutcomeResult{}, fmt.Errorf(
-				"%w: next BudgetStateRef: %v",
+				"%w: next UsageLedgerRef: %v",
 				ErrModelDispatchIntegrity,
 				err,
 			)
@@ -520,10 +505,7 @@ func (store *Store) CommitModelDispatchOutcome(
 			uncached_input_tokens=?,
 			output_tokens=?,
 			reasoning_tokens=?,
-			estimated_cost=?,
-			provider_reported_cost=?,
-			reconciled_cost=?,
-			reconciliation_status=?,
+			usage_status=?,
 			raw_receipt_ref=?,
 			overview_observation_sequence=overview_observation_sequence+1
 		WHERE attempt_id=?
@@ -537,12 +519,7 @@ func (store *Store) CommitModelDispatchOutcome(
 		nullableModelUint(merged.Usage.Tokens.UncachedInput),
 		nullableModelUint(merged.Usage.Tokens.Output),
 		nullableModelUint(merged.Usage.Tokens.Reasoning),
-		nullableModelStringPointer(merged.Usage.EstimatedCost),
-		nullableModelStringPointer(
-			merged.Usage.ProviderReportedCost,
-		),
-		nullableModelStringPointer(merged.Usage.ReconciledCost),
-		merged.Usage.ReconciliationStatus,
+		merged.Usage.UsageStatus,
 		nullableModelString(merged.Usage.RawReceiptRef),
 		current.Attempt.AttemptID,
 		run.RunID,
@@ -645,7 +622,7 @@ func (store *Store) CommitModelDispatchOutcome(
 		SET
 			frame_revision=?,
 			step=?,
-			budget_state_ref=?,
+			usage_ledger_ref=?,
 			continuation=?,
 			pending_attempt_id=?,
 			waiting_reason=?,
@@ -1012,7 +989,7 @@ func prepareModelDispatchOutcome(
 		}
 	}
 	if len(input.UsageReceiptCanonical) != 0 {
-		usage, err := moduleapi.RestoreModelUsageReceiptV1(
+		usage, err := moduleapi.RestoreModelUsageReceiptV2(
 			input.UsageReceiptCanonical,
 		)
 		if err != nil {
@@ -1137,17 +1114,6 @@ func commitIdempotentModelOutcome(
 	if err := requireSameModelOutcome(current, prepared); err != nil {
 		return CommitModelDispatchOutcomeResult{}, err
 	}
-	if err := validateFrozenModelEstimatedCost(
-		ctx,
-		connection,
-		current,
-	); err != nil {
-		return CommitModelDispatchOutcomeResult{}, fmt.Errorf(
-			"%w: idempotent estimated cost: %v",
-			ErrModelDispatchIntegrity,
-			err,
-		)
-	}
 	currentLease, err := loadCurrentModelOutcomeLease(
 		ctx,
 		connection,
@@ -1202,7 +1168,7 @@ func commitIdempotentModelOutcome(
 		ctx,
 		connection,
 		run.RunID,
-		run.Frame.BudgetStateRef,
+		run.Frame.UsageLedgerRef,
 	); err != nil {
 		return CommitModelDispatchOutcomeResult{}, err
 	}
@@ -1546,15 +1512,6 @@ func mergeModelOutcomeFacts(
 		if err != nil {
 			return ModelDispatchRecord{}, err
 		}
-		merged.Usage.ProviderReportedCost, err =
-			mergeModelCostFact(
-				current.Usage.ProviderReportedCost,
-				prepared.usage.ProviderReportedCost,
-				"provider reported cost",
-			)
-		if err != nil {
-			return ModelDispatchRecord{}, err
-		}
 	}
 	if err := merged.Usage.Tokens.Validate(); err != nil {
 		return ModelDispatchRecord{}, fmt.Errorf(
@@ -1580,19 +1537,19 @@ func mergeModelOutcomeFacts(
 		merged.Attempt.UnknownReason = prepared.unknownReason
 	}
 	if prepared.state == corecontract.ModelAttemptUnknown {
-		merged.Usage.ReconciliationStatus =
-			modelUsageStatusReconciliation
+		merged.Usage.UsageStatus =
+			modelUsageStatusReconciliationPending
 	} else if merged.Usage.RawReceiptRef != "" {
-		merged.Usage.ReconciliationStatus = modelUsageStatusReported
+		merged.Usage.UsageStatus = modelUsageStatusReported
 	} else {
-		merged.Usage.ReconciliationStatus = modelUsageStatusNoReport
+		merged.Usage.UsageStatus = modelUsageStatusNoReport
 	}
 	return merged, nil
 }
 
 func requireReceiptRetainsKnownFacts(
 	current ModelUsageRecord,
-	incoming moduleapi.ModelUsageReceiptV1,
+	incoming moduleapi.ModelUsageReceiptV2,
 ) error {
 	for _, fact := range []struct {
 		name     string
@@ -1626,15 +1583,6 @@ func requireReceiptRetainsKnownFacts(
 				fact.name,
 			)
 		}
-	}
-	if current.ProviderReportedCost != nil &&
-		(incoming.ProviderReportedCost == nil ||
-			*current.ProviderReportedCost !=
-				*incoming.ProviderReportedCost) {
-		return fmt.Errorf(
-			"%w: new receipt does not retain known provider cost",
-			ErrModelDispatchConflict,
-		)
 	}
 	return nil
 }
@@ -1717,7 +1665,7 @@ func requireSameModelOutcome(
 
 func sameUsageReceiptFacts(
 	record ModelUsageRecord,
-	receipt moduleapi.ModelUsageReceiptV1,
+	receipt moduleapi.ModelUsageReceiptV2,
 ) bool {
 	return equalModelUint(record.Tokens.Input, receipt.InputTokens) &&
 		equalModelUint(
@@ -1732,10 +1680,6 @@ func sameUsageReceiptFacts(
 		equalModelUint(
 			record.Tokens.Reasoning,
 			receipt.ReasoningTokens,
-		) &&
-		equalModelStringPointer(
-			record.ProviderReportedCost,
-			receipt.ProviderReportedCost,
 		)
 }
 
@@ -1762,7 +1706,7 @@ func queryModelDispatchRecord(
 }
 
 // queryModelUsage is package-internal so Loop recovery can validate Attempt,
-// Usage and BudgetStateRef in one SQLite read transaction.
+// Usage and UsageLedgerRef in one SQLite read transaction.
 func queryModelUsage(
 	ctx context.Context,
 	queryer interface {
@@ -1771,18 +1715,15 @@ func queryModelUsage(
 	attemptID string,
 ) (ModelUsageRecord, error) {
 	var (
-		record               ModelUsageRecord
-		ledgerSequence       sql.NullInt64
-		revision             int64
-		inputTokens          sql.NullInt64
-		cachedInputTokens    sql.NullInt64
-		uncachedInputTokens  sql.NullInt64
-		outputTokens         sql.NullInt64
-		reasoningTokens      sql.NullInt64
-		estimatedCost        sql.NullString
-		providerReportedCost sql.NullString
-		reconciledCost       sql.NullString
-		rawReceiptRef        sql.NullString
+		record              ModelUsageRecord
+		ledgerSequence      sql.NullInt64
+		revision            int64
+		inputTokens         sql.NullInt64
+		cachedInputTokens   sql.NullInt64
+		uncachedInputTokens sql.NullInt64
+		outputTokens        sql.NullInt64
+		reasoningTokens     sql.NullInt64
+		rawReceiptRef       sql.NullString
 	)
 	err := queryer.QueryRowContext(ctx, `
 		SELECT
@@ -1795,10 +1736,7 @@ func queryModelUsage(
 			uncached_input_tokens,
 			output_tokens,
 			reasoning_tokens,
-			estimated_cost,
-			provider_reported_cost,
-			reconciled_cost,
-			reconciliation_status,
+			usage_status,
 			raw_receipt_ref
 		FROM model_usage
 		WHERE attempt_id=?
@@ -1812,10 +1750,7 @@ func queryModelUsage(
 		&uncachedInputTokens,
 		&outputTokens,
 		&reasoningTokens,
-		&estimatedCost,
-		&providerReportedCost,
-		&reconciledCost,
-		&record.ReconciliationStatus,
+		&record.UsageStatus,
 		&rawReceiptRef,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1847,10 +1782,6 @@ func queryModelUsage(
 		Output:        modelUintFromNull(outputTokens),
 		Reasoning:     modelUintFromNull(reasoningTokens),
 	}
-	record.EstimatedCost = modelStringFromNull(estimatedCost)
-	record.ProviderReportedCost =
-		modelStringFromNull(providerReportedCost)
-	record.ReconciledCost = modelStringFromNull(reconciledCost)
 	record.RawReceiptRef = rawReceiptRef.String
 	if err := record.Tokens.Validate(); err != nil {
 		return ModelUsageRecord{}, modelAttemptIntegrity(
@@ -1858,7 +1789,7 @@ func queryModelUsage(
 			"Usage token facts",
 		)
 	}
-	if strings.TrimSpace(record.ReconciliationStatus) == "" {
+	if strings.TrimSpace(record.UsageStatus) == "" {
 		return ModelUsageRecord{}, modelAttemptIntegrity(
 			attemptID,
 			"Usage reconciliation status",
@@ -1920,7 +1851,7 @@ func validateModelDispatchRecord(
 				"provider receipt content",
 			)
 		}
-		receipt, err := moduleapi.RestoreModelUsageReceiptV1(
+		receipt, err := moduleapi.RestoreModelUsageReceiptV2(
 			content.CanonicalBytes,
 		)
 		if err != nil || !sameUsageReceiptFacts(usage, receipt) {
@@ -1944,8 +1875,8 @@ func validateModelDispatchRecord(
 			)
 		}
 	}
-	hasBillableFact := modelUsageHasBillableFact(usage)
-	if hasBillableFact != (usage.LedgerSequence != nil) {
+	hasReportedTokens := modelUsageHasReportedTokens(usage)
+	if hasReportedTokens != (usage.LedgerSequence != nil) {
 		return modelAttemptIntegrity(
 			attempt.AttemptID,
 			"Usage ledger allocation",
@@ -1963,7 +1894,7 @@ func validateModelDispatchRecord(
 			usage.LedgerSequence != nil ||
 			usage.RawReceiptRef != "" ||
 			modelUsageHasAnyFact(usage) ||
-			usage.ReconciliationStatus != modelUsageStatusPending {
+			usage.UsageStatus != modelUsageStatusPending {
 			return modelAttemptIntegrity(
 				attempt.AttemptID,
 				"PENDING closure",
@@ -1973,7 +1904,7 @@ func validateModelDispatchRecord(
 		if attempt.ResultRef == "" ||
 			attempt.ErrorClassification != "" ||
 			attempt.UnknownReason != "" ||
-			usage.ReconciliationStatus !=
+			usage.UsageStatus !=
 				expectedTerminalUsageStatus(usage) {
 			return modelAttemptIntegrity(
 				attempt.AttemptID,
@@ -1984,7 +1915,7 @@ func validateModelDispatchRecord(
 		if attempt.ResultRef != "" ||
 			attempt.ErrorClassification == "" ||
 			attempt.UnknownReason != "" ||
-			usage.ReconciliationStatus !=
+			usage.UsageStatus !=
 				expectedTerminalUsageStatus(usage) {
 			return modelAttemptIntegrity(
 				attempt.AttemptID,
@@ -1998,8 +1929,8 @@ func validateModelDispatchRecord(
 				attempt.ProviderReceiptRef == "" &&
 				attempt.ReconciliationEvidenceRef == "" &&
 				attempt.UnknownReason == "") ||
-			usage.ReconciliationStatus !=
-				modelUsageStatusReconciliation {
+			usage.UsageStatus !=
+				modelUsageStatusReconciliationPending {
 			return modelAttemptIntegrity(
 				attempt.AttemptID,
 				"MODEL_UNKNOWN closure",
@@ -2022,15 +1953,15 @@ func validateModelUsageLedgerHead(
 		QueryRowContext(context.Context, string, ...any) *sql.Row
 	},
 	runID string,
-	budgetStateRef string,
+	usageLedgerRef string,
 ) (uint64, error) {
-	referencedHead, err := corecontract.ParseBudgetStateRefV1(
-		budgetStateRef,
+	referencedHead, err := corecontract.ParseUsageLedgerRefV1(
+		usageLedgerRef,
 		runID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"%w: invalid BudgetStateRef: %v",
+			"%w: invalid UsageLedgerRef: %v",
 			ErrModelDispatchIntegrity,
 			err,
 		)
@@ -2070,7 +2001,7 @@ func validateModelUsageLedgerHead(
 	}
 	if referencedHead != head {
 		return 0, fmt.Errorf(
-			"%w: BudgetStateRef does not match Usage ledger head",
+			"%w: UsageLedgerRef does not match Usage ledger head",
 			ErrModelDispatchIntegrity,
 		)
 	}
@@ -2179,37 +2110,16 @@ func mergeModelUintFact(
 	return cloneModelUint(incoming), nil
 }
 
-func mergeModelCostFact(
-	current *string,
-	incoming *string,
-	name string,
-) (*string, error) {
-	if incoming == nil {
-		return cloneModelString(current), nil
-	}
-	if current != nil && *current != *incoming {
-		return nil, fmt.Errorf(
-			"%w: %s would overwrite a known fact",
-			ErrModelDispatchConflict,
-			name,
-		)
-	}
-	return cloneModelString(incoming), nil
-}
-
-func modelUsageHasBillableFact(usage ModelUsageRecord) bool {
+func modelUsageHasReportedTokens(usage ModelUsageRecord) bool {
 	return usage.Tokens.Input != nil ||
 		usage.Tokens.CachedInput != nil ||
 		usage.Tokens.UncachedInput != nil ||
 		usage.Tokens.Output != nil ||
-		usage.Tokens.Reasoning != nil ||
-		usage.ProviderReportedCost != nil ||
-		usage.EstimatedCost != nil ||
-		usage.ReconciledCost != nil
+		usage.Tokens.Reasoning != nil
 }
 
 func modelUsageHasAnyFact(usage ModelUsageRecord) bool {
-	return modelUsageHasBillableFact(usage)
+	return modelUsageHasReportedTokens(usage)
 }
 
 func validModelOutcomeLabel(value string) bool {
@@ -2300,10 +2210,6 @@ func equalModelStringPointer(left *string, right *string) bool {
 func cloneModelUsageRecord(record ModelUsageRecord) ModelUsageRecord {
 	record.LedgerSequence = cloneModelUint(record.LedgerSequence)
 	record.Tokens = record.Tokens.Clone()
-	record.EstimatedCost = cloneModelString(record.EstimatedCost)
-	record.ProviderReportedCost =
-		cloneModelString(record.ProviderReportedCost)
-	record.ReconciledCost = cloneModelString(record.ReconciledCost)
 	return record
 }
 

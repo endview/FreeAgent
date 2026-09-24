@@ -743,8 +743,6 @@ func validatePreparedCompositeFamily(
 			child.manifest.TenantID != parent.manifest.TenantID ||
 			child.manifest.Workspace != expectedWorkspace ||
 			child.member.Workspace != expectedWorkspace ||
-			(planned.Transfer == nil &&
-				child.manifest.BudgetPolicy != parent.manifest.BudgetPolicy) ||
 			!child.manifest.Deadline.Equal(parent.manifest.Deadline) ||
 			child.manifest.ParentRunID != parent.manifest.RunID ||
 			node.RootRunID != parent.manifest.RunID ||
@@ -781,7 +779,6 @@ func validatePreparedCompositeFamily(
 			node.Role != corecontract.CompositeRunRoleReviewerV1 ||
 			reviewer.manifest.TenantID != parent.manifest.TenantID ||
 			reviewer.manifest.Workspace != parent.manifest.Workspace ||
-			reviewer.manifest.BudgetPolicy != parent.manifest.BudgetPolicy ||
 			!reviewer.manifest.Deadline.Equal(parent.manifest.Deadline) ||
 			reviewer.manifest.ParentRunID != parent.manifest.RunID ||
 			node.RootRunID != parent.manifest.RunID ||
@@ -834,8 +831,6 @@ func validatePreparedCompositeFamily(
 			child.manifest.TenantID != parent.manifest.TenantID ||
 			child.manifest.Workspace != expectedWorkspace ||
 			child.member.Workspace != expectedWorkspace ||
-			(planned.Transfer == nil &&
-				child.manifest.BudgetPolicy != parent.manifest.BudgetPolicy) ||
 			!child.manifest.Deadline.Equal(parent.manifest.Deadline) ||
 			child.manifest.ParentRunID != parent.manifest.RunID ||
 			node.RootRunID != parent.manifest.RunID ||
@@ -865,7 +860,6 @@ func validatePreparedCompositeFamily(
 		node.RepairRound != corecontract.CompositeRepairRoundOneV1 ||
 		repairReviewer.manifest.TenantID != parent.manifest.TenantID ||
 		repairReviewer.manifest.Workspace != parent.manifest.Workspace ||
-		repairReviewer.manifest.BudgetPolicy != parent.manifest.BudgetPolicy ||
 		!repairReviewer.manifest.Deadline.Equal(parent.manifest.Deadline) ||
 		repairReviewer.manifest.ParentRunID != parent.manifest.RunID ||
 		node.RootRunID != parent.manifest.RunID ||

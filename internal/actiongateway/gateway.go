@@ -228,7 +228,7 @@ func validateGrantClosure(
 		run.Frame.Step != corecontract.ActionPendingLoopStep ||
 		run.Frame.PendingAttemptID != "" ||
 		run.Frame.PendingDispatchAttemptID != want.AttemptID ||
-		run.Frame.BudgetStateRef != want.BudgetStateRef ||
+		run.Frame.UsageLedgerRef != want.UsageLedgerRef ||
 		run.Frame.Revision != grant.Lease.FrameRevision ||
 		run.RunRevision != grant.Lease.RunRevision ||
 		!now.Before(want.Deadline) ||
@@ -524,7 +524,7 @@ func sameAttemptClosure(
 		left.EffectClass == right.EffectClass &&
 		left.MaxResultBytes == right.MaxResultBytes &&
 		left.Deadline.Equal(right.Deadline) &&
-		left.BudgetStateRef == right.BudgetStateRef &&
+		left.UsageLedgerRef == right.UsageLedgerRef &&
 		left.State == right.State && left.Revision == right.Revision
 }
 

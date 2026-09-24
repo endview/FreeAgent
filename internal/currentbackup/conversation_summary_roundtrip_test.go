@@ -541,8 +541,8 @@ func prepareConversationSummaryBackupSeed(
 		if !ok {
 			t.Fatalf("Summary seed Context body=%#v", policy["body"])
 		}
-		body["context_window_tokens"] = json.Number("18000")
-		body["reserved_output_tokens"] = json.Number("0")
+		body["context_window_tokens"] = json.Number("22096")
+		body["reserved_output_tokens"] = json.Number("4096")
 		body["recent_history_turns"] = json.Number("0")
 		foundContext = true
 	}

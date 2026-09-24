@@ -8,14 +8,14 @@ import (
 const (
 	documentInsightEntrypointV1 = "content/source.json"
 
-	// DocumentInsightModuleIDV1, DocumentInsightVersionV1,
-	// DocumentInsightArtifactDigestV1, and DocumentInsightAdapterIdentityV1
+	// DocumentInsightModuleIDV1, DocumentInsightVersionV2,
+	// DocumentInsightArtifactDigestV2, and DocumentInsightAdapterIdentityV1
 	// identify the only reserved dual-Port product accepted by the E5-B
 	// runtime policy. A package cannot obtain this identity by declaring the
 	// same Ports or permissions.
 	DocumentInsightModuleIDV1        = "freeagent.builtin.document-insight"
-	DocumentInsightVersionV1         = "1.0.0"
-	DocumentInsightArtifactDigestV1  = "838ff9ddd45186f0cdb26021d16902b2bfd7581c2dc0d7b72014cf4f48d0f7ea"
+	DocumentInsightVersionV2         = "2.0.0"
+	DocumentInsightArtifactDigestV2  = "9cf2e60f4b6d30cfd93ea93245f4a6eadbd4f365b93f06b7decb389c4f4d4bfa"
 	DocumentInsightAdapterIdentityV1 = "freeagent.adapter.document-insight/v1"
 )
 
@@ -59,8 +59,8 @@ func ClassifyExactDocumentInsightProviderV1(
 		return fmt.Errorf("Document Insight provider identity is invalid: %w", err)
 	}
 	if provider.ModuleID != DocumentInsightModuleIDV1 ||
-		provider.Version != DocumentInsightVersionV1 ||
-		provider.ArtifactDigest != DocumentInsightArtifactDigestV1 ||
+		provider.Version != DocumentInsightVersionV2 ||
+		provider.ArtifactDigest != DocumentInsightArtifactDigestV2 ||
 		provider.ExecutionClass != ExecutionTrustedInProcess ||
 		provider.AdapterIdentity != DocumentInsightAdapterIdentityV1 {
 		return fmt.Errorf(
@@ -105,7 +105,7 @@ func ClassifyExactDocumentInsightManifestDeclarationV1(
 		[]PortRef{ExactModelGeneratePortV1()},
 	) {
 		return fmt.Errorf(
-			"Document Insight manifest must require only exact model.generate/v1",
+			"Document Insight manifest must require only exact model.generate/v2",
 		)
 	}
 	if !slices.Equal(

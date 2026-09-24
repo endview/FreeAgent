@@ -17,13 +17,11 @@ const (
 	modelActionRejectionEventSchemaV1 = "model-action-rejection-event/v1"
 	modelActionRejectionEventKind     = "MODEL_ACTION_REJECTED"
 
-	ModelActionRejectionBudgetUnknown       = "BUDGET_UNKNOWN"
 	ModelActionRejectionUnknownAction       = "UNKNOWN_ACTION"
 	ModelActionRejectionInvalidInput        = "ACTION_INPUT_INVALID"
 	ModelActionRejectionLimitReached        = "ACTION_LIMIT_REACHED"
 	ModelActionRejectionPrepareFailed       = "ACTION_PREPARE_FAILED"
 	ModelActionRejectionDeadlineExpired     = "ACTION_DEADLINE_EXPIRED"
-	ModelActionRejectionBudgetExceeded      = "ACTION_BUDGET_EXCEEDED"
 	ModelActionRejectionAuthorityDenied     = "ACTION_AUTHORITY_DENIED"
 	ModelActionRejectionProviderUnavailable = "ACTION_PROVIDER_UNAVAILABLE"
 )
@@ -221,7 +219,7 @@ func (store *Store) CommitLegalModelActionRejection(
 		ctx,
 		connection,
 		run.RunID,
-		run.Frame.BudgetStateRef,
+		run.Frame.UsageLedgerRef,
 	)
 	if err != nil {
 		return CommitLegalModelActionRejectionResult{}, err
@@ -230,7 +228,7 @@ func (store *Store) CommitLegalModelActionRejection(
 	if err != nil {
 		return CommitLegalModelActionRejectionResult{}, err
 	}
-	if merged.Usage.LedgerSequence == nil && modelUsageHasBillableFact(merged.Usage) {
+	if merged.Usage.LedgerSequence == nil && modelUsageHasReportedTokens(merged.Usage) {
 		if ledgerHead >= math.MaxInt64 {
 			return CommitLegalModelActionRejectionResult{}, fmt.Errorf(
 				"%w: Usage ledger cannot advance",
@@ -240,9 +238,9 @@ func (store *Store) CommitLegalModelActionRejection(
 		sequence := ledgerHead + 1
 		merged.Usage.LedgerSequence = &sequence
 	}
-	nextBudgetRef := run.Frame.BudgetStateRef
+	nextBudgetRef := run.Frame.UsageLedgerRef
 	if merged.Usage.LedgerSequence != nil {
-		nextBudgetRef, err = corecontract.NewBudgetStateRefV1(
+		nextBudgetRef, err = corecontract.NewUsageLedgerRefV1(
 			run.RunID,
 			*merged.Usage.LedgerSequence,
 		)
@@ -501,7 +499,7 @@ func updateRunAndFrameForLegalActionRejection(
 	}
 	frameUpdate, err := connection.ExecContext(ctx, `
 		UPDATE loop_frames
-		SET frame_revision=?, step=?, budget_state_ref=?, continuation=?,
+		SET frame_revision=?, step=?, usage_ledger_ref=?, continuation=?,
 			pending_attempt_id=NULL, pending_dispatch_attempt_id=NULL,
 			waiting_reason=NULL, last_authoritative_event=?
 		WHERE run_id=? AND frame_revision=? AND step=?

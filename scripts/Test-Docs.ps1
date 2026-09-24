@@ -251,6 +251,16 @@ function Get-SafeRepositoryFiles {
                 Add-DocViolation -Rule 'DOC_REPARSE_POINT' -Path $relative
                 continue
             }
+            if (
+                $relative -ceq 'internal/controlweb/node_modules' -or
+                $relative.StartsWith('internal/controlweb/node_modules/', [System.StringComparison]::Ordinal) -or
+                $relative -ceq 'internal/controlweb/.npm-cache' -or
+                $relative.StartsWith('internal/controlweb/.npm-cache/', [System.StringComparison]::Ordinal) -or
+                $relative -ceq 'internal/controlweb/.vite' -or
+                $relative.StartsWith('internal/controlweb/.vite/', [System.StringComparison]::Ordinal)
+            ) {
+                continue
+            }
             if ($child.PSIsContainer) {
                 $directories.Enqueue($child.FullName)
             } else {

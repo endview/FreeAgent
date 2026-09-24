@@ -136,14 +136,6 @@ func TestAdditionalDefinitionsRejectDuplicatesUnknownPoliciesAndOpenCompositeRef
 			},
 		},
 		{
-			name: "unknown Workspace policy",
-			mutate: func(seed map[string]any) {
-				definitions(seed)["additional_workspaces"] = []any{
-					workspaceDefinition("workspace-ui", "UI Workspace", "missing-budget"),
-				}
-			},
-		},
-		{
 			name: "unknown Profile policy",
 			mutate: func(seed map[string]any) {
 				definitions(seed)["additional_profiles"] = []any{
@@ -280,16 +272,13 @@ func definition(id, name string) map[string]any {
 	}
 }
 
-func workspaceDefinition(id, name, budgetPolicyAlias string) map[string]any {
-	result := definition(id, name)
-	result["budget_policy_alias"] = budgetPolicyAlias
-	return result
+func workspaceDefinition(id, name, _ string) map[string]any {
+	return definition(id, name)
 }
 
 func profileDefinition(id, name, contextPolicyAlias string) map[string]any {
 	result := definition(id, name)
 	result["context_policy_alias"] = contextPolicyAlias
-	result["cost_policy_alias"] = "cost-local-echo"
 	result["scheduling_policy_alias"] = "scheduling-single-member"
 	return result
 }

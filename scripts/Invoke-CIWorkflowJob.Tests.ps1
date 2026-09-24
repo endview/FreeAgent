@@ -14,13 +14,13 @@ $script:ControlWebGate = Join-Path $PSScriptRoot 'Test-ControlWeb.ps1'
 $script:Utf8NoBom = New-Object Text.UTF8Encoding($false)
 $script:ReleaseRevision = '0123456789abcdef0123456789abcdef01234567'
 $script:CrossBuildPayload = [ordered]@{
-    'VERSION' = "v0.1.0-dev.2`n"
+    'VERSION' = "v0.1.1`n"
     'LICENSE' = "fixture project license`n"
     'THIRD_PARTY_NOTICES.md' = "fixture third-party notices`n"
     'docs/INSTALL.md' = "# Install`n"
     'docs/QUICKSTART.md' = "# Quickstart`n"
     'docs/KNOWN_LIMITATIONS.md' = "# Known limitations`n"
-    'docs/RELEASE_NOTES_v0.1.0-dev.2.md' = "# v0.1.0-dev.2`n"
+    'docs/RELEASE_NOTES_v0.1.1.md' = "# v0.1.1`n"
     'docs/CHECKSUMS.md' = "# Verify checksums`n"
     'docs/PACKAGE_CONFIG.md' = "# Package config`n"
     'docs/PACKAGE_DATA.md' = "# Package data`n"
@@ -29,11 +29,11 @@ $script:CrossBuildPayload = [ordered]@{
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml' = "kind: context`n"
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md' = "# Context bootstrap`n"
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json' = "{}`n"
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE' = "echo license`n"
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml' = "kind: model`n"
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md' = "# Echo bootstrap`n"
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json' = "{}`n"
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json' = "{}`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/LICENSE' = "echo license`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.yaml' = "kind: model`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/README.md' = "# Echo bootstrap`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/implementation/adapter.json' = "{}`n"
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/schemas/config.schema.json' = "{}`n"
 }
 $script:CrossBuildArtifactMap = [ordered]@{
     'VERSION' = 'VERSION'
@@ -42,7 +42,7 @@ $script:CrossBuildArtifactMap = [ordered]@{
     'docs/INSTALL.md' = 'INSTALL.md'
     'docs/QUICKSTART.md' = 'QUICKSTART.md'
     'docs/KNOWN_LIMITATIONS.md' = 'KNOWN_LIMITATIONS.md'
-    'docs/RELEASE_NOTES_v0.1.0-dev.2.md' = 'RELEASE_NOTES.md'
+    'docs/RELEASE_NOTES_v0.1.1.md' = 'RELEASE_NOTES.md'
     'docs/CHECKSUMS.md' = 'VERIFY_CHECKSUMS.md'
     'docs/PACKAGE_CONFIG.md' = 'config/README.md'
     'docs/PACKAGE_DATA.md' = 'data/README.md'
@@ -51,11 +51,11 @@ $script:CrossBuildArtifactMap = [ordered]@{
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml'
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md'
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/LICENSE' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/LICENSE'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.yaml'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/README.md'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/implementation/adapter.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/implementation/adapter.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/schemas/config.schema.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/schemas/config.schema.json'
 }
 $script:Cases = 0
 $script:Assertions = 0
@@ -668,7 +668,7 @@ exit /b 0
                 '-trimpath',
                 '-ldflags',
                 '-buildid=',
-                '-X=main.buildVersion=v0.1.0-dev.2',
+                '-X=main.buildVersion=v0.1.1',
                 "-X=main.buildCommit=$($script:ReleaseRevision)",
                 '-X=main.buildTarget=windows/amd64'
             )) {
@@ -703,7 +703,7 @@ exit /b 0
                     -Actual (Get-LowerSha256 -Path $artifactPath)
             }
             Assert-Equal -Name 'release VERSION exact bytes' `
-                -Expected "v0.1.0-dev.2`n" `
+                -Expected "v0.1.1`n" `
                 -Actual ([IO.File]::ReadAllText(
                     (Join-Path $fixture.Artifact 'VERSION'),
                     $script:Utf8NoBom

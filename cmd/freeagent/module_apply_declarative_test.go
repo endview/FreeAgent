@@ -474,16 +474,14 @@ func initializeMultiProfileForModuleApplyV1(
 	}
 	definitions["additional_workspaces"] = []any{
 		map[string]any{
-			"id":                  moduleApplyRoleWorkspace,
-			"version":             "1",
-			"body":                map[string]any{"name": "Role Workspace"},
-			"budget_policy_alias": "budget-local-pure-chat",
+			"id":      moduleApplyRoleWorkspace,
+			"version": "1",
+			"body":    map[string]any{"name": "Role Workspace"},
 		},
 		map[string]any{
-			"id":                  moduleApplySkillWorkspace,
-			"version":             "1",
-			"body":                map[string]any{"name": "Skill Workspace"},
-			"budget_policy_alias": "budget-local-pure-chat",
+			"id":      moduleApplySkillWorkspace,
+			"version": "1",
+			"body":    map[string]any{"name": "Skill Workspace"},
 		},
 	}
 	definitions["additional_profiles"] = []any{
@@ -492,7 +490,6 @@ func initializeMultiProfileForModuleApplyV1(
 			"version":                 "1",
 			"body":                    map[string]any{"mode": "PURE_CHAT", "name": "Role Profile"},
 			"context_policy_alias":    "context-pure-chat",
-			"cost_policy_alias":       "cost-local-echo",
 			"scheduling_policy_alias": "scheduling-single-member",
 		},
 		map[string]any{
@@ -500,7 +497,6 @@ func initializeMultiProfileForModuleApplyV1(
 			"version":                 "1",
 			"body":                    map[string]any{"mode": "PURE_CHAT", "name": "Skill Profile"},
 			"context_policy_alias":    "context-pure-chat",
-			"cost_policy_alias":       "cost-local-echo",
 			"scheduling_policy_alias": "scheduling-single-member",
 		},
 	}
@@ -513,14 +509,17 @@ func initializeMultiProfileForModuleApplyV1(
 		t.Fatal(err)
 	}
 	seedRoot := filepath.Join(root, "multi-profile-seed")
-	for _, moduleID := range []string{
-		"freeagent.builtin.model.echo",
-		"freeagent.builtin.context.basic",
+	for _, module := range []struct {
+		id      string
+		version string
+	}{
+		{id: "freeagent.builtin.model.echo", version: "2.0.0"},
+		{id: "freeagent.builtin.context.basic", version: "1.0.0"},
 	} {
 		copyModuleApplyTestTreeV1(
 			t,
-			filepath.Join(filepath.Dir(sourceSeedPath), "bootstrap-artifacts", moduleID, "1.0.0"),
-			filepath.Join(seedRoot, "bootstrap-artifacts", moduleID, "1.0.0"),
+			filepath.Join(filepath.Dir(sourceSeedPath), "bootstrap-artifacts", module.id, module.version),
+			filepath.Join(seedRoot, "bootstrap-artifacts", module.id, module.version),
 		)
 	}
 	seedPath := filepath.Join(seedRoot, "current-v1.bootstrap.seed.json")

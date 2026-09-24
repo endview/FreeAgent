@@ -116,7 +116,7 @@ func TestModelDispatchEventV1RoundTripAndStateShape(t *testing.T) {
 	success.ResultDigest = strings.Repeat("c", 64)
 	success.TransitionOrigin = DispatchTransitionOrdinaryOutcomeV1
 	success.Usage = &ModelUsageEventV1{
-		Revision: 1, ReconciliationStatus: "NO_USAGE_REPORTED",
+		Revision: 1, UsageStatus: "NO_USAGE_REPORTED",
 		SemanticDigest: strings.Repeat("d", 64),
 	}
 	if _, _, err := NewModelDispatchEventV1(success); err != nil {
@@ -132,7 +132,7 @@ func TestModelDispatchEventV1RoundTripAndStateShape(t *testing.T) {
 	unknown.ResultDigest = strings.Repeat("c", 64)
 	unknown.TransitionOrigin = DispatchTransitionOrdinaryOutcomeV1
 	unknown.Usage = &ModelUsageEventV1{
-		Revision: 1, ReconciliationStatus: "PENDING_RECONCILIATION",
+		Revision: 1, UsageStatus: "PENDING_RECONCILIATION",
 		SemanticDigest: strings.Repeat("d", 64),
 	}
 	if _, _, err := NewModelDispatchEventV1(unknown); err == nil {

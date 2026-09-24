@@ -55,7 +55,6 @@ func TestLoadLoopConversationHistoryFollowsLatestExactSourceCompilation(
 	); err != nil {
 		t.Fatal(err)
 	}
-	putDynamicContextTestPrice(t, fixture.admission.store)
 	firstLease, firstRun := acquireDynamicContextConversationRun(
 		t,
 		fixture.admission.store,
@@ -128,7 +127,6 @@ func TestLoadLoopConversationHistoryDoesNotCrossLatestExactSourceWithoutCompilat
 	widenDynamicContextConversationPolicy(t, fixture.admission)
 	conversationID := "conversation-source-no-cross"
 	createConversationForAdmission(t, fixture.admission, conversationID)
-	putDynamicContextTestPrice(t, fixture.admission.store)
 
 	firstInput := dynamicConversationAdmissionInput(
 		t,

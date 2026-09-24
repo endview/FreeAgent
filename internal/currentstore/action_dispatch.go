@@ -120,7 +120,7 @@ type ActionDispatchAttemptRecord struct {
 	EffectClass               moduleapi.EffectClass
 	MaxResultBytes            uint32
 	Deadline                  time.Time
-	BudgetStateRef            string
+	UsageLedgerRef            string
 	State                     ActionDispatchState
 	ExternalOperationID       string
 	ProviderReceiptRef        string
@@ -411,7 +411,7 @@ func queryActionDispatchRecord(
 			effect_class,
 			max_result_bytes,
 			deadline,
-			budget_state_ref,
+			usage_ledger_ref,
 			state,
 			external_operation_id,
 			provider_receipt_ref,
@@ -444,7 +444,7 @@ func queryActionDispatchRecord(
 		&record.EffectClass,
 		&maxResultBytes,
 		&deadline,
-		&record.BudgetStateRef,
+		&record.UsageLedgerRef,
 		&state,
 		&externalOperationID,
 		&providerReceiptRef,
@@ -548,13 +548,13 @@ func queryActionDispatchRecord(
 		)
 	}
 	record.Deadline = parsedDeadline
-	if _, err := corecontract.ParseBudgetStateRefV1(
-		record.BudgetStateRef,
+	if _, err := corecontract.ParseUsageLedgerRefV1(
+		record.UsageLedgerRef,
 		record.RunID,
 	); err != nil {
 		return ActionDispatchRecord{}, actionAttemptIntegrity(
 			record.AttemptID,
-			"BudgetStateRef",
+			"UsageLedgerRef",
 		)
 	}
 	record.ExternalOperationID = externalOperationID.String

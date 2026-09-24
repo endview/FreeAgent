@@ -24,7 +24,6 @@ func TestWorkspaceTransferControlOptionalPreservesLegacyCanonicalBytes(
 
 	type legacyWorkspaceDefinition struct {
 		Workspace         corecontract.WorkspaceRef   `json:"workspace"`
-		BudgetPolicy      corecontract.PolicyRef      `json:"budget_policy"`
 		ChannelEndpoints  []ChannelEndpointDefinition `json:"channel_endpoints,omitempty"`
 		ChannelIdentities []ChannelIdentityDefinition `json:"channel_identities,omitempty"`
 	}
@@ -47,7 +46,6 @@ func TestWorkspaceTransferControlOptionalPreservesLegacyCanonicalBytes(
 	for index, workspace := range legacy.Workspaces {
 		legacyWorkspaces[index] = legacyWorkspaceDefinition{
 			Workspace:         workspace.Workspace,
-			BudgetPolicy:      workspace.BudgetPolicy,
 			ChannelEndpoints:  workspace.ChannelEndpoints,
 			ChannelIdentities: workspace.ChannelIdentities,
 		}

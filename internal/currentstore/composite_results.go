@@ -1510,7 +1510,6 @@ func compositeReviewerManifestInPlan(
 		reviewer.AdmissionKey == planned.AdmissionKey &&
 		reviewer.TenantID == root.TenantID &&
 		reviewer.Workspace == root.Workspace &&
-		reviewer.BudgetPolicy == root.BudgetPolicy &&
 		reviewer.Deadline.Equal(root.Deadline) &&
 		reviewer.ParentRunID == root.RunID &&
 		reviewer.Composite.RootRunID == root.RunID &&
@@ -1564,8 +1563,6 @@ func compositeRepairManifestInDecisionPlan(
 		return repair.AdmissionKey == planned.AdmissionKey &&
 			repair.TenantID == root.TenantID &&
 			repair.Workspace == expectedWorkspace &&
-			(planned.Transfer != nil ||
-				repair.BudgetPolicy == root.BudgetPolicy) &&
 			repair.Deadline.Equal(root.Deadline) &&
 			repair.ParentRunID == root.RunID &&
 			repair.Composite.RootRunID == root.RunID &&
@@ -1637,8 +1634,6 @@ func validateCompositeChildRunAgainstRoot(
 		child.TaskInputRef != root.TaskInputRef ||
 		child.Workspace != expectedWorkspace ||
 		member.Workspace != expectedWorkspace ||
-		(planned.Transfer == nil &&
-			child.BudgetPolicy != root.BudgetPolicy) ||
 		member.MemberSnapshotDigest != planned.MemberSnapshotDigest ||
 		member.Agent != planned.Agent || member.Profile != planned.Profile ||
 		child.PrimaryAgent != planned.Agent {

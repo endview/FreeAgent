@@ -467,7 +467,7 @@ try {
             & $script:Tool `
                 -RepositoryRoot $repository.Path `
                 -Revision $repository.Revision `
-                -Version 'v0.1.0' `
+                -Version '0.1.0' `
                 -OutputRoot $outputRoot `
                 -GoCommand $goCommand
         }

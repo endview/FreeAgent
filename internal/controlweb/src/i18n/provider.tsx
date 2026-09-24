@@ -34,6 +34,11 @@ export type LocaleDocument = {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
+const defaultRuntime: I18nRuntime = createI18nRuntime(
+  "en-US",
+  i18nResources
+);
+
 const browserLocaleCandidates = (): readonly string[] => {
   if (typeof navigator === "undefined") return [];
   return navigator.languages.length > 0 ? navigator.languages : [navigator.language];
@@ -95,4 +100,9 @@ export function useI18n(): I18nContextValue {
   const value = useContext(I18nContext);
   if (value === null) throw new Error("useI18n must be used within I18nProvider");
   return value;
+}
+
+export function useOptionalI18n(): I18nContextValue {
+  const value = useContext(I18nContext);
+  return value ?? { ...defaultRuntime, setLocale: () => false };
 }

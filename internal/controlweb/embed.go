@@ -68,9 +68,9 @@ func ResolveAsset(path string) (Asset, bool, error) {
 func metadataFor(path string) (assetMetadata, bool) {
 	switch path {
 	case "assets/app.css":
-		return assetMetadata{"text/css; charset=utf-8", "848373990f012036cc54eefe263f7e9380b584675d4db76e9969f9dffd6af73a", 17300}, true
+		return assetMetadata{"text/css; charset=utf-8", "d7b367e63bb3f80f493ce912dc3cf2f4383c7dcb639b1f929f78f60c7ef039e5", 18401}, true
 	case "assets/app.js":
-		return assetMetadata{"text/javascript; charset=utf-8", "eeb19cc9991fad02ea0dfc36cb3a95af5d5fe9790abe5a2bd2f1838aca2f1084", 228790}, true
+		return assetMetadata{"text/javascript; charset=utf-8", "84a84a8fc33410287a1f56738e4037d77105e99c86c43762fc162866c24ea811", 352905}, true
 	case "assets/react.js":
 		return assetMetadata{"text/javascript; charset=utf-8", "87b823d95ddc471c8ea19c7891961eadf87cbc422e600dae77680da28dc393f9", 554455}, true
 	case "assets/tanstack-query.js":

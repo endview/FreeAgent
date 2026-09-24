@@ -1095,7 +1095,7 @@ try {
         Fail-DeveloperPreviewArchive -Code 'DPA_INPUT_COUNT_INVALID'
     }
     if ($Version -cnotmatch
-            '^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-dev\.[1-9][0-9]*$') {
+            '^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') {
         Fail-DeveloperPreviewArchive -Code 'DPA_VERSION_INVALID'
     }
     if ($Commit -cnotmatch '^[0-9a-f]{40}$') {

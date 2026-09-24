@@ -52,7 +52,7 @@ type Verification struct {
 	GeneratorID       string
 }
 
-// Store is the sole writable FAC1 owner. It deliberately exposes no raw SQL
+// Store is the sole writable FAC2 owner. It deliberately exposes no raw SQL
 // handle; all production writes are added as narrow Current Store methods.
 type Store struct {
 	path  string
@@ -86,7 +86,7 @@ func (store *Store) Close() error {
 	return errors.Join(store.db.Close(), store.owner.release())
 }
 
-// InitFreshCurrentStore creates FAC1 only at a caller-selected path that does
+// InitFreshCurrentStore creates FAC2 only at a caller-selected path that does
 // not exist. It builds and verifies a DELETE-journal temporary database in the
 // same directory, then publishes it atomically without replacement.
 func InitFreshCurrentStore(
@@ -196,7 +196,7 @@ func InitFreshCurrentStore(
 	return finalVerification, nil
 }
 
-// PrepareClosedCurrentStoreForPublication turns a closed, verified FAC1 Store
+// PrepareClosedCurrentStoreForPublication turns a closed, verified FAC2 Store
 // into one self-contained SQLite file for atomic publication. It takes the same
 // physical owner fence as normal startup, checkpoints WAL, switches the staged
 // file to DELETE journal mode, syncs it, and verifies it again. It never seeds,
@@ -394,6 +394,13 @@ func initializeTemporaryStore(ctx context.Context, path string) (resultErr error
 	if _, err := connection.ExecContext(ctx, string(migration)); err != nil {
 		return fmt.Errorf("currentstore: apply 0001_current.sql: %w", err)
 	}
+	migration, err = Migration0002()
+	if err != nil {
+		return err
+	}
+	if _, err := connection.ExecContext(ctx, string(migration)); err != nil {
+		return fmt.Errorf("currentstore: apply 0002_server_owned_review.sql: %w", err)
+	}
 	fingerprint, err := DatabaseSchemaFingerprint(ctx, connection)
 	if err != nil {
 		return err
@@ -469,13 +476,22 @@ func verifyBlankSQLite(
 	return nil
 }
 
-// VerifyCurrentStoreReadOnly verifies FAC1 without entering a writable startup
+// VerifyCurrentStoreReadOnly verifies FAC2 without entering a writable startup
 // path, migrating, seeding, repairing or changing journal mode.
 func VerifyCurrentStoreReadOnly(
 	ctx context.Context,
 	path string,
 ) (Verification, error) {
-	return verifyCurrentStoreReadOnly(ctx, path, false)
+	return verifyCurrentStoreReadOnly(ctx, path, false, false)
+}
+
+// VerifyKnownCurrentStoreReadOnly verifies any released schema version known
+// to this binary. Runtime startup must use VerifyCurrentStoreReadOnly instead.
+func VerifyKnownCurrentStoreReadOnly(
+	ctx context.Context,
+	path string,
+) (Verification, error) {
+	return verifyCurrentStoreReadOnly(ctx, path, false, true)
 }
 
 // verifyCurrentStoreReadOnly uses SQLite immutable mode only for callers that
@@ -485,6 +501,7 @@ func verifyCurrentStoreReadOnly(
 	ctx context.Context,
 	path string,
 	immutable bool,
+	allowKnownVersion bool,
 ) (result Verification, returnErr error) {
 	defer func() {
 		returnErr = classifySQLiteOwnerContention(path, returnErr)
@@ -590,7 +607,15 @@ func verifyCurrentStoreReadOnly(
 			err,
 		)
 	}
-	if userVersion != UserVersion {
+	knownVersion, known := KnownSchemaVersion(userVersion)
+	if !known {
+		return Verification{}, fmt.Errorf(
+			"%w: %d",
+			ErrUnknownSchemaVersion,
+			userVersion,
+		)
+	}
+	if !allowKnownVersion && userVersion != UserVersion {
 		return Verification{}, &IdentityError{
 			Field:    "user_version",
 			Expected: strconv.Itoa(UserVersion),
@@ -637,11 +662,11 @@ func verifyCurrentStoreReadOnly(
 			verification.SchemaIdentity,
 		},
 		"schema_version": {
-			strconv.Itoa(UserVersion),
+			strconv.Itoa(userVersion),
 			strconv.Itoa(verification.SchemaVersion),
 		},
 		"schema_fingerprint": {
-			ExpectedSchemaFingerprint,
+			knownVersion.SchemaFingerprint,
 			verification.SchemaFingerprint,
 		},
 		"generator_id": {
@@ -664,10 +689,10 @@ func verifyCurrentStoreReadOnly(
 	if err != nil {
 		return Verification{}, err
 	}
-	if runtimeFingerprint != ExpectedSchemaFingerprint {
+	if runtimeFingerprint != knownVersion.SchemaFingerprint {
 		return Verification{}, &IdentityError{
 			Field:    "runtime schema fingerprint",
-			Expected: ExpectedSchemaFingerprint,
+			Expected: knownVersion.SchemaFingerprint,
 			Actual:   runtimeFingerprint,
 		}
 	}
@@ -735,7 +760,7 @@ func verifyCurrentStoreReadOnly(
 	return verification, nil
 }
 
-// OpenExistingCurrentStore opens only an already verified FAC1 Store, takes
+// OpenExistingCurrentStore opens only an already verified FAC2 Store, takes
 // the single physical writer fence, verifies again after fencing, and then
 // enables the writer journal. It never initializes, migrates, seeds or repairs.
 func OpenExistingCurrentStore(

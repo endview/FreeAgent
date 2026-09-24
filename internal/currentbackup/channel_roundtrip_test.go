@@ -158,7 +158,7 @@ func TestChannelManifestDeclarationsFailClosedForCurrentBackup(t *testing.T) {
 			configure: func(manifest *moduleapi.ModuleManifestV1) {
 				manifest.Requires = []moduleapi.PortRef{{
 					Name:         moduleapi.PortNameModelGenerate,
-					ExactVersion: moduleapi.PortVersionV1,
+					ExactVersion: moduleapi.PortVersionV2,
 				}}
 			},
 		},
@@ -855,7 +855,7 @@ func commitChannelBackupAccepted(
 			ProfileID:     assembly.ProfileID,
 			TaskInputRef:  task.Digest,
 			RequestedPorts: []moduleapi.PortRef{{
-				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1,
+				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2,
 			}},
 			ChannelEndpointID: "channel-backup-endpoint",
 			Deadline:          deadline,
@@ -960,17 +960,15 @@ func commitChannelBackupUnknown(
 		t.Fatal(err)
 	}
 	zero := uint64(0)
-	zeroCost := "0"
-	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion:        moduleapi.ModelUsageReceiptSchemaV1,
-			InputTokens:          &zero,
-			CachedInputTokens:    &zero,
-			UncachedInputTokens:  &zero,
-			OutputTokens:         &zero,
-			ReasoningTokens:      &zero,
-			ProviderReportedCost: &zeroCost,
-			RawReceipt:           json.RawMessage(`{"provider":"channel-backup"}`),
+	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV2,
+			InputTokens:         &zero,
+			CachedInputTokens:   &zero,
+			UncachedInputTokens: &zero,
+			OutputTokens:        &zero,
+			ReasoningTokens:     &zero,
+			RawReceipt:          json.RawMessage(`{"provider":"channel-backup"}`),
 		},
 	)
 	if err != nil {
@@ -1005,7 +1003,6 @@ func commitChannelBackupUnknown(
 			DispatchAttemptID:            "channel-backup-send-attempt",
 			ProposalCanonical:            proposalCanonical,
 			Deadline:                     time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond),
-			BudgetDecision:               currentstore.ChannelBudgetAllow,
 		},
 	)
 	if err != nil {
@@ -1123,7 +1120,7 @@ func compileChannelBackupModelRequest(
 	if !found {
 		t.Fatal("Channel model config is absent")
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		modelConfigContent.CanonicalBytes,
 	)
 	if err != nil {
@@ -1508,8 +1505,8 @@ func assertAdditionalChannelAttemptRejected(t *testing.T, database *sql.DB) {
 			attempt_id, logical_operation_key, run_id, member_id,
 			logical_step_id, frame_revision, member_snapshot_digest,
 			binding_json, context_compilation_ref, request_ref, request_digest,
-			provider, model, parameters_json, deadline, budget_json,
-			billing_version, price_snapshot_id, source_dispatch_attempt_id,
+			provider, model, parameters_json, deadline, usage_ledger_ref,
+			source_dispatch_attempt_id,
 			state, provider_request_id, provider_receipt_ref, result_ref,
 			error_classification, reconciliation_evidence_ref, unknown_reason,
 			revision, created_at, updated_at
@@ -1520,7 +1517,7 @@ func assertAdditionalChannelAttemptRejected(t *testing.T, database *sql.DB) {
 			run_id, member_id, 'forged-model-step', frame_revision,
 			member_snapshot_digest, binding_json, context_compilation_ref,
 			request_ref, request_digest, provider, model, parameters_json,
-			deadline, budget_json, billing_version, price_snapshot_id, NULL,
+			deadline, usage_ledger_ref, NULL,
 			'FAILED', provider_request_id, provider_receipt_ref, NULL,
 			'FORGED_MODEL_FAILURE', reconciliation_evidence_ref, NULL,
 			revision, created_at, updated_at

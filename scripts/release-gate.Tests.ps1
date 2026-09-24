@@ -667,7 +667,7 @@ Assert-ContractPattern -Name 'local download all precedes License and the perman
     -Pattern '(?s)''mod'', ''download'', ''all''.*?Invoke-PermanentGates'
 Assert-ContractPattern -Name 'local permanent gate wrapper fixes the required order' `
     -Source $scriptSource `
-    -Pattern '(?s)function Invoke-PermanentGates.*?Name = ''PublicTree''.*?Name = ''License''.*?Name = ''Docs''.*?Invoke-PowerShellGateSequence'
+    -Pattern '(?s)function Invoke-PermanentGates.*?Name = ''PublicTree''.*?Name = ''License''.*?Name = ''Docs''.*?Name = ''MoneyBanList''.*?Invoke-PowerShellGateSequence'
 Assert-ContractPattern -Name 'local public-tree gate receives absolute root' `
     -Source $scriptSource `
     -Pattern 'Arguments = @\(''-Root'', \$Root\)'
@@ -853,6 +853,7 @@ try {
         PublicTree = Join-Path $gateSequenceFixture 'public-tree.ps1'
         License = Join-Path $gateSequenceFixture 'license.ps1'
         Docs = Join-Path $gateSequenceFixture 'docs.ps1'
+        MoneyBanList = Join-Path $gateSequenceFixture 'money-ban-list.ps1'
     }
     foreach ($name in $gateScripts.Keys) {
         Set-GateSequenceFixture -Path $gateScripts[$name] -Name $name -ExitCode 0
@@ -869,7 +870,7 @@ try {
         -PowerShellCommand $powerShellCommand `
         -GateInvocations $gateInvocations
     $successfulOrder = @((Get-Content -LiteralPath $gateLog -Encoding UTF8))
-    if (($successfulOrder -join ',') -cne 'PublicTree,License,Docs') {
+    if (($successfulOrder -join ',') -cne 'PublicTree,License,Docs,MoneyBanList') {
         throw "permanent gate success order mismatch: $($successfulOrder -join ',')"
     }
 
@@ -1490,6 +1491,13 @@ param(
     [Parameter(Mandatory = $true)][string]$GofmtPath
 )
 Add-Content -LiteralPath $env:FREEAGENT_RELEASE_GATE_FIXTURE_LOG -Value 'gate:Docs' -Encoding UTF8
+'@
+        },
+        @{
+            Name = 'Test-MoneyBanList.ps1'
+            Content = @'
+param([Parameter(Mandatory = $true)][string]$Root)
+Add-Content -LiteralPath $env:FREEAGENT_RELEASE_GATE_FIXTURE_LOG -Value 'gate:MoneyBanList' -Encoding UTF8
 '@
         },
         @{

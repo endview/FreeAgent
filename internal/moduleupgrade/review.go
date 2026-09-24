@@ -183,24 +183,30 @@ const (
 // ReviewKey keep their independently frozen U0 meanings; ReviewID identifies
 // this exact target/basis/diff projection only.
 type ReviewV1 struct {
-	SchemaVersion    string                         `json:"schema_version"`
-	CandidateID      string                         `json:"candidate_id"`
-	ReviewKey        string                         `json:"review_key"`
-	TenantID         string                         `json:"tenant_id"`
-	BindingTarget    BindingTargetV1                `json:"binding_target"`
-	Port             moduleapi.PortRef              `json:"port"`
-	PortBindingIndex uint32                         `json:"port_binding_index"`
-	TargetInstanceID string                         `json:"target_instance_id"`
-	SupplyBasis      SupplyBasisV1                  `json:"supply_basis"`
-	PublishedBasis   controlcontract.PublishedBasis `json:"published_basis"`
-	Current          CurrentExactV1                 `json:"current"`
-	Target           TargetEvidenceV1               `json:"target"`
-	Diff             ManifestDiffV1                 `json:"diff"`
-	Handler          HandlerAssessmentV1            `json:"handler"`
-	BindingImpacts   []BindingImpactV1              `json:"binding_impacts"`
-	RequiredGrants   []RequiredGrantV1              `json:"required_grants"`
-	Conclusion       ConclusionV1                   `json:"conclusion"`
-	ReasonCodes      []ReasonCodeV1                 `json:"reason_codes"`
+	SchemaVersion string `json:"schema_version"`
+	CandidateID   string `json:"candidate_id"`
+	ReviewKey     string `json:"review_key"`
+	TenantID      string `json:"tenant_id"`
+	// ArtifactAdmissionID is the immutable Current Store parent consumed by
+	// the server-owned W6.6 path. Historical caller-owned U3 reviews may omit
+	// it; a server-owned review never does.
+	ArtifactAdmissionID string                         `json:"artifact_admission_id,omitempty"`
+	OperatorPrincipalID string                         `json:"operator_principal_id,omitempty"`
+	ReviewRequestDigest string                         `json:"review_request_digest,omitempty"`
+	BindingTarget       BindingTargetV1                `json:"binding_target"`
+	Port                moduleapi.PortRef              `json:"port"`
+	PortBindingIndex    uint32                         `json:"port_binding_index"`
+	TargetInstanceID    string                         `json:"target_instance_id"`
+	SupplyBasis         SupplyBasisV1                  `json:"supply_basis"`
+	PublishedBasis      controlcontract.PublishedBasis `json:"published_basis"`
+	Current             CurrentExactV1                 `json:"current"`
+	Target              TargetEvidenceV1               `json:"target"`
+	Diff                ManifestDiffV1                 `json:"diff"`
+	Handler             HandlerAssessmentV1            `json:"handler"`
+	BindingImpacts      []BindingImpactV1              `json:"binding_impacts"`
+	RequiredGrants      []RequiredGrantV1              `json:"required_grants"`
+	Conclusion          ConclusionV1                   `json:"conclusion"`
+	ReasonCodes         []ReasonCodeV1                 `json:"reason_codes"`
 }
 
 // NewReviewV1 validates and freezes a review. The exact U0 Candidate and its
@@ -215,6 +221,17 @@ func NewReviewV1(input ReviewV1, candidateCanonical, snapshotCanonical []byte) (
 	}
 	if err := validateOpaque("tenant_id", input.TenantID); err != nil {
 		return ReviewV1{}, nil, "", err
+	}
+	if input.ArtifactAdmissionID != "" && !moduleapi.ValidSHA256(input.ArtifactAdmissionID) {
+		return ReviewV1{}, nil, "", errors.New("moduleupgrade: artifact_admission_id must be empty or SHA-256")
+	}
+	if input.OperatorPrincipalID != "" {
+		if err := validateOpaque("operator_principal_id", input.OperatorPrincipalID); err != nil {
+			return ReviewV1{}, nil, "", err
+		}
+	}
+	if input.ReviewRequestDigest != "" && !moduleapi.ValidSHA256(input.ReviewRequestDigest) {
+		return ReviewV1{}, nil, "", errors.New("moduleupgrade: review_request_digest must be empty or SHA-256")
 	}
 	if err := validateBindingTarget(input.BindingTarget); err != nil {
 		return ReviewV1{}, nil, "", err

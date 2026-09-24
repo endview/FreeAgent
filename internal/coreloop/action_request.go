@@ -169,7 +169,7 @@ func exactActionDispatchForModelTwo(
 	if found == nil ||
 		found.Attempt.State != currentstore.ActionDispatchSucceeded ||
 		found.Attempt.ResultRef == "" ||
-		found.Attempt.BudgetStateRef != run.Frame.BudgetStateRef {
+		found.Attempt.UsageLedgerRef != run.Frame.UsageLedgerRef {
 		return currentstore.ActionDispatchRecord{}, fmt.Errorf(
 			"%w: continuation Action is not a successful result source",
 			ErrInvalidPureChatRequest,

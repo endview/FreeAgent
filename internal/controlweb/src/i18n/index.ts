@@ -30,7 +30,12 @@ export type {
   LocaleStorage
 } from "./locale-preference-store.ts";
 export { LocaleSelector } from "./locale-selector.tsx";
-export { I18nProvider, syncDocumentLocale, useI18n } from "./provider.tsx";
+export {
+  I18nProvider,
+  syncDocumentLocale,
+  useI18n,
+  useOptionalI18n
+} from "./provider.tsx";
 export type { I18nContextValue, LocaleDocument } from "./provider.tsx";
 export { i18nResources } from "./resources.ts";
 export { enUSMessages } from "./catalogs/en-US.ts";

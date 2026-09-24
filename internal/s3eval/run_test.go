@@ -97,11 +97,6 @@ func TestRunThreeWorkspacesReportsReviewerUsageAndServiceOrder(t *testing.T) {
 		*report.Families[2].Tokens.CacheHitRatio != 0 {
 		t.Fatalf("cache ratios=%+v", report.Families)
 	}
-	if report.Families[0].Costs.Estimated.Status !=
-		currentstore.CompositeFamilyCostUnknownV1 ||
-		report.Families[0].Costs.Estimated.Value != nil {
-		t.Fatalf("UNKNOWN cost was not preserved: %+v", report.Families[0].Costs)
-	}
 	if len(report.ServiceOrder) != 7 {
 		t.Fatalf("service order=%+v", report.ServiceOrder)
 	}
@@ -116,10 +111,7 @@ func TestRunThreeWorkspacesReportsReviewerUsageAndServiceOrder(t *testing.T) {
 			attempt.Elapsed != 2*time.Millisecond ||
 			attempt.Provider != "deepseek" ||
 			attempt.Model != "deepseek-v4-pro" ||
-			attempt.RequestDigest == "" ||
-			attempt.PriceSnapshotID != "price-deepseek-v4-pro-test" ||
-			attempt.PriceSnapshotDigest != "digest-price-pro" ||
-			attempt.Currency != "CNY" {
+			attempt.RequestDigest == "" {
 			t.Fatalf("service Attempt %d=%+v", index, attempt)
 		}
 	}
@@ -618,17 +610,14 @@ func fakeProjection(
 			RunID: spec.runID,
 			Role:  spec.role,
 			Attempt: &currentstore.CompositeFamilyAttemptUsageFactV1{
-				AttemptID:           spec.attemptID,
-				LogicalStepID:       "model.generate/v1",
-				State:               state,
-				Provider:            "deepseek",
-				Model:               "deepseek-v4-pro",
-				RequestDigest:       "digest-" + spec.attemptID,
-				PriceSnapshotID:     "price-deepseek-v4-pro-test",
-				PriceSnapshotDigest: "digest-price-pro",
-				Currency:            "CNY",
-				CreatedAt:           spec.createdAt,
-				UpdatedAt:           spec.createdAt.Add(2 * time.Millisecond),
+				AttemptID:     spec.attemptID,
+				LogicalStepID: "model.generate/v2",
+				State:         state,
+				Provider:      "deepseek",
+				Model:         "deepseek-v4-pro",
+				RequestDigest: "digest-" + spec.attemptID,
+				CreatedAt:     spec.createdAt,
+				UpdatedAt:     spec.createdAt.Add(2 * time.Millisecond),
 				Usage: currentstore.ModelUsageRecord{
 					Tokens: corecontract.UsageTokens{
 						Input:         &attemptInput,
@@ -653,15 +642,6 @@ func fakeProjection(
 				UncachedInput: &uncached,
 				Output:        &output,
 				Reasoning:     &reasoning,
-			},
-			EstimatedCost: currentstore.CompositeFamilyCostTotalV1{
-				Status: currentstore.CompositeFamilyCostUnknownV1,
-			},
-			ProviderReportedCost: currentstore.CompositeFamilyCostTotalV1{
-				Status: currentstore.CompositeFamilyCostUnknownV1,
-			},
-			ReconciledCost: currentstore.CompositeFamilyCostTotalV1{
-				Status: currentstore.CompositeFamilyCostUnknownV1,
 			},
 		},
 	}

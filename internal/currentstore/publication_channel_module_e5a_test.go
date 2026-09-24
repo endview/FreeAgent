@@ -22,7 +22,7 @@ func TestW2E5AChannelManifestDeclarationsFailClosedAcrossSharedClosure(
 			extra: map[string]any{
 				"requires": []moduleapi.PortRef{{
 					Name:         moduleapi.PortNameModelGenerate,
-					ExactVersion: moduleapi.PortVersionV1,
+					ExactVersion: moduleapi.PortVersionV2,
 				}},
 			},
 		},

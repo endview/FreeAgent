@@ -270,12 +270,6 @@ func newBindingContractPublication(
 		ActivationRevision: activation.ActivationRevision,
 	}
 	contextPolicy := putPublicationContextPolicy(t, store)
-	costPolicy := putPublicationPolicy(
-		t,
-		store,
-		"binding-cost-policy",
-		corecontract.PolicyCost,
-	)
 	schedulingPolicy := putPublicationPolicy(
 		t,
 		store,
@@ -284,7 +278,7 @@ func newBindingContractPublication(
 	)
 	_, controlRef, controlCanonical, err := controlcontract.NewControlSnapshot(
 		controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    "control-binding-contract",
 			TenantID:      tenantID,
 			Revision:      1,
@@ -296,7 +290,6 @@ func newBindingContractPublication(
 						Digest:  strings.Repeat("1", 64),
 					},
 					ContextPolicy:    contextPolicy,
-					CostPolicy:       costPolicy,
 					SchedulingPolicy: schedulingPolicy,
 					Bindings: []controlcontract.BindingSpec{
 						{

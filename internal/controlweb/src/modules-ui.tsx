@@ -40,6 +40,7 @@ import {
   type ModuleSummary
 } from "./modules.ts";
 import type { ScopeChoice } from "./overview.ts";
+import { useOptionalI18n, type I18nRuntime } from "./i18n/index.ts";
 
 export type ModulesFailureKind =
   | "PERMISSION"
@@ -61,6 +62,8 @@ export type ModulesPageProps = {
   navigationKey?: string;
   onScopeChange: (key: string) => void;
   onNavigateOverview?: () => void;
+  onNavigateReviews?: () => void;
+  onNavigateManagement?: () => void;
   onFailClosed?: (event: ModulesFailClosedEvent) => void;
   onMutationComplete?: (
     result: ModuleDisableMutationResult
@@ -155,10 +158,13 @@ type PendingOperation = {
 const shortDigest = (value: string) =>
   value.length <= 20 ? value : `${value.slice(0, 10)}...${value.slice(-8)}`;
 
-const formatMicros = (value: number) => {
+const formatMicros = (value: number, formatDateTime: I18nRuntime["formatDateTime"]) => {
   const date = new Date(Math.floor(value / 1000));
-  return Number.isNaN(date.getTime()) ? "Invalid time" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "Invalid time" : formatDateTime(date);
 };
+
+const operationValue = (t: I18nRuntime["t"], value: string) =>
+  t(`operation.value.${value}`);
 
 const contextIdentity = (context: ModuleContext) =>
   JSON.stringify([
@@ -196,13 +202,23 @@ const samePublishedBasis = (
   right: Pick<ModulesPageResponse | ModuleDetailResponse, "published_pointer" | "basis">
 ) => publishedIdentity(left) === publishedIdentity(right);
 
-const bindingTargetLabel = (binding: ModuleBindingSummary) =>
+const bindingTargetLabel = (binding: ModuleBindingSummary, t: I18nRuntime["t"]) =>
   binding.target.kind === "PROFILE"
-    ? `Profile ${binding.target.profile_id}`
-    : `Workspace ${binding.target.workspace_id} / endpoint ${binding.target.endpoint_id}`;
+    ? t("modules.binding.profile", { values: { id: binding.target.profile_id } })
+    : t("modules.binding.workspaceEndpoint", {
+        values: {
+          workspace: binding.target.workspace_id,
+          endpoint: binding.target.endpoint_id
+        }
+      });
 
-const operationTargetLabel = (summary: ModuleSummary, binding: ModuleBindingSummary) =>
-  `${summary.instance_id} from ${bindingTargetLabel(binding)}`;
+const operationTargetLabel = (
+  summary: ModuleSummary,
+  binding: ModuleBindingSummary,
+  t: I18nRuntime["t"]
+) => t("operation.target.from", {
+  values: { instance: summary.instance_id, target: bindingTargetLabel(binding, t) }
+});
 
 const detachBinding = (binding: ModuleBindingSummary): ModuleBindingSummary => ({
   target:
@@ -410,24 +426,25 @@ function FailurePanel({
   failure: ModulesFailClosedEvent;
   onRetry?: () => void;
 }) {
+  const { t, formatDateTime } = useOptionalI18n();
   const title = {
-    PERMISSION: "Modules permission denied",
-    SESSION: "Control session unavailable",
-    STALE: "Published basis changed",
-    INTEGRITY: "Modules response was rejected"
+    PERMISSION: t("modules.failure.permission"),
+    SESSION: t("modules.failure.session"),
+    STALE: t("modules.failure.stale"),
+    INTEGRITY: t("modules.failure.integrity")
   }[failure.kind];
   return (
     <main className="entry" aria-labelledby="modules-failure-title">
       <section className="entry__panel entry__panel--compact">
-        <p className="eyebrow">Modules fail-closed boundary</p>
+        <p className="eyebrow">{t("modules.failure.eyebrow")}</p>
         <h1 id="modules-failure-title">{title}</h1>
         <p className="lede">{failure.message}</p>
         {failure.correlationID !== "" && (
-          <p className="correlation">Correlation: {failure.correlationID}</p>
+          <p className="correlation">{t("common.correlation", { values: { id: failure.correlationID } })}</p>
         )}
         {onRetry !== undefined && (
           <button className="button button--primary" type="button" onClick={onRetry}>
-            Reload validated Modules data
+            {t("modules.failure.reload")}
           </button>
         )}
       </section>
@@ -436,13 +453,14 @@ function FailurePanel({
 }
 
 function ModulesLoading() {
+  const { t } = useOptionalI18n();
   return (
     <main className="entry" aria-busy="true" aria-labelledby="modules-loading-title">
       <section className="entry__panel entry__panel--compact">
-        <p className="eyebrow">FreeAgent Control</p>
-        <h1 id="modules-loading-title">Loading Modules...</h1>
+        <p className="eyebrow">{t("loading.brand")}</p>
+        <h1 id="modules-loading-title">{t("modules.loading.title")}</h1>
         <div className="loading-bar" aria-hidden="true"><span /></div>
-        <p className="muted">Waiting for one bounded, authenticated projection.</p>
+        <p className="muted">{t("loading.waitingProjection")}</p>
       </section>
     </main>
   );
@@ -473,25 +491,26 @@ function OperationPanel({
   onReset,
   onReload
 }: OperationPanelProps) {
+  const { t, formatDateTime } = useOptionalI18n();
   if (state.phase === "IDLE") return null;
   if (state.phase === "DRY_RUNNING") {
     return (
       <section className="module-operation" aria-busy="true">
-        <p className="eyebrow">Effect-free evaluation</p>
-        <h3>Running server dry-run</h3>
-        <p>No published state is being changed for {state.target}.</p>
+        <p className="eyebrow">{t("operation.dryRun.eyebrow")}</p>
+        <h3>{t("operation.dryRun.running")}</h3>
+        <p>{t("operation.dryRun.noChange", { values: { target: state.target } })}</p>
       </section>
     );
   }
   if (state.phase === "DRY_RESULT") {
     return (
       <section className="module-operation" aria-live="polite">
-        <p className="eyebrow">Authoritative dry-run result</p>
-        <h3>{state.disposition.replaceAll("_", " ")}</h3>
-        <p>
-          Target: {state.target}. Catalog effect: {state.catalogChange.replaceAll("_", " ")}.
-        </p>
-        <p className="digest">Plan {shortDigest(state.planDigest)}</p>
+        <p className="eyebrow">{t("operation.result.eyebrow")}</p>
+        <h3>{operationValue(t, state.disposition)}</h3>
+        <p>{t("operation.result.target", {
+          values: { target: state.target, effect: operationValue(t, state.catalogChange) }
+        })}</p>
+        <p className="digest">{t("operation.result.plan", { values: { digest: shortDigest(state.planDigest) } })}</p>
         {state.disposition === "WOULD_APPLY" ? (
           <div className="module-operation__actions">
             <button
@@ -499,15 +518,15 @@ function OperationPanel({
               type="button"
               onClick={onRequestConfirmation}
             >
-              Request short-lived confirmation
+              {t("operation.confirm.request")}
             </button>
-            <button className="button" type="button" onClick={onReset}>Cancel</button>
+            <button className="button" type="button" onClick={onReset}>{t("common.cancel")}</button>
           </div>
         ) : (
           <>
-            <p>No mutation request was sent.</p>
+            <p>{t("operation.result.noMutation")}</p>
             <button className="button" type="button" onClick={onAcknowledgeDryResult}>
-              Done and refresh authority
+              {t("operation.result.done")}
             </button>
           </>
         )}
@@ -517,9 +536,9 @@ function OperationPanel({
   if (state.phase === "CONFIRMING") {
     return (
       <section className="module-operation" aria-busy="true">
-        <p className="eyebrow">Confirmation evaluation</p>
-        <h3>Binding the exact request...</h3>
-        <p>The server is re-evaluating {state.target}; no mutation is being sent.</p>
+        <p className="eyebrow">{t("operation.confirming.eyebrow")}</p>
+        <h3>{t("operation.confirming.title")}</h3>
+        <p>{t("operation.confirming.description", { values: { target: state.target } })}</p>
       </section>
     );
   }
@@ -530,58 +549,68 @@ function OperationPanel({
         role="alertdialog"
         aria-labelledby="module-confirm-title"
       >
-        <p className="eyebrow">Explicit operator confirmation</p>
-        <h3 id="module-confirm-title">Disable this exact Profile binding?</h3>
-        <p>
-          The server evaluated {state.target} as WOULD APPLY. The projected catalog effect is
-          {` ${state.catalogChange.replaceAll("_", " ")}`}.
-        </p>
-        <p>Confirmation expires {formatMicros(state.expiresAtUnixMicros)}.</p>
+        <p className="eyebrow">{t("operation.confirm.eyebrow")}</p>
+        <h3 id="module-confirm-title">{t("operation.confirm.title")}</h3>
+        <p>{t("operation.confirm.description", {
+          values: { target: state.target, effect: operationValue(t, state.catalogChange) }
+        })}</p>
+        <p>{t("operation.confirm.expires", { values: { time: formatMicros(state.expiresAtUnixMicros, formatDateTime) } })}</p>
         <dl className="module-facts">
-          <div><dt>Principal</dt><dd>{state.review.principalID}</dd></div>
+          <div><dt>{t("operation.fact.principal")}</dt><dd>{state.review.principalID}</dd></div>
           <div>
-            <dt>Scope</dt>
+            <dt>{t("operation.fact.scope")}</dt>
             <dd>
-              {state.review.scopeKind} / tenant {state.review.tenantID}
-              {state.review.workspaceID === "" ? "" : ` / workspace ${state.review.workspaceID}`}
+              {t("operation.fact.scopeValue", {
+                values: {
+                  kind: state.review.scopeKind === "TENANT" ? t("common.tenant") : t("common.workspace"),
+                  tenant: state.review.tenantID,
+                  workspace: state.review.workspaceID === ""
+                    ? ""
+                    : t("operation.fact.workspaceSuffix", { values: { workspace: state.review.workspaceID } })
+                }
+              })}
             </dd>
           </div>
-          <div><dt>Published pointer revision</dt><dd>{state.review.expectedRevision}</dd></div>
-          <div><dt>Instance</dt><dd>{state.review.instanceID}</dd></div>
+          <div><dt>{t("operation.fact.pointerRevision")}</dt><dd>{state.review.expectedRevision}</dd></div>
+          <div><dt>{t("operation.fact.instance")}</dt><dd>{state.review.instanceID}</dd></div>
           <div>
-            <dt>Port / binding index</dt>
+            <dt>{t("operation.fact.portBinding")}</dt>
             <dd>
-              {state.review.portName}@{state.review.portVersion} / {state.review.portBindingIndex}
+              {t("operation.fact.portValue", { values: {
+                name: state.review.portName,
+                version: state.review.portVersion,
+                index: state.review.portBindingIndex
+              } })}
             </dd>
           </div>
-          <div><dt>Profile target</dt><dd>{state.review.targetProfileID}</dd></div>
-          <div><dt>Failure policy</dt><dd>{state.review.failurePolicy}</dd></div>
-          <div><dt>Catalog effect</dt><dd>{state.catalogChange.replaceAll("_", " ")}</dd></div>
+          <div><dt>{t("operation.fact.profileTarget")}</dt><dd>{state.review.targetProfileID}</dd></div>
+          <div><dt>{t("operation.fact.failurePolicy")}</dt><dd>{operationValue(t, state.review.failurePolicy)}</dd></div>
+          <div><dt>{t("operation.fact.catalogEffect")}</dt><dd>{operationValue(t, state.catalogChange)}</dd></div>
         </dl>
         <div className="module-operation__digests">
-          <p><strong>Scope digest</strong> <code>{state.review.scopeDigest}</code></p>
+          <p><strong>{t("operation.digest.scope")}</strong> <code>{state.review.scopeDigest}</code></p>
           <p>
-            <strong>Expected ref</strong>{" "}
+            <strong>{t("operation.digest.expectedRef")}</strong>{" "}
             <code>
               {state.review.expectedKind}:{state.review.expectedResourceID}:
               {state.review.expectedRevision}:{state.review.expectedDigest}
             </code>
           </p>
-          <p><strong>Config ref</strong> <code>{state.review.configRef}</code></p>
-          <p><strong>Authority ceiling</strong> <code>{state.review.authorityCeilingRef}</code></p>
+          <p><strong>{t("operation.digest.configRef")}</strong> <code>{state.review.configRef}</code></p>
+          <p><strong>{t("operation.digest.authorityCeiling")}</strong> <code>{state.review.authorityCeilingRef}</code></p>
           <p>
-            <strong>Static context refs</strong>{" "}
+            <strong>{t("operation.digest.staticRefs")}</strong>{" "}
             <code>
               {state.review.staticContextRefs.length === 0
-                ? "none"
+                ? t("operation.staticRefs.empty")
                 : state.review.staticContextRefs.join(",")}
             </code>
           </p>
-          <p><strong>Input digest</strong> <code>{state.review.inputDigest}</code></p>
-          <p><strong>Plan digest</strong> <code>{state.planDigest}</code></p>
-          <p><strong>Idempotency-key digest</strong> <code>{state.review.idempotencyKeyDigest}</code></p>
-          <p><strong>Evaluation digest</strong> <code>{state.review.evaluationDigest}</code></p>
-          <p><strong>Statement digest</strong> <code>{state.review.statementDigest}</code></p>
+          <p><strong>{t("operation.digest.input")}</strong> <code>{state.review.inputDigest}</code></p>
+          <p><strong>{t("operation.digest.plan")}</strong> <code>{state.planDigest}</code></p>
+          <p><strong>{t("operation.digest.idempotency")}</strong> <code>{state.review.idempotencyKeyDigest}</code></p>
+          <p><strong>{t("operation.digest.evaluation")}</strong> <code>{state.review.evaluationDigest}</code></p>
+          <p><strong>{t("operation.digest.statement")}</strong> <code>{state.review.statementDigest}</code></p>
         </div>
         <label className="module-confirmation-check">
           <input
@@ -589,7 +618,7 @@ function OperationPanel({
             checked={confirmationAccepted}
             onChange={(event) => onConfirmationAccepted(event.currentTarget.checked)}
           />
-          <span>I understand this sends one governed published-state mutation.</span>
+          <span>{t("operation.confirm.checkbox")}</span>
         </label>
         <div className="module-operation__actions">
           <button
@@ -598,9 +627,9 @@ function OperationPanel({
             disabled={!confirmationAccepted}
             onClick={onExplicitConfirm}
           >
-            Confirm and disable binding
+            {t("operation.confirm.submit")}
           </button>
-          <button className="button" type="button" onClick={onReset}>Cancel</button>
+          <button className="button" type="button" onClick={onReset}>{t("common.cancel")}</button>
         </div>
       </section>
     );
@@ -608,31 +637,30 @@ function OperationPanel({
   if (state.phase === "MUTATING") {
     return (
       <section className="module-operation" aria-busy="true">
-        <p className="eyebrow">Governed mutation</p>
-        <h3>{state.exactRetry ? "Replaying the exact request..." : "Waiting for an authoritative receipt..."}</h3>
-        <p>The page will not update local authority optimistically for {state.target}.</p>
+        <p className="eyebrow">{t("operation.mutating.eyebrow")}</p>
+        <h3>{state.exactRetry ? t("operation.mutating.replay") : t("operation.mutating.waiting")}</h3>
+        <p>{t("operation.mutating.description", { values: { target: state.target } })}</p>
       </section>
     );
   }
   if (state.phase === "MUTATION_UNCERTAIN") {
     return (
       <section className="module-operation module-operation--warning" role="alert">
-        <p className="eyebrow">Outcome not yet known</p>
-        <h3>Do not construct a replacement mutation</h3>
+        <p className="eyebrow">{t("operation.uncertain.eyebrow")}</p>
+        <h3>{t("operation.uncertain.title")}</h3>
         <p>{state.message}</p>
         <p>
-          Only an exact replay of the original body, idempotency key, precondition, and evaluation
-          digest is available. The confirmation proof will not be resent.
+          {t("operation.uncertain.description")}
         </p>
         {state.correlationID !== "" && (
-          <p className="correlation">Correlation: {state.correlationID}</p>
+          <p className="correlation">{t("common.correlation", { values: { id: state.correlationID } })}</p>
         )}
         <div className="module-operation__actions">
           <button className="button button--primary" type="button" onClick={onExactRetry}>
-            Retry exact request
+            {t("operation.uncertain.retry")}
           </button>
           <button className="button" type="button" onClick={onReload}>
-            Discard retry state and reload authority
+            {t("operation.uncertain.reload")}
           </button>
         </div>
       </section>
@@ -641,32 +669,32 @@ function OperationPanel({
   if (state.phase === "COMPLETE") {
     return (
       <section className="module-operation module-operation--complete" aria-live="polite">
-        <p className="eyebrow">Authoritative mutation receipt</p>
-        <h3>{state.status.replaceAll("_", " ")}</h3>
+        <p className="eyebrow">{t("operation.complete.eyebrow")}</p>
+        <h3>{operationValue(t, state.status)}</h3>
         <p>
-          The server completed {state.target} at {formatMicros(state.completedAtUnixMicros)}.
+          {t("operation.complete.description", { values: { target: state.target, time: formatMicros(state.completedAtUnixMicros, formatDateTime) } })}
         </p>
-        <p className="digest">Receipt {shortDigest(state.receiptDigest)}</p>
-        <button className="button" type="button" onClick={onReset}>Close receipt</button>
+        <p className="digest">{t("operation.complete.receipt", { values: { digest: shortDigest(state.receiptDigest) } })}</p>
+        <button className="button" type="button" onClick={onReset}>{t("operation.complete.close")}</button>
       </section>
     );
   }
   return (
     <section className="module-operation notice notice--error" role="alert">
-      <p className="eyebrow">{state.step.replaceAll("_", " ")} stopped</p>
-      <h3>The operation did not advance</h3>
+      <p className="eyebrow">{t("operation.error.stopped", { values: { step: t(`operation.step.${state.step}`) } })}</p>
+      <h3>{t("operation.error.title")}</h3>
       <p>{state.message}</p>
       {state.correlationID !== "" && (
-        <p className="correlation">Correlation: {state.correlationID}</p>
+        <p className="correlation">{t("common.correlation", { values: { id: state.correlationID } })}</p>
       )}
       <div className="module-operation__actions">
         {state.retryable && (
           <button className="button button--primary" type="button" onClick={onRetryStep}>
-            Retry same step
+            {t("operation.error.retry")}
           </button>
         )}
         <button className="button" type="button" onClick={onReset}>
-          {state.retryable ? "Cancel" : "Restart review"}
+          {state.retryable ? t("common.cancel") : t("operation.error.restart")}
         </button>
       </div>
     </section>
@@ -681,9 +709,12 @@ export function ModulesPage({
   navigationKey = "modules",
   onScopeChange,
   onNavigateOverview,
+  onNavigateReviews,
+  onNavigateManagement,
   onFailClosed,
   onMutationComplete
 }: ModulesPageProps) {
+  const { t, formatDateTime, formatNumber } = useOptionalI18n();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedInstanceID, setSelectedInstanceID] = useState<string | null>(null);
@@ -844,7 +875,7 @@ export function ModulesPage({
       setOperation({ phase: "IDLE" });
       setOperationFailure({
         kind: "SESSION",
-        message: "The control session expired before this operation completed.",
+        message: t("operation.client.sessionExpiredDuring"),
         correlationID: ""
       });
     }, Math.max(0, remaining));
@@ -863,7 +894,7 @@ export function ModulesPage({
         target: operation.target,
         step: "CONFIRMATION",
         retryable: false,
-        message: "The short-lived confirmation expired. Start a new dry-run.",
+        message: t("operation.client.confirmExpired"),
         correlationID: ""
       });
     }, Math.max(0, remaining));
@@ -875,20 +906,20 @@ export function ModulesPage({
     if (sessionExpired) {
       return {
         kind: "SESSION",
-        message: "The control session has expired. Open a new handoff.",
+        message: t("operation.client.sessionExpired"),
         correlationID: ""
       };
     }
     if (!session.capabilities.includes("OBSERVE")) {
       return {
         kind: "PERMISSION",
-        message: "This session does not hold OBSERVE for the Modules surface.",
+        message: t("operation.client.permission"),
         correlationID: ""
       };
     }
     return {
       kind: "INTEGRITY",
-      message: "The Modules session, scope, and transport context do not match exactly.",
+      message: t("operation.client.contextMismatch"),
       correlationID: ""
     };
   }, [contextIsValid, session.capabilities, sessionExpired]);
@@ -897,7 +928,7 @@ export function ModulesPage({
     if (!pagesAligned || !detailAligned) {
       return {
         kind: "STALE",
-        message: "The Modules list and detail are not bound to one published basis.",
+        message: t("operation.client.basisMismatch"),
         correlationID: ""
       };
     }
@@ -911,7 +942,7 @@ export function ModulesPage({
     const safe = safeErrorText(
       error,
       pendingRef.current,
-      "The Modules response failed its fail-closed boundary."
+      t("operation.client.boundary")
     );
     return { ...failure, ...safe };
   }, [detail.error, detailAligned, modules.error, pagesAligned]);
@@ -1018,7 +1049,7 @@ export function ModulesPage({
         enterCriticalFailure({
           kind: "INTEGRITY",
           message:
-            "The dry-run selected a different binding than the exact binding reviewed by the operator.",
+            t("operation.client.differentBinding"),
           correlationID: ""
         });
         return;
@@ -1038,7 +1069,7 @@ export function ModulesPage({
         "DRY_RUN",
         error,
         epoch,
-        "The MODULE_DISABLE dry-run did not return a trusted result."
+        t("operation.client.untrustedDryRun")
       );
     } finally {
       if (epoch === operationEpochRef.current) {
@@ -1073,7 +1104,7 @@ export function ModulesPage({
       const operationContext = withPublishedModulesBasis(context, detail.data);
       const nextPending: PendingOperation = {
         identity: currentOperationIdentity,
-        target: operationTargetLabel(summary, binding),
+        target: operationTargetLabel(summary, binding, t),
         context: operationContext,
         body: {
           schema_version: "control-module-disable-dry-run-input/v1",
@@ -1138,7 +1169,7 @@ export function ModulesPage({
           "CONFIRMATION",
           error,
           operationEpochRef.current,
-          "A secure confirmation request could not be prepared."
+          t("operation.client.secureConfirmation")
         );
         return;
       }
@@ -1163,7 +1194,7 @@ export function ModulesPage({
         result.confirmation_proof = "";
         enterCriticalFailure({
           kind: "STALE",
-          message: "The confirmation expired before it could be presented for explicit approval.",
+          message: t("operation.client.confirmExpiredBeforeApproval"),
           correlationID: ""
         });
         return;
@@ -1172,7 +1203,7 @@ export function ModulesPage({
         result.confirmation_proof = "";
         enterCriticalFailure({
           kind: "STALE",
-          message: "Confirmation no longer evaluates the exact request as WOULD APPLY.",
+          message: t("operation.client.confirmNoLongerApplies"),
           correlationID: ""
         });
         return;
@@ -1187,7 +1218,7 @@ export function ModulesPage({
         enterCriticalFailure({
           kind: "INTEGRITY",
           message:
-            "Confirmation selected a different binding than the exact binding reviewed by the operator.",
+            t("operation.client.confirmDifferentBinding"),
           correlationID: ""
         });
         return;
@@ -1200,7 +1231,7 @@ export function ModulesPage({
         result.confirmation_proof = "";
         enterCriticalFailure({
           kind: "STALE",
-          message: "Confirmation drifted from the exact authoritative dry-run projection.",
+          message: t("operation.client.confirmDrift"),
           correlationID: ""
         });
         return;
@@ -1218,7 +1249,7 @@ export function ModulesPage({
       ) {
         enterCriticalFailure({
           kind: "INTEGRITY",
-          message: "Confirmation returned an invalid MODULE_DISABLE catalog effect.",
+          message: t("operation.client.invalidCatalogEffect"),
           correlationID: ""
         });
         return;
@@ -1264,7 +1295,7 @@ export function ModulesPage({
         "CONFIRMATION",
         error,
         epoch,
-        "The confirmation endpoint did not return a trusted exact evaluation."
+        t("operation.client.confirmUntrusted")
       );
     } finally {
       if (epoch === operationEpochRef.current) {
@@ -1297,7 +1328,7 @@ export function ModulesPage({
           target,
           step: "CONFIRMATION",
           retryable: false,
-          message: "The short-lived confirmation expired. Start a new dry-run.",
+          message: t("operation.client.confirmExpired"),
           correlationID: ""
         });
         return;
@@ -1342,7 +1373,7 @@ export function ModulesPage({
         ) {
           enterCriticalFailure({
             kind: "INTEGRITY",
-            message: "The MODULE_DISABLE mutation returned a non-mutation receipt status.",
+            message: t("operation.client.nonMutationReceipt"),
             correlationID: ""
           });
           return;
@@ -1374,7 +1405,7 @@ export function ModulesPage({
           "MUTATE",
           error,
           epoch,
-          "The mutation outcome could not be established from a trusted receipt."
+          t("operation.client.uncertainReceipt")
         );
       } finally {
         if (epoch === operationEpochRef.current) {
@@ -1467,7 +1498,7 @@ export function ModulesPage({
       const safe = safeErrorText(
         modules.error,
         null,
-        "The Modules projection could not be read."
+        t("operation.client.projectionRead")
       );
       return (
         <FailurePanel
@@ -1496,80 +1527,81 @@ export function ModulesPage({
         <a
           className="brand"
           href="#overview"
-          aria-label="FreeAgent Control Overview"
+          aria-label={t("brand.overviewAria")}
           onClick={navigateOverview}
         >
           <span className="brand__mark" aria-hidden="true">F</span>
-          <span>FreeAgent Control</span>
+          <span>{t("brand.name")}</span>
         </a>
         <div className="topbar__status">
           <span
             className={`status-dot${statusStale ? " status-dot--stale" : ""}`}
             aria-hidden="true"
           />
-          {modules.isFetching ? "Refreshing" : modules.error !== null ? "Stale" : "Current"}
+          {modules.isFetching ? t("common.refreshing") : modules.error !== null ? t("common.stale") : t("common.current")}
         </div>
       </header>
 
-      <aside className="sidebar" aria-label="Control navigation">
-        <p className="sidebar__label">Control</p>
+      <aside className="sidebar" aria-label={t("overview.nav.aria")}>
+        <p className="sidebar__label">{t("overview.nav.control")}</p>
         <nav>
-          <a href="#overview" onClick={navigateOverview}>Overview</a>
-          <a href="#modules" aria-current="page">Modules</a>
+          <a href="#overview" onClick={navigateOverview}>{t("overview.nav.status")}</a>
+          <a href="#modules" aria-current="page">{t("overview.nav.modules")}</a>
+          <a href="#upgrade-reviews" onClick={onNavigateReviews}>{t("overview.nav.reviews")}</a>
+          <a href="#management" onClick={onNavigateManagement}>{t("overview.nav.management")}</a>
         </nav>
         <div className="session-card">
-          <span>Session</span>
+          <span>{t("session.open.title")}</span>
           <strong>{session.principal_id}</strong>
-          <small>Expires {formatMicros(session.expires_at_unix_micros)}</small>
+          <small>{t("common.expires", { values: { time: formatMicros(session.expires_at_unix_micros, formatDateTime) } })}</small>
         </div>
       </aside>
 
       <main className="content modules-content" id="modules">
         <section className="page-heading">
           <div>
-            <p className="eyebrow">Authorized configuration surface</p>
-            <h1>Modules</h1>
-            <p className="lede">
-              Validated module instances and bindings at published pointer revision
-              {` ${pageBasis.pointer_revision}`}.
-            </p>
+            <p className="eyebrow">{t("modules.eyebrow")}</p>
+            <h1>{t("modules.title")}</h1>
+            <p className="lede">{t("modules.description", { values: { revision: pageBasis.pointer_revision } })}</p>
           </div>
           <button className="button" type="button" onClick={reloadAuthority}>
-            {modules.isFetching ? "Refreshing..." : "Refresh exact basis"}
+            {modules.isFetching ? t("common.refreshing") : t("modules.refresh")}
           </button>
         </section>
 
-        <section className="toolbar modules-toolbar" aria-label="Modules filters">
+        <section className="toolbar modules-toolbar" aria-label={t("modules.controls.aria")}>
           <label>
-            <span>Authorized scope</span>
+            <span>{t("overview.scope")}</span>
             <select value={selectedScopeKey} onChange={onSelectScope}>
               {scopeChoices.map((choice) => (
-                <option value={choice.key} key={choice.key}>{choice.label}</option>
+                <option value={choice.key} key={choice.key}>{choice.scope.kind === "TENANT"
+                  ? t("scope.tenant", { values: { tenant: choice.scope.tenant_id } })
+                  : t("scope.workspace", { values: { tenant: choice.scope.tenant_id, workspace: choice.scope.workspace_id ?? "" } })}</option>
               ))}
             </select>
           </label>
           <label>
-            <span>Search current pages</span>
+            <span>{t("modules.search")}</span>
             <input
               type="search"
               value={search}
               maxLength={256}
               onChange={(event) => setSearch(event.currentTarget.value)}
-              placeholder="Instance, module, version, class"
+              placeholder={t("modules.searchPlaceholder")}
             />
           </label>
         </section>
 
         {!session.capabilities.includes("OPERATE_MODULES") && (
           <div className="notice notice--warning" role="status">
-            <strong>Read-only Modules session.</strong>
-            <span>OPERATE_MODULES is not present, so no mutation control is rendered.</span>
+            <strong>{t("modules.readOnly.title")}</strong>
+            <span>{t("modules.readOnly.description")}</span>
           </div>
         )}
         {session.capabilities.includes("OPERATE_MODULES") && context.scope.kind !== "TENANT" && (
           <div className="notice notice--warning" role="status">
-            <strong>Workspace scope is read-only for MODULE_DISABLE.</strong>
-            <span>Select an authorized Tenant scope to review a narrow Profile binding.</span>
+            <strong>{t("modules.workspaceReadOnly.title")}</strong>
+            <span>{t("modules.workspaceReadOnly.description")}</span>
           </div>
         )}
 
@@ -1577,20 +1609,20 @@ export function ModulesPage({
           <section className="data-section modules-list" aria-labelledby="modules-list-title">
             <header>
               <div>
-                <p className="eyebrow">Current validated pages</p>
-                <h2 id="modules-list-title">Module instances</h2>
+                <p className="eyebrow">{t("modules.list.eyebrow")}</p>
+                <h2 id="modules-list-title">{t("modules.list.title")}</h2>
               </div>
-              <span className="section-meta">{summaries.length} loaded</span>
+              <span className="section-meta">{t("modules.list.loaded", { count: summaries.length })}</span>
             </header>
             {modules.error !== null && (
               <div className="notice notice--error" role="alert">
-                <strong>Background refresh failed.</strong>
-                <span>{safeErrorText(modules.error, null, "Modules refresh failed.").message}</span>
-                <button className="button" type="button" onClick={reloadAuthority}>Retry</button>
+                <strong>{t("modules.refreshFailed")}</strong>
+                <span>{safeErrorText(modules.error, null, t("modules.refreshFailedMessage")).message}</span>
+                <button className="button" type="button" onClick={reloadAuthority}>{t("common.retry")}</button>
               </div>
             )}
             {filteredSummaries.length === 0 ? (
-              <p className="empty-copy">No loaded module instance matches this search.</p>
+              <p className="empty-copy">{t("modules.list.empty")}</p>
             ) : (
               <ul className="result-list modules-result-list">
                 {filteredSummaries.map((summary) => (
@@ -1610,8 +1642,12 @@ export function ModulesPage({
                     >
                       <span className="result-link__title">{summary.instance_id}</span>
                       <span className="result-link__summary">
-                        {summary.module_id} @ {summary.exact_version} / {summary.execution_class}
-                        {` / ${summary.visible_binding_count} visible bindings`}
+                        {t("modules.list.summary", { values: {
+                          module: summary.module_id,
+                          version: summary.exact_version,
+                          execution: summary.execution_class,
+                          count: summary.visible_binding_count
+                        } })}
                       </span>
                       <span className="result-link__arrow" aria-hidden="true">&gt;</span>
                     </button>
@@ -1626,7 +1662,7 @@ export function ModulesPage({
                 disabled={modules.isFetchingNextPage}
                 onClick={() => { void modules.fetchNextPage(); }}
               >
-                {modules.isFetchingNextPage ? "Loading..." : "Load next validated page"}
+                {modules.isFetchingNextPage ? t("loading.modules") : t("modules.loadNext")}
               </button>
             )}
           </section>
@@ -1634,9 +1670,9 @@ export function ModulesPage({
           <section className="data-section module-detail" aria-labelledby="module-detail-title">
             <header>
               <div>
-                <p className="eyebrow">Exact instance detail</p>
+                <p className="eyebrow">{t("modules.detail.eyebrow")}</p>
                 <h2 id="module-detail-title">
-                  {selectedSummary?.instance_id ?? "Select a module"}
+                  {selectedSummary?.instance_id ?? t("modules.detail.select")}
                 </h2>
               </div>
               {selectedInstanceID !== null && (
@@ -1650,21 +1686,21 @@ export function ModulesPage({
                     setSelectedInstanceID(null);
                   }}
                 >
-                  Close
+                  {t("common.close")}
                 </button>
               )}
             </header>
             {selectedInstanceID === null ? (
               <p className="empty-copy">
-                Select an instance to fetch its independently validated binding detail.
+                {t("modules.detail.selectDescription")}
               </p>
             ) : detail.isPending ? (
-              <p className="empty-copy" aria-busy="true">Loading exact module detail...</p>
+              <p className="empty-copy" aria-busy="true">{t("modules.detail.loading")}</p>
             ) : detail.error !== null || detail.data === undefined ? (
               <div className="notice notice--error" role="alert">
-                <strong>Detail unavailable.</strong>
+                <strong>{t("modules.detail.unavailable")}</strong>
                 <span>
-                  {safeErrorText(detail.error, null, "Module detail could not be read.").message}
+                  {safeErrorText(detail.error, null, t("modules.detail.readFailed")).message}
                 </span>
                 <button
                   className="button"
@@ -1674,25 +1710,25 @@ export function ModulesPage({
                     void detail.refetch();
                   }}
                 >
-                  Retry detail
+                  {t("modules.detail.retry")}
                 </button>
               </div>
             ) : (
               <>
                 <dl className="module-facts">
-                  <div><dt>Module</dt><dd>{detail.data.module.summary.module_id}</dd></div>
-                  <div><dt>Version</dt><dd>{detail.data.module.summary.exact_version}</dd></div>
-                  <div><dt>Execution</dt><dd>{detail.data.module.summary.execution_class}</dd></div>
-                  <div><dt>Adapter</dt><dd>{detail.data.module.summary.adapter_identity}</dd></div>
+                  <div><dt>{t("modules.detail.module")}</dt><dd>{detail.data.module.summary.module_id}</dd></div>
+                  <div><dt>{t("modules.detail.version")}</dt><dd>{detail.data.module.summary.exact_version}</dd></div>
+                  <div><dt>{t("modules.detail.execution")}</dt><dd>{detail.data.module.summary.execution_class}</dd></div>
+                  <div><dt>{t("modules.detail.adapter")}</dt><dd>{detail.data.module.summary.adapter_identity}</dd></div>
                   <div>
-                    <dt>Artifact</dt>
+                    <dt>{t("modules.detail.artifact")}</dt>
                     <dd className="digest">{shortDigest(detail.data.module.summary.artifact_digest)}</dd>
                   </div>
                 </dl>
                 <div className="module-bindings">
-                  <h3>Visible bindings</h3>
+                  <h3>{t("modules.bindings.title")}</h3>
                   {detail.data.module.bindings.length === 0 ? (
-                    <p className="empty-copy">No binding is visible in this authorized scope.</p>
+                    <p className="empty-copy">{t("modules.bindings.empty")}</p>
                   ) : (
                     <ul className="module-binding-list">
                       {detail.data.module.bindings.map((binding) => {
@@ -1719,12 +1755,16 @@ export function ModulesPage({
                         return (
                           <li key={key} className="module-binding">
                             <div>
-                              <strong>{bindingTargetLabel(binding)}</strong>
+                              <strong>{bindingTargetLabel(binding, t)}</strong>
                               <span>
-                                {binding.port.name}/{binding.port.exact_version}
-                                {` / ${binding.failure_policy} / index ${binding.port_binding_index}`}
+                                {t("modules.binding.detail", { values: {
+                                  port: binding.port.name,
+                                  version: binding.port.exact_version,
+                                  policy: operationValue(t, binding.failure_policy),
+                                  index: binding.port_binding_index
+                                } })}
                               </span>
-                              <small>{binding.static_context_refs.length} static context refs</small>
+                              <small>{t("modules.binding.staticRefs", { count: binding.static_context_refs.length })}</small>
                             </div>
                             {candidate && lowestCandidate && canOperate ? (
                               <button
@@ -1735,14 +1775,14 @@ export function ModulesPage({
                                 }
                                 onClick={() => startDryRun(detail.data.module.summary, binding)}
                               >
-                                Review disable
+                                {t("modules.binding.reviewDisable")}
                               </button>
                             ) : candidate && !lowestCandidate ? (
-                              <span className="tag">Higher duplicate binding index</span>
+                              <span className="tag">{t("modules.binding.duplicate")}</span>
                             ) : candidate ? (
-                              <span className="tag">Tenant OPERATE_MODULES required</span>
+                              <span className="tag">{t("modules.binding.tenantRequired")}</span>
                             ) : (
-                              <span className="tag">Outside narrow disable candidate</span>
+                              <span className="tag">{t("modules.binding.outsideCandidate")}</span>
                             )}
                           </li>
                         );
@@ -1771,11 +1811,10 @@ export function ModulesPage({
 
         <footer className="page-footer">
           <span>
-            Reads are bounded and same-origin. MODULE_DISABLE is server-authoritative and
-            non-optimistic.
+            {t("modules.footer")}
           </span>
           <span className="digest">
-            Pointer {shortDigest(modules.data.pages[0].published_pointer.digest)}
+            {t("modules.footer.pointer", { values: { digest: shortDigest(modules.data.pages[0].published_pointer.digest) } })}
           </span>
         </footer>
       </main>

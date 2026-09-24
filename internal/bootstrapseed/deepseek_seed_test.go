@@ -9,14 +9,13 @@ import (
 	"testing"
 
 	"github.com/endview/freeagent/internal/bootstrapseed"
-	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentstore"
 	"github.com/endview/freeagent/sdk/moduleapi"
 )
 
 const (
 	deepSeekAdapterIdentity = "freeagent.adapter.model.deepseek/v1"
-	deepSeekSeedSHA256      = "0103b85f0513900a09c6fd04b38fd94f3a8d50185493d84010b6c60f4f462d48"
+	deepSeekSeedSHA256      = "1b96925cb1e9daf244035ae045694a906ce7ca8010281499f839d4c094229c99"
 )
 
 func TestDeepSeekPureChatSeedImportsExactSingleProviderClosure(t *testing.T) {
@@ -52,9 +51,9 @@ func TestDeepSeekPureChatSeedImportsExactSingleProviderClosure(t *testing.T) {
 	model := assertions[0]
 	if model != prepared.ModelAssertion() ||
 		model.ModuleID != "freeagent.builtin.model.deepseek" ||
-		model.ExactVersion != "1.0.0" ||
-		model.ArtifactDigest != "e7864f4478a588dad4de9fff53b0c4dcecc17420e80420018bcc5fe5502887c3" ||
-		model.ArtifactSizeBytes != 2914 ||
+		model.ExactVersion != "2.0.0" ||
+		model.ArtifactDigest != "ebef19d2fd153773f11e331d219edd4a414af069101f9f834fdd6ecf85dce3e2" ||
+		model.ArtifactSizeBytes != 2771 ||
 		model.InstanceID != "model-deepseek-v4-flash" ||
 		model.ExpectedExecutionClass != moduleapi.ExecutionTrustedInProcess ||
 		model.ExpectedAdapterIdentity != deepSeekAdapterIdentity {
@@ -107,23 +106,12 @@ func TestDeepSeekPureChatSeedImportsExactSingleProviderClosure(t *testing.T) {
 	if err != nil || configRecord.Kind != currentstore.ContentConfig {
 		t.Fatalf("DeepSeek Config=%+v err=%v", configRecord, err)
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(
+	config, err := moduleapi.RestoreModelBindingConfigV2(
 		configRecord.CanonicalBytes,
 	)
 	if err != nil || config.Provider != "deepseek" ||
 		config.Model != "deepseek-v4-flash" ||
-		config.ModelBuildID != "deepseek-v4-flash/public-alias-observed-2026-08-04" ||
-		config.PriceSnapshotID != "price-deepseek-v4-flash-2026-08-04" {
+		config.ModelBuildID != "deepseek-v4-flash/public-alias-observed-2026-08-04" {
 		t.Fatalf("DeepSeek restored Config=%+v err=%v", config, err)
-	}
-	price, err := store.GetModelPriceSnapshot(
-		context.Background(),
-		config.PriceSnapshotID,
-	)
-	if err != nil || price.Snapshot.Provider != config.Provider ||
-		price.Snapshot.Model != config.Model ||
-		price.Snapshot.Currency != "CNY" ||
-		price.Snapshot.PricingStatus != corecontract.PricingKnown {
-		t.Fatalf("DeepSeek PriceSnapshot=%+v err=%v", price, err)
 	}
 }

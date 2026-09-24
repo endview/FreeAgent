@@ -718,7 +718,7 @@ func beginWorkspaceTransferPendingChild(
 	var modelBinding *moduleapi.PortBinding
 	for _, plan := range run.Member.PortPlans {
 		if plan.Port.Name == moduleapi.PortNameModelGenerate &&
-			plan.Port.ExactVersion == moduleapi.PortVersionV1 &&
+			plan.Port.ExactVersion == moduleapi.PortVersionV2 &&
 			len(plan.Bindings) == 1 {
 			binding := plan.Bindings[0]
 			modelBinding = &binding
@@ -732,7 +732,7 @@ func beginWorkspaceTransferPendingChild(
 	if !found || modelConfigContent.Kind != currentstore.ContentConfig {
 		t.Fatalf("pending transfer model config=%+v found=%v", modelConfigContent, found)
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		modelConfigContent.CanonicalBytes,
 	)
 	if err != nil {

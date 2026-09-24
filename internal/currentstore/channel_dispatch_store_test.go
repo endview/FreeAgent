@@ -319,9 +319,6 @@ func newChannelDispatchHarness(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.store.PutModelPriceSnapshot(ctx, testModelPriceSnapshot()); err != nil {
-		t.Fatal(err)
-	}
 	lease, err := fixture.store.AcquireRunLease(
 		ctx,
 		AcquireRunLeaseInput{
@@ -342,7 +339,7 @@ func newChannelDispatchHarness(
 				{Role: moduleapi.ModelRoleSystem, Content: "Follow Core constraints."},
 				{Role: moduleapi.ModelRoleUser, Content: "Say hello."},
 			},
-			Parameters: json.RawMessage(`{"temperature":0}`),
+			Parameters: json.RawMessage(`{"max_tokens":64,"temperature":0}`),
 		},
 	)
 	if err != nil {
@@ -417,7 +414,6 @@ func newChannelDispatchHarness(
 			DispatchAttemptID: "channel-" + runID,
 			ProposalCanonical: proposalCanonical,
 			Deadline:          time.Now().UTC().Add(30 * time.Minute).Truncate(time.Microsecond),
-			BudgetDecision:    ChannelBudgetAllow,
 		},
 	}
 }
@@ -480,7 +476,7 @@ func newActionChannelModelTwoFixture(
 		t.Fatal(err)
 	}
 	actionContextPolicy := putPublicationContextPolicyWithLimits(
-		t, fixture.store, 20_000, 0,
+		t, fixture.store, 20_000, 64,
 	)
 	for index := range control.Profiles {
 		if control.Profiles[index].Profile.ID != fixture.intent.ProfileID {
@@ -570,9 +566,6 @@ func newActionChannelModelTwoFixture(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.store.PutModelPriceSnapshot(ctx, testModelPriceSnapshot()); err != nil {
-		t.Fatal(err)
-	}
 	lease, err := fixture.store.AcquireRunLease(
 		ctx,
 		AcquireRunLeaseInput{
@@ -645,7 +638,6 @@ func newActionChannelModelTwoFixture(
 			DispatchAttemptID: "action-action-channel",
 			ProposalCanonical: actionProposal,
 			Deadline:          time.Now().UTC().Add(50 * time.Minute).Truncate(time.Microsecond),
-			BudgetDecision:    ActionBudgetAllow,
 		},
 	)
 	if err != nil {
@@ -716,7 +708,6 @@ func newActionChannelModelTwoFixture(
 		DispatchAttemptID: "channel-action-channel",
 		ProposalCanonical: channelProposal,
 		Deadline:          time.Now().UTC().Add(20 * time.Minute).Truncate(time.Microsecond),
-		BudgetDecision:    ChannelBudgetAllow,
 	}
 }
 

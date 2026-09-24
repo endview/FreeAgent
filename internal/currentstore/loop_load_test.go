@@ -458,7 +458,7 @@ func TestLoadRunForLoopRequiresExactAttemptUsageAndBudgetClosure(
 				t.Helper()
 				if _, err := fixture.store.db.Exec(`
 					UPDATE loop_frames
-					SET budget_state_ref='usage-ledger/v1/other-run/0'
+					SET usage_ledger_ref='usage-ledger/v1/other-run/0'
 					WHERE run_id=?
 				`, begin.Attempt.RunID); err != nil {
 					t.Fatal(err)
@@ -473,7 +473,7 @@ func TestLoadRunForLoopRequiresExactAttemptUsageAndBudgetClosure(
 				begin BeginModelDispatchResult,
 			) {
 				t.Helper()
-				reference, err := corecontract.NewBudgetStateRefV1(
+				reference, err := corecontract.NewUsageLedgerRefV1(
 					begin.Attempt.RunID,
 					1,
 				)
@@ -482,7 +482,7 @@ func TestLoadRunForLoopRequiresExactAttemptUsageAndBudgetClosure(
 				}
 				if _, err := fixture.store.db.Exec(`
 					UPDATE loop_frames
-					SET budget_state_ref=?
+					SET usage_ledger_ref=?
 					WHERE run_id=?
 				`, reference, begin.Attempt.RunID); err != nil {
 					t.Fatal(err)

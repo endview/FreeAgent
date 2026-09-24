@@ -273,6 +273,45 @@ func (store *Store) GetModuleArtifactAdmissionV1(ctx context.Context, admissionI
 	return detachModuleArtifactAdmissionV1(value), nil
 }
 
+// GetModuleArtifactAdmissionForTenantV1 exposes an inert Artifact only when
+// the exact Admission is already referenced by a Review owned by tenantID.
+// Artifact provenance is global, so this join is the Store-owned scope fence
+// for an online tenant-scoped read; callers cannot turn an admission ID into
+// a cross-tenant enumeration primitive.
+func (store *Store) GetModuleArtifactAdmissionForTenantV1(
+	ctx context.Context,
+	admissionID string,
+	tenantID string,
+) (ModuleArtifactAdmissionV1, error) {
+	if ctx == nil || !moduleapi.ValidSHA256(admissionID) ||
+		validatePublishedBasisTenantID(tenantID) != nil {
+		return ModuleArtifactAdmissionV1{}, ErrInvalidModuleArtifactIngress
+	}
+	unlock, err := store.lockOpen()
+	if err != nil {
+		return ModuleArtifactAdmissionV1{}, err
+	}
+	defer unlock()
+	var references int
+	if err := store.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM module_upgrade_reviews
+		WHERE tenant_id=? AND artifact_admission_id=?
+	`, tenantID, admissionID).Scan(&references); err != nil {
+		return ModuleArtifactAdmissionV1{}, err
+	}
+	if references == 0 {
+		return ModuleArtifactAdmissionV1{}, ErrModuleArtifactAdmissionNotFound
+	}
+	value, found, err := queryModuleArtifactAdmissionV1(ctx, store.db, admissionID)
+	if err != nil {
+		return ModuleArtifactAdmissionV1{}, err
+	}
+	if !found {
+		return ModuleArtifactAdmissionV1{}, ErrModuleArtifactAdmissionNotFound
+	}
+	return detachModuleArtifactAdmissionV1(value), nil
+}
+
 // GetModuleArtifactAdmissionBySelectionV1 resolves only an already committed
 // exact Admission. It deliberately does not require the Source's current head
 // to remain at the admitted Snapshot: a caller retrying a lost response must

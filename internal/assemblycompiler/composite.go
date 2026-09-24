@@ -54,7 +54,7 @@ const (
 
 var compositeModelGeneratePortV1 = moduleapi.PortRef{
 	Name:         moduleapi.PortNameModelGenerate,
-	ExactVersion: moduleapi.PortVersionV1,
+	ExactVersion: moduleapi.PortVersionV2,
 }
 
 // CompositeCompileInput has exactly one caller-supplied identity: Parent.
@@ -839,7 +839,6 @@ func compositeRootManifestV1(
 		PrimaryMemberID:   member.MemberSnapshot.MemberID,
 		TaskInputRef:      intent.TaskInputRef,
 		TaskInputDigest:   intent.TaskInputRef,
-		BudgetPolicy:      member.RunManifest.BudgetPolicy,
 		CancellationScope: corecontract.CancellationScopeFamilyV1,
 		Deadline:          intent.Deadline,
 		RecoveryRootRef:   input.RecoveryRootRef,
@@ -909,7 +908,6 @@ func compositeReviewerManifestV1(
 		TaskInputRef:      reviewer.intent.TaskInputRef,
 		TaskInputDigest:   reviewer.intent.TaskInputRef,
 		ParentRunID:       parent.RunID,
-		BudgetPolicy:      reviewer.compiledMember.RunManifest.BudgetPolicy,
 		CancellationScope: corecontract.CancellationScopeInheritedV1,
 		Deadline:          reviewer.intent.Deadline,
 		RecoveryRootRef:   reviewer.compiledMember.RunManifest.RecoveryRootRef,
@@ -951,7 +949,6 @@ func compositeChildManifestV1(
 		TaskInputRef:      child.intent.TaskInputRef,
 		TaskInputDigest:   child.intent.TaskInputRef,
 		ParentRunID:       parent.RunID,
-		BudgetPolicy:      child.compiledMember.RunManifest.BudgetPolicy,
 		CancellationScope: corecontract.CancellationScopeInheritedV1,
 		Deadline:          child.intent.Deadline,
 		RecoveryRootRef:   child.compiledMember.RunManifest.RecoveryRootRef,

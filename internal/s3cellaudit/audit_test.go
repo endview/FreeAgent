@@ -16,8 +16,6 @@ import (
 
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentbackup"
-	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/internal/s3audit"
 	"github.com/endview/freeagent/internal/s3eval"
 	"github.com/endview/freeagent/sdk/loopapi"
@@ -31,7 +29,7 @@ func TestAuditCellPassesAndEmitsAggregateOnlyEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.SchemaVersion != ReportSchemaVersionV2 || report.Status != "PASS" ||
+	if report.SchemaVersion != ReportSchemaVersionV3 || report.Status != "PASS" ||
 		!report.Archive.ExitComplete ||
 		!report.Archive.ReportSHA256Verified || !report.Archive.ArchiveVerified ||
 		!report.Archive.BundleVerified || !report.Archive.BundleUnchanged ||
@@ -64,12 +62,6 @@ func TestAuditCellPassesAndEmitsAggregateOnlyEvidence(t *testing.T) {
 		report.RoleCache[string(corecontract.CompositeRunRoleChildV1)].Attempts != 0 ||
 		report.RoleCache[string(corecontract.CompositeRunRoleReviewerV1)].Attempts != 0 {
 		t.Fatalf("role cache=%+v", report.RoleCache)
-	}
-	if report.Costs.Derived.Total.Status != "KNOWN" ||
-		report.Costs.Derived.Total.Value == nil || *report.Costs.Derived.Total.Value != "0.003" ||
-		report.Costs.Derived.Total.Currency != "CNY" ||
-		report.Costs.Derived.Coverage.Known != 3 || report.Costs.Derived.Coverage.Unknown != 0 {
-		t.Fatalf("derived cost=%+v", report.Costs.Derived)
 	}
 	if report.Fairness.MaxPrefixImbalance.Max == nil ||
 		*report.Fairness.MaxPrefixImbalance.Max != 1 ||
@@ -171,8 +163,6 @@ func TestAuditCellPartialModelUnknownPreservesKnownCoverage(t *testing.T) {
 	repetition.Report.Families[0].Results = nil
 	repetition.Report.ServiceOrder[0].State = corecontract.ModelAttemptUnknown
 	repetition.Report.ServiceOrder[0].Tokens = corecontract.UsageTokens{}
-	repetition.DerivedCostEstimates[0].Estimate.Status = deepseekcost.StatusUnknown
-	repetition.DerivedCostEstimates[0].Estimate.Value = nil
 	cell := writeSyntheticCell(t, source, "PARTIAL", "")
 
 	report, err := auditSyntheticCell(cell)
@@ -200,14 +190,6 @@ func TestAuditCellPartialModelUnknownPreservesKnownCoverage(t *testing.T) {
 		report.Tokens.PerAttempt.Input.Count != 2 {
 		t.Fatalf("tokens=%+v", report.Tokens)
 	}
-	if report.Costs.Derived.Total.Status != "UNKNOWN" ||
-		report.Costs.Derived.KnownSubtotal.Status != "KNOWN" ||
-		report.Costs.Derived.KnownSubtotal.Value == nil ||
-		*report.Costs.Derived.KnownSubtotal.Value != "0.002" ||
-		report.Costs.Derived.Coverage.Known != 2 ||
-		report.Costs.Derived.Coverage.Unknown != 1 {
-		t.Fatalf("derived costs=%+v", report.Costs.Derived)
-	}
 }
 
 func TestAuditCellPreAdmissionPartialCanCrossCheckAnEmptyStore(t *testing.T) {
@@ -225,7 +207,6 @@ func TestAuditCellPreAdmissionPartialCanCrossCheckAnEmptyStore(t *testing.T) {
 		family.Results = []s3eval.ResultFact{}
 	}
 	repetition.Report.ServiceOrder = []s3eval.AttemptFact{}
-	repetition.DerivedCostEstimates = []sourceDerivedCost{}
 	workspaceIDs := make([]string, 0, len(source.Scenario.Tasks))
 	for _, task := range source.Scenario.Tasks {
 		workspaceIDs = append(workspaceIDs, task.WorkspaceID)
@@ -250,7 +231,7 @@ func TestAuditCellPreAdmissionPartialCanCrossCheckAnEmptyStore(t *testing.T) {
 				return s3audit.Report{}, errors.New("PARTIAL must not assert a complete Store inventory")
 			}
 			return s3audit.Report{
-				SchemaVersion:        s3audit.ReportSchemaVersionV2,
+				SchemaVersion:        s3audit.ReportSchemaVersionV3,
 				Status:               "PASS",
 				CurrentStoreVerified: true,
 				NoSidecarsVerified:   true,
@@ -287,14 +268,6 @@ func TestAggregateOverflowNeverBecomesCompleteTotal(t *testing.T) {
 	if tokenReport.Totals.Input != nil || tokenReport.KnownSubtotals.Input != nil ||
 		!tokenReport.Coverage.Input.Overflowed {
 		t.Fatalf("token report=%+v", tokenReport)
-	}
-
-	auditReport := newReport()
-	costs := newCostAccumulator()
-	costs.count = math.MaxUint64
-	costs.addUnknown(&auditReport)
-	if !contains(auditReport.FailureCodes, "COUNT_OVERFLOW") {
-		t.Fatalf("cost overflow failures=%v", auditReport.FailureCodes)
 	}
 
 	total := uint64(math.MaxUint64)
@@ -351,24 +324,6 @@ func TestRoleCacheCoverageRejectsBrokenClassification(t *testing.T) {
 	report[string(corecontract.CompositeRunRoleRootV1)] = root
 	if validRoleCacheCoverage(roles, global, report) {
 		t.Fatalf("broken classification accepted: %+v", report)
-	}
-}
-
-func TestCostUnknownKeepsFiveKnownEntriesAsSubtotal(t *testing.T) {
-	report := newReport()
-	costs := newCostAccumulator()
-	for index := 0; index < 5; index++ {
-		amount := "0.1"
-		costs.addKnown(&amount, "CNY", &report)
-	}
-	costs.addUnknown(&report)
-	aggregate := costs.report()
-	if aggregate.Total.Status != "UNKNOWN" ||
-		aggregate.KnownSubtotal.Status != "KNOWN" ||
-		aggregate.KnownSubtotal.Value == nil || *aggregate.KnownSubtotal.Value != "0.5" ||
-		aggregate.Coverage.Entries != 6 || aggregate.Coverage.Known != 5 ||
-		aggregate.Coverage.Unknown != 1 {
-		t.Fatalf("cost aggregate=%+v", aggregate)
 	}
 }
 
@@ -456,8 +411,6 @@ func TestAuditCellDistinguishesUnknownFromKnownZeroCache(t *testing.T) {
 	repetition.Report.Families[0].Results = nil
 	repetition.Report.ServiceOrder[0].State = corecontract.ModelAttemptUnknown
 	repetition.Report.ServiceOrder[0].Tokens = corecontract.UsageTokens{}
-	repetition.DerivedCostEstimates[0].Estimate.Status = deepseekcost.StatusUnknown
-	repetition.DerivedCostEstimates[0].Estimate.Value = nil
 	cell := writeSyntheticCell(t, source, "PARTIAL", "")
 
 	storeAudit := matchingSyntheticStoreAudit(cell)
@@ -493,7 +446,7 @@ func TestAuditCellRedactsStoreAuditFailureAndDynamicRole(t *testing.T) {
 	tests := map[string]storeAuditFunc{
 		"private error": func(context.Context, string, s3audit.Expectations) (s3audit.Report, error) {
 			return s3audit.Report{
-				SchemaVersion: s3audit.ReportSchemaVersionV2,
+				SchemaVersion: s3audit.ReportSchemaVersionV3,
 				Status:        "FAIL", FailureCodes: []string{privateMarker},
 			}, errors.New(privateMarker)
 		},
@@ -728,7 +681,7 @@ func TestAuditCellRejectsUnknownJSONField(t *testing.T) {
 func syntheticSourceReport(private string) sourceReport {
 	now := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC)
 	source := sourceReport{
-		SchemaVersion: cellReportSchemaV1,
+		SchemaVersion: cellReportSchemaV2,
 		Experiment: sourceExperiment{
 			ID: private, RepetitionsRequested: 1, RepetitionsAttempted: 1,
 		},
@@ -756,7 +709,6 @@ func syntheticSourceReport(private string) sourceReport {
 			Families:     []s3eval.FamilyReport{},
 			ServiceOrder: []s3eval.AttemptFact{},
 		},
-		DerivedCostEstimates: []sourceDerivedCost{},
 	}
 	for index := 0; index < 3; index++ {
 		workspace := fmt.Sprintf("%s-%d", private, index+1)
@@ -768,7 +720,6 @@ func syntheticSourceReport(private string) sourceReport {
 			SlotID: private, AttemptID: identity, LogicalStepID: private,
 			State: corecontract.ModelAttemptSucceeded, Provider: "deepseek",
 			Model: "deepseek-v4-flash", RequestDigest: private,
-			PriceSnapshotID: private, PriceSnapshotDigest: private, Currency: "CNY",
 			CreatedAt: now, UpdatedAt: now.Add(time.Second), Elapsed: time.Second,
 			Tokens: corecontract.UsageTokens{
 				Input: &input, CachedInput: &cached, UncachedInput: &uncached, Output: &output,
@@ -781,9 +732,6 @@ func syntheticSourceReport(private string) sourceReport {
 			Root:     s3eval.DispositionFact{RunID: identity, Disposition: loopapi.DispositionTerminated},
 			Reply:    "reply containing " + private,
 			Tokens:   s3eval.TokenReport{},
-			Costs: s3eval.CostReport{
-				Estimated: costUnknown(), ProviderReported: costUnknown(), Reconciled: costUnknown(),
-			},
 			Attempts: []s3eval.AttemptFact{attempt},
 			Results: []s3eval.ResultFact{{
 				RunID: identity, Role: corecontract.CompositeRunRoleRootV1,
@@ -793,17 +741,6 @@ func syntheticSourceReport(private string) sourceReport {
 		}
 		repetition.Report.Families = append(repetition.Report.Families, family)
 		repetition.Report.ServiceOrder = append(repetition.Report.ServiceOrder, attempt)
-		amount := "0.001"
-		repetition.DerivedCostEstimates = append(repetition.DerivedCostEstimates, sourceDerivedCost{
-			WorkspaceID: workspace, RootRunID: identity, RunID: identity,
-			Role: corecontract.CompositeRunRoleRootV1, AttemptID: identity,
-			Model: "deepseek-v4-flash",
-			Estimate: deepseekcost.Estimate{
-				Status: deepseekcost.StatusKnown, Value: &amount, Currency: "CNY",
-				PriceSnapshotID: private, PriceSnapshotDigest: private,
-				FormulaVersion: deepseekcost.EstimateFormulaV1,
-			},
-		})
 	}
 	workspaceIDs := make([]string, 0, len(source.Scenario.Tasks))
 	for _, task := range source.Scenario.Tasks {
@@ -835,7 +772,6 @@ func addCompleteReviewers(source *sourceReport, private string) {
 			SlotID: private, AttemptID: identity, LogicalStepID: private,
 			State: corecontract.ModelAttemptSucceeded, Provider: "deepseek",
 			Model: "deepseek-v4-flash", RequestDigest: private,
-			PriceSnapshotID: private, PriceSnapshotDigest: private, Currency: "CNY",
 			CreatedAt: now, UpdatedAt: now.Add(time.Second), Elapsed: time.Second,
 			Tokens: corecontract.UsageTokens{
 				Input: &input, CachedInput: &cached, UncachedInput: &uncached, Output: &output,
@@ -851,17 +787,6 @@ func addCompleteReviewers(source *sourceReport, private string) {
 			},
 		})
 		repetition.Report.ServiceOrder = append(repetition.Report.ServiceOrder, attempt)
-		amount := "0.001"
-		repetition.DerivedCostEstimates = append(repetition.DerivedCostEstimates, sourceDerivedCost{
-			WorkspaceID: family.WorkspaceID, RootRunID: family.RootRunID,
-			RunID: identity, Role: corecontract.CompositeRunRoleReviewerV1,
-			AttemptID: identity, Model: "deepseek-v4-flash",
-			Estimate: deepseekcost.Estimate{
-				Status: deepseekcost.StatusKnown, Value: &amount, Currency: "CNY",
-				PriceSnapshotID: private, PriceSnapshotDigest: private,
-				FormulaVersion: deepseekcost.EstimateFormulaV1,
-			},
-		})
 	}
 	workspaceIDs := make([]string, 0, len(source.Scenario.Tasks))
 	for _, task := range source.Scenario.Tasks {
@@ -876,13 +801,6 @@ func addCompleteReviewers(source *sourceReport, private string) {
 
 func s3EvalRuntimeSource(enabled bool) sourceRuntime {
 	return sourceRuntime{DeepSeekEnabled: enabled}
-}
-
-func costUnknown() s3eval.CostTotalReport {
-	return s3eval.CostTotalReport{
-		Status:     currentstore.CompositeFamilyCostUnknownV1,
-		Currencies: []string{},
-	}
 }
 
 func writeSyntheticCell(
@@ -1055,7 +973,7 @@ func syntheticStoreReport(
 		roleCache[string(corecontract.CompositeRunRoleRootV1)] = partialStoreRoleCache()
 	}
 	return s3audit.Report{
-		SchemaVersion:        s3audit.ReportSchemaVersionV2,
+		SchemaVersion:        s3audit.ReportSchemaVersionV3,
 		Status:               "PASS",
 		CurrentStoreVerified: true,
 		NoSidecarsVerified:   true,

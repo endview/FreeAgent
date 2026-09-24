@@ -76,19 +76,16 @@ type backupAttemptState struct {
 }
 
 type backupUsageState struct {
-	AttemptID            string
-	LedgerSequence       sql.NullInt64
-	Revision             int64
-	InputTokens          sql.NullInt64
-	CachedInputTokens    sql.NullInt64
-	UncachedInputTokens  sql.NullInt64
-	OutputTokens         sql.NullInt64
-	ReasoningTokens      sql.NullInt64
-	EstimatedCost        sql.NullString
-	ProviderReportedCost sql.NullString
-	ReconciledCost       sql.NullString
-	ReconciliationStatus string
-	RawReceiptRef        sql.NullString
+	AttemptID           string
+	LedgerSequence      sql.NullInt64
+	Revision            int64
+	InputTokens         sql.NullInt64
+	CachedInputTokens   sql.NullInt64
+	UncachedInputTokens sql.NullInt64
+	OutputTokens        sql.NullInt64
+	ReasoningTokens     sql.NullInt64
+	UsageStatus         string
+	RawReceiptRef       sql.NullString
 }
 
 type backupHistoryState struct {
@@ -871,7 +868,7 @@ func newBackupFixture(t *testing.T) backupFixture {
 			Role:    moduleapi.ModelRoleUser,
 			Content: "pending backup test",
 		}},
-		Parameters: []byte(`{}`),
+		Parameters: []byte(`{"max_tokens":4096}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1136,7 +1133,6 @@ func assertPendingNullUsage(t *testing.T, databasePath string) {
 	defer database.Close()
 	var state string
 	var ledger, input, cached, uncached, output, reasoning sql.NullInt64
-	var estimatedCost, providerCost, reconciledCost sql.NullString
 	if err := database.QueryRow(`
 		SELECT
 			attempt.state,
@@ -1145,10 +1141,7 @@ func assertPendingNullUsage(t *testing.T, databasePath string) {
 			usage.cached_input_tokens,
 			usage.uncached_input_tokens,
 			usage.output_tokens,
-			usage.reasoning_tokens,
-			usage.estimated_cost,
-			usage.provider_reported_cost,
-			usage.reconciled_cost
+			usage.reasoning_tokens
 		FROM model_dispatch_attempts AS attempt
 		JOIN model_usage AS usage ON usage.attempt_id=attempt.attempt_id
 		WHERE attempt.attempt_id='backup-test-attempt'
@@ -1160,17 +1153,13 @@ func assertPendingNullUsage(t *testing.T, databasePath string) {
 		&uncached,
 		&output,
 		&reasoning,
-		&estimatedCost,
-		&providerCost,
-		&reconciledCost,
 	); err != nil {
 		t.Fatal(err)
 	}
 	if state != "PENDING" || ledger.Valid || input.Valid || cached.Valid ||
-		uncached.Valid || output.Valid || reasoning.Valid || estimatedCost.Valid ||
-		providerCost.Valid || reconciledCost.Valid {
+		uncached.Valid || output.Valid || reasoning.Valid {
 		t.Fatalf(
-			"state/usage = %s %+v %+v %+v %+v %+v %+v %+v %+v %+v",
+			"state/usage = %s %+v %+v %+v %+v %+v %+v",
 			state,
 			ledger,
 			input,
@@ -1178,9 +1167,6 @@ func assertPendingNullUsage(t *testing.T, databasePath string) {
 			uncached,
 			output,
 			reasoning,
-			estimatedCost,
-			providerCost,
-			reconciledCost,
 		)
 	}
 }
@@ -1199,17 +1185,15 @@ func transitionPendingAttemptToUnknown(t *testing.T, fixture backupFixture) {
 		}
 	}()
 	zero := uint64(0)
-	zeroCost := "0"
-	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion:        moduleapi.ModelUsageReceiptSchemaV1,
-			InputTokens:          &zero,
-			CachedInputTokens:    &zero,
-			UncachedInputTokens:  &zero,
-			OutputTokens:         &zero,
-			ReasoningTokens:      &zero,
-			ProviderReportedCost: &zeroCost,
-			RawReceipt:           []byte(`{"provider":"backup-test","status":"unknown"}`),
+	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV2,
+			InputTokens:         &zero,
+			CachedInputTokens:   &zero,
+			UncachedInputTokens: &zero,
+			OutputTokens:        &zero,
+			ReasoningTokens:     &zero,
+			RawReceipt:          []byte(`{"provider":"backup-test","status":"unknown"}`),
 		},
 	)
 	if err != nil {
@@ -1355,10 +1339,7 @@ func loadBackupStateSnapshot(t *testing.T, databasePath string) backupStateSnaps
 			uncached_input_tokens,
 			output_tokens,
 			reasoning_tokens,
-			estimated_cost,
-			provider_reported_cost,
-			reconciled_cost,
-			reconciliation_status,
+			usage_status,
 			raw_receipt_ref
 		FROM model_usage
 		ORDER BY attempt_id
@@ -1377,10 +1358,7 @@ func loadBackupStateSnapshot(t *testing.T, databasePath string) backupStateSnaps
 			&row.UncachedInputTokens,
 			&row.OutputTokens,
 			&row.ReasoningTokens,
-			&row.EstimatedCost,
-			&row.ProviderReportedCost,
-			&row.ReconciledCost,
-			&row.ReconciliationStatus,
+			&row.UsageStatus,
 			&row.RawReceiptRef,
 		); err != nil {
 			_ = usageRows.Close()
@@ -1530,9 +1508,8 @@ func assertSuccessfulAndPendingState(
 	if usage.LedgerSequence.Valid || usage.InputTokens.Valid ||
 		usage.CachedInputTokens.Valid || usage.UncachedInputTokens.Valid ||
 		usage.OutputTokens.Valid || usage.ReasoningTokens.Valid ||
-		usage.EstimatedCost.Valid || usage.ProviderReportedCost.Valid ||
-		usage.ReconciledCost.Valid || usage.RawReceiptRef.Valid ||
-		usage.ReconciliationStatus != "PENDING" {
+		usage.RawReceiptRef.Valid ||
+		usage.UsageStatus != "PENDING" {
 		t.Fatalf("pending Usage = %+v", usage)
 	}
 	assertEventSequence(t, state.Events, fixture.pendingRunID, []string{
@@ -1569,12 +1546,8 @@ func assertSuccessfulAndUnknownState(
 			t.Fatalf("MODEL_UNKNOWN %s tokens = %+v", name, value)
 		}
 	}
-	if !usage.LedgerSequence.Valid ||
-		!usage.ProviderReportedCost.Valid ||
-		usage.ProviderReportedCost.String != "0" ||
-		usage.EstimatedCost.Valid || usage.ReconciledCost.Valid ||
-		!usage.RawReceiptRef.Valid ||
-		usage.ReconciliationStatus != "PENDING_RECONCILIATION" {
+	if !usage.LedgerSequence.Valid || !usage.RawReceiptRef.Valid ||
+		usage.UsageStatus != "PENDING_RECONCILIATION" {
 		t.Fatalf("MODEL_UNKNOWN Usage = %+v", usage)
 	}
 	assertEventSequence(t, state.Events, fixture.pendingRunID, []string{
@@ -1620,10 +1593,8 @@ func assertCommonSuccessfulState(
 		successUsage.CachedInputTokens.Valid ||
 		successUsage.UncachedInputTokens.Valid ||
 		successUsage.OutputTokens.Valid || successUsage.ReasoningTokens.Valid ||
-		successUsage.EstimatedCost.Valid ||
-		successUsage.ProviderReportedCost.Valid ||
-		successUsage.ReconciledCost.Valid || !successUsage.RawReceiptRef.Valid ||
-		successUsage.ReconciliationStatus != "PROVIDER_REPORTED" {
+		!successUsage.RawReceiptRef.Valid ||
+		successUsage.UsageStatus != "PROVIDER_REPORTED" {
 		t.Fatalf("successful Echo Usage = %+v", successUsage)
 	}
 	if len(state.Memory) != 2 {
@@ -1768,10 +1739,7 @@ func assertRestoredUnknownTypedState(
 			t.Fatalf("restored MODEL_UNKNOWN %s tokens = %v", name, value)
 		}
 	}
-	if record.Usage.ProviderReportedCost == nil ||
-		*record.Usage.ProviderReportedCost != "0" ||
-		record.Usage.EstimatedCost != nil || record.Usage.ReconciledCost != nil ||
-		record.Usage.ReconciliationStatus != "PENDING_RECONCILIATION" {
+	if record.Usage.UsageStatus != "PENDING_RECONCILIATION" {
 		t.Fatalf("restored MODEL_UNKNOWN Usage = %+v", record.Usage)
 	}
 	unsettled, err := store.ScanUnsettledModelDispatchRecords(ctx, fixture.pendingRunID)

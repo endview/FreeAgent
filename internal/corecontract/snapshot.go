@@ -11,13 +11,13 @@ import (
 )
 
 const (
-	MemberExecutionSnapshotSchemaVersionV1 = "member-execution-snapshot/v1"
-	AssemblyCompilerVersionV1              = "assembly-compiler/v1"
-	RunManifestSchemaVersionV1             = "run-manifest/v1"
-	CoreRuntimeVersionV1                   = "core-runtime/v1"
+	MemberExecutionSnapshotSchemaVersionV2 = "member-execution-snapshot/v2"
+	AssemblyCompilerVersionV2              = "assembly-compiler/v2"
+	RunManifestSchemaVersionV2             = "run-manifest/v2"
+	CoreRuntimeVersionV2                   = "core-runtime/v2"
 
-	memberSnapshotDigestDomain = "freeagent.member-snapshot/v1"
-	runManifestDigestDomain    = "freeagent.run-manifest/v1"
+	memberSnapshotDigestDomain = "freeagent.member-snapshot/v2"
+	runManifestDigestDomain    = "freeagent.run-manifest/v2"
 )
 
 // MemberExecutionSnapshot is the immutable, recovery-authoritative assembly
@@ -36,7 +36,6 @@ type MemberExecutionSnapshot struct {
 	PortPlans            []moduleapi.PortPlan       `json:"port_plans"`
 	Actions              []FrozenActionDefinitionV1 `json:"actions,omitempty"`
 	ContextPolicy        PolicyRef                  `json:"context_policy"`
-	CostPolicy           PolicyRef                  `json:"cost_policy"`
 	SchedulingPolicy     PolicyRef                  `json:"scheduling_policy"`
 	MemberSnapshotDigest string                     `json:"member_snapshot_digest"`
 }
@@ -47,18 +46,18 @@ type MemberExecutionSnapshot struct {
 func NewMemberExecutionSnapshot(
 	input MemberExecutionSnapshot,
 ) (MemberExecutionSnapshot, []byte, error) {
-	if input.SchemaVersion != MemberExecutionSnapshotSchemaVersionV1 {
+	if input.SchemaVersion != MemberExecutionSnapshotSchemaVersionV2 {
 		return MemberExecutionSnapshot{}, nil,
 			fmt.Errorf(
 				"corecontract: member snapshot schema version must be %q",
-				MemberExecutionSnapshotSchemaVersionV1,
+				MemberExecutionSnapshotSchemaVersionV2,
 			)
 	}
-	if input.CompilerVersion != AssemblyCompilerVersionV1 {
+	if input.CompilerVersion != AssemblyCompilerVersionV2 {
 		return MemberExecutionSnapshot{}, nil,
 			fmt.Errorf(
 				"corecontract: compiler version must be %q",
-				AssemblyCompilerVersionV1,
+				AssemblyCompilerVersionV2,
 			)
 	}
 	if err := input.Catalog.Validate(); err != nil {
@@ -85,9 +84,6 @@ func NewMemberExecutionSnapshot(
 	if err := input.ContextPolicy.Validate(); err != nil {
 		return MemberExecutionSnapshot{}, nil, err
 	}
-	if err := input.CostPolicy.Validate(); err != nil {
-		return MemberExecutionSnapshot{}, nil, err
-	}
 	if err := input.SchedulingPolicy.Validate(); err != nil {
 		return MemberExecutionSnapshot{}, nil, err
 	}
@@ -111,14 +107,14 @@ func NewMemberExecutionSnapshot(
 		}
 		seen[key] = struct{}{}
 		if frozen.Port.Name == moduleapi.PortNameModelGenerate &&
-			frozen.Port.ExactVersion == moduleapi.PortVersionV1 {
+			frozen.Port.ExactVersion == moduleapi.PortVersionV2 {
 			modelPlanFound = true
 		}
 		plans[index] = frozen
 	}
 	if !modelPlanFound {
 		return MemberExecutionSnapshot{}, nil,
-			fmt.Errorf("corecontract: S1 member snapshot requires model.generate/v1")
+			fmt.Errorf("corecontract: S1 member snapshot requires model.generate/v2")
 	}
 	sort.Slice(plans, func(left, right int) bool {
 		if plans[left].Port.Name != plans[right].Port.Name {
@@ -199,7 +195,6 @@ func canonicalMemberSnapshot(
 		PortPlans            []moduleapi.PortPlan       `json:"port_plans"`
 		Actions              []FrozenActionDefinitionV1 `json:"actions,omitempty"`
 		ContextPolicy        PolicyRef                  `json:"context_policy"`
-		CostPolicy           PolicyRef                  `json:"cost_policy"`
 		SchedulingPolicy     PolicyRef                  `json:"scheduling_policy"`
 		MemberSnapshotDigest string                     `json:"member_snapshot_digest,omitempty"`
 	}
@@ -215,7 +210,6 @@ func canonicalMemberSnapshot(
 		PortPlans:        snapshot.PortPlans,
 		Actions:          snapshot.Actions,
 		ContextPolicy:    snapshot.ContextPolicy,
-		CostPolicy:       snapshot.CostPolicy,
 		SchedulingPolicy: snapshot.SchedulingPolicy,
 	}
 	if includeDigest {
@@ -347,7 +341,6 @@ type RunManifest struct {
 	TaskInputDigest       string                 `json:"task_input_digest"`
 	ConversationTurn      *ConversationTurnRefV1 `json:"conversation_turn,omitempty"`
 	ParentRunID           string                 `json:"parent_run_id,omitempty"`
-	BudgetPolicy          PolicyRef              `json:"budget_policy"`
 	CancellationScope     string                 `json:"cancellation_scope"`
 	Deadline              time.Time              `json:"deadline"`
 	RecoveryRootRef       string                 `json:"recovery_root_ref"`
@@ -358,18 +351,18 @@ type RunManifest struct {
 // NewRunManifest freezes the single-member S1 manifest. Deadline is
 // normalized to RFC3339Nano UTC before it participates in the digest.
 func NewRunManifest(input RunManifest) (RunManifest, []byte, error) {
-	if input.SchemaVersion != RunManifestSchemaVersionV1 {
+	if input.SchemaVersion != RunManifestSchemaVersionV2 {
 		return RunManifest{}, nil,
 			fmt.Errorf(
 				"corecontract: run manifest schema version must be %q",
-				RunManifestSchemaVersionV1,
+				RunManifestSchemaVersionV2,
 			)
 	}
-	if input.CoreRuntimeVersion != CoreRuntimeVersionV1 {
+	if input.CoreRuntimeVersion != CoreRuntimeVersionV2 {
 		return RunManifest{}, nil,
 			fmt.Errorf(
 				"corecontract: Core runtime version must be %q",
-				CoreRuntimeVersionV1,
+				CoreRuntimeVersionV2,
 			)
 	}
 	for name, value := range map[string]string{
@@ -423,9 +416,6 @@ func NewRunManifest(input RunManifest) (RunManifest, []byte, error) {
 			return RunManifest{}, nil,
 				fmt.Errorf("corecontract: Conversation and Composite Run relations are mutually exclusive in v1")
 		}
-	}
-	if err := input.BudgetPolicy.Validate(); err != nil {
-		return RunManifest{}, nil, err
 	}
 	if input.Deadline.IsZero() {
 		return RunManifest{}, nil,
@@ -521,7 +511,6 @@ func canonicalRunManifest(
 		TaskInputDigest       string                 `json:"task_input_digest"`
 		ConversationTurn      *ConversationTurnRefV1 `json:"conversation_turn,omitempty"`
 		ParentRunID           string                 `json:"parent_run_id,omitempty"`
-		BudgetPolicy          PolicyRef              `json:"budget_policy"`
 		CancellationScope     string                 `json:"cancellation_scope"`
 		Deadline              time.Time              `json:"deadline"`
 		RecoveryRootRef       string                 `json:"recovery_root_ref"`
@@ -543,7 +532,6 @@ func canonicalRunManifest(
 		TaskInputDigest:       manifest.TaskInputDigest,
 		ConversationTurn:      cloneConversationTurnRefV1(manifest.ConversationTurn),
 		ParentRunID:           manifest.ParentRunID,
-		BudgetPolicy:          manifest.BudgetPolicy,
 		CancellationScope:     manifest.CancellationScope,
 		Deadline:              manifest.Deadline,
 		RecoveryRootRef:       manifest.RecoveryRootRef,

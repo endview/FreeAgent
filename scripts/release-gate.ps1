@@ -741,6 +741,11 @@ function Invoke-PermanentGates {
             Name = 'Docs'
             ScriptPath = Join-Path $PSScriptRoot 'Test-Docs.ps1'
             Arguments = @('-Root', $Root, '-GofmtPath', $GofmtCommand)
+        },
+        [pscustomobject]@{
+            Name = 'MoneyBanList'
+            ScriptPath = Join-Path $PSScriptRoot 'Test-MoneyBanList.ps1'
+            Arguments = @('-Root', $Root)
         }
     )
     Invoke-PowerShellGateSequence `

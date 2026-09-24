@@ -17,9 +17,8 @@ type publicationFixture struct {
 	tenantID    string
 	activation  moduleapi.ActivatedModuleRef
 	port        moduleapi.PortRef
-	modelConfig moduleapi.ModelBindingConfigV1
+	modelConfig moduleapi.ModelBindingConfigV2
 	context     corecontract.PolicyRef
-	cost        corecontract.PolicyRef
 	scheduling  corecontract.PolicyRef
 	config      string
 	authority   string
@@ -252,83 +251,6 @@ func TestPublishControlCatalogRejectsUnknownModelAuthoritySchemaWithoutWrites(
 			before,
 			after,
 		)
-	}
-}
-
-func TestPublishControlCatalogRejectsModelPriceSnapshotClosureWithoutWrites(
-	t *testing.T,
-) {
-	tests := []struct {
-		name   string
-		mutate func(*moduleapi.ModelBindingConfigV1)
-	}{
-		{
-			name: "missing",
-			mutate: func(config *moduleapi.ModelBindingConfigV1) {
-				config.PriceSnapshotID = "price-missing"
-			},
-		},
-		{
-			name: "provider mismatch",
-			mutate: func(config *moduleapi.ModelBindingConfigV1) {
-				config.Provider = "other-provider"
-			},
-		},
-		{
-			name: "model mismatch",
-			mutate: func(config *moduleapi.ModelBindingConfigV1) {
-				config.Model = "other-model"
-			},
-		},
-		{
-			name: "billing mismatch",
-			mutate: func(config *moduleapi.ModelBindingConfigV1) {
-				config.BillingVersion = "other-billing"
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			fixture := newPublicationFixture(t)
-			config := fixture.modelConfig
-			test.mutate(&config)
-			_, canonical, err := moduleapi.NewModelBindingConfigV1(config)
-			if err != nil {
-				t.Fatal(err)
-			}
-			configRef := putPublicationJSON(
-				t,
-				fixture.store,
-				ContentConfig,
-				canonical,
-			)
-			before := publicationRowCounts(t, fixture.store)
-			input := fixture.input(
-				t,
-				"snapshot-price-closure-"+strings.ReplaceAll(test.name, " ", "-"),
-				1,
-				"catalog-price-closure-"+strings.ReplaceAll(test.name, " ", "-"),
-				1,
-				0,
-				1,
-				func(_ *publicationFixture, shape *publicationShape) {
-					shape.config = configRef
-				},
-			)
-			if _, err := fixture.store.PublishControlCatalog(
-				context.Background(),
-				input,
-			); !errors.Is(err, ErrPublicationConflict) {
-				t.Fatalf("invalid Model PriceSnapshot publication error=%v", err)
-			}
-			if after := publicationRowCounts(t, fixture.store); after != before {
-				t.Fatalf(
-					"invalid Model PriceSnapshot changed publication rows: before=%v after=%v",
-					before,
-					after,
-				)
-			}
-		})
 	}
 }
 
@@ -588,26 +510,17 @@ type publicationShape struct {
 }
 
 func newPublicationFixture(t *testing.T) *publicationFixture {
-	return newPublicationFixtureWithPrice(t, testModelPriceSnapshot())
-}
-
-func newPublicationFixtureWithPrice(
-	t *testing.T,
-	price corecontract.ModelPriceSnapshotV1,
-) *publicationFixture {
 	t.Helper()
 	ctx := context.Background()
 	store := openModuleTestStore(t)
 	modelConfig, modelConfigCanonical, err :=
-		moduleapi.NewModelBindingConfigV1(
-			moduleapi.ModelBindingConfigV1{
-				SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-				Provider:        "deepseek",
-				Model:           "deepseek-v4-pro",
-				ModelBuildID:    "deepseek-v4-pro-build-test",
-				BillingVersion:  "2026-07",
-				PriceSnapshotID: "price-deepseek-v4",
-				Parameters:      []byte(`{"temperature":0}`),
+		moduleapi.NewModelBindingConfigV2(
+			moduleapi.ModelBindingConfigV2{
+				SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+				Provider:      "deepseek",
+				Model:         "deepseek-v4-pro",
+				ModelBuildID:  "deepseek-v4-pro-build-test",
+				Parameters:    []byte(`{"max_tokens":64,"temperature":0}`),
 			},
 		)
 	if err != nil {
@@ -616,7 +529,7 @@ func newPublicationFixtureWithPrice(
 	fixture := &publicationFixture{
 		store:       store,
 		tenantID:    "tenant-publish",
-		port:        moduleapi.PortRef{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1},
+		port:        moduleapi.PortRef{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2},
 		modelConfig: modelConfig,
 		config:      putPublicationJSON(t, store, ContentConfig, modelConfigCanonical),
 		authority: putPublicationJSON(
@@ -626,15 +539,6 @@ func newPublicationFixtureWithPrice(
 			[]byte(denyAllAuthorityCeilingCanonicalV1),
 		),
 	}
-	if price.PriceSnapshotID != fixture.modelConfig.PriceSnapshotID ||
-		price.Provider != fixture.modelConfig.Provider ||
-		price.Model != fixture.modelConfig.Model ||
-		price.BillingVersion != fixture.modelConfig.BillingVersion {
-		t.Fatal("publication fixture PriceSnapshot does not match Model CONFIG")
-	}
-	if _, err := store.PutModelPriceSnapshot(ctx, price); err != nil {
-		t.Fatalf("PutModelPriceSnapshot: %v", err)
-	}
 	fixture.wrongConfig = putPublicationJSON(
 		t,
 		store,
@@ -642,7 +546,6 @@ func newPublicationFixtureWithPrice(
 		[]byte(`{"temperature":0}`),
 	)
 	fixture.context = putPublicationContextPolicy(t, store)
-	fixture.cost = putPublicationPolicy(t, store, "cost-policy", corecontract.PolicyCost)
 	fixture.scheduling = putPublicationPolicy(
 		t,
 		store,
@@ -713,7 +616,7 @@ func (fixture *publicationFixture) input(
 	}
 	control, controlRef, controlCanonical, err := controlcontract.NewControlSnapshot(
 		controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    snapshotID,
 			TenantID:      fixture.tenantID,
 			Revision:      controlRevision,
@@ -725,7 +628,6 @@ func (fixture *publicationFixture) input(
 						Digest:  strings.Repeat("1", 64),
 					},
 					ContextPolicy:    fixture.context,
-					CostPolicy:       fixture.cost,
 					SchedulingPolicy: fixture.scheduling,
 					ModelProfile:     shape.modelProfile,
 					Bindings: []controlcontract.BindingSpec{
@@ -809,7 +711,7 @@ func putPublicationContextPolicy(
 	t *testing.T,
 	store *Store,
 ) corecontract.PolicyRef {
-	return putPublicationContextPolicyWithLimits(t, store, 1000, 0)
+	return putPublicationContextPolicyWithLimits(t, store, 1000, 64)
 }
 
 func putPublicationContextPolicyWithLimits(

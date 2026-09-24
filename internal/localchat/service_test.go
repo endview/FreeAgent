@@ -522,41 +522,20 @@ func newChatServiceFixtureWithContextPolicy(
 	})
 
 	const (
-		tenantID       = "tenant-chat"
-		agentID        = "agent-chat"
-		workspaceID    = "workspace-chat"
-		profileID      = "profile-chat"
-		providerName   = "test-provider"
-		modelName      = "test-model"
-		billingVersion = "billing-v1"
-		priceID        = "price-chat-v1"
+		tenantID     = "tenant-chat"
+		agentID      = "agent-chat"
+		workspaceID  = "workspace-chat"
+		profileID    = "profile-chat"
+		providerName = "test-provider"
+		modelName    = "test-model"
 	)
-	if _, err := store.PutModelPriceSnapshot(
-		ctx,
-		corecontract.ModelPriceSnapshotV1{
-			SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-			PriceSnapshotID: priceID,
-			Provider:        providerName,
-			Model:           modelName,
-			BillingVersion:  billingVersion,
-			Currency:        "USD",
-			PricingStatus:   corecontract.PricingKnown,
-			Pricing: json.RawMessage(
-				`{"input_per_million":1,"output_per_million":2}`,
-			),
-		},
-	); err != nil {
-		t.Fatalf("PutModelPriceSnapshot: %v", err)
-	}
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        providerName,
-			Model:           modelName,
-			ModelBuildID:    "test-model-build-v1",
-			BillingVersion:  billingVersion,
-			PriceSnapshotID: priceID,
-			Parameters:      json.RawMessage(`{"temperature":0}`),
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      providerName,
+			Model:         modelName,
+			ModelBuildID:  "test-model-build-v1",
+			Parameters:    json.RawMessage(`{"max_tokens":10}`),
 		},
 	)
 	if err != nil {
@@ -577,14 +556,12 @@ func newChatServiceFixtureWithContextPolicy(
 		reservedOutputTokens,
 		recentHistoryTurns,
 	)
-	costPolicy := putChatPolicy(t, store, "cost-policy", corecontract.PolicyCost)
 	schedulingPolicy := putChatPolicy(
 		t,
 		store,
 		"scheduling-policy",
 		corecontract.PolicyScheduling,
 	)
-	budgetPolicy := putChatPolicy(t, store, "budget-policy", corecontract.PolicyCost)
 
 	manifestBytes := chatModuleManifest(t)
 	parsedManifest, _, err := moduleapi.ParseModuleManifestV1(manifestBytes)
@@ -643,18 +620,17 @@ func newChatServiceFixtureWithContextPolicy(
 	}
 	_, controlRef, controlCanonical, err := controlcontract.NewControlSnapshot(
 		controlcontract.ControlSnapshot{
-			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+			SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 			SnapshotID:    "control-chat",
 			TenantID:      tenantID,
 			Revision:      1,
 			Agents:        []corecontract.AgentRef{agent},
 			Workspaces: []controlcontract.WorkspaceDefinition{{
-				Workspace: workspace, BudgetPolicy: budgetPolicy,
+				Workspace: workspace,
 			}},
 			Profiles: []controlcontract.ProfileDefinition{{
 				Profile:          profile,
 				ContextPolicy:    contextPolicy,
-				CostPolicy:       costPolicy,
 				SchedulingPolicy: schedulingPolicy,
 				Bindings: []controlcontract.BindingSpec{{
 					Port:                chatModelGeneratePortV1,
@@ -808,7 +784,7 @@ func chatModuleManifest(t *testing.T) []byte {
 		},
 		"provides": []any{map[string]any{
 			"name":          moduleapi.PortNameModelGenerate,
-			"exact_version": moduleapi.PortVersionV1,
+			"exact_version": moduleapi.PortVersionV2,
 		}},
 	})
 	if err != nil {

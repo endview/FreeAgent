@@ -24,8 +24,6 @@ import (
 
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentbackup"
-	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/internal/s3audit"
 	"github.com/endview/freeagent/internal/s3eval"
 )
@@ -37,7 +35,9 @@ const (
 	// ReportSchemaVersionV2 freezes the fixed CHILD/REVIEWER/ROOT role_cache
 	// projection and its read-only archived-Store cross-check.
 	ReportSchemaVersionV2 = "freeagent.s3-cell-audit/v2"
-	cellReportSchemaV1    = "freeagent.s3-eval-report/v1"
+	// ReportSchemaVersionV3 removes retired monetary observations.
+	ReportSchemaVersionV3 = "freeagent.s3-cell-audit/v3"
+	cellReportSchemaV2    = "freeagent.s3-eval-report/v2"
 	cellExitSchemaV1      = "freeagent.s3c-real-cell-exit/v1"
 	maximumReportBytes    = 128 << 20
 	maximumExitBytes      = 1 << 20
@@ -168,7 +168,7 @@ type TokenPerAttempt struct {
 
 type TokenSummary struct {
 	Attempts uint64 `json:"attempts"`
-	// KnownUsageAttempts requires the four billing/cache fields (input,
+	// KnownUsageAttempts requires the four primary/cache fields (input,
 	// cached input, uncached input, output); reasoning remains independent.
 	KnownUsageAttempts          uint64          `json:"known_usage_attempts"`
 	CachedInputPositiveAttempts uint64          `json:"cached_input_positive_attempts"`
@@ -177,36 +177,6 @@ type TokenSummary struct {
 	Coverage                    TokenCoverage   `json:"coverage"`
 	PerAttempt                  TokenPerAttempt `json:"per_attempt"`
 	CacheHitRatio               *float64        `json:"cache_hit_ratio"`
-}
-
-type CostTotal struct {
-	Status     string   `json:"status"`
-	Value      *string  `json:"value"`
-	Currency   string   `json:"currency"`
-	Currencies []string `json:"currencies"`
-}
-
-type CostCoverage struct {
-	Entries       uint64 `json:"entries"`
-	Known         uint64 `json:"known"`
-	Unknown       uint64 `json:"unknown"`
-	MixedCurrency uint64 `json:"mixed_currency"`
-	Invalid       uint64 `json:"invalid"`
-}
-
-type CostAggregate struct {
-	Total         CostTotal    `json:"total"`
-	KnownSubtotal CostTotal    `json:"known_subtotal"`
-	Coverage      CostCoverage `json:"coverage"`
-}
-
-type CostSummary struct {
-	// The first three coverage counts are family-level projections. Derived
-	// coverage counts the per-Attempt frozen-price estimates in the report.
-	Estimated        CostAggregate `json:"estimated"`
-	ProviderReported CostAggregate `json:"provider_reported"`
-	Reconciled       CostAggregate `json:"reconciled"`
-	Derived          CostAggregate `json:"derived"`
 }
 
 type ArchiveSummary struct {
@@ -239,7 +209,6 @@ type Report struct {
 	Latency       LatencySummary              `json:"latency"`
 	Tokens        TokenSummary                `json:"tokens"`
 	RoleCache     map[string]RoleCacheSummary `json:"role_cache"`
-	Costs         CostSummary                 `json:"costs"`
 	FailureCodes  []string                    `json:"failure_codes"`
 }
 
@@ -260,21 +229,10 @@ type sourceRuntime struct {
 	DeepSeekEnabled bool `json:"deepseek_enabled"`
 }
 
-type sourceDerivedCost struct {
-	WorkspaceID string                          `json:"workspace_id"`
-	RootRunID   string                          `json:"root_run_id"`
-	RunID       string                          `json:"run_id"`
-	Role        corecontract.CompositeRunRoleV1 `json:"role"`
-	AttemptID   string                          `json:"attempt_id"`
-	Model       string                          `json:"model"`
-	Estimate    deepseekcost.Estimate           `json:"estimate"`
-}
-
 type sourceRepetition struct {
-	Repetition           uint64                  `json:"repetition"`
-	Report               s3eval.ExperimentReport `json:"report"`
-	DerivedCostEstimates []sourceDerivedCost     `json:"derived_cost_estimates"`
-	Error                string                  `json:"error"`
+	Repetition uint64                  `json:"repetition"`
+	Report     s3eval.ExperimentReport `json:"report"`
+	Error      string                  `json:"error"`
 }
 
 type sourceReport struct {
@@ -396,7 +354,7 @@ func auditCellWithDependencies(
 			databasePath := filepath.Join(bundlePath, bundleBefore.Database.Path)
 			storeReport, storeErr := auditStore(ctx, databasePath, expectations)
 			storeAuditOK := storeErr == nil &&
-				storeReport.SchemaVersion == s3audit.ReportSchemaVersionV2 &&
+				storeReport.SchemaVersion == s3audit.ReportSchemaVersionV3 &&
 				storeReport.Status == "PASS" &&
 				storeReport.CurrentStoreVerified &&
 				storeReport.NoSidecarsVerified &&
@@ -509,7 +467,7 @@ func storeExpectations(
 }
 
 func (report *Report) observe(source sourceReport) {
-	if source.SchemaVersion != cellReportSchemaV1 ||
+	if source.SchemaVersion != cellReportSchemaV2 ||
 		source.Scenario.SchemaVersion != s3eval.ScenarioSchemaVersionV1 ||
 		len(source.Scenario.Tasks) != s3eval.WorkspaceCount {
 		report.addFailure("REPORT_SCHEMA_INVALID")
@@ -547,10 +505,6 @@ func (report *Report) observe(source sourceReport) {
 
 	tokens := newTokenAccumulator()
 	roleCache := newRoleCacheAccumulators()
-	estimated := newCostAccumulator()
-	providerReported := newCostAccumulator()
-	reconciled := newCostAccumulator()
-	derived := newCostAccumulator()
 	wall := newUintAccumulator()
 	attemptElapsed := newUintAccumulator()
 	jain := newFloatAccumulator()
@@ -626,9 +580,6 @@ func (report *Report) observe(source sourceReport) {
 			if family.WallElapsed < 0 || !wall.add(uint64(family.WallElapsed)) {
 				report.addFailure("LATENCY_INVALID")
 			}
-			estimated.addSource(family.Costs.Estimated, report)
-			providerReported.addSource(family.Costs.ProviderReported, report)
-			reconciled.addSource(family.Costs.Reconciled, report)
 			for _, attempt := range family.Attempts {
 				report.Counts.Attempts++
 				attemptCount++
@@ -702,8 +653,7 @@ func (report *Report) observe(source sourceReport) {
 				report.addFailure("FAMILY_CLOSURE_INVALID")
 			}
 		}
-		if uint64(len(repetition.Report.ServiceOrder)) != attemptCount ||
-			uint64(len(repetition.DerivedCostEstimates)) != attemptCount {
+		if uint64(len(repetition.Report.ServiceOrder)) != attemptCount {
 			report.addFailure("ATTEMPT_COUNT_INVALID")
 		}
 		if reviewerRuns != reviewerAttempts || reviewerAttempts != reviewerResults ||
@@ -726,22 +676,6 @@ func (report *Report) observe(source sourceReport) {
 		if len(serviceSeen) != len(attemptsByID) {
 			report.addFailure("SERVICE_ORDER_INVALID")
 		}
-		derivedSeen := make(map[string]struct{}, len(repetition.DerivedCostEstimates))
-		for _, estimate := range repetition.DerivedCostEstimates {
-			attempt, exists := attemptsByID[estimate.AttemptID]
-			_, duplicate := derivedSeen[estimate.AttemptID]
-			if !exists || duplicate || estimate.WorkspaceID != attempt.WorkspaceID ||
-				estimate.RootRunID != attempt.RootRunID || estimate.RunID != attempt.RunID ||
-				estimate.Role != attempt.Role || estimate.Model != attempt.Model {
-				report.addFailure("DERIVED_COST_SCOPE_INVALID")
-			} else {
-				derivedSeen[estimate.AttemptID] = struct{}{}
-			}
-			derived.addEstimate(estimate.Estimate, report)
-		}
-		if len(derivedSeen) != len(attemptsByID) {
-			report.addFailure("DERIVED_COST_SCOPE_INVALID")
-		}
 	}
 
 	report.Fairness.JainIndex = jain.report()
@@ -756,10 +690,6 @@ func (report *Report) observe(source sourceReport) {
 	report.RoleCache = roleCache.report()
 	if !validRoleCacheCoverage(roleCache, tokens, report.RoleCache) {
 		report.addFailure("ROLE_CACHE_COVERAGE_INCONSISTENT")
-	}
-	report.Costs = CostSummary{
-		Estimated: estimated.report(), ProviderReported: providerReported.report(),
-		Reconciled: reconciled.report(), Derived: derived.report(),
 	}
 	if report.Counts.ReviewerRuns != report.Counts.ReviewerAttempts ||
 		report.Counts.ReviewerAttempts != report.Counts.ReviewerResults ||
@@ -850,7 +780,7 @@ func parseCanonicalExitUTC(value string) (time.Time, bool) {
 
 func newReport() Report {
 	return Report{
-		SchemaVersion: ReportSchemaVersionV2,
+		SchemaVersion: ReportSchemaVersionV3,
 		Status:        "FAIL",
 		Models:        make(map[string]uint64),
 		AttemptRoles:  make(map[string]uint64),
@@ -1577,299 +1507,6 @@ func roleCacheFromStore(value s3audit.RoleCacheObservation) RoleCacheSummary {
 		CachedInputUnknownRows:     value.CachedInputUnknownRows,
 		CacheHitRatio:              value.CacheHitRatio,
 	}
-}
-
-type costAccumulator struct {
-	count           uint64
-	coverage        CostCoverage
-	knownByCurrency map[string]*big.Rat
-	mixedCurrencies map[string]struct{}
-}
-
-func newCostAccumulator() *costAccumulator {
-	return &costAccumulator{
-		knownByCurrency: make(map[string]*big.Rat),
-		mixedCurrencies: make(map[string]struct{}),
-	}
-}
-
-func (value *costAccumulator) addSource(source s3eval.CostTotalReport, report *Report) {
-	switch source.Status {
-	case currentstore.CompositeFamilyCostUnknownV1:
-		if source.Value != nil || source.Currency != "" || len(source.Currencies) != 0 {
-			report.addFailure("COST_INVALID")
-			value.addInvalid(report)
-			return
-		}
-		value.addUnknown(report)
-	case currentstore.CompositeFamilyCostKnownV1:
-		if len(source.Currencies) != 0 {
-			report.addFailure("COST_INVALID")
-			value.addInvalid(report)
-			return
-		}
-		value.addKnown(source.Value, source.Currency, report)
-	case currentstore.CompositeFamilyCostMixedCurrencyV1:
-		if source.Value != nil || source.Currency != "" || len(source.Currencies) < 2 {
-			report.addFailure("COST_INVALID")
-			value.addInvalid(report)
-			return
-		}
-		for index, currency := range source.Currencies {
-			if !safeCurrency(currency) {
-				report.addFailure("COST_INVALID")
-				value.addInvalid(report)
-				return
-			}
-			if index != 0 && source.Currencies[index-1] >= currency {
-				report.addFailure("COST_INVALID")
-				value.addInvalid(report)
-				return
-			}
-		}
-		value.addMixed(source.Currencies, report)
-	default:
-		report.addFailure("COST_INVALID")
-		value.addInvalid(report)
-	}
-}
-
-func (value *costAccumulator) addEstimate(source deepseekcost.Estimate, report *Report) {
-	switch source.Status {
-	case deepseekcost.StatusUnknown:
-		if source.Value != nil {
-			report.addFailure("COST_INVALID")
-			value.addInvalid(report)
-			return
-		}
-		value.addUnknown(report)
-	case deepseekcost.StatusKnown:
-		value.addKnown(source.Value, source.Currency, report)
-	default:
-		report.addFailure("COST_INVALID")
-		value.addInvalid(report)
-	}
-}
-
-func (value *costAccumulator) addKnown(amount *string, currency string, report *Report) {
-	if amount == nil || !safeCurrency(currency) || !safeDecimal(pointerText(amount)) {
-		report.addFailure("COST_INVALID")
-		value.addInvalid(report)
-		return
-	}
-	parsed, ok := new(big.Rat).SetString(*amount)
-	if !ok || parsed.Sign() < 0 {
-		report.addFailure("COST_INVALID")
-		value.addInvalid(report)
-		return
-	}
-	if !value.incrementCount(report) {
-		return
-	}
-	if !incrementCoverage(&value.coverage.Known) {
-		report.addFailure("COUNT_OVERFLOW")
-		return
-	}
-	total := value.knownByCurrency[currency]
-	if total == nil {
-		total = new(big.Rat)
-		value.knownByCurrency[currency] = total
-	}
-	total.Add(total, parsed)
-}
-
-func (value *costAccumulator) addUnknown(report *Report) {
-	if !value.incrementCount(report) {
-		return
-	}
-	if !incrementCoverage(&value.coverage.Unknown) {
-		report.addFailure("COUNT_OVERFLOW")
-	}
-}
-
-func (value *costAccumulator) addMixed(currencies []string, report *Report) {
-	if !value.incrementCount(report) {
-		return
-	}
-	if !incrementCoverage(&value.coverage.MixedCurrency) {
-		report.addFailure("COUNT_OVERFLOW")
-		return
-	}
-	for _, currency := range currencies {
-		value.mixedCurrencies[currency] = struct{}{}
-	}
-}
-
-func (value *costAccumulator) addInvalid(report *Report) {
-	if !value.incrementCount(report) {
-		return
-	}
-	if !incrementCoverage(&value.coverage.Invalid) {
-		report.addFailure("COUNT_OVERFLOW")
-	}
-}
-
-func (value *costAccumulator) incrementCount(report *Report) bool {
-	if value.count == math.MaxUint64 {
-		report.addFailure("COUNT_OVERFLOW")
-		return false
-	}
-	value.count++
-	return true
-}
-
-func incrementCoverage(target *uint64) bool {
-	if *target == math.MaxUint64 {
-		return false
-	}
-	*target++
-	return true
-}
-
-func (value *costAccumulator) report() CostAggregate {
-	subtotal := costTotalFromKnown(value.knownByCurrency)
-	total := subtotal
-	if value.count == 0 || value.coverage.Unknown != 0 || value.coverage.Invalid != 0 {
-		total = unknownCostTotal()
-	} else if value.coverage.MixedCurrency != 0 {
-		currencies := make(map[string]struct{}, len(value.mixedCurrencies)+len(value.knownByCurrency))
-		for currency := range value.mixedCurrencies {
-			currencies[currency] = struct{}{}
-		}
-		for currency := range value.knownByCurrency {
-			currencies[currency] = struct{}{}
-		}
-		total = mixedCostTotal(currencies)
-	}
-	coverage := value.coverage
-	coverage.Entries = value.count
-	return CostAggregate{Total: total, KnownSubtotal: subtotal, Coverage: coverage}
-}
-
-func costTotalFromKnown(values map[string]*big.Rat) CostTotal {
-	if len(values) == 0 {
-		return unknownCostTotal()
-	}
-	if len(values) != 1 {
-		currencies := make(map[string]struct{}, len(values))
-		for currency := range values {
-			currencies[currency] = struct{}{}
-		}
-		return mixedCostTotal(currencies)
-	}
-	for currency, total := range values {
-		amount, ok := finiteDecimal(total)
-		if !ok {
-			return unknownCostTotal()
-		}
-		return CostTotal{Status: "KNOWN", Value: &amount, Currency: currency, Currencies: []string{}}
-	}
-	return unknownCostTotal()
-}
-
-func unknownCostTotal() CostTotal {
-	return CostTotal{Status: "UNKNOWN", Currencies: []string{}}
-}
-
-func mixedCostTotal(values map[string]struct{}) CostTotal {
-	currencies := make([]string, 0, len(values))
-	for currency := range values {
-		currencies = append(currencies, currency)
-	}
-	sort.Strings(currencies)
-	return CostTotal{Status: "MIXED_CURRENCY", Currencies: currencies}
-}
-
-func pointerText(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
-func safeCurrency(value string) bool {
-	if len(value) != 3 {
-		return false
-	}
-	for _, character := range value {
-		if character < 'A' || character > 'Z' {
-			return false
-		}
-	}
-	return true
-}
-
-func safeDecimal(value string) bool {
-	if value == "" || len(value) > 128 {
-		return false
-	}
-	dot := false
-	digitsAfterDot := 0
-	for _, character := range value {
-		if character == '.' && !dot {
-			dot = true
-			continue
-		}
-		if character < '0' || character > '9' {
-			return false
-		}
-		if dot {
-			digitsAfterDot++
-		}
-	}
-	return value[0] != '.' && (!dot || digitsAfterDot != 0)
-}
-
-func finiteDecimal(value *big.Rat) (string, bool) {
-	if value == nil || value.Sign() < 0 {
-		return "", false
-	}
-	denominator := new(big.Int).Set(value.Denom())
-	two, five, remainder := big.NewInt(2), big.NewInt(5), new(big.Int)
-	twos, fives := 0, 0
-	for {
-		quotient, rest := new(big.Int).QuoRem(denominator, two, remainder)
-		if rest.Sign() != 0 {
-			break
-		}
-		denominator = quotient
-		twos++
-	}
-	for {
-		quotient, rest := new(big.Int).QuoRem(denominator, five, remainder)
-		if rest.Sign() != 0 {
-			break
-		}
-		denominator = quotient
-		fives++
-	}
-	if denominator.Cmp(big.NewInt(1)) != 0 {
-		return "", false
-	}
-	scale := twos
-	if fives > scale {
-		scale = fives
-	}
-	numerator := new(big.Int).Set(value.Num())
-	if twos < scale {
-		numerator.Mul(numerator, new(big.Int).Exp(two, big.NewInt(int64(scale-twos)), nil))
-	}
-	if fives < scale {
-		numerator.Mul(numerator, new(big.Int).Exp(five, big.NewInt(int64(scale-fives)), nil))
-	}
-	digits := numerator.String()
-	if scale == 0 {
-		return digits, true
-	}
-	if len(digits) <= scale {
-		digits = strings.Repeat("0", scale-len(digits)+1) + digits
-	}
-	integer := digits[:len(digits)-scale]
-	fraction := strings.TrimRight(digits[len(digits)-scale:], "0")
-	if fraction == "" {
-		return integer, true
-	}
-	return integer + "." + fraction, true
 }
 
 func addUint(target *uint64, next uint64) bool {

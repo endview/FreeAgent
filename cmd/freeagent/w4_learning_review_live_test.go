@@ -187,8 +187,7 @@ func TestW4L2LiveDeepSeekLearningReview(t *testing.T) {
 		reviewerDispatch.Usage.Tokens.Input == nil ||
 		reviewerDispatch.Usage.Tokens.Output == nil ||
 		reviewerDispatch.Usage.RawReceiptRef == "" ||
-		reviewerDispatch.Usage.ReconciliationStatus != "PROVIDER_REPORTED" ||
-		reviewerDispatch.Usage.EstimatedCost == nil {
+		reviewerDispatch.Usage.UsageStatus != "PROVIDER_REPORTED" {
 		t.Fatalf("reviewer dispatch is not the exact ordinary Run: %+v", reviewerDispatch)
 	}
 
@@ -213,7 +212,6 @@ func TestW4L2LiveDeepSeekLearningReview(t *testing.T) {
 		ReviewerAttempt    string                   `json:"reviewer_attempt_state"`
 		UsageStatus        string                   `json:"usage_status"`
 		Tokens             corecontract.UsageTokens `json:"tokens"`
-		EstimatedCost      *string                  `json:"estimated_cost"`
 		ExactRetryNoReplay bool                     `json:"exact_retry_no_replay"`
 	}{
 		ProposalID:         first.Proposal.ProposalID,
@@ -223,9 +221,8 @@ func TestW4L2LiveDeepSeekLearningReview(t *testing.T) {
 		ReviewerRunID:      first.RunID,
 		ReviewerAttemptID:  first.Proposal.ReviewerAttemptID,
 		ReviewerAttempt:    string(reviewerDispatch.Attempt.State),
-		UsageStatus:        reviewerDispatch.Usage.ReconciliationStatus,
+		UsageStatus:        reviewerDispatch.Usage.UsageStatus,
 		Tokens:             reviewerDispatch.Usage.Tokens,
-		EstimatedCost:      reviewerDispatch.Usage.EstimatedCost,
 		ExactRetryNoReplay: true,
 	})
 	if err != nil {
@@ -278,14 +275,12 @@ func publishW4LiveReviewer(
 	profile.Profile = corecontract.ProfileRef{
 		ID: reviewerProfileID, Version: "v1", Digest: strings.Repeat("9", 64),
 	}
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        "deepseek",
-			Model:           "deepseek-v4-flash",
-			ModelBuildID:    localDeepSeekFlashBuild,
-			BillingVersion:  "deepseek-public-price-2026-08-04",
-			PriceSnapshotID: "price-deepseek-v4-flash-2026-08-04",
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      "deepseek",
+			Model:         "deepseek-v4-flash",
+			ModelBuildID:  localDeepSeekFlashBuild,
 			Parameters: json.RawMessage(
 				`{"max_tokens":512,"response_format":{"type":"json_object"},"temperature":0,"thinking":{"type":"disabled"}}`,
 			),

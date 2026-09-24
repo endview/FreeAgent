@@ -72,13 +72,6 @@ func TestDynamicMemoryBeginFreezesCurrentHeadAndRecoveryKeepsExactRevision(
 			t.Fatalf("CommitRunAdmission %s: %v", inputRunID(t, input), err)
 		}
 	}
-	if _, err := fixture.admission.store.PutModelPriceSnapshot(
-		context.Background(),
-		testModelPriceSnapshot(),
-	); err != nil {
-		t.Fatal(err)
-	}
-
 	head := genesis.Record
 	targetLease, targetRun := acquireMemoryRun(
 		t,

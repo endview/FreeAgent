@@ -1,0 +1,196 @@
+{
+  "schema_version": "freeagent-runtime-facts/v1",
+  "version": {
+    "release": "v0.1.1"
+  },
+  "current_store": {
+    "schema_identity": "github.com/endview/freeagent/current-store-v2",
+    "user_version": 2,
+    "schema_fingerprint": "d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e",
+    "tables": 42,
+    "explicit_indexes": 26,
+    "triggers": 64
+  },
+  "migration": {
+    "name": "0001_current.sql + 0002_server_owned_review.sql",
+    "bytes": 156412,
+    "sha256": "b00a2163ad95ed6b3d35c030a69f2d641fd20b4117ecc811add04dec17904048"
+  },
+  "packages": {
+    "source": 55,
+    "production_dependency_closure": 53
+  },
+  "capabilities": {
+    "count": 42,
+    "entries": [
+      {
+        "id": "agent.composite-depth1",
+        "status": "accepted"
+      },
+      {
+        "id": "agent.reviewer-results-gate",
+        "status": "accepted"
+      },
+      {
+        "id": "channel.loopback-workspace",
+        "status": "accepted"
+      },
+      {
+        "id": "collaboration.cross-workspace",
+        "status": "accepted"
+      },
+      {
+        "id": "collaboration.decision-repair-bounded",
+        "status": "accepted"
+      },
+      {
+        "id": "control-plane.online",
+        "status": "accepted"
+      },
+      {
+        "id": "control.api-contract-v1",
+        "status": "accepted"
+      },
+      {
+        "id": "core.action-gateway",
+        "status": "accepted"
+      },
+      {
+        "id": "core.complete-backup-recovery",
+        "status": "accepted"
+      },
+      {
+        "id": "core.context-compiler",
+        "status": "accepted"
+      },
+      {
+        "id": "core.effect-ledger-usage",
+        "status": "accepted"
+      },
+      {
+        "id": "core.explicit-schema-migration",
+        "status": "accepted"
+      },
+      {
+        "id": "core.model-profile",
+        "status": "accepted"
+      },
+      {
+        "id": "core.pure-chat",
+        "status": "accepted"
+      },
+      {
+        "id": "core.unique-runtime-store",
+        "status": "accepted"
+      },
+      {
+        "id": "extension.mcp-local-stdio-tool",
+        "status": "accepted"
+      },
+      {
+        "id": "knowledge.learning-cycle",
+        "status": "accepted"
+      },
+      {
+        "id": "knowledge.materialized-version",
+        "status": "accepted"
+      },
+      {
+        "id": "knowledge.proposal-store",
+        "status": "accepted"
+      },
+      {
+        "id": "module.artifact-ingress-v1",
+        "status": "accepted"
+      },
+      {
+        "id": "module.assembly-local-v1",
+        "status": "accepted"
+      },
+      {
+        "id": "module.deepseek-model-replacement",
+        "status": "accepted"
+      },
+      {
+        "id": "module.discovery-snapshot-v1",
+        "status": "accepted"
+      },
+      {
+        "id": "module.document-insight-dual-port",
+        "status": "accepted"
+      },
+      {
+        "id": "module.general-assembly",
+        "status": "planned"
+      },
+      {
+        "id": "module.memory-local-bounded",
+        "status": "accepted"
+      },
+      {
+        "id": "module.package-conformance",
+        "status": "experimental"
+      },
+      {
+        "id": "module.rag-local-readonly",
+        "status": "accepted"
+      },
+      {
+        "id": "module.supply-contracts-v1",
+        "status": "accepted"
+      },
+      {
+        "id": "module.upgrade-apply-v1",
+        "status": "accepted"
+      },
+      {
+        "id": "module.upgrade-review-v1",
+        "status": "accepted"
+      },
+      {
+        "id": "module.workspace-channel-apply",
+        "status": "accepted"
+      },
+      {
+        "id": "operator.module-apply",
+        "status": "experimental"
+      },
+      {
+        "id": "product.conversation-config",
+        "status": "accepted"
+      },
+      {
+        "id": "provider.deepseek-controlled",
+        "status": "accepted"
+      },
+      {
+        "id": "provider.deepseek-s3c",
+        "status": "unverified"
+      },
+      {
+        "id": "provider.zhipu-controlled",
+        "status": "accepted"
+      },
+      {
+        "id": "release.public-beta",
+        "status": "planned"
+      },
+      {
+        "id": "runtime.exact-adapter-lazy",
+        "status": "accepted"
+      },
+      {
+        "id": "runtime.remote-action-http",
+        "status": "accepted"
+      },
+      {
+        "id": "runtime.wasm-action-host",
+        "status": "accepted"
+      },
+      {
+        "id": "scheduler.local-fair",
+        "status": "accepted"
+      }
+    ]
+  }
+}

@@ -464,7 +464,7 @@ func verifyLearningCyclePersistedRunClosure(
 	plan := member.PortPlans[0]
 	binding := plan.Bindings[0]
 	if plan.Port.Name != moduleapi.PortNameModelGenerate ||
-		plan.Port.ExactVersion != moduleapi.PortVersionV1 ||
+		plan.Port.ExactVersion != moduleapi.PortVersionV2 ||
 		binding.FailurePolicy != moduleapi.FailureRequired {
 		return corecontract.RunManifest{}, corecontract.MemberExecutionSnapshot{}, fmt.Errorf(
 			"%w: deterministic Member is not required model-only scope",
@@ -498,7 +498,7 @@ func verifyLearningCyclePersistedRunClosure(
 			err,
 		)
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(configContent.CanonicalBytes)
+	config, err := moduleapi.RestoreModelBindingConfigV2(configContent.CanonicalBytes)
 	if err != nil {
 		return corecontract.RunManifest{}, corecontract.MemberExecutionSnapshot{}, fmt.Errorf(
 			"%w: restore deterministic model Config: %v",

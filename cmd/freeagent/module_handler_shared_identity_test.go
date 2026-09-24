@@ -76,7 +76,7 @@ func TestSharedModuleHandlerIdentityMatchesProductionAdaptersV1(t *testing.T) {
 
 	modelPort := moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}
 	contextPort := moduleapi.PortRef{
 		Name:         moduleapi.PortNameContextProvide,
@@ -97,7 +97,7 @@ func TestSharedModuleHandlerIdentityMatchesProductionAdaptersV1(t *testing.T) {
 				Port:                                  modelPort,
 				RuntimeMode:                           moduleapi.RuntimeModeRequestTrustedInProcess,
 				RuntimeProtocol:                       moduleapi.RuntimeProtocolGoInProcessV1,
-				ConsumerSchema:                        moduleapi.ModelBindingConfigSchemaV1,
+				ConsumerSchema:                        moduleapi.ModelBindingConfigSchemaV2,
 				ModuleID:                              localDeepSeekModuleID,
 				ExactVersion:                          localDeepSeekVersion,
 				ArtifactDigest:                        localDeepSeekDigest,
@@ -197,8 +197,8 @@ func TestSharedModuleHandlerIdentityMatchesProductionAdaptersV1(t *testing.T) {
 				RuntimeProtocol:                       moduleapi.RuntimeProtocolGoInProcessV1,
 				ConsumerSchema:                        moduleapi.KnowledgeContextBindingSchemaV1,
 				ModuleID:                              moduleapi.DocumentInsightModuleIDV1,
-				ExactVersion:                          moduleapi.DocumentInsightVersionV1,
-				ArtifactDigest:                        moduleapi.DocumentInsightArtifactDigestV1,
+				ExactVersion:                          moduleapi.DocumentInsightVersionV2,
+				ArtifactDigest:                        moduleapi.DocumentInsightArtifactDigestV2,
 				ExecutionClass:                        moduleapi.ExecutionTrustedInProcess,
 				AdapterIdentity:                       exactadapter.DocumentInsightAdapterIdentityV1,
 				HandlerKind:                           modulehandler.KindV1("DOCUMENT_INSIGHT"),
@@ -210,8 +210,8 @@ func TestSharedModuleHandlerIdentityMatchesProductionAdaptersV1(t *testing.T) {
 				RuntimeProtocol:                       moduleapi.RuntimeProtocolGoInProcessV1,
 				ConsumerSchema:                        moduleapi.ActionBindingConfigSchemaV1,
 				ModuleID:                              moduleapi.DocumentInsightModuleIDV1,
-				ExactVersion:                          moduleapi.DocumentInsightVersionV1,
-				ArtifactDigest:                        moduleapi.DocumentInsightArtifactDigestV1,
+				ExactVersion:                          moduleapi.DocumentInsightVersionV2,
+				ArtifactDigest:                        moduleapi.DocumentInsightArtifactDigestV2,
 				ExecutionClass:                        moduleapi.ExecutionTrustedInProcess,
 				AdapterIdentity:                       exactadapter.DocumentInsightAdapterIdentityV1,
 				HandlerKind:                           modulehandler.KindV1("DOCUMENT_INSIGHT"),

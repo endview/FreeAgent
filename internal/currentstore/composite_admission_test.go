@@ -275,6 +275,16 @@ func newCompositeAdmissionFixture(t *testing.T) *compositeAdmissionFixture {
 	reviewProfile.Profile = corecontract.ProfileRef{
 		ID: "profile-review", Version: "v1", Digest: strings.Repeat("0", 64),
 	}
+	compositeContextPolicy := putPublicationContextPolicyWithLimits(
+		t,
+		base.store,
+		10_000,
+		64,
+	)
+	coordinatorProfile.ContextPolicy = compositeContextPolicy
+	analysisProfile.ContextPolicy = compositeContextPolicy
+	reviewProfile.ContextPolicy = compositeContextPolicy
+	control.Profiles[0] = coordinatorProfile
 	control.SnapshotID = "control-composite-admission"
 	control.Revision++
 	control.Agents = append(control.Agents, analysisAgent, reviewAgent)
@@ -400,7 +410,7 @@ func compositeModelOnlyBindings(
 	selected := make([]controlcontract.BindingSpec, 0, len(bindings))
 	for _, binding := range bindings {
 		if binding.Port.Name == moduleapi.PortNameModelGenerate &&
-			binding.Port.ExactVersion == moduleapi.PortVersionV1 {
+			binding.Port.ExactVersion == moduleapi.PortVersionV2 {
 			selected = append(selected, binding)
 		}
 	}

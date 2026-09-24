@@ -329,12 +329,12 @@ func publishW4LearningReviewerV1(
 	if err != nil {
 		t.Fatalf("read Reviewer base Model config: %v", err)
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(configRecord.CanonicalBytes)
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(configRecord.CanonicalBytes)
 	if err != nil {
 		t.Fatalf("restore Reviewer base Model config: %v", err)
 	}
 	modelConfig.Parameters = json.RawMessage(`{"max_tokens":512}`)
-	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV1(modelConfig)
+	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV2(modelConfig)
 	if err != nil {
 		t.Fatalf("freeze Reviewer Model config: %v", err)
 	}
@@ -845,9 +845,9 @@ func newW4LearningUsageV1(t *testing.T, providerRequestID string) []byte {
 	uncached := uint64(24)
 	output := uint64(12)
 	reasoning := uint64(0)
-	_, canonical, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV1,
+	_, canonical, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV2,
 			InputTokens:         &input,
 			CachedInputTokens:   &cached,
 			UncachedInputTokens: &uncached,

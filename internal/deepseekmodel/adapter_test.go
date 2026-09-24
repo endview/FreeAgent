@@ -109,18 +109,15 @@ func TestAdapterSuccessMapsCacheReasoningAndExcludesPrivateContent(t *testing.T)
 		output.ProviderRequestID != "request-123" {
 		t.Fatalf("output=%+v", output)
 	}
-	usage, err := moduleapi.RestoreModelUsageReceiptV1(result.UsageReceipt)
+	usage, err := moduleapi.RestoreModelUsageReceiptV2(result.UsageReceipt)
 	if err != nil {
-		t.Fatalf("RestoreModelUsageReceiptV1: %v", err)
+		t.Fatalf("RestoreModelUsageReceiptV2: %v", err)
 	}
 	assertUint64Pointer(t, "input", usage.InputTokens, 100)
 	assertUint64Pointer(t, "cached", usage.CachedInputTokens, 80)
 	assertUint64Pointer(t, "uncached", usage.UncachedInputTokens, 20)
 	assertUint64Pointer(t, "output", usage.OutputTokens, 25)
 	assertUint64Pointer(t, "reasoning", usage.ReasoningTokens, 12)
-	if usage.ProviderReportedCost != nil {
-		t.Fatal("adapter fabricated provider-reported cost")
-	}
 	for _, forbidden := range []string{
 		testAPIKey,
 		"private reasoning must never persist",
@@ -645,19 +642,17 @@ func testModelConfigCanonical(
 	parameters json.RawMessage,
 ) []byte {
 	t.Helper()
-	_, canonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        provider,
-			Model:           model,
-			ModelBuildID:    modelBuildID,
-			BillingVersion:  "deepseek-public-v1",
-			PriceSnapshotID: "price-deepseek-test-v1",
-			Parameters:      parameters,
+	_, canonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      provider,
+			Model:         model,
+			ModelBuildID:  modelBuildID,
+			Parameters:    parameters,
 		},
 	)
 	if err != nil {
-		t.Fatalf("NewModelBindingConfigV1: %v", err)
+		t.Fatalf("NewModelBindingConfigV2: %v", err)
 	}
 	return canonical
 }

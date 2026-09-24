@@ -1,10 +1,10 @@
 package currentstore
 
 import (
-	"context"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -59,7 +59,7 @@ const (
 )
 
 func TestW6ModuleArtifactIngressSchemaIdentityIsFrozen(t *testing.T) {
-	migration, err := Migration0001()
+	migration, err := os.ReadFile("migrations/0001_current.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,13 +69,6 @@ func TestW6ModuleArtifactIngressSchemaIdentityIsFrozen(t *testing.T) {
 	}
 	if got := fmt.Sprintf("%x", digest); got != w6ModuleArtifactIngressMigrationSHA256 {
 		t.Fatalf("migration SHA-256 = %s, want %s", got, w6ModuleArtifactIngressMigrationSHA256)
-	}
-	if ExpectedSchemaFingerprint != w6ModuleArtifactIngressSchemaFingerprint {
-		t.Fatalf(
-			"ExpectedSchemaFingerprint = %s, want %s",
-			ExpectedSchemaFingerprint,
-			w6ModuleArtifactIngressSchemaFingerprint,
-		)
 	}
 	if len(migration) == w6OverviewMigrationBytes ||
 		fmt.Sprintf("%x", digest) == w6OverviewMigrationSHA256 ||
@@ -103,7 +96,14 @@ func TestW6ModuleArtifactIngressSchemaIdentityIsFrozen(t *testing.T) {
 		t.Fatal("W5-X1 schema identity did not advance from W4-L4B")
 	}
 
-	db := createSchemaTestDatabase(t)
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(string(migration)); err != nil {
+		t.Fatal(err)
+	}
 	var tableCount int
 	if err := db.QueryRow(`
 		SELECT COUNT(*)
@@ -115,16 +115,36 @@ func TestW6ModuleArtifactIngressSchemaIdentityIsFrozen(t *testing.T) {
 	if tableCount != 43 {
 		t.Fatalf("ordinary table count = %d, want 43", tableCount)
 	}
-	fingerprint, err := DatabaseSchemaFingerprint(context.Background(), db)
+}
+
+func TestFAC2SchemaIdentityIsFrozen(t *testing.T) {
+	migration, err := Migration0001()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fingerprint != w6ModuleArtifactIngressSchemaFingerprint {
+	digest := sha256.Sum256(migration)
+	if len(migration) != 149239 ||
+		fmt.Sprintf("%x", digest) != Migration0001SHA256 ||
+		ExpectedSchemaFingerprint !=
+			"d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e" {
 		t.Fatalf(
-			"database schema fingerprint = %s, want %s",
-			fingerprint,
-			w6ModuleArtifactIngressSchemaFingerprint,
+			"FAC2 identity bytes=%d sha=%x fingerprint=%s",
+			len(migration),
+			digest,
+			ExpectedSchemaFingerprint,
 		)
+	}
+	db := createSchemaTestDatabase(t)
+	var tableCount int
+	if err := db.QueryRow(`
+		SELECT COUNT(*)
+		FROM sqlite_schema
+		WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+	`).Scan(&tableCount); err != nil {
+		t.Fatal(err)
+	}
+	if tableCount != 42 {
+		t.Fatalf("ordinary table count = %d, want 42", tableCount)
 	}
 }
 

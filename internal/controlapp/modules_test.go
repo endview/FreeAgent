@@ -513,13 +513,13 @@ func TestModulesServiceDeterministicDigestsETagsAndCopiesV1(t *testing.T) {
 		t.Fatalf("invalid digest/strong ETag projection: %+v", first)
 	}
 	if first.SourceDigest !=
-		"7deee489de6ad14eb8f8a8a151ca45e1a5fad7ade7e8f3a40356300be06ed00f" ||
+		"efa608e8f102fd61322d991e268530854233495ba3c8bf75920253eb96142894" ||
 		first.ViewSnapshotDigest !=
-			"5311113eac60b5d8dde7abcb2cc8bcc37bc1956b0e12e432addea6aaacdac4c5" ||
+			"d618b2302d4f3390ee9df368b3e90ab6e2a53617d9d70203db2d3882a4bd55b5" ||
 		first.ProjectionDigest !=
-			"a27fb8f33f76232a1965683ddeece052e4fdad5c52058e8917bcd30ec5b9aced" ||
+			"eef95a324b0d7115eda5a01c0a43fe13b096adf35d6d89988a7fd7c215a53db3" ||
 		first.StrongETag !=
-			`"1a308e62bbc0dba0fe6d68f291e63f47490210c7971f0358656da44999cd12cd"` {
+			`"03cd6c6a8f0aeb6c87866ccdf74eebe7851425ac49ada12a5ee0d73bda395a29"` {
 		t.Fatalf("Modules page digest canary changed: %+v", first)
 	}
 
@@ -592,9 +592,9 @@ func TestModulesServiceDeterministicDigestsETagsAndCopiesV1(t *testing.T) {
 		t.Fatalf("invalid detail schema/digest/ETag: %+v", detail)
 	}
 	if detail.ProjectionDigest !=
-		"022e11d63e274229497f31afb19c5e5801556cdd3958470694c3af2deadf92ff" ||
+		"c9b5c4f6638842db2254ec151465c3014450146651274162ae4fde932ceaa3b4" ||
 		detail.StrongETag !=
-			`"4871ba445fcc41b8bdaf42f24354a8c6e638c7dd397430d9997fc22380dba4bf"` {
+			`"6e0a5fbe2304cd5203be584ef1cddd63416b412c5844e79b36adf6c1666f0173"` {
 		t.Fatalf("Module detail digest canary changed: %+v", detail)
 	}
 	detail.Module.Summary.Provides[0].Name = "mutated.port"

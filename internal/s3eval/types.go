@@ -76,46 +76,25 @@ type TokenReport struct {
 	CacheHitRatio *float64          `json:"cache_hit_ratio"`
 }
 
-// CostTotalReport is the stable JSON view of one authoritative Usage cost
-// column. UNKNOWN and MIXED_CURRENCY remain explicit rather than becoming a
-// fabricated numeric zero.
-type CostTotalReport struct {
-	Status     currentstore.CompositeFamilyCostStatusV1 `json:"status"`
-	Value      *string                                  `json:"value"`
-	Currency   string                                   `json:"currency"`
-	Currencies []string                                 `json:"currencies"`
-}
-
-// CostReport keeps estimated, provider-reported, and reconciled facts
-// independent exactly as they are projected from the Current Store ledger.
-type CostReport struct {
-	Estimated        CostTotalReport `json:"estimated"`
-	ProviderReported CostTotalReport `json:"provider_reported"`
-	Reconciled       CostTotalReport `json:"reconciled"`
-}
-
 // AttemptFact contains only already-persisted dispatch facts and derived
 // timing/order. Elapsed is UpdatedAt-CreatedAt; it is not provider latency.
 type AttemptFact struct {
-	ServiceOrder        uint64                          `json:"service_order"`
-	WorkspaceID         string                          `json:"workspace_id"`
-	RootRunID           string                          `json:"root_run_id"`
-	RunID               string                          `json:"run_id"`
-	Role                corecontract.CompositeRunRoleV1 `json:"role"`
-	SlotID              string                          `json:"slot_id"`
-	AttemptID           string                          `json:"attempt_id"`
-	LogicalStepID       string                          `json:"logical_step_id"`
-	State               corecontract.ModelAttemptState  `json:"state"`
-	Provider            string                          `json:"provider"`
-	Model               string                          `json:"model"`
-	RequestDigest       string                          `json:"request_digest"`
-	PriceSnapshotID     string                          `json:"price_snapshot_id"`
-	PriceSnapshotDigest string                          `json:"price_snapshot_digest"`
-	Currency            string                          `json:"currency"`
-	CreatedAt           time.Time                       `json:"created_at"`
-	UpdatedAt           time.Time                       `json:"updated_at"`
-	Elapsed             time.Duration                   `json:"elapsed"`
-	Tokens              corecontract.UsageTokens        `json:"tokens"`
+	ServiceOrder  uint64                          `json:"service_order"`
+	WorkspaceID   string                          `json:"workspace_id"`
+	RootRunID     string                          `json:"root_run_id"`
+	RunID         string                          `json:"run_id"`
+	Role          corecontract.CompositeRunRoleV1 `json:"role"`
+	SlotID        string                          `json:"slot_id"`
+	AttemptID     string                          `json:"attempt_id"`
+	LogicalStepID string                          `json:"logical_step_id"`
+	State         corecontract.ModelAttemptState  `json:"state"`
+	Provider      string                          `json:"provider"`
+	Model         string                          `json:"model"`
+	RequestDigest string                          `json:"request_digest"`
+	CreatedAt     time.Time                       `json:"created_at"`
+	UpdatedAt     time.Time                       `json:"updated_at"`
+	Elapsed       time.Duration                   `json:"elapsed"`
+	Tokens        corecontract.UsageTokens        `json:"tokens"`
 }
 
 // ResultFact is the content-verified successful MODEL_RESULT for one
@@ -150,7 +129,6 @@ type FamilyReport struct {
 	Reply       string            `json:"reply"`
 	Failure     string            `json:"failure"`
 	Tokens      TokenReport       `json:"tokens"`
-	Costs       CostReport        `json:"costs"`
 	Attempts    []AttemptFact     `json:"attempts"`
 	Results     []ResultFact      `json:"results"`
 	Error       string            `json:"error"`

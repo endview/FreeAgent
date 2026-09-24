@@ -1,20 +1,22 @@
 # Install the Developer Preview
 
-This document applies to FreeAgent `v0.1.0-dev.2`. It is a Developer Preview,
-not a production release.
+This document applies to FreeAgent `v0.1.1`. It is an early Developer Preview,
+not a production-support distribution.
 
 ## Choose a package
 
 Use the archive whose target matches the machine that will run it:
 
-- Windows: `freeagent-v0.1.0-dev.2-windows-amd64.zip` or
-  `freeagent-v0.1.0-dev.2-windows-arm64.zip`
-- Linux: `freeagent-v0.1.0-dev.2-linux-amd64.tar.gz` or
-  `freeagent-v0.1.0-dev.2-linux-arm64.tar.gz`
-- macOS build-only: `freeagent-v0.1.0-dev.2-darwin-amd64-build-only.tar.gz`
-  or `freeagent-v0.1.0-dev.2-darwin-arm64-build-only.tar.gz`
+- Windows: `freeagent-v0.1.1-windows-amd64.zip` or
+  `freeagent-v0.1.1-windows-arm64.zip`
+- Linux: `freeagent-v0.1.1-linux-amd64.tar.gz` or
+  `freeagent-v0.1.1-linux-arm64.tar.gz`
+- macOS build-only: `freeagent-v0.1.1-darwin-amd64-build-only.tar.gz`
+  or `freeagent-v0.1.1-darwin-arm64-build-only.tar.gz`
 
-Obtain the archive and the adjacent `SHA256SUMS` file from GitHub Releases.
+For the local candidate, use the archive and adjacent `SHA256SUMS` from the
+operator-held release output. If a release is later approved and uploaded,
+obtain both files from the same published release.
 Verify the archive before extracting it; see `VERIFY_CHECKSUMS.md` for exact
 commands. These checksums detect accidental or post-build changes but are not
 signatures.
@@ -25,8 +27,8 @@ Each archive has one top-level directory named after its version and target.
 On Windows PowerShell:
 
 ```powershell
-Expand-Archive .\freeagent-v0.1.0-dev.2-windows-amd64.zip -DestinationPath .\freeagent-preview
-Set-Location .\freeagent-preview\freeagent-v0.1.0-dev.2-windows-amd64
+Expand-Archive .\freeagent-v0.1.1-windows-amd64.zip -DestinationPath .\freeagent-preview
+Set-Location .\freeagent-preview\freeagent-v0.1.1-windows-amd64
 .\bin\freeagent-windows-amd64.exe --version
 ```
 
@@ -34,12 +36,12 @@ On Linux or macOS:
 
 ```sh
 mkdir freeagent-preview
-tar -xzf freeagent-v0.1.0-dev.2-linux-amd64.tar.gz -C freeagent-preview
-cd freeagent-preview/freeagent-v0.1.0-dev.2-linux-amd64
+tar -xzf freeagent-v0.1.1-linux-amd64.tar.gz -C freeagent-preview
+cd freeagent-preview/freeagent-v0.1.1-linux-amd64
 ./bin/freeagent-linux-amd64 --version
 ```
 
-The version line must report `version=v0.1.0-dev.2`, the 40-character release
+The version line must report `version=v0.1.1`, the 40-character release
 commit, and the selected target. A mismatch means the package must not be used.
 
 The package does not modify `PATH`, install a service, or write outside paths
@@ -53,7 +55,7 @@ Continue with `QUICKSTART.md` after the version and checksum checks pass.
 
 ## Upgrade
 
-Developer Preview upgrades are side-by-side replacements; there is no in-place
+FreeAgent upgrades are side-by-side replacements; there is no in-place
 installer. Verify and extract the new package into a new directory, confirm its
 `--version` output, stop any running FreeAgent process, and run the new binary
 against a copied data directory first. Keep the previous package, database, and
@@ -62,7 +64,7 @@ workflow and reopened the restored database successfully.
 
 Do not overwrite an existing extracted package or reuse a package directory as
 a data directory. Configuration and data formats may change during the
-Developer Preview series; read the new package's `RELEASE_NOTES.md` and
+release series; read the new package's `RELEASE_NOTES.md` and
 `KNOWN_LIMITATIONS.md` before switching.
 
 ## Uninstall

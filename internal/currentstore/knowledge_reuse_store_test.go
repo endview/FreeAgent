@@ -826,7 +826,6 @@ func newKnowledgeReuseStoreFixture(
 	); err != nil {
 		t.Fatal(err)
 	}
-	putDynamicContextTestPrice(t, admission.store)
 	sourceLease, sourceRun := acquireDynamicContextConversationRun(
 		t,
 		admission.store,

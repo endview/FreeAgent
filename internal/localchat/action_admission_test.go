@@ -166,7 +166,7 @@ func TestPureChatHasZeroActionAccessWithAvailableUnselectedProviders(
 		}
 	}
 	if modelProvider.InstanceID == "" {
-		t.Fatal("published Catalog lost model.generate/v1")
+		t.Fatal("published Catalog lost model.generate/v2")
 	}
 
 	bomb := &zeroAccessActionAdapter{}

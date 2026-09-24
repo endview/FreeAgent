@@ -27,19 +27,14 @@ var (
 	ErrModelDispatchIntegrity = errors.New(
 		"currentstore: model dispatch integrity violation",
 	)
+	ErrModelRecordNotFound = errors.New(
+		"currentstore: model record not found",
+	)
 )
 
 const (
-	modelBudgetSchemaV1                              = "model-budget/v1"
 	modelDeadlineExpiredBeforeDispatchClassification = "DEADLINE_EXPIRED_BEFORE_DISPATCH"
 )
-
-type modelBudgetV1 struct {
-	SchemaVersion  string                 `json:"schema_version"`
-	BudgetPolicy   corecontract.PolicyRef `json:"budget_policy"`
-	BudgetStateRef string                 `json:"budget_state_ref"`
-	LedgerSequence uint64                 `json:"-"`
-}
 
 // BeginModelDispatchInput contains only Core-selected values that are not
 // already frozen in the Run. Member identity, model Binding, provider/model,
@@ -66,7 +61,7 @@ type ModelDispatchAttemptRecord struct {
 	MemberSnapshotDigest string
 	Binding              moduleapi.PortBinding
 	BindingCanonical     []byte
-	// ModelConfigCanonical is the exact model-binding-config/v1 content
+	// ModelConfigCanonical is the exact model-binding-config/v2 content
 	// resolved from Binding.ConfigRef for the one pre-network invocation
 	// grant. It is transient gate material, not a second persisted column.
 	ModelConfigCanonical []byte
@@ -80,9 +75,7 @@ type ModelDispatchAttemptRecord struct {
 	Model                     string
 	ParametersCanonical       []byte
 	Deadline                  time.Time
-	BudgetCanonical           []byte
-	BillingVersion            string
-	PriceSnapshotID           string
+	UsageLedgerRef            string
 	SourceDispatchAttemptID   string
 	State                     corecontract.ModelAttemptState
 	ProviderRequestID         string
@@ -392,8 +385,6 @@ func (store *Store) BeginModelDispatch(
 		}
 		if existing.Provider != config.Provider ||
 			existing.Model != config.Model ||
-			existing.BillingVersion != config.BillingVersion ||
-			existing.PriceSnapshotID != config.PriceSnapshotID ||
 			!bytes.Equal(
 				existing.ParametersCanonical,
 				expectedParameters,
@@ -570,22 +561,6 @@ func (store *Store) BeginModelDispatch(
 			ErrInvalidModelDispatch,
 		)
 	}
-	price, err := queryModelPriceSnapshot(
-		ctx,
-		connection,
-		config.PriceSnapshotID,
-	)
-	if err != nil {
-		return BeginModelDispatchResult{}, err
-	}
-	if price.Snapshot.Provider != config.Provider ||
-		price.Snapshot.Model != config.Model ||
-		price.Snapshot.BillingVersion != config.BillingVersion {
-		return BeginModelDispatchResult{}, fmt.Errorf(
-			"%w: frozen model config does not match price snapshot",
-			ErrModelDispatchIntegrity,
-		)
-	}
 	logicalKey, err := corecontract.ModelLogicalOperationKey(
 		run.RunID,
 		run.Member.MemberID,
@@ -598,16 +573,8 @@ func (store *Store) BeginModelDispatch(
 			err,
 		)
 	}
-	budgetCanonical, err := canonicalModelBudget(
-		run.Manifest.BudgetPolicy,
-		run.RunID,
-		run.Frame.BudgetStateRef,
-	)
-	if err != nil {
-		return BeginModelDispatchResult{}, err
-	}
 	if deadlineExpired {
-		result, err := commitExpiredModelDispatchBeforeNetwork(
+		result, err := commitModelDispatchBeforeNetwork(
 			ctx,
 			connection,
 			input,
@@ -617,12 +584,15 @@ func (store *Store) BeginModelDispatch(
 			run,
 			bindingCanonical,
 			request.Parameters,
-			price,
+			config.Provider,
+			config.Model,
 			logicalKey,
-			budgetCanonical,
 			"",
 			readyStep,
 			workspaceTransfer,
+			modelDeadlineExpiredBeforeDispatchClassification,
+			corecontract.DispatchTransitionExpiredBeforeNetworkV1,
+			overviewTransitionModelExpiredV1,
 		)
 		if err != nil {
 			return BeginModelDispatchResult{}, err
@@ -644,7 +614,7 @@ func (store *Store) BeginModelDispatch(
 		run.RunID,
 		moduleapi.PortRef{
 			Name:         moduleapi.PortNameModelGenerate,
-			ExactVersion: moduleapi.PortVersionV1,
+			ExactVersion: moduleapi.PortVersionV2,
 		},
 		binding.Provider,
 	); err != nil {
@@ -726,9 +696,7 @@ func (store *Store) BeginModelDispatch(
 			model,
 			parameters_json,
 			deadline,
-			budget_json,
-			billing_version,
-			price_snapshot_id,
+			usage_ledger_ref,
 			state,
 			provider_request_id,
 			provider_receipt_ref,
@@ -740,7 +708,7 @@ func (store *Store) BeginModelDispatch(
 			created_at,
 			updated_at
 		) VALUES(
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 			'PENDING', NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, ?
 		)
 	`,
@@ -760,13 +728,11 @@ func (store *Store) BeginModelDispatch(
 		),
 		requestDigest,
 		requestDigest,
-		price.Snapshot.Provider,
-		price.Snapshot.Model,
+		config.Provider,
+		config.Model,
 		[]byte(request.Parameters),
 		deadlineMicros,
-		budgetCanonical,
-		price.Snapshot.BillingVersion,
-		price.Snapshot.PriceSnapshotID,
+		run.Frame.UsageLedgerRef,
 		createdAt,
 		createdAt,
 	)
@@ -788,15 +754,12 @@ func (store *Store) BeginModelDispatch(
 			uncached_input_tokens,
 			output_tokens,
 			reasoning_tokens,
-			estimated_cost,
-			provider_reported_cost,
-			reconciled_cost,
-			reconciliation_status,
+			usage_status,
 			raw_receipt_ref
 		) VALUES(
 			?, ?, NULL, 0,
 			NULL, NULL, NULL, NULL, NULL,
-			NULL, NULL, NULL, 'PENDING', NULL
+			'PENDING', NULL
 		)
 	`, input.AttemptID, run.RunID); err != nil {
 		return BeginModelDispatchResult{}, fmt.Errorf(
@@ -979,7 +942,7 @@ func (store *Store) BeginModelDispatch(
 	if err != nil {
 		return BeginModelDispatchResult{}, err
 	}
-	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV1(config)
+	_, modelConfigCanonical, err := moduleapi.NewModelBindingConfigV2(config)
 	if err != nil {
 		return BeginModelDispatchResult{}, fmt.Errorf(
 			"%w: rebuild frozen model Binding config: %v",
@@ -1010,6 +973,29 @@ func (store *Store) BeginModelDispatch(
 }
 
 func expectedModelParametersForRun(
+	run RunForLoop,
+	frozen []byte,
+) ([]byte, error) {
+	parameters, err := storedModelParametersForRun(run, frozen)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := validateModelParametersForRun(run, parameters); err != nil {
+		return nil, fmt.Errorf(
+			"%w: model parameters: %v",
+			ErrModelDispatchIntegrity,
+			err,
+		)
+	}
+	return parameters, nil
+}
+
+// storedModelParametersForRun reconstructs only the parameters that were
+// frozen when an existing Attempt was created. Recovery and backup validation
+// use it to preserve earlier history byte-for-byte. Every path that can create
+// or redispatch an Attempt must use expectedModelParametersForRun and therefore
+// applies the current explicit max_tokens and frozen output-reserve rules.
+func storedModelParametersForRun(
 	run RunForLoop,
 	frozen []byte,
 ) ([]byte, error) {
@@ -1737,11 +1723,11 @@ func contextCompilationHistoryPrefix(
 	return true
 }
 
-// commitExpiredModelDispatchBeforeNetwork closes a semantic model step whose
-// already-normalized deadline is expired before dispatch. The failed
-// Attempt, non-billable Usage, terminal Run/Frame, and terminal event are one
+// commitModelDispatchBeforeNetwork closes a semantic model step before an
+// adapter may run because its normalized deadline expired. The failed
+// Attempt, empty Usage, terminal Run/Frame, and terminal event are one
 // transaction, so no PENDING recovery window or invocation permit exists.
-func commitExpiredModelDispatchBeforeNetwork(
+func commitModelDispatchBeforeNetwork(
 	ctx context.Context,
 	connection *sql.Conn,
 	input BeginModelDispatchInput,
@@ -1751,12 +1737,15 @@ func commitExpiredModelDispatchBeforeNetwork(
 	run RunForLoop,
 	bindingCanonical []byte,
 	requestParameters []byte,
-	price ModelPriceSnapshotRecord,
+	provider string,
+	model string,
 	logicalKey string,
-	budgetCanonical []byte,
 	sourceDispatchAttemptID string,
 	expectedFrameStep string,
 	workspaceTransfer *WorkspaceTransferRecordV1,
+	errorClassification string,
+	transitionOrigin corecontract.DispatchTransitionOriginV1,
+	resourceTransition string,
 ) (BeginModelDispatchResult, error) {
 	continuation, err := corecontract.NewLoopContinuationV1(
 		corecontract.TerminatedLoopStep,
@@ -1859,9 +1848,7 @@ func commitExpiredModelDispatchBeforeNetwork(
 			model,
 			parameters_json,
 			deadline,
-			budget_json,
-			billing_version,
-			price_snapshot_id,
+			usage_ledger_ref,
 			source_dispatch_attempt_id,
 			state,
 			provider_request_id,
@@ -1874,7 +1861,7 @@ func commitExpiredModelDispatchBeforeNetwork(
 			created_at,
 			updated_at
 		) VALUES(
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 			'FAILED', NULL, NULL, NULL, ?, NULL, NULL, 0, ?, ?
 		)
 	`,
@@ -1894,15 +1881,13 @@ func commitExpiredModelDispatchBeforeNetwork(
 		),
 		requestDigest,
 		requestDigest,
-		price.Snapshot.Provider,
-		price.Snapshot.Model,
+		provider,
+		model,
 		bytes.Clone(requestParameters),
 		deadline.UnixMicro(),
-		bytes.Clone(budgetCanonical),
-		price.Snapshot.BillingVersion,
-		price.Snapshot.PriceSnapshotID,
+		run.Frame.UsageLedgerRef,
 		nullableModelString(sourceDispatchAttemptID),
-		modelDeadlineExpiredBeforeDispatchClassification,
+		errorClassification,
 		createdAt,
 		createdAt,
 	); err != nil {
@@ -1923,15 +1908,12 @@ func commitExpiredModelDispatchBeforeNetwork(
 			uncached_input_tokens,
 			output_tokens,
 			reasoning_tokens,
-			estimated_cost,
-			provider_reported_cost,
-			reconciled_cost,
-			reconciliation_status,
+			usage_status,
 			raw_receipt_ref
 		) VALUES(
 			?, ?, NULL, 0,
 			NULL, NULL, NULL, NULL, NULL,
-			NULL, NULL, NULL, ?, NULL
+			?, NULL
 		)
 	`,
 		input.AttemptID,
@@ -1952,7 +1934,7 @@ func commitExpiredModelDispatchBeforeNetwork(
 	}
 	usageEvent, err := modelUsageEventV1(ModelUsageRecord{
 		AttemptID: input.AttemptID, RunID: run.RunID,
-		ReconciliationStatus: modelUsageStatusNoReport,
+		UsageStatus: modelUsageStatusNoReport,
 	})
 	if err != nil {
 		return BeginModelDispatchResult{}, err
@@ -1962,7 +1944,7 @@ func commitExpiredModelDispatchBeforeNetwork(
 		RunID:         run.RunID, AttemptID: input.AttemptID, LogicalStepID: input.LogicalStepID,
 		LogicalOperationKey: logicalKey, RequestDigest: requestDigest,
 		State:            corecontract.ModelAttemptFailed,
-		TransitionOrigin: corecontract.DispatchTransitionExpiredBeforeNetworkV1,
+		TransitionOrigin: transitionOrigin,
 		Usage:            usageEvent, ResourceSemanticDigest: resource.Snapshot.SemanticDigest,
 	})
 	if err != nil {
@@ -2098,7 +2080,7 @@ func commitExpiredModelDispatchBeforeNetwork(
 		return BeginModelDispatchResult{}, err
 	}
 	if err := appendModelResourceObservationV1(
-		ctx, connection, input.AttemptID, overviewTransitionModelExpiredV1,
+		ctx, connection, input.AttemptID, resourceTransition,
 	); err != nil {
 		return BeginModelDispatchResult{}, err
 	}
@@ -2249,7 +2231,7 @@ func loadExactRetryRun(
 	}
 	observedAt := nowUnixMicro()
 	sameRunRevision := uint64(current.runRevision) == original.RunRevision
-	deadlineTerminalOneBehind :=
+	preNetworkTerminalOneBehind :=
 		existing.State == corecontract.ModelAttemptFailed &&
 			existing.ErrorClassification ==
 				modelDeadlineExpiredBeforeDispatchClassification &&
@@ -2262,7 +2244,7 @@ func loadExactRetryRun(
 		current.owner.String != original.OwnerID ||
 		current.epoch <= 0 ||
 		uint64(current.epoch) != original.LeaseEpoch ||
-		(!sameRunRevision && !deadlineTerminalOneBehind) ||
+		(!sameRunRevision && !preNetworkTerminalOneBehind) ||
 		!current.expiry.Valid ||
 		current.expiry.Int64 <= observedAt {
 		return RunLease{}, RunForLoop{}, fmt.Errorf(
@@ -2304,9 +2286,6 @@ func verifyBeginPendingUsagePlaceholder(
 		uncachedInputTokens sql.NullInt64
 		outputTokens        sql.NullInt64
 		reasoningTokens     sql.NullInt64
-		estimatedCost       sql.NullString
-		providerCost        sql.NullString
-		reconciledCost      sql.NullString
 		status              string
 		rawReceipt          sql.NullString
 	)
@@ -2320,10 +2299,7 @@ func verifyBeginPendingUsagePlaceholder(
 			uncached_input_tokens,
 			output_tokens,
 			reasoning_tokens,
-			estimated_cost,
-			provider_reported_cost,
-			reconciled_cost,
-			reconciliation_status,
+			usage_status,
 			raw_receipt_ref
 		FROM model_usage
 		WHERE attempt_id=?
@@ -2336,9 +2312,6 @@ func verifyBeginPendingUsagePlaceholder(
 		&uncachedInputTokens,
 		&outputTokens,
 		&reasoningTokens,
-		&estimatedCost,
-		&providerCost,
-		&reconciledCost,
 		&status,
 		&rawReceipt,
 	)
@@ -2351,9 +2324,6 @@ func verifyBeginPendingUsagePlaceholder(
 		uncachedInputTokens.Valid ||
 		outputTokens.Valid ||
 		reasoningTokens.Valid ||
-		estimatedCost.Valid ||
-		providerCost.Valid ||
-		reconciledCost.Valid ||
 		status != "PENDING" ||
 		rawReceipt.Valid {
 		return fmt.Errorf(
@@ -2407,7 +2377,7 @@ func queryModelDispatchAttempt(
 		requestDigest          string
 		parametersCanonical    []byte
 		deadlineMicros         int64
-		budgetCanonical        []byte
+		usageLedgerRef         string
 		state                  string
 		providerRequestID      sql.NullString
 		providerReceiptRef     sql.NullString
@@ -2439,9 +2409,7 @@ func queryModelDispatchAttempt(
 			model,
 			parameters_json,
 			deadline,
-			budget_json,
-			billing_version,
-			price_snapshot_id,
+			usage_ledger_ref,
 			source_dispatch_attempt_id,
 			state,
 			provider_request_id,
@@ -2473,9 +2441,7 @@ func queryModelDispatchAttempt(
 		&record.Model,
 		&parametersCanonical,
 		&deadlineMicros,
-		&budgetCanonical,
-		&record.BillingVersion,
-		&record.PriceSnapshotID,
+		&usageLedgerRef,
 		&sourceDispatchAttempt,
 		&state,
 		&providerRequestID,
@@ -2579,24 +2545,13 @@ func queryModelDispatchAttempt(
 			"parameters JSON",
 		)
 	}
-	if err := requireCanonicalJSONObject(budgetCanonical); err != nil {
+	if _, err := corecontract.ParseUsageLedgerRefV1(
+		usageLedgerRef,
+		record.RunID,
+	); err != nil {
 		return ModelDispatchAttemptRecord{}, modelAttemptIntegrity(
 			attemptID,
-			"budget JSON",
-		)
-	}
-	price, err := queryModelPriceSnapshot(
-		ctx,
-		queryer,
-		record.PriceSnapshotID,
-	)
-	if err != nil ||
-		price.Snapshot.Provider != record.Provider ||
-		price.Snapshot.Model != record.Model ||
-		price.Snapshot.BillingVersion != record.BillingVersion {
-		return ModelDispatchAttemptRecord{}, modelAttemptIntegrity(
-			attemptID,
-			"price snapshot",
+			"usage ledger reference",
 		)
 	}
 	deadline, err := timeFromUnixMicro(deadlineMicros)
@@ -2640,7 +2595,7 @@ func queryModelDispatchAttempt(
 	record.Request = cloneContentRecord(requestContent)
 	record.ParametersCanonical = bytes.Clone(parametersCanonical)
 	record.Deadline = deadline
-	record.BudgetCanonical = bytes.Clone(budgetCanonical)
+	record.UsageLedgerRef = usageLedgerRef
 	record.SourceDispatchAttemptID = sourceDispatchAttempt.String
 	record.State = attemptState
 	record.ProviderRequestID = providerRequestID.String
@@ -2661,10 +2616,10 @@ func exactModelBinding(
 ) (moduleapi.PortBinding, error) {
 	for _, plan := range member.PortPlans {
 		if plan.Port.Name == moduleapi.PortNameModelGenerate &&
-			plan.Port.ExactVersion == moduleapi.PortVersionV1 {
+			plan.Port.ExactVersion == moduleapi.PortVersionV2 {
 			if len(plan.Bindings) != 1 {
 				return moduleapi.PortBinding{}, fmt.Errorf(
-					"%w: model.generate/v1 does not have one binding",
+					"%w: model.generate/v2 does not have one binding",
 					ErrModelDispatchIntegrity,
 				)
 			}
@@ -2672,7 +2627,7 @@ func exactModelBinding(
 		}
 	}
 	return moduleapi.PortBinding{}, fmt.Errorf(
-		"%w: frozen member lacks model.generate/v1",
+		"%w: frozen member lacks model.generate/v2",
 		ErrModelDispatchIntegrity,
 	)
 }
@@ -2680,22 +2635,22 @@ func exactModelBinding(
 func frozenModelBindingConfig(
 	run RunForLoop,
 	binding moduleapi.PortBinding,
-) (moduleapi.ModelBindingConfigV1, error) {
+) (moduleapi.ModelBindingConfigV2, error) {
 	record, found := run.FindContent(binding.ConfigRef)
 	if !found ||
 		record.Kind != ContentConfig ||
 		record.MediaType != admissionJSONMediaType {
-		return moduleapi.ModelBindingConfigV1{}, fmt.Errorf(
+		return moduleapi.ModelBindingConfigV2{}, fmt.Errorf(
 			"%w: model Binding ConfigRef is unavailable",
 			ErrModelDispatchIntegrity,
 		)
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(
+	config, err := moduleapi.RestoreModelBindingConfigV2(
 		record.CanonicalBytes,
 	)
 	if err != nil {
-		return moduleapi.ModelBindingConfigV1{}, fmt.Errorf(
-			"%w: model Binding ConfigRef is not model-binding-config/v1",
+		return moduleapi.ModelBindingConfigV2{}, fmt.Errorf(
+			"%w: model Binding ConfigRef is not model-binding-config/v2",
 			ErrModelDispatchIntegrity,
 		)
 	}
@@ -2779,76 +2734,6 @@ func restoreModelBinding(
 		)
 	}
 	return binding, nil
-}
-
-func canonicalModelBudget(
-	policy corecontract.PolicyRef,
-	runID string,
-	budgetStateRef string,
-) ([]byte, error) {
-	sequence, parseErr := corecontract.ParseBudgetStateRefV1(
-		budgetStateRef,
-		runID,
-	)
-	if err := policy.Validate(); err != nil || parseErr != nil {
-		return nil, fmt.Errorf(
-			"%w: invalid model budget reference",
-			ErrModelDispatchIntegrity,
-		)
-	}
-	value := modelBudgetV1{
-		SchemaVersion:  modelBudgetSchemaV1,
-		BudgetPolicy:   policy,
-		BudgetStateRef: budgetStateRef,
-		LedgerSequence: sequence,
-	}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	return moduleapi.CanonicalJSON(encoded)
-}
-
-func restoreModelBudget(
-	canonical []byte,
-	runID string,
-) (modelBudgetV1, error) {
-	checked, err := moduleapi.CanonicalJSON(canonical)
-	if err != nil || !bytes.Equal(checked, canonical) {
-		return modelBudgetV1{}, fmt.Errorf(
-			"model budget is not canonical",
-		)
-	}
-	var budget modelBudgetV1
-	decoder := json.NewDecoder(bytes.NewReader(canonical))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&budget); err != nil {
-		return modelBudgetV1{}, err
-	}
-	if budget.SchemaVersion != modelBudgetSchemaV1 {
-		return modelBudgetV1{}, fmt.Errorf(
-			"unsupported model budget schema version",
-		)
-	}
-	sequence, err := corecontract.ParseBudgetStateRefV1(
-		budget.BudgetStateRef,
-		runID,
-	)
-	if err != nil {
-		return modelBudgetV1{}, err
-	}
-	rebuilt, err := canonicalModelBudget(
-		budget.BudgetPolicy,
-		runID,
-		budget.BudgetStateRef,
-	)
-	if err != nil || !bytes.Equal(rebuilt, canonical) {
-		return modelBudgetV1{}, fmt.Errorf(
-			"model budget is not frozen",
-		)
-	}
-	budget.LedgerSequence = sequence
-	return budget, nil
 }
 
 func requireCanonicalJSONObject(canonical []byte) error {
@@ -2940,6 +2825,5 @@ func cloneModelDispatchAttempt(
 	}
 	record.Request = cloneContentRecord(record.Request)
 	record.ParametersCanonical = bytes.Clone(record.ParametersCanonical)
-	record.BudgetCanonical = bytes.Clone(record.BudgetCanonical)
 	return record
 }

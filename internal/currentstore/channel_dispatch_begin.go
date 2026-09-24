@@ -13,16 +13,6 @@ import (
 	"github.com/endview/freeagent/sdk/moduleapi"
 )
 
-// ChannelBudgetDecision is the explicit fail-closed bridge to the current
-// generic BudgetPolicy body. Channel delivery is never admitted on an
-// unknown budget decision.
-type ChannelBudgetDecision string
-
-const (
-	ChannelBudgetAllow   ChannelBudgetDecision = "ALLOW"
-	ChannelBudgetUnknown ChannelBudgetDecision = "BUDGET_UNKNOWN"
-)
-
 // CommitModelChannelAndBeginDispatchInput carries the exact final Model
 // outcome and the Core-built Channel proposal. The Channel provider,
 // endpoint, ingress identity, authority and result bound are derived from the
@@ -39,7 +29,6 @@ type CommitModelChannelAndBeginDispatchInput struct {
 	DispatchAttemptID            string
 	ProposalCanonical            []byte
 	Deadline                     time.Time
-	BudgetDecision               ChannelBudgetDecision
 }
 
 // CommitModelChannelAndBeginDispatch is the only transition from a final
@@ -78,18 +67,6 @@ func (store *Store) CommitModelChannelAndBeginDispatch(
 	if err := validateRunLeaseToken(input.Lease); err != nil {
 		return CommitModelChannelAndBeginDispatchResult{}, fmt.Errorf(
 			"%w: %v", ErrInvalidChannelDispatch, err,
-		)
-	}
-	if input.BudgetDecision != ChannelBudgetAllow {
-		if input.BudgetDecision == ChannelBudgetUnknown {
-			return CommitModelChannelAndBeginDispatchResult{}, fmt.Errorf(
-				"%w: BUDGET_UNKNOWN cannot begin Channel delivery",
-				ErrChannelDispatchConflict,
-			)
-		}
-		return CommitModelChannelAndBeginDispatchResult{}, fmt.Errorf(
-			"%w: explicit Channel BudgetDecision=ALLOW is required",
-			ErrInvalidChannelDispatch,
 		)
 	}
 	deadline, err := normalizeModelDeadline(input.Deadline)
@@ -322,7 +299,7 @@ func (store *Store) CommitModelChannelAndBeginDispatch(
 		)
 	}
 	ledgerHead, err := validateModelUsageLedgerHead(
-		ctx, connection, run.RunID, run.Frame.BudgetStateRef,
+		ctx, connection, run.RunID, run.Frame.UsageLedgerRef,
 	)
 	if err != nil {
 		return CommitModelChannelAndBeginDispatchResult{}, err
@@ -331,7 +308,7 @@ func (store *Store) CommitModelChannelAndBeginDispatch(
 	if err != nil {
 		return CommitModelChannelAndBeginDispatchResult{}, err
 	}
-	if mergedModel.Usage.LedgerSequence == nil && modelUsageHasBillableFact(mergedModel.Usage) {
+	if mergedModel.Usage.LedgerSequence == nil && modelUsageHasReportedTokens(mergedModel.Usage) {
 		if ledgerHead >= math.MaxInt64 {
 			return CommitModelChannelAndBeginDispatchResult{}, fmt.Errorf(
 				"%w: Usage ledger cannot advance", ErrChannelDispatchIntegrity,
@@ -340,9 +317,9 @@ func (store *Store) CommitModelChannelAndBeginDispatch(
 		sequence := ledgerHead + 1
 		mergedModel.Usage.LedgerSequence = &sequence
 	}
-	nextBudgetRef := run.Frame.BudgetStateRef
+	nextBudgetRef := run.Frame.UsageLedgerRef
 	if mergedModel.Usage.LedgerSequence != nil {
-		nextBudgetRef, err = corecontract.NewBudgetStateRefV1(
+		nextBudgetRef, err = corecontract.NewUsageLedgerRefV1(
 			run.RunID, *mergedModel.Usage.LedgerSequence,
 		)
 		if err != nil {
@@ -428,7 +405,7 @@ func (store *Store) CommitModelChannelAndBeginDispatch(
 			run_id, tenant_id, workspace_id, member_id, logical_step_id, source_model_attempt_id,
 			frame_revision, member_snapshot_digest, binding_index, binding_json,
 			channel_endpoint_id, channel_ingress_key, channel_proposal_ref,
-			effect_class, max_result_bytes, deadline, budget_state_ref,
+			effect_class, max_result_bytes, deadline, usage_ledger_ref,
 			state, revision, created_at, updated_at
 		) VALUES(?, 'CHANNEL_SEND', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
 	`,
@@ -762,8 +739,7 @@ func updateModelOutcomeRowsForChannel(
 		UPDATE model_usage
 		SET ledger_sequence=?, revision=?, input_tokens=?, cached_input_tokens=?,
 			uncached_input_tokens=?, output_tokens=?, reasoning_tokens=?,
-			estimated_cost=?, provider_reported_cost=?, reconciled_cost=?,
-			reconciliation_status=?, raw_receipt_ref=?,
+			usage_status=?, raw_receipt_ref=?,
 			overview_observation_sequence=overview_observation_sequence+1
 		WHERE attempt_id=? AND run_id=? AND revision=?
 	`,
@@ -774,10 +750,7 @@ func updateModelOutcomeRowsForChannel(
 		nullableModelUint(merged.Usage.Tokens.UncachedInput),
 		nullableModelUint(merged.Usage.Tokens.Output),
 		nullableModelUint(merged.Usage.Tokens.Reasoning),
-		nullableModelStringPointer(merged.Usage.EstimatedCost),
-		nullableModelStringPointer(merged.Usage.ProviderReportedCost),
-		nullableModelStringPointer(merged.Usage.ReconciledCost),
-		merged.Usage.ReconciliationStatus,
+		merged.Usage.UsageStatus,
 		nullableModelString(merged.Usage.RawReceiptRef),
 		current.Attempt.AttemptID,
 		current.Attempt.RunID,
@@ -856,7 +829,7 @@ func updateRunAndFrameForChannelBegin(
 	}
 	frameUpdate, err := connection.ExecContext(ctx, `
 		UPDATE loop_frames
-		SET frame_revision=?, step=?, budget_state_ref=?, continuation=?,
+		SET frame_revision=?, step=?, usage_ledger_ref=?, continuation=?,
 			pending_attempt_id=NULL, pending_dispatch_attempt_id=?,
 			waiting_reason=NULL, last_authoritative_event=?
 		WHERE run_id=? AND frame_revision=? AND step=?

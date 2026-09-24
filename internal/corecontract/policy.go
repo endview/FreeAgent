@@ -21,7 +21,6 @@ const (
 	PolicyResource      PolicyType = "RESOURCE"
 	PolicyActivation    PolicyType = "ACTIVATION"
 	PolicyContext       PolicyType = "CONTEXT"
-	PolicyCost          PolicyType = "COST"
 	PolicyScheduling    PolicyType = "SCHEDULING"
 	PolicyConfiguration PolicyType = "CONFIGURATION"
 )
@@ -32,7 +31,6 @@ func (kind PolicyType) Validate() error {
 		PolicyResource,
 		PolicyActivation,
 		PolicyContext,
-		PolicyCost,
 		PolicyScheduling,
 		PolicyConfiguration:
 		return nil

@@ -5,7 +5,7 @@
 </center>
 
 <center>
-  FreeAgent keeps identity, authority, budgets, external effects, and recovery
+  FreeAgent keeps identity, authority, usage limits, external effects, and recovery
   inside an auditable core, while Role, Knowledge, Memory, Skill, Action,
   Channel, and orchestration capabilities remain explicit, replaceable
   assembly units.
@@ -33,7 +33,7 @@ The core owns the parts that are difficult to audit after the fact:
 
 - workspace, agent, and profile identity;
 - module assembly and authority ceilings;
-- budgets, usage, and attempt ledgers;
+- usage limits and attempt ledgers;
 - context compilation and conversation history;
 - external effects and their `UNKNOWN` outcomes;
 - backup, restore, and exact retry semantics.
@@ -65,8 +65,9 @@ Current Store / Attempt / Usage / History
 ```
 
 Modules contribute capabilities through exact ports and bindings. They do not
-bypass workspace permissions, budgets, the gateway, the effect ledger, or final
-persistence.
+bypass workspace permissions, output/deadline limits, the gateway, the effect
+ledger, or final persistence. FreeAgent does not implement price, currency,
+cost-routing, or budget policy semantics.
 
 ## Highlights
 
@@ -121,28 +122,39 @@ W6_4_MODULES_CONFIGURATION_UI_ACCEPTED_DEVELOPMENT_SLICE
 W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT
 W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE
 W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT
+W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE
+P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE
+P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE
+P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE
+P5_BETA_GATE
 ```
+
+The `v0.1.1` release is published on
+[GitHub Releases](https://github.com/endview/FreeAgent/releases). It remains an
+early Developer Preview for local evaluation; see the release notes for the
+complete change log and the documented release boundaries.
 
 ## Download
 
-The current Developer Preview is **v0.1.0-dev.2**. It packages the existing
-development slices and does not add a new runtime feature wave.
+The current release is **v0.1.1**. It packages the completed P0-P4
+development slices; the detailed change log is maintained in the
+[`v0.1.1` Release Notes](docs/RELEASE_NOTES_v0.1.1.md).
 
 | Target | Archive |
 | --- | --- |
-| Windows AMD64 | `freeagent-v0.1.0-dev.2-windows-amd64.zip` |
-| Windows ARM64 | `freeagent-v0.1.0-dev.2-windows-arm64.zip` |
-| Linux AMD64 | `freeagent-v0.1.0-dev.2-linux-amd64.tar.gz` |
-| Linux ARM64 | `freeagent-v0.1.0-dev.2-linux-arm64.tar.gz` |
-| Darwin AMD64, build-only | `freeagent-v0.1.0-dev.2-darwin-amd64-build-only.tar.gz` |
-| Darwin ARM64, build-only | `freeagent-v0.1.0-dev.2-darwin-arm64-build-only.tar.gz` |
+| Windows AMD64 | `freeagent-v0.1.1-windows-amd64.zip` |
+| Windows ARM64 | `freeagent-v0.1.1-windows-arm64.zip` |
+| Linux AMD64 | `freeagent-v0.1.1-linux-amd64.tar.gz` |
+| Linux ARM64 | `freeagent-v0.1.1-linux-arm64.tar.gz` |
+| Darwin AMD64, build-only | `freeagent-v0.1.1-darwin-amd64-build-only.tar.gz` |
+| Darwin ARM64, build-only | `freeagent-v0.1.1-darwin-arm64-build-only.tar.gz` |
 
 Download the archive and adjacent `SHA256SUMS` from
-[GitHub Releases](https://github.com/endview/FreeAgent/releases), verify the
-checksum, extract into a new directory, and confirm the version output before
-use. Windows and Linux AMD64 packages require native install validation.
-ARM64 packages are cross-built, and Darwin packages are not claimed as
-native-validated in this preview.
+[GitHub Releases](https://github.com/endview/FreeAgent/releases),
+verify the checksum, extract into a new directory, and confirm the version
+output before use. Windows and Linux AMD64 packages require native install
+validation. ARM64 packages are cross-built, and Darwin packages are not
+claimed as native-validated in this preview.
 
 See [INSTALL](docs/INSTALL.md) for the full installation and upgrade guidance.
 
@@ -201,7 +213,38 @@ local-only service, is in [QUICKSTART](docs/QUICKSTART.md).
 - Stop all writers before backup or restore; do not run two writers against one store.
 - The current module system is not a general untrusted plug-in host.
 - Archives, SBOMs, provenance, and checksum manifests are unsigned in this Developer Preview.
-- Real DeepSeek access is opt-in, requires a separately supplied secret, may incur fees, and is not part of the offline package smoke test.
+- Real DeepSeek and Zhipu access are opt-in, require a separately supplied environment secret, and are not part of the offline package smoke test. The accepted Zhipu slice is limited to the exact `glm-4.5` binding documented in [P3 Provider Contract](docs/P3_PROVIDER_CONTRACT_V1.md).
+
+### Optional Zhipu GLM run
+
+The Zhipu adapter is disabled by default. Enable it explicitly and provide the
+credential through the process environment; it is never read from a seed,
+command argument, source file, or backup.
+
+```powershell
+$env:FREEAGENT_ZHIPU_API_KEY = '<YOUR_API_KEY>'
+& $FreeAgent init `
+  --db (Join-Path $Runtime 'current-zhipu.sqlite') `
+  --artifact-root (Join-Path $Runtime 'zhipu-artifacts') `
+  --seed .\examples\current-v1.zhipu.bootstrap.seed.json
+& $FreeAgent conversation-create `
+  --db (Join-Path $Runtime 'current-zhipu.sqlite') `
+  --conversation zhipu-preview-conversation
+& $FreeAgent chat `
+  --enable-zhipu `
+  --db (Join-Path $Runtime 'current-zhipu.sqlite') `
+  --artifact-root (Join-Path $Runtime 'zhipu-artifacts') `
+  --conversation zhipu-preview-conversation `
+  --conversation-revision 0 `
+  --message 'Reply with a short acknowledgement.' `
+  --request-id zhipu-preview-turn-1 `
+  --deadline $Deadline
+Remove-Item Env:FREEAGENT_ZHIPU_API_KEY
+```
+
+This example does not enable automatic model selection, cross-provider
+fallback, or any price/currency/budget policy. See the support matrix before
+using a model other than the exact accepted binding.
 
 Read [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md) before enabling Control
 or running a real model provider. Security reporting guidance is in

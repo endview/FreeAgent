@@ -178,7 +178,7 @@ if ($Revision -cnotmatch '^[0-9a-f]{40}$') {
     Fail-DeveloperPreviewRelease -Code 'DPR_REVISION_INVALID'
 }
 if ($Version -cnotmatch
-        '^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-dev\.[1-9][0-9]*$') {
+        '^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') {
     Fail-DeveloperPreviewRelease -Code 'DPR_VERSION_INVALID'
 }
 

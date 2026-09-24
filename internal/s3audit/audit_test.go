@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/sdk/moduleapi"
 )
 
@@ -22,7 +20,6 @@ type fakeObserver struct {
 	roots       []string
 	projections map[string]currentstore.CompositeFamilyUsageProjectionV1
 	terminals   map[string]currentstore.TerminalRunResult
-	prices      map[string]currentstore.ModelPriceSnapshotRecord
 	lifecycles  map[string]currentstore.FairRunTargetView
 	unknowns    map[string]string
 }
@@ -51,17 +48,6 @@ func (observer fakeObserver) GetTerminalRunResult(
 		return currentstore.TerminalRunResult{}, errors.New("not terminal")
 	}
 	return terminal, nil
-}
-
-func (observer fakeObserver) GetModelPriceSnapshot(
-	_ context.Context,
-	priceSnapshotID string,
-) (currentstore.ModelPriceSnapshotRecord, error) {
-	price, found := observer.prices[priceSnapshotID]
-	if !found {
-		return currentstore.ModelPriceSnapshotRecord{}, errors.New("missing")
-	}
-	return price, nil
 }
 
 func (observer fakeObserver) GetFairRunTargetView(
@@ -109,7 +95,7 @@ func TestAuditObserverProducesAggregateOnlyEvidence(t *testing.T) {
 		observed.Attempts != 12 || observed.UsageRows != 12 ||
 		observed.Roles["CHILD"] != 9 || observed.Roles["ROOT"] != 3 ||
 		observed.AttemptStates["SUCCEEDED"] != 12 ||
-		observed.Providers[deepseekcost.ProviderDeepSeekV1] != 12 ||
+		observed.Providers["deepseek"] != 12 ||
 		observed.Models["deepseek-v4-flash"] != 12 {
 		t.Fatalf("observed counts=%+v", observed)
 	}
@@ -157,13 +143,6 @@ func TestAuditObserverProducesAggregateOnlyEvidence(t *testing.T) {
 		reviewer.CacheHitRatio != nil {
 		t.Fatalf("role cache=%+v", observed.RoleCache)
 	}
-	assertCost(t, observed.EstimatedCost, "1.2")
-	assertCost(t, observed.ProviderReportedCost, "2.4")
-	if observed.ReconciledCost.Status != "UNKNOWN" {
-		t.Fatalf("reconciled cost=%+v", observed.ReconciledCost)
-	}
-	assertCost(t, observed.DerivedDeepSeekCost, "0.00012096")
-
 	encoded, err := json.Marshal(report)
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +171,7 @@ func TestAuditObserverClassifiesModelUnknownReasonWithoutLeakingRawValue(
 		projection := reader.projections[rootRunID]
 		run := projection.Runs[0]
 		run.Attempt.State = corecontract.ModelAttemptUnknown
-		run.Attempt.Usage.ReconciliationStatus = "PENDING_RECONCILIATION"
+		run.Attempt.Usage.UsageStatus = "PENDING_RECONCILIATION"
 		projection.Runs[0] = run
 		reader.projections[rootRunID] = projection
 		delete(reader.terminals, run.RunID)
@@ -286,15 +265,6 @@ func TestAuditObserverRetainsPartialUsageAndDerivedCostCoverage(t *testing.T) {
 		root.Attempts != 3 || root.CacheHitRatio == nil ||
 		*root.CacheHitRatio != 0.4 {
 		t.Fatalf("partial role cache=%+v", observed.RoleCache)
-	}
-	derived := observed.DerivedDeepSeekCost
-	if derived.Status != "UNKNOWN" || derived.Value != nil ||
-		derived.KnownEstimates != 11 || derived.UnknownEstimates != 1 ||
-		derived.KnownSubtotal.Status != "KNOWN" ||
-		derived.KnownSubtotal.Value == nil ||
-		*derived.KnownSubtotal.Value != "0.00011088" ||
-		derived.KnownSubtotal.Currency != "CNY" {
-		t.Fatalf("derived cost coverage=%+v", derived)
 	}
 }
 
@@ -523,11 +493,7 @@ func TestImmutableReasonObserverReadsOnlyTheUnknownReasonColumn(t *testing.T) {
 
 func TestCoverageValidatorsRejectOverflowAndNonAllowlistedReasonKey(t *testing.T) {
 	maximum := uint64(^uint64(0))
-	if validRowCoverage(maximum, 1, maximum) ||
-		validCostCoverage(CostTotal{
-			KnownEstimates:   maximum,
-			UnknownEstimates: 1,
-		}, maximum) {
+	if validRowCoverage(maximum, 1, maximum) {
 		t.Fatal("coverage validation accepted an overflowing partition")
 	}
 	reasons := newModelUnknownReasonCounts()
@@ -550,7 +516,7 @@ func TestAuditObserverRetainsUnknownAndNonterminalFailure(t *testing.T) {
 	projection := reader.projections[firstRoot]
 	first := projection.Runs[0]
 	first.Attempt.State = corecontract.ModelAttemptUnknown
-	first.Attempt.Usage.ReconciliationStatus = "PENDING_RECONCILIATION"
+	first.Attempt.Usage.UsageStatus = "PENDING_RECONCILIATION"
 	projection.Runs[0] = first
 	reader.projections[firstRoot] = projection
 	reader.unknowns[first.Attempt.AttemptID] = modelUnknownReasonModelUnknown
@@ -579,40 +545,13 @@ func TestAuditObserverRetainsUnknownAndNonterminalFailure(t *testing.T) {
 	}
 }
 
-func TestFiniteDecimalIsExact(t *testing.T) {
-	value, ok := finiteDecimal(new(big.Rat).SetFrac64(151, 100))
-	if !ok || value != "1.51" {
-		t.Fatalf("finite decimal=%q ok=%v", value, ok)
-	}
-}
-
 func newSuccessfulFakeObserver(t *testing.T) fakeObserver {
 	t.Helper()
-	price, canonical, err := corecontract.NewModelPriceSnapshotV1(
-		corecontract.ModelPriceSnapshotV1{
-			SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-			PriceSnapshotID: "price-private-flash",
-			Provider:        deepseekcost.ProviderDeepSeekV1,
-			Model:           "deepseek-v4-flash",
-			BillingVersion:  "test-v1",
-			Currency:        "CNY",
-			PricingStatus:   corecontract.PricingKnown,
-			Pricing: json.RawMessage(
-				`{"cached_input_per_million_microunits":20000,"output_per_million_microunits":2000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":1000000}`,
-			),
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	reader := fakeObserver{
 		projections: make(map[string]currentstore.CompositeFamilyUsageProjectionV1),
 		terminals:   make(map[string]currentstore.TerminalRunResult),
-		prices: map[string]currentstore.ModelPriceSnapshotRecord{
-			price.PriceSnapshotID: {Snapshot: price, CanonicalJSON: canonical},
-		},
-		lifecycles: make(map[string]currentstore.FairRunTargetView),
-		unknowns:   make(map[string]string),
+		lifecycles:  make(map[string]currentstore.FairRunTargetView),
+		unknowns:    make(map[string]string),
 	}
 	for family := 0; family < 3; family++ {
 		rootRunID := fmt.Sprintf("root-private-%d", family)
@@ -631,17 +570,13 @@ func newSuccessfulFakeObserver(t *testing.T) fakeObserver {
 			}
 			input, cached, uncached, output, reasoning :=
 				uint64(10), uint64(4), uint64(6), uint64(2), uint64(1)
-			estimated, providerCost := "0.1", "0.2"
 			attempt := &currentstore.CompositeFamilyAttemptUsageFactV1{
-				AttemptID:           attemptID,
-				State:               corecontract.ModelAttemptSucceeded,
-				Provider:            deepseekcost.ProviderDeepSeekV1,
-				Model:               "deepseek-v4-flash",
-				CreatedAt:           time.Unix(int64(family*4+runIndex+1), 0),
-				UpdatedAt:           time.Unix(int64(family*4+runIndex+2), 0),
-				PriceSnapshotID:     price.PriceSnapshotID,
-				PriceSnapshotDigest: price.Digest,
-				Currency:            price.Currency,
+				AttemptID: attemptID,
+				State:     corecontract.ModelAttemptSucceeded,
+				Provider:  "deepseek",
+				Model:     "deepseek-v4-flash",
+				CreatedAt: time.Unix(int64(family*4+runIndex+1), 0),
+				UpdatedAt: time.Unix(int64(family*4+runIndex+2), 0),
 				Usage: currentstore.ModelUsageRecord{
 					AttemptID: attemptID,
 					RunID:     runID,
@@ -649,9 +584,7 @@ func newSuccessfulFakeObserver(t *testing.T) fakeObserver {
 						Input: &input, CachedInput: &cached, UncachedInput: &uncached,
 						Output: &output, Reasoning: &reasoning,
 					},
-					EstimatedCost:        &estimated,
-					ProviderReportedCost: &providerCost,
-					ReconciliationStatus: "PROVIDER_REPORTED",
+					UsageStatus: "PROVIDER_REPORTED",
 				},
 			}
 			projection.Runs = append(
@@ -691,19 +624,6 @@ func tokenTotalsAllNil(totals TokenTotals) bool {
 	return totals.Input == nil && totals.CachedInput == nil &&
 		totals.UncachedInput == nil && totals.Output == nil &&
 		totals.Reasoning == nil
-}
-
-func assertCost(t *testing.T, cost CostTotal, want string) {
-	t.Helper()
-	if cost.Status != "KNOWN" || cost.Value == nil || *cost.Value != want ||
-		cost.Currency != "CNY" || len(cost.Currencies) != 0 ||
-		cost.KnownEstimates != 12 || cost.UnknownEstimates != 0 ||
-		cost.KnownSubtotal.Status != "KNOWN" ||
-		cost.KnownSubtotal.Value == nil ||
-		*cost.KnownSubtotal.Value != want ||
-		cost.KnownSubtotal.Currency != "CNY" {
-		t.Fatalf("cost=%+v want %q CNY", cost, want)
-	}
 }
 
 func hasCode(codes []string, want string) bool {

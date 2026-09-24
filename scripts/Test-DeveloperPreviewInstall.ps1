@@ -848,7 +848,7 @@ try {
     }
     foreach ($artifactRelativePath in @(
         'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0',
-        'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0'
+        'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0'
     )) {
         $artifactDirectory = Resolve-ContainedDirectory -Root $script:PackageRootPath `
             -RelativePath $artifactRelativePath -Label $artifactRelativePath
@@ -907,7 +907,10 @@ try {
         -Required -Label 'offline bootstrap seed'
     $seedModuleID = Get-DPIJsonField -Object $seedModule -Name 'module_id' `
         -Required -Label 'offline bootstrap seed module'
-    if ($seedSchema -cne 'freeagent.bootstrap-seed/v1' -or
+    if ($seedSchema -cnotin @(
+            'freeagent.bootstrap-seed/v1',
+            'freeagent.bootstrap-seed/v2'
+        ) -or
         $seedProvider -cne 'freeagent.local' -or
         $seedModel -cne 'freeagent-dev-echo' -or
         $seedModuleID -cne 'freeagent.builtin.model.echo' -or

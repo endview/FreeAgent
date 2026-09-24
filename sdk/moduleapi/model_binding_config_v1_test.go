@@ -7,25 +7,23 @@ import (
 	"testing"
 )
 
-func TestModelBindingConfigV1CanonicalRoundTripAndDefensiveCopy(
+func TestModelBindingConfigV2CanonicalRoundTripAndDefensiveCopy(
 	t *testing.T,
 ) {
 	sourceParameters := json.RawMessage(
 		`{ "top_p": 1, "nested": { "enabled": true }, "temperature": 0 }`,
 	)
-	config, canonical, err := NewModelBindingConfigV1(
-		ModelBindingConfigV1{
-			SchemaVersion:   ModelBindingConfigSchemaV1,
-			Provider:        "provider-local",
-			Model:           "model-v1",
-			ModelBuildID:    "model-v1-build-2026-08-03",
-			BillingVersion:  "billing-v1",
-			PriceSnapshotID: "price-v1",
-			Parameters:      sourceParameters,
+	config, canonical, err := NewModelBindingConfigV2(
+		ModelBindingConfigV2{
+			SchemaVersion: ModelBindingConfigSchemaV2,
+			Provider:      "provider-local",
+			Model:         "model-v1",
+			ModelBuildID:  "model-v1-build-2026-08-03",
+			Parameters:    sourceParameters,
 		},
 	)
 	if err != nil {
-		t.Fatalf("NewModelBindingConfigV1: %v", err)
+		t.Fatalf("NewModelBindingConfigV2: %v", err)
 	}
 	const wantParameters = `{"nested":{"enabled":true},"temperature":0,"top_p":1}`
 	if string(config.Parameters) != wantParameters {
@@ -34,16 +32,14 @@ func TestModelBindingConfigV1CanonicalRoundTripAndDefensiveCopy(
 	sourceParameters[0] ^= 0xff
 	config.Parameters[0] ^= 0xff
 
-	restored, err := RestoreModelBindingConfigV1(canonical)
+	restored, err := RestoreModelBindingConfigV2(canonical)
 	if err != nil {
-		t.Fatalf("RestoreModelBindingConfigV1: %v", err)
+		t.Fatalf("RestoreModelBindingConfigV2: %v", err)
 	}
-	if restored.SchemaVersion != ModelBindingConfigSchemaV1 ||
+	if restored.SchemaVersion != ModelBindingConfigSchemaV2 ||
 		restored.Provider != "provider-local" ||
 		restored.Model != "model-v1" ||
 		restored.ModelBuildID != "model-v1-build-2026-08-03" ||
-		restored.BillingVersion != "billing-v1" ||
-		restored.PriceSnapshotID != "price-v1" ||
 		string(restored.Parameters) != wantParameters {
 		t.Fatalf("restored=%+v", restored)
 	}
@@ -54,15 +50,13 @@ func TestModelBindingConfigV1CanonicalRoundTripAndDefensiveCopy(
 	}
 	restored.Parameters[0] ^= 0xff
 
-	_, rebuilt, err := NewModelBindingConfigV1(
-		ModelBindingConfigV1{
-			SchemaVersion:   ModelBindingConfigSchemaV1,
-			Provider:        "provider-local",
-			Model:           "model-v1",
-			ModelBuildID:    "model-v1-build-2026-08-03",
-			BillingVersion:  "billing-v1",
-			PriceSnapshotID: "price-v1",
-			Parameters:      json.RawMessage(wantParameters),
+	_, rebuilt, err := NewModelBindingConfigV2(
+		ModelBindingConfigV2{
+			SchemaVersion: ModelBindingConfigSchemaV2,
+			Provider:      "provider-local",
+			Model:         "model-v1",
+			ModelBuildID:  "model-v1-build-2026-08-03",
+			Parameters:    json.RawMessage(wantParameters),
 		},
 	)
 	if err != nil {
@@ -73,9 +67,9 @@ func TestModelBindingConfigV1CanonicalRoundTripAndDefensiveCopy(
 	}
 }
 
-func TestModelBindingConfigV1DefaultsEmptyParametersToObject(t *testing.T) {
-	config, canonical, err := NewModelBindingConfigV1(
-		validModelBindingConfigV1(),
+func TestModelBindingConfigV2DefaultsEmptyParametersToObject(t *testing.T) {
+	config, canonical, err := NewModelBindingConfigV2(
+		validModelBindingConfigV2(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -83,78 +77,66 @@ func TestModelBindingConfigV1DefaultsEmptyParametersToObject(t *testing.T) {
 	if string(config.Parameters) != `{}` {
 		t.Fatalf("parameters=%s want {}", config.Parameters)
 	}
-	restored, err := RestoreModelBindingConfigV1(canonical)
+	restored, err := RestoreModelBindingConfigV2(canonical)
 	if err != nil || string(restored.Parameters) != `{}` {
 		t.Fatalf("restored=%+v error=%v", restored, err)
 	}
 }
 
-func TestModelBindingConfigV1RejectsInvalidOpaqueFields(t *testing.T) {
+func TestModelBindingConfigV2RejectsInvalidOpaqueFields(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*ModelBindingConfigV1)
+		mutate func(*ModelBindingConfigV2)
 	}{
 		{
 			name: "wrong schema",
-			mutate: func(value *ModelBindingConfigV1) {
-				value.SchemaVersion = "model-binding-config/v2"
+			mutate: func(value *ModelBindingConfigV2) {
+				value.SchemaVersion = "model-binding-config/v1"
 			},
 		},
 		{
 			name: "empty provider",
-			mutate: func(value *ModelBindingConfigV1) {
+			mutate: func(value *ModelBindingConfigV2) {
 				value.Provider = ""
 			},
 		},
 		{
 			name: "untrimmed model",
-			mutate: func(value *ModelBindingConfigV1) {
+			mutate: func(value *ModelBindingConfigV2) {
 				value.Model = " model-v1"
 			},
 		},
 		{
 			name: "empty model build ID",
-			mutate: func(value *ModelBindingConfigV1) {
+			mutate: func(value *ModelBindingConfigV2) {
 				value.ModelBuildID = ""
 			},
 		},
 		{
 			name: "untrimmed model build ID",
-			mutate: func(value *ModelBindingConfigV1) {
+			mutate: func(value *ModelBindingConfigV2) {
 				value.ModelBuildID = " model-v1-build"
 			},
 		},
 		{
-			name: "non canonical billing version",
-			mutate: func(value *ModelBindingConfigV1) {
-				value.BillingVersion = "Cafe\u0301"
-			},
-		},
-		{
-			name: "control in price snapshot ID",
-			mutate: func(value *ModelBindingConfigV1) {
-				value.PriceSnapshotID = "price\nv1"
-			},
-		},
-		{
 			name: "overlong provider",
-			mutate: func(value *ModelBindingConfigV1) {
+			mutate: func(value *ModelBindingConfigV2) {
 				value.Provider = strings.Repeat("p", MaxOpaqueIDBytes+1)
 			},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			input := validModelBindingConfigV1()
+			input := validModelBindingConfigV2()
 			test.mutate(&input)
-			if _, _, err := NewModelBindingConfigV1(input); err == nil {
+			if _, _, err := NewModelBindingConfigV2(input); err == nil {
 				t.Fatal("invalid config accepted")
 			}
 		})
 	}
 }
 
-func TestModelBindingConfigV1RequiresBoundedParametersObject(t *testing.T) {
+func TestModelBindingConfigV2RequiresBoundedParametersObject(t *testing.T) {
 	forbiddenParameter := func(path ...string) json.RawMessage {
 		var value any = "forbidden"
 		for index := len(path) - 1; index >= 0; index-- {
@@ -248,35 +230,35 @@ func TestModelBindingConfigV1RequiresBoundedParametersObject(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			input := validModelBindingConfigV1()
+			input := validModelBindingConfigV2()
 			input.Parameters = test.parameters
-			if _, _, err := NewModelBindingConfigV1(input); err == nil {
+			if _, _, err := NewModelBindingConfigV2(input); err == nil {
 				t.Fatal("invalid parameters accepted")
 			}
 		})
 	}
 }
 
-func TestModelBindingConfigV1AllowsOrdinaryTokenAndBusinessKeys(t *testing.T) {
-	input := validModelBindingConfigV1()
+func TestModelBindingConfigV2AllowsOrdinaryTokenAndBusinessKeys(t *testing.T) {
+	input := validModelBindingConfigV2()
 	input.Parameters = json.RawMessage(
 		`{"api_latency_ms":12,"image_url":"https://content.invalid/image.png","key_rotation_count":3,"max_tokens":512,"secretary_id":"employee-1","token_budget":1024}`,
 	)
-	frozen, canonical, err := NewModelBindingConfigV1(input)
+	frozen, canonical, err := NewModelBindingConfigV2(input)
 	if err != nil {
 		t.Fatalf("ordinary generation parameters were rejected: %v", err)
 	}
 	if len(frozen.Parameters) == 0 || len(canonical) == 0 {
 		t.Fatal("ordinary generation parameters were not frozen")
 	}
-	if _, err := RestoreModelBindingConfigV1(canonical); err != nil {
+	if _, err := RestoreModelBindingConfigV2(canonical); err != nil {
 		t.Fatalf("restore ordinary generation parameters: %v", err)
 	}
 }
 
-func TestRestoreModelBindingConfigV1RejectsNonExactWire(t *testing.T) {
-	_, canonical, err := NewModelBindingConfigV1(
-		validModelBindingConfigV1(),
+func TestRestoreModelBindingConfigV2RejectsNonExactWire(t *testing.T) {
+	_, canonical, err := NewModelBindingConfigV2(
+		validModelBindingConfigV2(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -286,7 +268,12 @@ func TestRestoreModelBindingConfigV1RejectsNonExactWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	var forbiddenFields [][]byte
-	for _, field := range []string{"api_key", "endpoint"} {
+	for _, field := range []string{
+		"api_key",
+		"endpoint",
+		"billing_version",
+		"price_snapshot_id",
+	} {
 		withForbidden := make(map[string]any, len(document)+1)
 		for key, value := range document {
 			withForbidden[key] = value
@@ -309,19 +296,17 @@ func TestRestoreModelBindingConfigV1RejectsNonExactWire(t *testing.T) {
 	}
 	tests = append(tests, forbiddenFields...)
 	for _, wire := range tests {
-		if _, err := RestoreModelBindingConfigV1(wire); err == nil {
+		if _, err := RestoreModelBindingConfigV2(wire); err == nil {
 			t.Fatalf("non-exact wire accepted: %.256q", wire)
 		}
 	}
 }
 
-func validModelBindingConfigV1() ModelBindingConfigV1 {
-	return ModelBindingConfigV1{
-		SchemaVersion:   ModelBindingConfigSchemaV1,
-		Provider:        "provider-local",
-		Model:           "model-v1",
-		ModelBuildID:    "model-v1-build-2026-08-03",
-		BillingVersion:  "billing-v1",
-		PriceSnapshotID: "price-v1",
+func validModelBindingConfigV2() ModelBindingConfigV2 {
+	return ModelBindingConfigV2{
+		SchemaVersion: ModelBindingConfigSchemaV2,
+		Provider:      "provider-local",
+		Model:         "model-v1",
+		ModelBuildID:  "model-v1-build-2026-08-03",
 	}
 }

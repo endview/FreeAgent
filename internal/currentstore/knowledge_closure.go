@@ -1666,7 +1666,7 @@ func validateDynamicContextMessageOrder(
 }
 
 // validateCompilerOutputForNewAttempt closes the final gap between the frozen
-// Run closure and the bytes that may first reach model.generate/v1. It feeds
+// Run closure and the bytes that may first reach model.generate/v2. It feeds
 // static material and any already-produced Knowledge evidence through the one
 // pure Context Compiler, then requires its complete outputs byte-for-byte.
 // Recovery and Store loads deliberately do not call this function.

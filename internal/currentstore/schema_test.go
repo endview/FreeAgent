@@ -2,8 +2,11 @@ package currentstore
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"fmt"
 	"io/fs"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -27,7 +30,6 @@ var currentTableNames = []string{
 	"loop_frames",
 	"member_execution_snapshots",
 	"model_dispatch_attempts",
-	"model_price_snapshots",
 	"model_usage",
 	"module_activations",
 	"module_artifact_admissions",
@@ -58,7 +60,7 @@ var currentTableNames = []string{
 }
 
 func TestMigration0001CreatesExactlyCurrentStoreTables(t *testing.T) {
-	db := createSchemaTestDatabase(t)
+	db := createSchemaV1TestDatabase(t)
 	rows, err := db.Query(`
 		SELECT name
 		FROM sqlite_schema
@@ -83,25 +85,26 @@ func TestMigration0001CreatesExactlyCurrentStoreTables(t *testing.T) {
 	if !reflect.DeepEqual(got, currentTableNames) {
 		t.Fatalf("tables = %v, want %v", got, currentTableNames)
 	}
-	if len(got) != 43 {
-		t.Fatalf("ordinary table count = %d, want 43", len(got))
+	if len(got) != 42 {
+		t.Fatalf("ordinary table count = %d, want 42", len(got))
 	}
 }
 
 func TestSchemaFingerprintIsFrozenAndDetectsDrift(t *testing.T) {
-	db := createSchemaTestDatabase(t)
+	db := createSchemaV1TestDatabase(t)
 	got, err := DatabaseSchemaFingerprint(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ExpectedSchemaFingerprint == "PENDING" {
+	if got == "" {
 		t.Fatalf("computed schema fingerprint before freeze: %s", got)
 	}
-	if got != ExpectedSchemaFingerprint {
+	const wantV1Fingerprint = "9f4f146f3b914f434f12d61245e120e2e2806dcc48256e55744ddc55f29ba561"
+	if got != wantV1Fingerprint {
 		t.Fatalf(
 			"schema fingerprint = %s, want %s",
 			got,
-			ExpectedSchemaFingerprint,
+			wantV1Fingerprint,
 		)
 	}
 	if _, err := db.Exec(
@@ -146,14 +149,34 @@ func TestSchemaFingerprintOrderingAndLineEndingsAreDeterministic(t *testing.T) {
 }
 
 func TestCurrentStoreEmbedsOnlyMigration0001(t *testing.T) {
-	entries, err := fs.ReadDir(migrationFS, "migrations")
+	entries, err := fs.ReadDir(migrationFS, "migrations/fac2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 ||
-		entries[0].IsDir() ||
-		entries[0].Name() != "0001_current.sql" {
+	if len(entries) != 2 || entries[0].IsDir() || entries[0].Name() != "0001_current.sql" ||
+		entries[1].IsDir() || entries[1].Name() != "0002_server_owned_review.sql" {
 		t.Fatalf("embedded migrations = %+v", entries)
+	}
+}
+
+func TestMigration0001BytesAreFrozen(t *testing.T) {
+	if Migration0001SHA256 != "dbc3e724a1f7c030677c84a77a317f69ef2fe246985cc749559a9f3dd5a6dc5a" {
+		t.Fatalf("Migration0001SHA256 = %q", Migration0001SHA256)
+	}
+	if _, err := Migration0001(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFAC1MigrationBytesRemainFrozen(t *testing.T) {
+	content, err := os.ReadFile("migrations/0001_current.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(content)
+	if got := fmt.Sprintf("%x", digest); got !=
+		"6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86" {
+		t.Fatalf("FAC1 migration SHA-256 = %s", got)
 	}
 }
 
@@ -237,11 +260,11 @@ func TestMigrationContentKindAllowsOnlyFrozenRunCancellationKind(t *testing.T) {
 	}
 }
 
-func TestCurrentStoreIdentityConstantsAreFAC1(t *testing.T) {
-	if ApplicationID != 0x46414331 ||
-		UserVersion != 1 ||
-		SchemaIdentity != "github.com/endview/freeagent/current-store-v1" ||
-		GeneratorID != "freeagent-current-store-draft-v1" {
+func TestCurrentStoreIdentityConstantsAreFAC2(t *testing.T) {
+	if ApplicationID != 0x46414332 ||
+		UserVersion != 2 ||
+		SchemaIdentity != "github.com/endview/freeagent/current-store-v2" ||
+		GeneratorID != "freeagent-current-store-v2" {
 		t.Fatalf(
 			"identity = %#x/%d/%q/%q",
 			ApplicationID,
@@ -253,6 +276,14 @@ func TestCurrentStoreIdentityConstantsAreFAC1(t *testing.T) {
 }
 
 func createSchemaTestDatabase(t *testing.T) *sql.DB {
+	return createSchemaDatabaseWithMigrationV2(t, true)
+}
+
+func createSchemaV1TestDatabase(t *testing.T) *sql.DB {
+	return createSchemaDatabaseWithMigrationV2(t, false)
+}
+
+func createSchemaDatabaseWithMigrationV2(t *testing.T, current bool) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -273,6 +304,15 @@ func createSchemaTestDatabase(t *testing.T) *sql.DB {
 	}
 	if _, err := db.Exec(string(migration)); err != nil {
 		t.Fatalf("apply 0001_current.sql: %v", err)
+	}
+	if current {
+		migration, err = Migration0002()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(string(migration)); err != nil {
+			t.Fatalf("apply 0002_server_owned_review.sql: %v", err)
+		}
 	}
 	return db
 }

@@ -459,7 +459,7 @@ func validateAndReauthorizeOverviewV1(
 			return ErrIntegrityFailure
 		}
 		if unknown, found := modelUnknown[item.AttemptID]; found &&
-			(item.ReconciliationStatus != "PENDING_RECONCILIATION" ||
+			(item.UsageStatus != "PENDING_RECONCILIATION" ||
 				item.Revision != unknown.Revision || item.RunID != unknown.RunID ||
 				item.TenantID != unknown.TenantID || item.WorkspaceID != unknown.WorkspaceID ||
 				item.UpdatedAtUnixMicros != unknown.UpdatedAtUnixMicros) {
@@ -657,7 +657,7 @@ func validOverviewUsageProjectionV1(item controloverview.UsageV1) bool {
 	allTokensNil := item.InputTokens == nil && item.CachedInputTokens == nil &&
 		item.UncachedInputTokens == nil && item.OutputTokens == nil &&
 		item.ReasoningTokens == nil
-	switch item.ReconciliationStatus {
+	switch item.UsageStatus {
 	case "PENDING":
 		return item.Revision == 0 && allTokensNil
 	case "PENDING_RECONCILIATION":

@@ -164,7 +164,7 @@ func createSQLiteSnapshot(
 	if err := verifyNoSQLiteSidecars(destinationPath); err != nil {
 		return err
 	}
-	if _, err := currentstore.VerifyCurrentStoreReadOnly(ctx, destinationPath); err != nil {
+	if _, err := currentstore.InspectKnownSchemaVersionReadOnly(ctx, destinationPath); err != nil {
 		return fmt.Errorf("currentbackup: verify SQLite snapshot: %w", err)
 	}
 	if err := syncRegularFile(destinationPath); err != nil {
@@ -226,9 +226,13 @@ func consolidateSQLiteSnapshot(ctx context.Context, path string) error {
 }
 
 func inspectSnapshot(ctx context.Context, path string) (snapshotState, error) {
-	verification, err := currentstore.VerifyCurrentStoreReadOnly(ctx, path)
+	version, err := currentstore.InspectKnownSchemaVersionReadOnly(ctx, path)
 	if err != nil {
 		return snapshotState{}, fmt.Errorf("%w: verify Current Store: %v", ErrIntegrity, err)
+	}
+	verification, err := currentstore.VerifyKnownCurrentStoreReadOnly(ctx, path)
+	if err != nil {
+		return snapshotState{}, fmt.Errorf("%w: verify Current Store semantics: %v", ErrIntegrity, err)
 	}
 	database, err := openReadOnlyDatabase(path)
 	if err != nil {
@@ -261,7 +265,7 @@ func inspectSnapshot(ctx context.Context, path string) (snapshotState, error) {
 		ModuleArtifacts: make([]moduleArtifactRef, 0),
 		Identity: StoreIdentity{
 			ApplicationID:     currentstore.ApplicationID,
-			UserVersion:       currentstore.UserVersion,
+			UserVersion:       version.UserVersion,
 			SchemaIdentity:    verification.SchemaIdentity,
 			SchemaFingerprint: verification.SchemaFingerprint,
 			GeneratorID:       verification.GeneratorID,

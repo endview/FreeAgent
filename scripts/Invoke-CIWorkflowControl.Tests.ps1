@@ -24,7 +24,7 @@ $script:SupplyChainRelativePaths = @(
     'supply-chain/provenance.unsigned.v1.json',
     'supply-chain/checksums.sha256'
 )
-$script:ReleaseVersion = 'v0.1.0-dev.2'
+$script:ReleaseVersion = 'v0.1.1'
 $script:CrossBuildPayloadMap = [ordered]@{
     'VERSION' = 'VERSION'
     'LICENSE' = 'LICENSE'
@@ -32,7 +32,7 @@ $script:CrossBuildPayloadMap = [ordered]@{
     'docs/INSTALL.md' = 'INSTALL.md'
     'docs/QUICKSTART.md' = 'QUICKSTART.md'
     'docs/KNOWN_LIMITATIONS.md' = 'KNOWN_LIMITATIONS.md'
-    'docs/RELEASE_NOTES_v0.1.0-dev.2.md' = 'RELEASE_NOTES.md'
+    'docs/RELEASE_NOTES_v0.1.1.md' = 'RELEASE_NOTES.md'
     'docs/CHECKSUMS.md' = 'VERIFY_CHECKSUMS.md'
     'docs/PACKAGE_CONFIG.md' = 'config/README.md'
     'docs/PACKAGE_DATA.md' = 'data/README.md'
@@ -41,11 +41,11 @@ $script:CrossBuildPayloadMap = [ordered]@{
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/module.yaml'
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/README.md'
     'examples/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json' = 'config/bootstrap-artifacts/freeagent.builtin.context.basic/1.0.0/content/context.json'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/LICENSE'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/module.yaml'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/README.md'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/implementation/adapter.json'
-    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/1.0.0/schemas/config.schema.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/LICENSE' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/LICENSE'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.yaml' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/module.yaml'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/README.md' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/README.md'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/implementation/adapter.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/implementation/adapter.json'
+    'examples/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/schemas/config.schema.json' = 'config/bootstrap-artifacts/freeagent.builtin.model.echo/2.0.0/schemas/config.schema.json'
 }
 
 function Assert-True {

@@ -183,7 +183,7 @@ func TestModuleDryRunPreservesOwnerLockAndExactSchema(t *testing.T) {
 		t.Fatal("database snapshot omitted .freeagent.owner.lock")
 	}
 	schemaBefore := inspectModuleDryRunSchemaV1(t, databasePath)
-	if schemaBefore.TableCount != 43 ||
+	if schemaBefore.TableCount != 42 ||
 		schemaBefore.Fingerprint != currentstore.ExpectedSchemaFingerprint {
 		t.Fatalf("pre-dry-run schema=%+v", schemaBefore)
 	}
@@ -201,7 +201,7 @@ func TestModuleDryRunPreservesOwnerLockAndExactSchema(t *testing.T) {
 		t.Fatalf("dry-run changed database/owner files: before=%+v after=%+v", filesBefore, filesAfter)
 	}
 	schemaAfter := inspectModuleDryRunSchemaV1(t, databasePath)
-	if schemaAfter != schemaBefore || schemaAfter.TableCount != 43 ||
+	if schemaAfter != schemaBefore || schemaAfter.TableCount != 42 ||
 		schemaAfter.Fingerprint != currentstore.ExpectedSchemaFingerprint {
 		t.Fatalf("dry-run schema drift: before=%+v after=%+v", schemaBefore, schemaAfter)
 	}

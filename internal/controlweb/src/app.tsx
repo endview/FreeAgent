@@ -28,6 +28,7 @@ import {
   clearModulesTransportCache,
   type ModuleContext
 } from "./modules.ts";
+import { clearManagementTransportCache } from "./management.ts";
 import {
   clearStoredResume,
   exchangeHandoff,
@@ -48,6 +49,9 @@ import {
   ModulesPage,
   type ModulesFailClosedEvent
 } from "./modules-ui.tsx";
+import { ModuleUpgradeReviewsPage } from "./upgrade-reviews-ui.tsx";
+import { ManagementPage } from "./management-ui.tsx";
+import { useOptionalI18n } from "./i18n/index.ts";
 
 type ActiveSession = {
   origin: string;
@@ -66,12 +70,13 @@ const activeSessionFromExchange = (
   authorizedScopes: exchange.authorized_scopes,
 });
 
-const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "the control session could not be opened";
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
 
 const currentHash = () => (typeof window === "undefined" ? "" : window.location.hash);
 
 export function App() {
+  const { t } = useOptionalI18n();
   const queryClient = useQueryClient();
   const [checkingResume, setCheckingResume] = useState(true);
   const [openingSession, setOpeningSession] = useState(false);
@@ -92,6 +97,7 @@ export function App() {
     (origin: string, exchange: SessionExchange) => {
       clearOverviewTransportCache();
       clearModulesTransportCache();
+      clearManagementTransportCache();
       queryClient.clear();
       setWorkspacesByTenant(new Map());
       setSearch("");
@@ -100,7 +106,7 @@ export function App() {
       const stored = storeResume(origin, exchange.resume_credential);
       if (!stored) {
         clearStoredResume();
-        setStorageWarning("This browser could not retain a tab-scoped resume credential.");
+        setStorageWarning(t("session.error.storageWarning"));
       } else {
         setStorageWarning("");
       }
@@ -110,7 +116,7 @@ export function App() {
       setSelectedScopeKey(scopeKey(next.authorizedScopes[0]));
       setSessionError("");
     },
-    [queryClient]
+    [queryClient, t]
   );
 
   const closeActiveSession = useCallback(
@@ -118,6 +124,7 @@ export function App() {
       clearStoredResume();
       clearOverviewTransportCache();
       clearModulesTransportCache();
+      clearManagementTransportCache();
       queryClient.clear();
       setActive(null);
       setSelectedScopeKey("");
@@ -144,13 +151,15 @@ export function App() {
       .catch((error: unknown) => {
         if (cancelled) return;
         if (shouldDiscardResume(error)) clearStoredResume();
-        setSessionError(`Stored session could not be resumed: ${errorMessage(error)}`);
+        setSessionError(t("session.error.resume", {
+          values: { message: errorMessage(error, t("session.open.error")) }
+        }));
       })
       .finally(() => {
         if (!cancelled) setCheckingResume(false);
       });
     return () => { cancelled = true; };
-  }, [acceptExchange]);
+  }, [acceptExchange, t]);
 
   useEffect(() => {
     const onHashChange = () => setHash(window.location.hash);
@@ -172,27 +181,27 @@ export function App() {
       let handoff: ReturnType<typeof decodeHandoff> | null = null;
       try {
         if (file.size > MAX_HANDOFF_BYTES) {
-          throw new Error("handoff file exceeds the 4 KiB limit");
+          throw new Error(t("session.error.handoffTooLarge"));
         }
         text = await file.text();
         handoff = decodeHandoff(text);
         const exchange = await exchangeHandoff(handoff);
         acceptExchange(handoff.origin, exchange);
       } catch (error) {
-        setSessionError(errorMessage(error));
+        setSessionError(errorMessage(error, t("session.open.error")));
       } finally {
         if (handoff !== null) handoff.capability = "";
         text = "";
         setOpeningSession(false);
       }
     },
-    [acceptExchange]
+    [acceptExchange, t]
   );
 
   const observes = active?.session.capabilities.includes("OBSERVE") ?? false;
   const scopeChoices = useMemo(
-    () => buildScopeChoices(active?.authorizedScopes ?? [], workspacesByTenant),
-    [active?.authorizedScopes, workspacesByTenant]
+    () => buildScopeChoices(active?.authorizedScopes ?? [], workspacesByTenant, t),
+    [active?.authorizedScopes, t, workspacesByTenant]
   );
   const selectedScope = useMemo(
     () => scopeChoices.find((choice) => choice.key === selectedScopeKey)?.scope ?? null,
@@ -207,6 +216,8 @@ export function App() {
     }
   }, [scopeChoices, selectedScopeKey]);
   const modulesSelected = hash === "#modules";
+  const reviewsSelected = hash === "#upgrade-reviews";
+  const managementSelected = hash === "#management";
   const overviewContext: OverviewContext | null =
     active !== null && observes && selectedScope !== null
       ? {
@@ -270,16 +281,16 @@ export function App() {
         current.link.section === detailLink.section &&
         current.link.id === detailLink.id
       ) return current;
-      return captureDetailSnapshot(overview.data, detailLink);
+      return captureDetailSnapshot(overview.data, detailLink, t);
     });
-  }, [detailLink, overview.data]);
+  }, [detailLink, overview.data, t]);
 
   useEffect(() => {
     if (overview.error === null || !isSessionInvalid(overview.error)) return;
     closeActiveSession(
-      "The control session expired or is no longer authenticated. Open a new handoff."
+      t("operation.client.sessionExpired")
     );
-  }, [closeActiveSession, overview.error]);
+  }, [closeActiveSession, overview.error, t]);
 
   useEffect(() => {
     if (overview.error === null || !isPermissionDenied(overview.error)) return;
@@ -296,6 +307,10 @@ export function App() {
       clearModulesTransportCache();
       queryClient.removeQueries({ queryKey: ["modules"] });
       queryClient.removeQueries({ queryKey: ["module-detail"] });
+      queryClient.removeQueries({ queryKey: ["module-upgrade-reviews"] });
+      queryClient.removeQueries({ queryKey: ["management"] });
+      queryClient.removeQueries({ queryKey: ["store-management"] });
+      queryClient.removeQueries({ queryKey: ["management-unknown-detail"] });
       setPermissionRevoked(false);
       setSelectedScopeKey(key);
       setSearch("");
@@ -307,9 +322,7 @@ export function App() {
   const handleModulesFailure = useCallback(
     (event: ModulesFailClosedEvent) => {
       if (event.kind === "SESSION") {
-        closeActiveSession(
-          "The control session expired or is no longer authenticated. Open a new handoff."
-        );
+        closeActiveSession(t("operation.client.sessionExpired"));
         return;
       }
       if (event.kind !== "PERMISSION") return;
@@ -319,11 +332,15 @@ export function App() {
       queryClient.removeQueries({ queryKey: ["overview"] });
       queryClient.removeQueries({ queryKey: ["modules"] });
       queryClient.removeQueries({ queryKey: ["module-detail"] });
+      queryClient.removeQueries({ queryKey: ["module-upgrade-reviews"] });
+      queryClient.removeQueries({ queryKey: ["management"] });
+      queryClient.removeQueries({ queryKey: ["store-management"] });
+      queryClient.removeQueries({ queryKey: ["management-unknown-detail"] });
     },
-    [closeActiveSession, queryClient]
+    [closeActiveSession, queryClient, t]
   );
 
-  if (checkingResume) return <LoadingPanel label="Checking this tab session…" />;
+  if (checkingResume) return <LoadingPanel labelKey="loading.checkingSession" />;
   if (active === null) {
     return <HandoffPanel busy={openingSession} error={sessionError} onFile={onHandoffFile} />;
   }
@@ -333,7 +350,7 @@ export function App() {
     return (
       <FatalOverviewPanel
         permissionDenied={true}
-        message={denied?.message ?? "the selected scope is no longer authorized"}
+        message={denied?.message ?? t("error.overview.scopeDenied")}
         correlationID={denied?.correlationID ?? ""}
         onRetry={() => undefined}
       />
@@ -351,6 +368,56 @@ export function App() {
         onScopeChange={changeScope}
         onNavigateOverview={() => {
           window.location.hash = "overview";
+        }}
+        onNavigateReviews={() => {
+          window.location.hash = "upgrade-reviews";
+        }}
+        onNavigateManagement={() => {
+          window.location.hash = "management";
+        }}
+        onFailClosed={handleModulesFailure}
+      />
+    );
+  }
+  if (reviewsSelected && moduleContext !== null) {
+    return (
+      <ModuleUpgradeReviewsPage
+        key={`${active.session.session_id}:${selectedScopeKey}:upgrade-reviews`}
+        session={active.session}
+        context={moduleContext}
+        scopeChoices={scopeChoices}
+        selectedScopeKey={selectedScopeKey}
+        onScopeChange={changeScope}
+        onNavigateOverview={() => {
+          window.location.hash = "overview";
+        }}
+        onNavigateModules={() => {
+          window.location.hash = "modules";
+        }}
+        onNavigateManagement={() => {
+          window.location.hash = "management";
+        }}
+        onFailClosed={handleModulesFailure}
+      />
+    );
+  }
+  if (managementSelected && moduleContext !== null) {
+    return (
+      <ManagementPage
+        key={`${active.session.session_id}:${selectedScopeKey}:management`}
+        session={active.session}
+        context={moduleContext}
+        scopeChoices={scopeChoices}
+        selectedScopeKey={selectedScopeKey}
+        onScopeChange={changeScope}
+        onNavigateOverview={() => {
+          window.location.hash = "overview";
+        }}
+        onNavigateModules={() => {
+          window.location.hash = "modules";
+        }}
+        onNavigateReviews={() => {
+          window.location.hash = "upgrade-reviews";
         }}
         onFailClosed={handleModulesFailure}
       />
@@ -386,6 +453,9 @@ export function App() {
       onScopeChange={changeScope}
       onSearchChange={setSearch}
       onRefresh={() => { void overview.refetch(); }}
+      onNavigateManagement={() => {
+        window.location.hash = "management";
+      }}
       />
     </SessionInvalidBoundary>
   );

@@ -3,46 +3,12 @@
 package currentbackup
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
 
 	"golang.org/x/sys/unix"
 )
-
-type offlineFence struct {
-	file *os.File
-}
-
-func acquireOfflineFence(databasePath string) (*offlineFence, error) {
-	file, err := os.OpenFile(
-		databasePath+".freeagent.owner.lock",
-		os.O_CREATE|os.O_RDWR,
-		0o600,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("currentbackup: open owner fence: %w", err)
-	}
-	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		_ = file.Close()
-		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
-			return nil, fmt.Errorf("%w: %s", ErrSourceActive, databasePath)
-		}
-		return nil, fmt.Errorf("currentbackup: lock owner fence: %w", err)
-	}
-	return &offlineFence{file: file}, nil
-}
-
-func (fence *offlineFence) close() error {
-	if fence == nil || fence.file == nil {
-		return nil
-	}
-	unlockErr := unix.Flock(int(fence.file.Fd()), unix.LOCK_UN)
-	closeErr := fence.file.Close()
-	fence.file = nil
-	return errors.Join(unlockErr, closeErr)
-}
 
 func openedFileLinkCount(file *os.File) (uint64, error) {
 	var information unix.Stat_t

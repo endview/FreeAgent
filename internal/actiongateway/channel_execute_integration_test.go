@@ -287,9 +287,9 @@ func newRealChannelGatewayFixture(t *testing.T) *realChannelGatewayFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, usageReceipt, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion: moduleapi.ModelUsageReceiptSchemaV1,
+	_, usageReceipt, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion: moduleapi.ModelUsageReceiptSchemaV2,
 			RawReceipt:    json.RawMessage(`null`),
 		},
 	)
@@ -331,7 +331,6 @@ func newRealChannelGatewayFixture(t *testing.T) *realChannelGatewayFixture {
 			ProposalCanonical:            proposalCanonical,
 			Deadline: time.Now().UTC().Add(30 * time.Minute).
 				Truncate(time.Microsecond),
-			BudgetDecision: currentstore.ChannelBudgetAllow,
 		},
 	)
 	if err != nil {
@@ -737,7 +736,7 @@ func admitGatewayChannelRun(
 			TaskInputRef:  task.Digest,
 			RequestedPorts: []moduleapi.PortRef{{
 				Name:         moduleapi.PortNameModelGenerate,
-				ExactVersion: moduleapi.PortVersionV1,
+				ExactVersion: moduleapi.PortVersionV2,
 			}},
 			ChannelEndpointID: "gateway-channel-endpoint",
 			Deadline:          deadline,
@@ -810,7 +809,7 @@ func gatewayCompileChannelModel(
 	t.Helper()
 	modelBinding := gatewayModelBinding(t, run)
 	modelConfigContent := gatewayContent(t, run, modelBinding.ConfigRef)
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		modelConfigContent.CanonicalBytes,
 	)
 	if err != nil {

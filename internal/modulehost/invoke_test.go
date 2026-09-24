@@ -716,7 +716,7 @@ func validModuleInvocation() ModuleInvocation {
 		MemberSnapshotDigest: strings.Repeat("a", 64),
 		Port: moduleapi.PortRef{
 			Name:         moduleapi.PortNameModelGenerate,
-			ExactVersion: moduleapi.PortVersionV1,
+			ExactVersion: moduleapi.PortVersionV2,
 		},
 		BindingIndex: 0,
 		Input:        json.RawMessage(`{"prompt":"hello"}`),

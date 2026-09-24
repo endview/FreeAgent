@@ -16,7 +16,9 @@ import (
 	"testing"
 
 	"github.com/endview/freeagent/internal/controlcontract"
+	"github.com/endview/freeagent/internal/currentbackup"
 	"github.com/endview/freeagent/internal/currentstore"
+	"github.com/endview/freeagent/internal/moduleartifactingress"
 	"github.com/endview/freeagent/internal/moduleconformance"
 	"github.com/endview/freeagent/internal/moduleupgrade"
 	"github.com/endview/freeagent/sdk/moduleapi"
@@ -110,7 +112,8 @@ func TestModuleUpgradeReviewScopeFlagsAreExactAndSafeOutputOmitsLocalMaterial(t 
 		t.Fatalf("invalid scopes invoked dependency: calls=%d", calls)
 	}
 	if runtime.GOOS == "windows" {
-		unsafe := replaceModuleUpgradeTestFlagV1(args, "--artifact-directory", `\\server\share\artifact`)
+		uncArtifactPath := string([]byte{92, 92}) + "server" + string([]byte{92}) + "share" + string([]byte{92}) + "artifact"
+		unsafe := replaceModuleUpgradeTestFlagV1(args, "--artifact-directory", uncArtifactPath)
 		if err := runModuleUpgradeReviewWithDependenciesV1(context.Background(), unsafe, ioDiscard{}, ioDiscard{}, dependencies); err == nil || !strings.Contains(err.Error(), "INVALID_FLAGS") {
 			t.Fatalf("unsafe Windows artifact path error=%v", err)
 		}
@@ -339,6 +342,178 @@ func TestModuleUpgradeCLIUnsignedReviewDecisionOfflineChain(t *testing.T) {
 		"--confirm-tenant-wide-reject",
 	}, ioDiscard{}, ioDiscard{}); err == nil {
 		t.Fatal("conflicting decision was accepted")
+	}
+}
+
+func TestModuleUpgradeServerOwnedReviewConsumesAdmissionAndIsInert(t *testing.T) {
+	ctx := context.Background()
+	fixture := newModuleUpgradeCLIIntegrationFixtureV1(t)
+	admittedPackage := filepath.Join(fixture.sourceRoot, "packages", "ignored-by-u3")
+	copyModuleApplyTestTreeV1(t, fixture.targetDirectory, admittedPackage)
+
+	store, err := currentstore.OpenExistingCurrentStore(ctx, fixture.databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingress, err := runModuleArtifactIngressOperationV1(ctx, moduleartifactingress.RequestV1{
+		SourceRoot:   fixture.sourceRoot,
+		ArtifactRoot: filepath.Join(fixture.root, "artifacts"),
+		Selection: moduleartifactingress.SelectionV1{
+			SourceID: fixture.sourceID, SnapshotID: fixture.snapshotID,
+			Module: moduleapi.Ref{
+				ID:      fixture.targetReport.Module.ID,
+				Version: fixture.targetReport.Module.ExactVersion,
+			},
+			ArtifactDigest: fixture.targetReport.ArtifactDigest,
+		},
+	}, store)
+	if closeErr := store.Close(); err != nil || closeErr != nil {
+		t.Fatalf("admit server-owned artifact: operation=%v close=%v", err, closeErr)
+	}
+	if ingress.Admission.AdmissionID == "" {
+		t.Fatal("artifact ingress did not return an Admission")
+	}
+
+	deps := productionModuleUpgradeServerOwnedReviewDependenciesV1()
+	deps.artifactRoot = func(string) string { return filepath.Join(fixture.root, "artifacts") }
+	args := []string{
+		"--enable-module-upgrade-review", "--db", fixture.databasePath,
+		"--tenant", defaultTenantID, "--admission-id", ingress.Admission.AdmissionID,
+		"--target-instance", fixture.upgradeBasis.Selection.TargetInstanceID,
+		"--operator-principal", "operator.server-owned",
+		"--review-request-digest", strings.Repeat("c", 64),
+		"--port", productionContextPort.Name, "--port-version", productionContextPort.ExactVersion,
+		"--port-binding-index", "0", "--target-kind", "PROFILE", "--profile", moduleApplyTestProfileID,
+	}
+	var first bytes.Buffer
+	if err := runModuleUpgradeReviewServerOwnedWithDependenciesV1(ctx, args, &first, ioDiscard{}, deps); err != nil {
+		t.Fatal(err)
+	}
+	runtimeBefore := readW2E2RuntimeCountsV1(t, fixture.databasePath)
+	var firstResult moduleUpgradeReviewCommandResultV1
+	decodeModuleOperatorOutputV1(t, first.Bytes(), &firstResult)
+	if firstResult.SchemaVersion != moduleUpgradeServerOwnedReviewResultSchemaV1 ||
+		firstResult.Review.ArtifactAdmissionID != ingress.Admission.AdmissionID ||
+		firstResult.Review.OperatorPrincipalID != "operator.server-owned" {
+		t.Fatalf("server-owned review=%s", first.Bytes())
+	}
+	if strings.Contains(first.String(), fixture.targetDirectory) || strings.Contains(first.String(), fixture.root) {
+		t.Fatalf("server-owned review leaked local material: %s", first.Bytes())
+	}
+	var retry bytes.Buffer
+	if err := runModuleUpgradeReviewServerOwnedWithDependenciesV1(ctx, args, &retry, ioDiscard{}, deps); err != nil || retry.String() != first.String() {
+		t.Fatalf("server-owned exact retry output=%q want=%q error=%v", retry.String(), first.String(), err)
+	}
+	reasonPath := filepath.Join(fixture.root, "server-owned-decision-reason.txt")
+	if err := os.WriteFile(reasonPath, []byte("approved after exact server-owned review"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	decisionArgs := []string{
+		"--enable-module-upgrade-review", "--db", fixture.databasePath,
+		"--tenant", defaultTenantID, "--review-id", firstResult.ReviewID,
+		"--decision", "APPROVE", "--operator-principal", "operator.decision",
+		"--reason-file", reasonPath,
+	}
+	var decisionOutput bytes.Buffer
+	if err := runModuleUpgradeDecisionServerOwned(ctx, decisionArgs, &decisionOutput, ioDiscard{}); err != nil {
+		t.Fatal(err)
+	}
+	var decisionResult struct {
+		SchemaVersion string `json:"schema_version"`
+		Status        string `json:"status"`
+		TenantID      string `json:"tenant_id"`
+		CandidateID   string `json:"candidate_id"`
+		ReviewID      string `json:"review_id"`
+		DecisionID    string `json:"decision_id"`
+	}
+	decodeModuleOperatorOutputV1(t, decisionOutput.Bytes(), &decisionResult)
+	if decisionResult.SchemaVersion != moduleUpgradeDecisionResultSchemaV1 ||
+		decisionResult.Status != "RECORDED" || decisionResult.TenantID != defaultTenantID ||
+		decisionResult.ReviewID != firstResult.ReviewID || !moduleapi.ValidSHA256(decisionResult.DecisionID) {
+		t.Fatalf("server-owned decision=%s", decisionOutput.Bytes())
+	}
+	var decisionRetry bytes.Buffer
+	if err := runModuleUpgradeDecisionServerOwned(ctx, decisionArgs, &decisionRetry, ioDiscard{}); err != nil || decisionRetry.String() != decisionOutput.String() {
+		t.Fatalf("server-owned exact decision retry output=%q want=%q error=%v", decisionRetry.String(), decisionOutput.String(), err)
+	}
+	store, err = currentstore.OpenExistingCurrentStore(ctx, fixture.databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := store.GetModuleCandidateDecision(ctx, firstResult.ReviewID)
+	closeErr := store.Close()
+	if err != nil || closeErr != nil {
+		t.Fatalf("read server-owned decision: %v; close=%v", err, closeErr)
+	}
+	if decision.Decision.Decision != moduleapi.ModuleCandidateDecisionApproveV1 ||
+		decision.Decision.OperatorPrincipalID != "operator.decision" {
+		t.Fatalf("durable server-owned decision=%+v", decision.Decision)
+	}
+	if runtimeAfter := readW2E2RuntimeCountsV1(t, fixture.databasePath); runtimeAfter != runtimeBefore {
+		t.Fatalf("server-owned Review/Decision changed runtime counts: before=%+v after=%+v", runtimeBefore, runtimeAfter)
+	}
+	bundlePath := filepath.Join(fixture.root, "server-owned-review.bundle")
+	if _, err := currentbackup.CreateBundle(ctx, fixture.databasePath, filepath.Join(fixture.root, "artifacts"), bundlePath, "server-owned-review-test/v1"); err != nil {
+		t.Fatalf("server-owned Review backup: %v", err)
+	}
+	if _, err := currentbackup.VerifyBundle(ctx, bundlePath); err != nil {
+		t.Fatalf("server-owned Review backup verify: %v", err)
+	}
+	restoredRoot := filepath.Join(fixture.root, "restored-server-owned")
+	if err := os.Mkdir(restoredRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	restoredDB := filepath.Join(restoredRoot, "current.sqlite")
+	restoredArtifacts := filepath.Join(restoredRoot, "artifacts")
+	if err := currentbackup.RestoreBundle(ctx, bundlePath, restoredDB, restoredArtifacts); err != nil {
+		t.Fatalf("server-owned Review restore: %v", err)
+	}
+	if err := currentbackup.VerifyCurrentStoreSemanticClosure(ctx, restoredDB); err != nil {
+		t.Fatalf("server-owned restored semantic closure: %v", err)
+	}
+	restoredStore, err := currentstore.OpenExistingCurrentStore(ctx, restoredDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredReview, reviewErr := restoredStore.GetModuleUpgradeReview(ctx, firstResult.ReviewID)
+	restoredDecision, decisionErr := restoredStore.GetModuleCandidateDecision(ctx, firstResult.ReviewID)
+	closeErr = restoredStore.Close()
+	if err := errors.Join(reviewErr, decisionErr, closeErr); err != nil {
+		t.Fatalf("read restored server-owned closure: %v", err)
+	}
+	if restoredReview.Review.ArtifactAdmissionID != ingress.Admission.AdmissionID || restoredDecision.DecisionID != decisionResult.DecisionID {
+		t.Fatalf("restored server-owned closure review=%+v decision=%+v", restoredReview.Review, restoredDecision)
+	}
+	wrongTenant := append([]string(nil), decisionArgs...)
+	wrongTenant = replaceModuleUpgradeTestFlagV1(wrongTenant, "--tenant", "tenant.other")
+	if err := runModuleUpgradeDecisionServerOwned(ctx, wrongTenant, ioDiscard{}, ioDiscard{}); err == nil {
+		t.Fatal("server-owned decision accepted a different tenant")
+	}
+
+	var artifactFile string
+	if err := filepath.WalkDir(filepath.Join(fixture.root, "artifacts", ingress.Admission.Artifact.ArtifactDigest), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if artifactFile == "" && entry.Type().IsRegular() {
+			artifactFile = path
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if artifactFile == "" {
+		t.Fatal("server-owned artifact has no file to tamper")
+	}
+	content, err := os.ReadFile(artifactFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(artifactFile, append(content, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runModuleUpgradeReviewServerOwnedWithDependenciesV1(ctx, args, ioDiscard{}, ioDiscard{}, deps); err == nil {
+		t.Fatal("server-owned Review accepted a tampered Artifact")
 	}
 }
 

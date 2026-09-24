@@ -830,7 +830,7 @@ func TestRestoreCatalogGenerationRejectsUnknownNoncanonicalTamperAndUnsorted(t *
 
 func validControlSnapshot() ControlSnapshot {
 	return ControlSnapshot{
-		SchemaVersion: ControlSnapshotSchemaVersionV1,
+		SchemaVersion: ControlSnapshotSchemaVersionV2,
 		SnapshotID:    "control-7",
 		TenantID:      "tenant-a",
 		Revision:      7,
@@ -843,13 +843,11 @@ func validControlSnapshot() ControlSnapshot {
 				Workspace: corecontract.WorkspaceRef{
 					ID: "workspace.z", Version: "v1", Digest: hash("c"),
 				},
-				BudgetPolicy: policy("budget.z", "d"),
 			},
 			{
 				Workspace: corecontract.WorkspaceRef{
 					ID: "workspace.a", Version: "v1", Digest: hash("e"),
 				},
-				BudgetPolicy: policy("budget.a", "f"),
 			},
 		},
 		Profiles: []ProfileDefinition{
@@ -858,7 +856,6 @@ func validControlSnapshot() ControlSnapshot {
 					ID: "profile.z", Version: "v1", Digest: hash("1"),
 				},
 				ContextPolicy:    policy("context.z", "2"),
-				CostPolicy:       policy("cost.z", "3"),
 				SchedulingPolicy: policy("schedule.z", "4"),
 				Bindings: []BindingSpec{
 					binding(
@@ -880,7 +877,6 @@ func validControlSnapshot() ControlSnapshot {
 					ID: "profile.a", Version: "v1", Digest: hash("7"),
 				},
 				ContextPolicy:    policy("context.a", "8"),
-				CostPolicy:       policy("cost.a", "9"),
 				SchedulingPolicy: policy("schedule.a", "a"),
 				Bindings: []BindingSpec{
 					binding(
@@ -914,7 +910,7 @@ func validCatalogGeneration() CatalogGeneration {
 				Provides: []moduleapi.PortRef{
 					{
 						Name:         moduleapi.PortNameModelGenerate,
-						ExactVersion: moduleapi.PortVersionV1,
+						ExactVersion: moduleapi.PortVersionV2,
 					},
 					{
 						Name:         moduleapi.PortNameContextProvide,
@@ -952,9 +948,13 @@ func binding(
 	failure moduleapi.FailurePolicy,
 	digestCharacter string,
 ) BindingSpec {
+	version := moduleapi.PortVersionV1
+	if portName == moduleapi.PortNameModelGenerate {
+		version = moduleapi.PortVersionV2
+	}
 	return BindingSpec{
 		Port: moduleapi.PortRef{
-			Name: portName, ExactVersion: moduleapi.PortVersionV1,
+			Name: portName, ExactVersion: version,
 		},
 		InstanceID:          instanceID,
 		ConfigRef:           hash(digestCharacter),

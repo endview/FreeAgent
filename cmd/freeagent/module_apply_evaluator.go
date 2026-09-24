@@ -32,10 +32,6 @@ type moduleApplyReadViewV1 interface {
 		controlcontract.CatalogGeneration,
 	) error
 	GetContent(context.Context, string) (currentstore.ContentRecord, error)
-	GetModelPriceSnapshot(
-		context.Context,
-		string,
-	) (currentstore.ModelPriceSnapshotRecord, error)
 	GetChannelCursorSeed(
 		context.Context,
 		string,

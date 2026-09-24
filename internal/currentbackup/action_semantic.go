@@ -82,7 +82,7 @@ func inspectOneActionAttempt(
 		bindingCanonical    []byte
 		effectClass         string
 		maxResultBytes      int64
-		budgetStateRef      string
+		usageLedgerRef      string
 		memberCanonical     []byte
 		storedMemberDigest  string
 		proposalKind        string
@@ -105,7 +105,7 @@ func inspectOneActionAttempt(
 			d.member_snapshot_digest, d.binding_index, d.binding_json,
 			d.public_action_id, d.provider_action_id, d.definition_digest,
 			d.proposal_ref, d.effect_class, d.max_result_bytes,
-			d.budget_state_ref, d.state, d.external_operation_id,
+			d.usage_ledger_ref, d.state, d.external_operation_id,
 			d.provider_receipt_ref, d.result_ref, d.error_classification,
 			d.reconciliation_evidence_ref, d.unknown_reason,
 			m.canonical_json, m.digest,
@@ -133,7 +133,7 @@ func inspectOneActionAttempt(
 		&record.proposalRef,
 		&effectClass,
 		&maxResultBytes,
-		&budgetStateRef,
+		&usageLedgerRef,
 		&record.state,
 		&externalOperationID,
 		&providerReceiptRef,
@@ -167,8 +167,8 @@ func inspectOneActionAttempt(
 		!moduleapi.ValidSHA256(record.proposalRef) {
 		return fmt.Errorf("%w: invalid Action Attempt scalar projection", ErrIntegrity)
 	}
-	if _, err := corecontract.ParseBudgetStateRefV1(budgetStateRef, record.runID); err != nil {
-		return fmt.Errorf("%w: invalid Action BudgetStateRef: %v", ErrIntegrity, err)
+	if _, err := corecontract.ParseUsageLedgerRefV1(usageLedgerRef, record.runID); err != nil {
+		return fmt.Errorf("%w: invalid Action UsageLedgerRef: %v", ErrIntegrity, err)
 	}
 	member, err := corecontract.RestoreMemberExecutionSnapshot(memberCanonical)
 	if err != nil || member.MemberSnapshotDigest != storedMemberDigest ||

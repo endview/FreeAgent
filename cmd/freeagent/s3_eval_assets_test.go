@@ -9,29 +9,23 @@ import (
 	"testing"
 
 	"github.com/endview/freeagent/internal/controlcontract"
-	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentstore"
 	"github.com/endview/freeagent/internal/deepseekmodel"
 	"github.com/endview/freeagent/internal/s3eval"
 	"github.com/endview/freeagent/sdk/moduleapi"
 )
 
-const (
-	s3CAssetBillingVersion = "deepseek-public-price-2026-08-04"
-	s3CAssetParameters     = `{"max_tokens":2048,"temperature":0.2,"thinking":{"type":"disabled"}}`
-)
+const s3CAssetParameters = `{"max_tokens":2048,"temperature":0.2,"thinking":{"type":"disabled"}}`
 
 type s3CAssetMatrixCase struct {
-	name             string
-	seedFile         string
-	seedID           string
-	identitySuffix   string
-	model            string
-	modelBuildID     string
-	modelInstanceID  string
-	priceSnapshotID  string
-	pricingCanonical string
-	reviewer         bool
+	name            string
+	seedFile        string
+	seedID          string
+	identitySuffix  string
+	model           string
+	modelBuildID    string
+	modelInstanceID string
+	reviewer        bool
 }
 
 type s3CAssetScenarioCase struct {
@@ -61,50 +55,42 @@ func TestS3CExampleAssetCompatibilityMatrix(t *testing.T) {
 	exampleRoot := filepath.Dir(exampleSeedPath(t))
 	assets := []s3CAssetMatrixCase{
 		{
-			name:             "flash/reviewer-off",
-			seedFile:         "s3c-deepseek-v4-flash-reviewer-off.bootstrap.seed.json",
-			seedID:           "freeagent.s3c.deepseek-v4-flash.reviewer-off",
-			identitySuffix:   "deepseek-v4-flash-reviewer-off",
-			model:            deepseekmodel.ModelV4Flash,
-			modelBuildID:     localDeepSeekFlashBuild,
-			modelInstanceID:  "model-deepseek-v4-flash",
-			priceSnapshotID:  "price-deepseek-v4-flash-2026-08-04",
-			pricingCanonical: `{"cached_input_per_million_microunits":20000,"output_per_million_microunits":2000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":1000000}`,
+			name:            "flash/reviewer-off",
+			seedFile:        "s3c-deepseek-v4-flash-reviewer-off.bootstrap.seed.json",
+			seedID:          "freeagent.s3c.deepseek-v4-flash.reviewer-off",
+			identitySuffix:  "deepseek-v4-flash-reviewer-off",
+			model:           deepseekmodel.ModelV4Flash,
+			modelBuildID:    localDeepSeekFlashBuild,
+			modelInstanceID: "model-deepseek-v4-flash",
 		},
 		{
-			name:             "flash/reviewer-on",
-			seedFile:         "s3c-deepseek-v4-flash-reviewer-on.bootstrap.seed.json",
-			seedID:           "freeagent.s3c.deepseek-v4-flash.reviewer-on",
-			identitySuffix:   "deepseek-v4-flash-reviewer-on",
-			model:            deepseekmodel.ModelV4Flash,
-			modelBuildID:     localDeepSeekFlashBuild,
-			modelInstanceID:  "model-deepseek-v4-flash",
-			priceSnapshotID:  "price-deepseek-v4-flash-2026-08-04",
-			pricingCanonical: `{"cached_input_per_million_microunits":20000,"output_per_million_microunits":2000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":1000000}`,
-			reviewer:         true,
+			name:            "flash/reviewer-on",
+			seedFile:        "s3c-deepseek-v4-flash-reviewer-on.bootstrap.seed.json",
+			seedID:          "freeagent.s3c.deepseek-v4-flash.reviewer-on",
+			identitySuffix:  "deepseek-v4-flash-reviewer-on",
+			model:           deepseekmodel.ModelV4Flash,
+			modelBuildID:    localDeepSeekFlashBuild,
+			modelInstanceID: "model-deepseek-v4-flash",
+			reviewer:        true,
 		},
 		{
-			name:             "pro/reviewer-off",
-			seedFile:         "s3c-deepseek-v4-pro-reviewer-off.bootstrap.seed.json",
-			seedID:           "freeagent.s3c.deepseek-v4-pro.reviewer-off",
-			identitySuffix:   "deepseek-v4-pro-reviewer-off",
-			model:            deepseekmodel.ModelV4Pro,
-			modelBuildID:     localDeepSeekProBuild,
-			modelInstanceID:  "model-deepseek-v4-pro",
-			priceSnapshotID:  "price-deepseek-v4-pro-2026-08-04",
-			pricingCanonical: `{"cached_input_per_million_microunits":25000,"output_per_million_microunits":6000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":3000000}`,
+			name:            "pro/reviewer-off",
+			seedFile:        "s3c-deepseek-v4-pro-reviewer-off.bootstrap.seed.json",
+			seedID:          "freeagent.s3c.deepseek-v4-pro.reviewer-off",
+			identitySuffix:  "deepseek-v4-pro-reviewer-off",
+			model:           deepseekmodel.ModelV4Pro,
+			modelBuildID:    localDeepSeekProBuild,
+			modelInstanceID: "model-deepseek-v4-pro",
 		},
 		{
-			name:             "pro/reviewer-on",
-			seedFile:         "s3c-deepseek-v4-pro-reviewer-on.bootstrap.seed.json",
-			seedID:           "freeagent.s3c.deepseek-v4-pro.reviewer-on",
-			identitySuffix:   "deepseek-v4-pro-reviewer-on",
-			model:            deepseekmodel.ModelV4Pro,
-			modelBuildID:     localDeepSeekProBuild,
-			modelInstanceID:  "model-deepseek-v4-pro",
-			priceSnapshotID:  "price-deepseek-v4-pro-2026-08-04",
-			pricingCanonical: `{"cached_input_per_million_microunits":25000,"output_per_million_microunits":6000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":3000000}`,
-			reviewer:         true,
+			name:            "pro/reviewer-on",
+			seedFile:        "s3c-deepseek-v4-pro-reviewer-on.bootstrap.seed.json",
+			seedID:          "freeagent.s3c.deepseek-v4-pro.reviewer-on",
+			identitySuffix:  "deepseek-v4-pro-reviewer-on",
+			model:           deepseekmodel.ModelV4Pro,
+			modelBuildID:    localDeepSeekProBuild,
+			modelInstanceID: "model-deepseek-v4-pro",
+			reviewer:        true,
 		},
 	}
 	scenarios := []s3CAssetScenarioCase{
@@ -360,7 +346,7 @@ func assertS3CPublishedAssetClosure(
 
 	assertS3CCompositeDefinition(t, control, asset.reviewer)
 	configRef := assertS3CProfileModelBindings(t, control, asset)
-	assertS3CModelConfigAndPrice(t, ctx, store, configRef, asset)
+	assertS3CModelConfig(t, ctx, store, configRef, asset)
 }
 
 func s3CBoolCount(value bool) int {
@@ -516,7 +502,7 @@ func s3CAssetModelBinding(
 	return result, found
 }
 
-func assertS3CModelConfigAndPrice(
+func assertS3CModelConfig(
 	t *testing.T,
 	ctx context.Context,
 	store *currentstore.Store,
@@ -528,21 +514,19 @@ func assertS3CModelConfigAndPrice(
 	if err != nil {
 		t.Fatalf("load DeepSeek model Config: %v", err)
 	}
-	wantConfig, wantCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        deepseekmodel.ProviderNameV1,
-			Model:           asset.model,
-			ModelBuildID:    asset.modelBuildID,
-			BillingVersion:  s3CAssetBillingVersion,
-			PriceSnapshotID: asset.priceSnapshotID,
-			Parameters:      json.RawMessage(s3CAssetParameters),
+	wantConfig, wantCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      deepseekmodel.ProviderNameV1,
+			Model:         asset.model,
+			ModelBuildID:  asset.modelBuildID,
+			Parameters:    json.RawMessage(s3CAssetParameters),
 		},
 	)
 	if err != nil {
 		t.Fatalf("build expected DeepSeek Config: %v", err)
 	}
-	restoredConfig, err := moduleapi.RestoreModelBindingConfigV1(
+	restoredConfig, err := moduleapi.RestoreModelBindingConfigV2(
 		configRecord.CanonicalBytes,
 	)
 	if err != nil {
@@ -554,8 +538,6 @@ func assertS3CModelConfigAndPrice(
 		restoredConfig.Provider != wantConfig.Provider ||
 		restoredConfig.Model != wantConfig.Model ||
 		restoredConfig.ModelBuildID != wantConfig.ModelBuildID ||
-		restoredConfig.BillingVersion != wantConfig.BillingVersion ||
-		restoredConfig.PriceSnapshotID != wantConfig.PriceSnapshotID ||
 		!bytes.Equal(restoredConfig.Parameters, wantConfig.Parameters) {
 		t.Fatalf(
 			"persisted DeepSeek Config=%+v bytes=%s want=%+v bytes=%s",
@@ -563,50 +545,6 @@ func assertS3CModelConfigAndPrice(
 			configRecord.CanonicalBytes,
 			wantConfig,
 			wantCanonical,
-		)
-	}
-
-	priceRecord, err := store.GetModelPriceSnapshot(ctx, asset.priceSnapshotID)
-	if err != nil {
-		t.Fatalf("load DeepSeek PriceSnapshot: %v", err)
-	}
-	wantPrice, wantPriceCanonical, err := corecontract.NewModelPriceSnapshotV1(
-		corecontract.ModelPriceSnapshotV1{
-			SchemaVersion:   corecontract.ModelPriceSnapshotSchemaVersionV1,
-			PriceSnapshotID: asset.priceSnapshotID,
-			Provider:        deepseekmodel.ProviderNameV1,
-			Model:           asset.model,
-			BillingVersion:  s3CAssetBillingVersion,
-			Currency:        "CNY",
-			PricingStatus:   corecontract.PricingKnown,
-			Pricing:         json.RawMessage(asset.pricingCanonical),
-		},
-	)
-	if err != nil {
-		t.Fatalf("build expected DeepSeek PriceSnapshot: %v", err)
-	}
-	restoredPrice, err := corecontract.RestoreModelPriceSnapshotV1(
-		priceRecord.CanonicalJSON,
-	)
-	if err != nil {
-		t.Fatalf("restore persisted DeepSeek PriceSnapshot: %v", err)
-	}
-	if !bytes.Equal(priceRecord.CanonicalJSON, wantPriceCanonical) ||
-		priceRecord.Snapshot.Digest != wantPrice.Digest ||
-		restoredPrice.Digest != wantPrice.Digest ||
-		restoredPrice.PriceSnapshotID != wantPrice.PriceSnapshotID ||
-		restoredPrice.Provider != wantPrice.Provider ||
-		restoredPrice.Model != wantPrice.Model ||
-		restoredPrice.BillingVersion != wantPrice.BillingVersion ||
-		restoredPrice.Currency != wantPrice.Currency ||
-		restoredPrice.PricingStatus != wantPrice.PricingStatus ||
-		!bytes.Equal(restoredPrice.Pricing, wantPrice.Pricing) {
-		t.Fatalf(
-			"persisted DeepSeek PriceSnapshot=%+v bytes=%s want=%+v bytes=%s",
-			restoredPrice,
-			priceRecord.CanonicalJSON,
-			wantPrice,
-			wantPriceCanonical,
 		)
 	}
 }

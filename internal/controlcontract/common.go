@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	ControlSnapshotSchemaVersionV1   = "control-snapshot/v1"
+	ControlSnapshotSchemaVersionV2   = "control-snapshot/v2"
 	CatalogGenerationSchemaVersionV1 = "runtime-catalog/v1"
 
 	controlSnapshotDigestDomain = "freeagent.control-snapshot/v1"

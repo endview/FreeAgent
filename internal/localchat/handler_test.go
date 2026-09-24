@@ -547,7 +547,6 @@ func TestValidateLoopbackAddress(t *testing.T) {
 	for _, address := range []string{
 		"127.0.0.1:8080",
 		"[::1]:8080",
-		"localhost:8080",
 	} {
 		if err := ValidateLoopbackAddress(address); err != nil {
 			t.Errorf("address %q rejected: %v", address, err)
@@ -559,6 +558,7 @@ func TestValidateLoopbackAddress(t *testing.T) {
 		"[::]:8080",
 		"192.0.2.1:8080",
 		"127.0.0.1",
+		"localhost:8080",
 	} {
 		if err := ValidateLoopbackAddress(address); err == nil {
 			t.Errorf("address %q accepted", address)

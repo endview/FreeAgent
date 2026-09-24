@@ -36,7 +36,6 @@ func TestConversationKnowledgeNewAttemptRecompilesAndReloadsExactHistory(
 	); err != nil {
 		t.Fatal(err)
 	}
-	putDynamicContextTestPrice(t, fixture.admission.store)
 	firstLease, firstRun := acquireDynamicContextConversationRun(
 		t,
 		fixture.admission.store,
@@ -159,7 +158,6 @@ func TestConversationMemoryNewAttemptRecompilesAndReloadsExactHistory(
 	); err != nil {
 		t.Fatal(err)
 	}
-	putDynamicContextTestPrice(t, fixture.admission.store)
 	firstLease, firstRun := acquireDynamicContextConversationRun(
 		t,
 		fixture.admission.store,
@@ -285,16 +283,6 @@ func dynamicConversationAdmissionInput(
 	return input
 }
 
-func putDynamicContextTestPrice(t *testing.T, store *Store) {
-	t.Helper()
-	if _, err := store.PutModelPriceSnapshot(
-		context.Background(),
-		testModelPriceSnapshot(),
-	); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func widenDynamicContextConversationPolicy(
 	t *testing.T,
 	fixture *admissionCommitFixture,
@@ -318,7 +306,7 @@ func widenDynamicContextConversationPolicy(
 		t,
 		fixture.store,
 		4000,
-		0,
+		64,
 	)
 	for index := range control.Profiles {
 		control.Profiles[index].ContextPolicy = policy

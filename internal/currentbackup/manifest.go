@@ -610,13 +610,14 @@ func canonicalManifestJSON(manifest Manifest) ([]byte, error) {
 }
 
 func validateStoreIdentity(identity StoreIdentity) error {
+	knownVersion, known := currentstore.KnownSchemaVersion(identity.UserVersion)
 	if identity.ApplicationID != currentstore.ApplicationID ||
-		identity.UserVersion != currentstore.UserVersion ||
+		!known ||
 		identity.SchemaIdentity != currentstore.SchemaIdentity ||
-		identity.SchemaFingerprint != currentstore.ExpectedSchemaFingerprint ||
+		identity.SchemaFingerprint != knownVersion.SchemaFingerprint ||
 		identity.GeneratorID != currentstore.GeneratorID {
 		return fmt.Errorf(
-			"%w: Store identity does not match this Current Store release",
+			"%w: Store identity is not a known Current Store release",
 			ErrInvalidBundle,
 		)
 	}

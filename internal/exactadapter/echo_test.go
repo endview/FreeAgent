@@ -54,16 +54,15 @@ func TestDeterministicEchoReturnsCanonicalOutputWithUnknownUsage(t *testing.T) {
 		}
 	}
 
-	usage, err := moduleapi.RestoreModelUsageReceiptV1(result.UsageReceipt)
+	usage, err := moduleapi.RestoreModelUsageReceiptV2(result.UsageReceipt)
 	if err != nil {
-		t.Fatalf("RestoreModelUsageReceiptV1: %v", err)
+		t.Fatalf("RestoreModelUsageReceiptV2: %v", err)
 	}
 	if usage.InputTokens != nil ||
 		usage.CachedInputTokens != nil ||
 		usage.UncachedInputTokens != nil ||
 		usage.OutputTokens != nil ||
 		usage.ReasoningTokens != nil ||
-		usage.ProviderReportedCost != nil ||
 		string(usage.RawReceipt) != "null" {
 		t.Fatalf("Echo fabricated Usage: %+v", usage)
 	}
@@ -461,7 +460,7 @@ func echoPreparedInvocation(
 		MemberSnapshotDigest: strings.Repeat("a", 64),
 		Port: moduleapi.PortRef{
 			Name:         moduleapi.PortNameModelGenerate,
-			ExactVersion: moduleapi.PortVersionV1,
+			ExactVersion: moduleapi.PortVersionV2,
 		},
 		BindingIndex: 0,
 		Input:        request,

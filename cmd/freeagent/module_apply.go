@@ -1315,7 +1315,7 @@ func inspectCurrentModuleApplyStateV1(
 		if err != nil {
 			return false, true, nil
 		}
-		currentModelConfig, err := moduleapi.RestoreModelBindingConfigV1(
+		currentModelConfig, err := moduleapi.RestoreModelBindingConfigV2(
 			plan.Binding.Config,
 		)
 		if err != nil {

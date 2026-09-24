@@ -97,7 +97,7 @@ func TestReservedDocumentInsightDriftIsConflictWithoutFallback(t *testing.T) {
 		},
 		Module: &ModuleIdentityV1{
 			ID:             moduleapi.DocumentInsightModuleIDV1,
-			ExactVersion:   moduleapi.DocumentInsightVersionV1,
+			ExactVersion:   moduleapi.DocumentInsightVersionV2,
 			ArtifactDigest: strings.Repeat("f", moduleapi.SHA256HexLength),
 		},
 	}
@@ -258,11 +258,10 @@ func remoteBindingV1(t *testing.T, tenant string) ([]byte, []byte) {
 
 func modelBindingV1(t *testing.T, tenant string) ([]byte, []byte) {
 	t.Helper()
-	_, config, err := moduleapi.NewModelBindingConfigV1(moduleapi.ModelBindingConfigV1{
-		SchemaVersion: moduleapi.ModelBindingConfigSchemaV1,
+	_, config, err := moduleapi.NewModelBindingConfigV2(moduleapi.ModelBindingConfigV2{
+		SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
 		Provider:      DeepSeekProviderNameV1, Model: DeepSeekModelV4ProV1,
-		ModelBuildID: DeepSeekProBuildV1, BillingVersion: "billing-v1",
-		PriceSnapshotID: "price-v1", Parameters: []byte(`{}`),
+		ModelBuildID: DeepSeekProBuildV1, Parameters: []byte(`{}`),
 	})
 	if err != nil {
 		t.Fatal(err)

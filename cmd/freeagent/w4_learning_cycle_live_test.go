@@ -48,14 +48,12 @@ func TestW4L4LiveDeepSeekLearningCycle(t *testing.T) {
 		t.Fatalf("initialize W4-L4 live data: %v", err)
 	}
 
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(
-		moduleapi.ModelBindingConfigV1{
-			SchemaVersion:   moduleapi.ModelBindingConfigSchemaV1,
-			Provider:        "deepseek",
-			Model:           "deepseek-v4-flash",
-			ModelBuildID:    localDeepSeekFlashBuild,
-			BillingVersion:  "deepseek-public-price-2026-08-04",
-			PriceSnapshotID: "price-deepseek-v4-flash-2026-08-04",
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(
+		moduleapi.ModelBindingConfigV2{
+			SchemaVersion: moduleapi.ModelBindingConfigSchemaV2,
+			Provider:      "deepseek",
+			Model:         "deepseek-v4-flash",
+			ModelBuildID:  localDeepSeekFlashBuild,
 			Parameters: json.RawMessage(
 				`{"max_tokens":512,"response_format":{"type":"json_object"},"temperature":0,"thinking":{"type":"disabled"}}`,
 			),
@@ -186,15 +184,15 @@ func TestW4L4LiveDeepSeekLearningCycle(t *testing.T) {
 		dispatch.Usage.Tokens.Output == nil ||
 		*dispatch.Usage.Tokens.Input !=
 			*dispatch.Usage.Tokens.CachedInput+*dispatch.Usage.Tokens.UncachedInput ||
-		dispatch.Usage.EstimatedCost == nil || dispatch.Usage.RawReceiptRef == "" ||
-		dispatch.Usage.ReconciliationStatus != "PROVIDER_REPORTED" {
+		dispatch.Usage.RawReceiptRef == "" ||
+		dispatch.Usage.UsageStatus != "PROVIDER_REPORTED" {
 		_ = store.Close()
 		t.Fatalf(
 			"live Attempt/Usage state=(attempt=%s provider=%s model=%s usage=%s)",
 			dispatch.Attempt.State,
 			dispatch.Attempt.Provider,
 			dispatch.Attempt.Model,
-			dispatch.Usage.ReconciliationStatus,
+			dispatch.Usage.UsageStatus,
 		)
 	}
 	if err := store.Close(); err != nil {
@@ -240,13 +238,12 @@ func TestW4L4LiveDeepSeekLearningCycle(t *testing.T) {
 	state := first.Task.State
 	runID := first.Task.RunID
 	attemptID := first.Task.AttemptID
-	usageStatus := dispatch.Usage.ReconciliationStatus
+	usageStatus := dispatch.Usage.UsageStatus
 	inputTokens := valueOrZero(dispatch.Usage.Tokens.Input)
 	cachedInputTokens := valueOrZero(dispatch.Usage.Tokens.CachedInput)
 	uncachedInputTokens := valueOrZero(dispatch.Usage.Tokens.UncachedInput)
 	outputTokens := valueOrZero(dispatch.Usage.Tokens.Output)
 	reasoningTokens := valueOrUnknownUint64(dispatch.Usage.Tokens.Reasoning)
-	estimatedCost := valueOrUnknown(dispatch.Usage.EstimatedCost)
 	if err := os.RemoveAll(root); err != nil {
 		t.Fatalf("remove W4-L4 live temporary assets: %v", err)
 	}
@@ -255,7 +252,7 @@ func TestW4L4LiveDeepSeekLearningCycle(t *testing.T) {
 	}
 
 	t.Logf(
-		"W4_L4_LIVE_RESULT state=%s run_id=%s attempt_id=%s usage_status=%s input_tokens=%d cached_input_tokens=%d uncached_input_tokens=%d output_tokens=%d reasoning_tokens=%s estimated_cost=%s exact_retry_no_replay=true",
+		"W4_L4_LIVE_RESULT state=%s run_id=%s attempt_id=%s usage_status=%s input_tokens=%d cached_input_tokens=%d uncached_input_tokens=%d output_tokens=%d reasoning_tokens=%s exact_retry_no_replay=true",
 		state,
 		runID,
 		attemptID,
@@ -265,7 +262,6 @@ func TestW4L4LiveDeepSeekLearningCycle(t *testing.T) {
 		uncachedInputTokens,
 		outputTokens,
 		reasoningTokens,
-		estimatedCost,
 	)
 }
 
@@ -323,13 +319,6 @@ func learningCycleCommandTaskState(task *learningCycleTaskCommandResult) string 
 func valueOrZero(value *uint64) uint64 {
 	if value == nil {
 		return 0
-	}
-	return *value
-}
-
-func valueOrUnknown(value *string) string {
-	if value == nil {
-		return "UNKNOWN"
 	}
 	return *value
 }

@@ -350,9 +350,9 @@ func (invoker *compositeReviewerScenarioInvoker) Invoke(
 			return modulehost.InvocationResult{}, err
 		}
 		outputTokens := uint64(7)
-		_, usageCanonical, err := moduleapi.NewModelUsageReceiptV1(
-			moduleapi.ModelUsageReceiptV1{
-				SchemaVersion: moduleapi.ModelUsageReceiptSchemaV1,
+		_, usageCanonical, err := moduleapi.NewModelUsageReceiptV2(
+			moduleapi.ModelUsageReceiptV2{
+				SchemaVersion: moduleapi.ModelUsageReceiptSchemaV2,
 				OutputTokens:  &outputTokens,
 				RawReceipt:    json.RawMessage(`{"output_tokens":7}`),
 			},

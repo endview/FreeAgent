@@ -45,7 +45,7 @@ type coreRunRow struct {
 type coreFrameState struct {
 	revision               int64
 	step                   string
-	budgetStateRef         string
+	usageLedgerRef         string
 	continuation           corecontract.LoopContinuationV1
 	pendingModelAttempt    sql.NullString
 	pendingDispatchAttempt sql.NullString
@@ -54,20 +54,17 @@ type coreFrameState struct {
 }
 
 type coreUsageState struct {
-	attemptID            string
-	runID                string
-	ledgerSequence       sql.NullInt64
-	revision             int64
-	inputTokens          sql.NullInt64
-	cachedInputTokens    sql.NullInt64
-	uncachedInputTokens  sql.NullInt64
-	outputTokens         sql.NullInt64
-	reasoningTokens      sql.NullInt64
-	estimatedCost        sql.NullString
-	providerReportedCost sql.NullString
-	reconciledCost       sql.NullString
-	status               string
-	rawReceiptRef        sql.NullString
+	attemptID           string
+	runID               string
+	ledgerSequence      sql.NullInt64
+	revision            int64
+	inputTokens         sql.NullInt64
+	cachedInputTokens   sql.NullInt64
+	uncachedInputTokens sql.NullInt64
+	outputTokens        sql.NullInt64
+	reasoningTokens     sql.NullInt64
+	status              string
+	rawReceiptRef       sql.NullString
 }
 
 type coreModelAttemptState struct {
@@ -383,7 +380,7 @@ func inspectCoreFrame(
 	var continuation []byte
 	if err := database.QueryRowContext(ctx, `
 		SELECT
-			frame_revision, step, budget_state_ref, continuation,
+			frame_revision, step, usage_ledger_ref, continuation,
 			pending_attempt_id, pending_dispatch_attempt_id,
 			waiting_reason, last_authoritative_event
 		FROM loop_frames
@@ -391,7 +388,7 @@ func inspectCoreFrame(
 	`, runID).Scan(
 		&state.revision,
 		&state.step,
-		&state.budgetStateRef,
+		&state.usageLedgerRef,
 		&continuation,
 		&state.pendingModelAttempt,
 		&state.pendingDispatchAttempt,
@@ -576,9 +573,8 @@ func inspectCoreUsage(
 		SELECT
 			attempt_id, run_id, ledger_sequence, revision,
 			input_tokens, cached_input_tokens, uncached_input_tokens,
-			output_tokens, reasoning_tokens, estimated_cost,
-			provider_reported_cost, reconciled_cost,
-			reconciliation_status, raw_receipt_ref
+			output_tokens, reasoning_tokens,
+			usage_status, raw_receipt_ref
 		FROM model_usage
 		WHERE attempt_id=?
 	`, attempt.attemptID).Scan(
@@ -591,9 +587,6 @@ func inspectCoreUsage(
 		&usage.uncachedInputTokens,
 		&usage.outputTokens,
 		&usage.reasoningTokens,
-		&usage.estimatedCost,
-		&usage.providerReportedCost,
-		&usage.reconciledCost,
 		&usage.status,
 		&usage.rawReceiptRef,
 	); err != nil {
@@ -618,13 +611,13 @@ func inspectCoreUsage(
 		if err != nil {
 			return coreUsageState{}, coreIntegrity("Run %q model Attempt %q provider receipt: %v", attempt.runID, attempt.attemptID, err)
 		}
-		receipt, err := moduleapi.RestoreModelUsageReceiptV1(content.canonical)
+		receipt, err := moduleapi.RestoreModelUsageReceiptV2(content.canonical)
 		if err != nil || !coreUsageMatchesReceipt(usage, receipt) {
 			return coreUsageState{}, coreIntegrity("Run %q model Attempt %q Usage receipt differs: %v", attempt.runID, attempt.attemptID, err)
 		}
 	}
-	hasBillableFact := coreUsageHasBillableFact(usage)
-	if hasBillableFact != usage.ledgerSequence.Valid {
+	hasUsageFact := coreUsageHasTokenFact(usage)
+	if hasUsageFact != usage.ledgerSequence.Valid {
 		return coreUsageState{}, coreIntegrity("Run %q model Attempt %q Usage ledger allocation differs", attempt.runID, attempt.attemptID)
 	}
 	switch attempt.state {
@@ -633,7 +626,7 @@ func inspectCoreUsage(
 			attempt.resultRef.Valid || attempt.errorClassification.Valid ||
 			attempt.reconciliationEvidenceRef.Valid || attempt.unknownReason.Valid ||
 			usage.revision != 0 || usage.ledgerSequence.Valid ||
-			usage.rawReceiptRef.Valid || hasBillableFact || usage.status != coreUsagePending {
+			usage.rawReceiptRef.Valid || hasUsageFact || usage.status != coreUsagePending {
 			return coreUsageState{}, coreIntegrity("Run %q model Attempt %q PENDING Usage closure differs", attempt.runID, attempt.attemptID)
 		}
 	case corecontract.ModelAttemptSucceeded:
@@ -2058,12 +2051,12 @@ func validateCoreRunProjection(run *coreRunSemanticState) error {
 			return coreIntegrity("Run %q Usage ledger sequence is not contiguous", run.row.runID)
 		}
 	}
-	ledgerHead, err := corecontract.ParseBudgetStateRefV1(
-		run.frame.budgetStateRef,
+	ledgerHead, err := corecontract.ParseUsageLedgerRefV1(
+		run.frame.usageLedgerRef,
 		run.row.runID,
 	)
 	if err != nil || ledgerHead != uint64(len(sequences)) {
-		return coreIntegrity("Run %q BudgetStateRef differs from Usage head: %v", run.row.runID, err)
+		return coreIntegrity("Run %q UsageLedgerRef differs from Usage head: %v", run.row.runID, err)
 	}
 	continuation := run.frame.continuation
 	switch continuation.State {
@@ -2330,14 +2323,13 @@ func inspectCoreContent(
 
 func coreUsageMatchesReceipt(
 	usage coreUsageState,
-	receipt moduleapi.ModelUsageReceiptV1,
+	receipt moduleapi.ModelUsageReceiptV2,
 ) bool {
 	return equalCoreUint(usage.inputTokens, receipt.InputTokens) &&
 		equalCoreUint(usage.cachedInputTokens, receipt.CachedInputTokens) &&
 		equalCoreUint(usage.uncachedInputTokens, receipt.UncachedInputTokens) &&
 		equalCoreUint(usage.outputTokens, receipt.OutputTokens) &&
-		equalCoreUint(usage.reasoningTokens, receipt.ReasoningTokens) &&
-		equalCoreString(usage.providerReportedCost, receipt.ProviderReportedCost)
+		equalCoreUint(usage.reasoningTokens, receipt.ReasoningTokens)
 }
 
 func equalCoreUint(value sql.NullInt64, expected *uint64) bool {
@@ -2347,18 +2339,10 @@ func equalCoreUint(value sql.NullInt64, expected *uint64) bool {
 	return uint64(value.Int64) == *expected
 }
 
-func equalCoreString(value sql.NullString, expected *string) bool {
-	if !value.Valid || expected == nil {
-		return value.Valid == (expected != nil)
-	}
-	return value.String == *expected
-}
-
-func coreUsageHasBillableFact(usage coreUsageState) bool {
+func coreUsageHasTokenFact(usage coreUsageState) bool {
 	return usage.inputTokens.Valid || usage.cachedInputTokens.Valid ||
 		usage.uncachedInputTokens.Valid || usage.outputTokens.Valid ||
-		usage.reasoningTokens.Valid || usage.estimatedCost.Valid ||
-		usage.providerReportedCost.Valid || usage.reconciledCost.Valid
+		usage.reasoningTokens.Valid
 }
 
 func coreTerminalUsageStatus(usage coreUsageState) string {

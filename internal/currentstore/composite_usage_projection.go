@@ -5,13 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math/big"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/endview/freeagent/internal/corecontract"
-	"github.com/endview/freeagent/sdk/moduleapi"
 )
 
 var (
@@ -22,27 +18,6 @@ var (
 		"currentstore: composite usage projection integrity violation",
 	)
 )
-
-// CompositeFamilyCostStatusV1 makes an absent cost fact distinguishable from
-// a known zero and from a set of known values that cannot be added because
-// their frozen PriceSnapshots use different currencies.
-type CompositeFamilyCostStatusV1 string
-
-const (
-	CompositeFamilyCostUnknownV1       CompositeFamilyCostStatusV1 = "UNKNOWN"
-	CompositeFamilyCostKnownV1         CompositeFamilyCostStatusV1 = "KNOWN"
-	CompositeFamilyCostMixedCurrencyV1 CompositeFamilyCostStatusV1 = "MIXED_CURRENCY"
-)
-
-// CompositeFamilyCostTotalV1 is one independently derived cost column.
-// Value is present only for KNOWN. Currencies is present only for
-// MIXED_CURRENCY and is sorted; Core never performs currency conversion.
-type CompositeFamilyCostTotalV1 struct {
-	Status     CompositeFamilyCostStatusV1
-	Value      *string
-	Currency   string
-	Currencies []string
-}
 
 // CompositeFamilyTokenTotalsV1 preserves the nil-is-UNKNOWN semantics of
 // model_usage. A field is present only when every projected Attempt has that
@@ -57,21 +32,18 @@ type CompositeFamilyTokenTotalsV1 struct {
 }
 
 // CompositeFamilyAttemptUsageFactV1 is a detached fact for one already
-// persisted model Attempt. Currency comes from that Attempt's immutable
-// PriceSnapshot. PENDING and MODEL_UNKNOWN are retained without rewriting.
+// persisted model Attempt. PENDING and MODEL_UNKNOWN are retained without
+// rewriting.
 type CompositeFamilyAttemptUsageFactV1 struct {
-	AttemptID           string
-	LogicalStepID       string
-	State               corecontract.ModelAttemptState
-	Provider            string
-	Model               string
-	RequestDigest       string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	PriceSnapshotID     string
-	PriceSnapshotDigest string
-	Currency            string
-	Usage               ModelUsageRecord
+	AttemptID     string
+	LogicalStepID string
+	State         corecontract.ModelAttemptState
+	Provider      string
+	Model         string
+	RequestDigest string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Usage         ModelUsageRecord
 }
 
 // CompositeFamilyRunUsageFactV1 contains zero or one model Attempt. More than
@@ -88,11 +60,8 @@ type CompositeFamilyRunUsageFactV1 struct {
 // CompositeFamilyUsageAggregateV1 is derived from the same per-Run Usage
 // ledger rows; it is not a second ledger, balance, reservation, or write path.
 type CompositeFamilyUsageAggregateV1 struct {
-	AttemptSlotsUsed     uint32
-	TokenTotals          CompositeFamilyTokenTotalsV1
-	EstimatedCost        CompositeFamilyCostTotalV1
-	ProviderReportedCost CompositeFamilyCostTotalV1
-	ReconciledCost       CompositeFamilyCostTotalV1
+	AttemptSlotsUsed uint32
+	TokenTotals      CompositeFamilyTokenTotalsV1
 }
 
 // CompositeFamilyUsageProjectionV1 preserves exact root-plan order: initial
@@ -109,7 +78,7 @@ type CompositeFamilyUsageProjectionV1 struct {
 	Aggregate                CompositeFamilyUsageAggregateV1
 }
 
-// GetCompositeFamilyUsageProjection derives a coherent family usage/cost
+// GetCompositeFamilyUsageProjection derives a coherent family usage
 // view in one SQLite read transaction. It accepts only an intact Composite
 // ROOT. Ordinary Runs and Child Run IDs are rejected, and no table is written.
 func (store *Store) GetCompositeFamilyUsageProjection(
@@ -632,24 +601,16 @@ func loadCompositeRunUsageAttempt(
 				"legacy Specialist model Attempt uses a family coordination step",
 			)
 	}
-	price, err := queryModelPriceSnapshot(ctx, queryer, record.Attempt.PriceSnapshotID)
-	if err != nil {
-		return CompositeFamilyAttemptUsageFactV1{}, false,
-			compositeUsageIntegrityError("Attempt PriceSnapshot", err)
-	}
 	return CompositeFamilyAttemptUsageFactV1{
-		AttemptID:           record.Attempt.AttemptID,
-		LogicalStepID:       record.Attempt.LogicalStepID,
-		State:               record.Attempt.State,
-		Provider:            record.Attempt.Provider,
-		Model:               record.Attempt.Model,
-		RequestDigest:       record.Attempt.Request.Digest,
-		CreatedAt:           record.Attempt.CreatedAt,
-		UpdatedAt:           record.Attempt.UpdatedAt,
-		PriceSnapshotID:     price.Snapshot.PriceSnapshotID,
-		PriceSnapshotDigest: price.Snapshot.Digest,
-		Currency:            price.Snapshot.Currency,
-		Usage:               cloneModelUsageRecord(record.Usage),
+		AttemptID:     record.Attempt.AttemptID,
+		LogicalStepID: record.Attempt.LogicalStepID,
+		State:         record.Attempt.State,
+		Provider:      record.Attempt.Provider,
+		Model:         record.Attempt.Model,
+		RequestDigest: record.Attempt.Request.Digest,
+		CreatedAt:     record.Attempt.CreatedAt,
+		UpdatedAt:     record.Attempt.UpdatedAt,
+		Usage:         cloneModelUsageRecord(record.Usage),
 	}, true, nil
 }
 
@@ -690,18 +651,7 @@ func verifyCompositeUsageRowCount(
 func aggregateCompositeFamilyUsage(
 	attempts []CompositeFamilyAttemptUsageFactV1,
 ) (CompositeFamilyUsageAggregateV1, error) {
-	result := CompositeFamilyUsageAggregateV1{
-		AttemptSlotsUsed: uint32(len(attempts)),
-		EstimatedCost: CompositeFamilyCostTotalV1{
-			Status: CompositeFamilyCostUnknownV1,
-		},
-		ProviderReportedCost: CompositeFamilyCostTotalV1{
-			Status: CompositeFamilyCostUnknownV1,
-		},
-		ReconciledCost: CompositeFamilyCostTotalV1{
-			Status: CompositeFamilyCostUnknownV1,
-		},
-	}
+	result := CompositeFamilyUsageAggregateV1{AttemptSlotsUsed: uint32(len(attempts))}
 	if len(attempts) == 0 {
 		return result, nil
 	}
@@ -746,30 +696,6 @@ func aggregateCompositeFamilyUsage(
 	if err != nil {
 		return CompositeFamilyUsageAggregateV1{}, err
 	}
-	result.EstimatedCost, err = aggregateCompositeCost(attempts, func(
-		fact CompositeFamilyAttemptUsageFactV1,
-	) *string {
-		return fact.Usage.EstimatedCost
-	})
-	if err != nil {
-		return CompositeFamilyUsageAggregateV1{}, err
-	}
-	result.ProviderReportedCost, err = aggregateCompositeCost(attempts, func(
-		fact CompositeFamilyAttemptUsageFactV1,
-	) *string {
-		return fact.Usage.ProviderReportedCost
-	})
-	if err != nil {
-		return CompositeFamilyUsageAggregateV1{}, err
-	}
-	result.ReconciledCost, err = aggregateCompositeCost(attempts, func(
-		fact CompositeFamilyAttemptUsageFactV1,
-	) *string {
-		return fact.Usage.ReconciledCost
-	})
-	if err != nil {
-		return CompositeFamilyUsageAggregateV1{}, err
-	}
 	return result, nil
 }
 
@@ -789,148 +715,6 @@ func sumCompositeTokenField(
 		total += *value
 	}
 	return &total, nil
-}
-
-func aggregateCompositeCost(
-	attempts []CompositeFamilyAttemptUsageFactV1,
-	field func(CompositeFamilyAttemptUsageFactV1) *string,
-) (CompositeFamilyCostTotalV1, error) {
-	unknown := CompositeFamilyCostTotalV1{Status: CompositeFamilyCostUnknownV1}
-	values := make([]string, len(attempts))
-	currencySet := make(map[string]struct{}, len(attempts))
-	missing := false
-	for index, attempt := range attempts {
-		value := field(attempt)
-		if value == nil {
-			missing = true
-			continue
-		}
-		if _, _, err := parseCanonicalNonNegativeDecimal(*value); err != nil {
-			return CompositeFamilyCostTotalV1{}, compositeUsageIntegrityError(
-				"non-canonical cost fact",
-				err,
-			)
-		}
-		values[index] = *value
-		currencySet[attempt.Currency] = struct{}{}
-	}
-	if missing {
-		return unknown, nil
-	}
-	if len(currencySet) != 1 {
-		currencies := make([]string, 0, len(currencySet))
-		for currency := range currencySet {
-			currencies = append(currencies, currency)
-		}
-		sort.Strings(currencies)
-		return CompositeFamilyCostTotalV1{
-			Status:     CompositeFamilyCostMixedCurrencyV1,
-			Currencies: currencies,
-		}, nil
-	}
-	var currency string
-	for value := range currencySet {
-		currency = value
-	}
-	sum, err := sumCanonicalNonNegativeDecimals(values)
-	if err != nil {
-		return CompositeFamilyCostTotalV1{}, compositeUsageIntegrityError(
-			"cost aggregation",
-			err,
-		)
-	}
-	return CompositeFamilyCostTotalV1{
-		Status:   CompositeFamilyCostKnownV1,
-		Value:    &sum,
-		Currency: currency,
-	}, nil
-}
-
-func sumCanonicalNonNegativeDecimals(values []string) (string, error) {
-	maxScale := 0
-	coefficients := make([]*big.Int, len(values))
-	scales := make([]int, len(values))
-	for index, value := range values {
-		coefficient, scale, err := parseCanonicalNonNegativeDecimal(value)
-		if err != nil {
-			return "", err
-		}
-		coefficients[index] = coefficient
-		scales[index] = scale
-		if scale > maxScale {
-			maxScale = scale
-		}
-	}
-	total := new(big.Int)
-	ten := big.NewInt(10)
-	for index, coefficient := range coefficients {
-		scaled := new(big.Int).Set(coefficient)
-		if difference := maxScale - scales[index]; difference > 0 {
-			scaled.Mul(scaled, new(big.Int).Exp(ten, big.NewInt(int64(difference)), nil))
-		}
-		total.Add(total, scaled)
-	}
-	return formatCanonicalNonNegativeDecimal(total, maxScale), nil
-}
-
-func parseCanonicalNonNegativeDecimal(value string) (*big.Int, int, error) {
-	if value == "0" {
-		return new(big.Int), 0, nil
-	}
-	if value == "" || len(value) > moduleapi.MaxIdentifierBytes ||
-		strings.HasPrefix(value, "+") ||
-		strings.HasPrefix(value, "-") || strings.HasSuffix(value, ".") {
-		return nil, 0, fmt.Errorf("invalid non-negative decimal %q", value)
-	}
-	parts := strings.Split(value, ".")
-	if len(parts) > 2 || parts[0] == "" ||
-		(len(parts[0]) > 1 && parts[0][0] == '0') {
-		return nil, 0, fmt.Errorf("invalid non-negative decimal %q", value)
-	}
-	for _, character := range parts[0] {
-		if character < '0' || character > '9' {
-			return nil, 0, fmt.Errorf("invalid non-negative decimal %q", value)
-		}
-	}
-	scale := 0
-	digits := parts[0]
-	if len(parts) == 2 {
-		fraction := parts[1]
-		if fraction == "" || fraction[len(fraction)-1] == '0' {
-			return nil, 0, fmt.Errorf("invalid non-negative decimal %q", value)
-		}
-		for _, character := range fraction {
-			if character < '0' || character > '9' {
-				return nil, 0, fmt.Errorf("invalid non-negative decimal %q", value)
-			}
-		}
-		scale = len(fraction)
-		digits += fraction
-	}
-	coefficient, ok := new(big.Int).SetString(digits, 10)
-	if !ok || coefficient.Sign() < 0 || coefficient.Sign() == 0 {
-		return nil, 0, fmt.Errorf("invalid non-negative decimal %q", value)
-	}
-	return coefficient, scale, nil
-}
-
-func formatCanonicalNonNegativeDecimal(coefficient *big.Int, scale int) string {
-	if coefficient.Sign() == 0 {
-		return "0"
-	}
-	digits := coefficient.String()
-	if scale == 0 {
-		return digits
-	}
-	if len(digits) <= scale {
-		digits = strings.Repeat("0", scale-len(digits)+1) + digits
-	}
-	integer := digits[:len(digits)-scale]
-	fraction := strings.TrimRight(digits[len(digits)-scale:], "0")
-	if fraction == "" {
-		return integer
-	}
-	return integer + "." + fraction
 }
 
 func compositeUsageIntegrity(subject string) error {

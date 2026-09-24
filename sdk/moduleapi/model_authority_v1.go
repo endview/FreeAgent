@@ -8,7 +8,7 @@ import (
 
 const (
 	// ModelAuthorityCeilingSchemaV1 is the exact Core-owned authority schema
-	// referenced by a model.generate/v1 PortBinding.AuthorityCeilingRef.
+	// referenced by a model.generate/v2 PortBinding.AuthorityCeilingRef.
 	ModelAuthorityCeilingSchemaV1 = "model-authority-ceiling/v1"
 
 	modelAuthorityWireMaxDepthV1 = 8

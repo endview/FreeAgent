@@ -2,138 +2,12 @@ package currentstore
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/sdk/moduleapi"
 )
-
-func TestCommitModelDispatchOutcomePersistsFrozenDeepSeekEstimatedCost(
-	t *testing.T,
-) {
-	price := testModelPriceSnapshot()
-	price.Pricing = json.RawMessage(
-		`{"cached_input_per_million_microunits":25000,"output_per_million_microunits":6000000,"schema_version":"deepseek-token-pricing/v1","uncached_input_per_million_microunits":3000000}`,
-	)
-	fixture, _, beginInput := newModelDispatchFixtureWithModelProfileAndPrice(
-		t,
-		0,
-		price,
-	)
-	begin, err := fixture.store.BeginModelDispatch(
-		context.Background(),
-		beginInput,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	outputCanonical, usageCanonical := modelSuccessOutcomeCanonical(t)
-	input := CommitModelDispatchOutcomeInput{
-		Lease:                   begin.Lease,
-		AttemptID:               begin.Attempt.AttemptID,
-		InvocationID:            begin.Attempt.AttemptID,
-		Provider:                begin.Attempt.Binding.Provider,
-		ExpectedAttemptRevision: begin.Attempt.Revision,
-		State:                   corecontract.ModelAttemptSucceeded,
-		OutputCanonical:         outputCanonical,
-		UsageReceiptCanonical:   usageCanonical,
-	}
-	result, err := fixture.store.CommitModelDispatchOutcome(
-		context.Background(),
-		input,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	const expected = "0.0000301"
-	if result.Record.Usage.EstimatedCost == nil ||
-		*result.Record.Usage.EstimatedCost != expected {
-		t.Fatalf("estimated cost=%v, want %s", result.Record.Usage.EstimatedCost, expected)
-	}
-	stored, err := fixture.store.GetModelDispatchRecord(
-		context.Background(),
-		begin.Attempt.AttemptID,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.Usage.EstimatedCost == nil ||
-		*stored.Usage.EstimatedCost != expected ||
-		stored.Usage.ReconciledCost != nil ||
-		stored.Usage.Tokens.Reasoning == nil ||
-		*stored.Usage.Tokens.Reasoning != 1 {
-		t.Fatalf("stored Usage=%+v", stored.Usage)
-	}
-	replayed, err := fixture.store.CommitModelDispatchOutcome(
-		context.Background(),
-		input,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if replayed.Applied || replayed.Lease != result.Lease ||
-		replayed.Record.Attempt.Revision != result.Record.Attempt.Revision ||
-		replayed.Record.Usage.Revision != result.Record.Usage.Revision ||
-		replayed.Record.Usage.EstimatedCost == nil ||
-		*replayed.Record.Usage.EstimatedCost != expected {
-		t.Fatalf("estimated-cost replay=%+v original=%+v", replayed, result)
-	}
-}
-
-func TestCommitModelDispatchOutcomePreservesUnknownFrozenCostAsNull(
-	t *testing.T,
-) {
-	price := testModelPriceSnapshot()
-	price.PricingStatus = corecontract.PricingUnknown
-	price.Pricing = json.RawMessage(`{"schema_version":"unknown/v1"}`)
-	fixture, _, beginInput := newModelDispatchFixtureWithModelProfileAndPrice(
-		t,
-		0,
-		price,
-	)
-	begin, err := fixture.store.BeginModelDispatch(
-		context.Background(),
-		beginInput,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	outputCanonical, usageCanonical := modelSuccessOutcomeCanonical(t)
-	result, err := fixture.store.CommitModelDispatchOutcome(
-		context.Background(),
-		CommitModelDispatchOutcomeInput{
-			Lease:                   begin.Lease,
-			AttemptID:               begin.Attempt.AttemptID,
-			InvocationID:            begin.Attempt.AttemptID,
-			Provider:                begin.Attempt.Binding.Provider,
-			ExpectedAttemptRevision: begin.Attempt.Revision,
-			State:                   corecontract.ModelAttemptSucceeded,
-			OutputCanonical:         outputCanonical,
-			UsageReceiptCanonical:   usageCanonical,
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Record.Usage.EstimatedCost != nil {
-		t.Fatalf("unknown estimated cost=%v, want NULL", result.Record.Usage.EstimatedCost)
-	}
-	stored, err := fixture.store.GetModelDispatchRecord(
-		context.Background(),
-		begin.Attempt.AttemptID,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.Usage.EstimatedCost != nil ||
-		stored.Usage.Tokens.CachedInput == nil ||
-		stored.Usage.Tokens.UncachedInput == nil ||
-		stored.Usage.Tokens.Output == nil {
-		t.Fatalf("stored Usage=%+v", stored.Usage)
-	}
-}
 
 func TestCommitModelDispatchOutcomeSuccessIsAtomicAndIdempotent(
 	t *testing.T,
@@ -180,8 +54,8 @@ func TestCommitModelDispatchOutcomeSuccessIsAtomicAndIdempotent(
 	if err != nil {
 		t.Fatal(err)
 	}
-	head, err := corecontract.ParseBudgetStateRefV1(
-		run.Frame.BudgetStateRef,
+	head, err := corecontract.ParseUsageLedgerRefV1(
+		run.Frame.UsageLedgerRef,
 		run.RunID,
 	)
 	if err != nil {
@@ -275,8 +149,8 @@ func TestCommitModelDispatchOutcomeUnknownBlocksReplayUntilReconciled(
 	}
 	if unknown.Record.Attempt.State != corecontract.ModelAttemptUnknown ||
 		unknown.Record.Usage.LedgerSequence != nil ||
-		unknown.Record.Usage.ReconciliationStatus !=
-			modelUsageStatusReconciliation {
+		unknown.Record.Usage.UsageStatus !=
+			modelUsageStatusReconciliationPending {
 		t.Fatalf("unknown=%+v", unknown)
 	}
 
@@ -388,7 +262,7 @@ func TestCommitModelDispatchOutcomeRollsBackEveryAuthoritativeWrite(
 		record.Attempt.Revision != 0 ||
 		record.Usage.Revision != 0 ||
 		record.Usage.LedgerSequence != nil ||
-		record.Usage.ReconciliationStatus != modelUsageStatusPending {
+		record.Usage.UsageStatus != modelUsageStatusPending {
 		t.Fatalf("record after rollback=%+v", record)
 	}
 	var historyCount, eventCount int
@@ -511,17 +385,15 @@ func modelUsageOutcomeCanonical(t *testing.T, raw string) []byte {
 	uncached := uint64(6)
 	output := uint64(2)
 	reasoning := uint64(1)
-	cost := "0.0001"
-	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion:        moduleapi.ModelUsageReceiptSchemaV1,
-			InputTokens:          &input,
-			CachedInputTokens:    &cached,
-			UncachedInputTokens:  &uncached,
-			OutputTokens:         &output,
-			ReasoningTokens:      &reasoning,
-			ProviderReportedCost: &cost,
-			RawReceipt:           []byte(raw),
+	_, usageCanonical, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV2,
+			InputTokens:         &input,
+			CachedInputTokens:   &cached,
+			UncachedInputTokens: &uncached,
+			OutputTokens:        &output,
+			ReasoningTokens:     &reasoning,
+			RawReceipt:          []byte(raw),
 		},
 	)
 	if err != nil {

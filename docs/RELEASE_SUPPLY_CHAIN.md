@@ -4,6 +4,25 @@
 > 证明。当前编码边界只由 `CORE_RUNTIME_V1` 与 `CURRENT_STORE_V1` 定义；实际切换
 > 状态只由 `CUTOVER_ACCEPTANCE` 判定。
 
+## 当前候选边界
+
+`v0.1.0-dev.2` 只作为本地 Developer Preview 候选，不代表公开 Release、
+生产版本、公开 Beta 或 `RELEASE_READY`。截至 2026-09-23，功能基线 `ecb5a12`
+的六平台归档（Darwin build-only）、SPDX SBOM、checksum、unsigned provenance
+和外层 `SHA256SUMS` 已在本地生成并验证；Windows/Linux AMD64 已在原生系统上
+完成离线 package smoke 与 backup/verify/restore/continue。Linux 全仓 race 已在
+ext4 干净源码上以 exit code 0 完成（53 个 package result、5,166 个测试 PASS、
+stderr 为空）。最终文档提交后的六平台归档和 Windows/Linux AMD64 原生复验也已
+通过。没有上传、签名或公开发布。精确状态与外部证据位置见
+[`RELEASE_CANDIDATE_2026-09-23`](RELEASE_CANDIDATE_2026-09-23.md)。
+
+当前 P4 管理面只提供 bounded read models：UNKNOWN、Store Verify、Backup constraints、
+server-owned Artifact Admission 与 Review/Decision/Artifact 查询均为只读；不在线创建
+Backup、不在线 Restore，不接受服务器路径、Secret、签名材料或 replay material，也不
+允许 UNKNOWN resend、replay、换 Provider 或隐式 retry。当前运行时没有重新引入预算、
+金额、价格或费用字段；Provider 支持范围仍以 exact `zhipu` / `glm-4.5` 等已登记
+矩阵为准，不扩展为全部 GLM 模型或任意 endpoint。
+
 FreeAgent 的 CI 发布任务在完成测试或构建后，会为每个非 `permanent`
 任务生成一组供应链文件。它们只存在于仓库外的 artifact root，不会写回
 source、clean staging 或 Git 工作树。
@@ -42,7 +61,8 @@ checksum 行按 artifact-root-relative 路径的 ordinal 顺序排列，格式�
    `ExpectedArtifactSetSha256`，发布前再次确认基础载荷未变化；
 6. 重新验证包含供应链文件的完整 artifact root；结果必须与
    `ExpectedArtifactSetSha256`、预期文件数和总字节数完全一致；
-7. 上传整个 artifact root；
+7. 若进入已批准的公开发布任务，上传整个 artifact root；本地 Developer Preview
+   只保留在本机，不执行上传；
 8. 无论上传是否成功，都以冻结摘要重新验证本地集合并写入 Seal 回执。
 
 供应链目录必须原先不存在。生成器先在受信临时目录创建和回读三个文件，再以

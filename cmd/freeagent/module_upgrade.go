@@ -28,9 +28,15 @@ const (
 type moduleUpgradeCommandFailureCodeV1 string
 
 const (
-	moduleUpgradeFailureDisabledV1     moduleUpgradeCommandFailureCodeV1 = "UPGRADE_REVIEW_DISABLED"
-	moduleUpgradeFailureInvalidFlagsV1 moduleUpgradeCommandFailureCodeV1 = "INVALID_FLAGS"
-	moduleUpgradeFailureInternalV1     moduleUpgradeCommandFailureCodeV1 = "INTERNAL_ERROR"
+	moduleUpgradeFailureDisabledV1          moduleUpgradeCommandFailureCodeV1 = "UPGRADE_REVIEW_DISABLED"
+	moduleUpgradeFailureInvalidFlagsV1      moduleUpgradeCommandFailureCodeV1 = "INVALID_FLAGS"
+	moduleUpgradeFailureInternalV1          moduleUpgradeCommandFailureCodeV1 = "INTERNAL_ERROR"
+	moduleUpgradeFailureAdmissionNotFoundV1 moduleUpgradeCommandFailureCodeV1 = "ADMISSION_NOT_FOUND"
+	moduleUpgradeFailureArtifactTamperedV1  moduleUpgradeCommandFailureCodeV1 = "ARTIFACT_TAMPERED"
+	moduleUpgradeFailureTenantConflictV1    moduleUpgradeCommandFailureCodeV1 = "TENANT_CONFLICT"
+	moduleUpgradeFailureReviewStaleV1       moduleUpgradeCommandFailureCodeV1 = "REVIEW_STALE"
+	moduleUpgradeFailureSourceStaleV1       moduleUpgradeCommandFailureCodeV1 = "SOURCE_STALE"
+	moduleUpgradeFailureReviewIntegrityV1   moduleUpgradeCommandFailureCodeV1 = "REVIEW_INTEGRITY"
 )
 
 type moduleUpgradeBindingTargetFlagsV1 struct {
@@ -350,6 +356,29 @@ func runModuleUpgradeDecideWithDependenciesV1(
 
 func moduleUpgradeCommandFailureV1(command string, code moduleUpgradeCommandFailureCodeV1) error {
 	return fmt.Errorf("freeagent %s: failed (%s)", command, code)
+}
+
+func moduleUpgradeServerOwnedFailureV1(err error) moduleUpgradeCommandFailureCodeV1 {
+	switch {
+	case errors.Is(err, currentstore.ErrModuleArtifactAdmissionNotFound):
+		return moduleUpgradeFailureAdmissionNotFoundV1
+	case errors.Is(err, currentstore.ErrModuleArtifactIngressIntegrity):
+		return moduleUpgradeFailureArtifactTamperedV1
+	case errors.Is(err, currentstore.ErrModuleUpgradeReviewStale):
+		return moduleUpgradeFailureReviewStaleV1
+	case errors.Is(err, currentstore.ErrModuleSourceNotFound),
+		errors.Is(err, currentstore.ErrModuleDiscoverySnapshotNotFound),
+		errors.Is(err, currentstore.ErrModulePublisherKeyRevoked):
+		return moduleUpgradeFailureSourceStaleV1
+	case errors.Is(err, currentstore.ErrModuleUpgradeReviewConflict),
+		errors.Is(err, currentstore.ErrModuleUpgradeSuppressed):
+		return moduleUpgradeFailureTenantConflictV1
+	case errors.Is(err, currentstore.ErrModuleUpgradeIntegrity),
+		errors.Is(err, currentstore.ErrInvalidModuleUpgradeReview):
+		return moduleUpgradeFailureReviewIntegrityV1
+	default:
+		return moduleUpgradeFailureInternalV1
+	}
 }
 
 func executeModuleUpgradeReviewV1(

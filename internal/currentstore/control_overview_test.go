@@ -267,7 +267,7 @@ func insertHiddenDisabledDispatchAttemptV1(
 		member_snapshot_digest,binding_index,binding_json,
 		public_action_id,provider_action_id,definition_digest,proposal_ref,
 		channel_endpoint_id,channel_ingress_key,channel_proposal_ref,
-		effect_class,max_result_bytes,deadline,budget_state_ref,state,
+		effect_class,max_result_bytes,deadline,usage_ledger_ref,state,
 		revision,created_at,updated_at
 	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		"hidden-disabled-"+strings.ToLower(kind), kind, strings.Repeat(keyDigit, 64),
@@ -364,7 +364,7 @@ func TestLoadControlOverviewV1ProjectsModelUnknownAndSafeUsage(t *testing.T) {
 	if len(snapshot.Unknown) != 1 || snapshot.Unknown[0].Kind != controloverview.UnknownKindModelV1 ||
 		snapshot.Unknown[0].ResourceID != unknown.Record.Attempt.AttemptID ||
 		len(snapshot.Usage) != 1 || snapshot.Usage[0].AttemptID != unknown.Record.Attempt.AttemptID ||
-		snapshot.Usage[0].ReconciliationStatus != modelUsageStatusReconciliation {
+		snapshot.Usage[0].UsageStatus != modelUsageStatusReconciliationPending {
 		t.Fatalf("unknown=%+v usage=%+v", snapshot.Unknown, snapshot.Usage)
 	}
 	wire, err := json.Marshal(snapshot)
@@ -426,7 +426,7 @@ func TestLoadControlOverviewV1RejectsUsageSemanticTamper(t *testing.T) {
 	}
 	execOverviewTamperV1(t, fixture.store,
 		"model_usage_observation_update_guard",
-		`UPDATE model_usage SET reconciliation_status='NO_USAGE_REPORTED'
+		`UPDATE model_usage SET usage_status='NO_USAGE_REPORTED'
 		 WHERE attempt_id=?`, begin.Attempt.AttemptID,
 	)
 	_, err = fixture.store.LoadControlOverviewV1(

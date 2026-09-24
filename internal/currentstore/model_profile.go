@@ -32,7 +32,7 @@ func restoreMemberModelProfile(
 		configRecord.MediaType != admissionJSONMediaType {
 		return nil, fmt.Errorf("model profile Binding CONFIG is unavailable")
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(
+	config, err := moduleapi.RestoreModelBindingConfigV2(
 		configRecord.CanonicalBytes,
 	)
 	if err != nil {

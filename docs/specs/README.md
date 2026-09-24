@@ -6,7 +6,9 @@ Only these files are current long-lived coding specifications:
 - [`CURRENT_STORE_V1`](CURRENT_STORE_V1.md)
 - [`CONTROL_API_V1`](CONTROL_API_V1.md) — current narrow Control status:
   `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE /
-  W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`
+  W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE /
+  P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE /
+  P3_SECOND_PROVIDER_NEXT`
 
 W6-1 means only a default-off dual-listener path, process-local bootstrap/session,
 scope-filtered Modules list/detail, and an effect-free `MODULE_DISABLE` Dry-run with a
@@ -88,12 +90,23 @@ it grants the current Store no installation, activation, or execution authority.
 `inert` means no Store authority and no execution by this slice, not the absence of an
 OS executable bit.
 Backup closes over the deduplicated union of installed and ingressed artifacts and can
-restore an uninstalled object offline after its Source is gone. The current Store is
-43 tables / 25 explicit indexes / 64 triggers, fingerprint
-`47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d`, with a
-150,301-byte migration whose SHA-256 is
-`6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`.
-The current next marker is `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`.
+restore an uninstalled object offline after its Source is gone. The W6-5 historical FAC1
+Store was 43 tables / 25 explicit indexes / 64 triggers, fingerprint
+`47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d`, with a 150,301-byte
+migration whose SHA-256 was `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`.
+The current FAC2 Store is UserVersion 2, 42 tables / 26 explicit indexes / 64 triggers,
+fingerprint `d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`.
+Its immutable bootstrap is `0001_current.sql` (149,239 bytes /
+`dbc3e724a1f7c030677c84a77a317f69ef2fe246985cc749559a9f3dd5a6dc5a`) and its server-owned
+Review migration is `0002_server_owned_review.sql` (7,173 bytes /
+`3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`).
+`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` is the historical W6-5 marker; the current next
+marker is `P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE / P3_SECOND_PROVIDER_NEXT`.
+
+The accepted W6.6 atom consumes only Store-owned Admission/Artifact data. It persists
+Review/Decision with exact retry, rejects caller-provided artifact path/URL/signature bytes/
+target facts, and fails closed on tenant, stale-basis, physical-tamper or integrity conflicts.
+It does not Install, Activate, Bind, Grant, Apply, Execute, call a Provider, or add a UI route.
 
 One-time stop, rebuild, recovery, and release gates are maintained in
 [`CUTOVER_ACCEPTANCE`](../CUTOVER_ACCEPTANCE.md); it is an acceptance checklist,

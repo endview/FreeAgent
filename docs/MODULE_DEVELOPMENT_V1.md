@@ -1,6 +1,8 @@
 # FreeAgent Module Development v1
 
-> 状态：`EXPERIMENTAL` 的模块作者与离线包验证合同。当前阶段标记是 `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`；W6-5 只新增默认关闭的可信本地 Operator CLI，把 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` exact entry 对应的已验证包持久复制为 server-owned、content-addressed、inert Artifact，并记录 append-only Admission。不提升 Module Conformance、Operator Module Apply 或广义在线控制面的成熟度；没有 HTTP/upload、caller package path/URL/signature、UI、Install/Activate/Bind/grant/Review/execute。W6-0、W6-1、W6-2、W6-3、W6-4、U4 与 U3 的历史收口继续保留，但旧 NEXT marker 都不是当前入口。W2-R3 的窄边界保持不变。
+> Current phase override (2026-09-22): P2 Control UI i18n is accepted; the next entry is `P3_SECOND_PROVIDER_NEXT`. Older `P2_CONTROL_UI_I18N_NEXT` mentions below are historical handoff markers.
+
+> 状态：`EXPERIMENTAL` 的模块作者与离线包验证合同。当前阶段标记是 `W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE / W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / P2_CONTROL_UI_I18N_NEXT`；W6-5 只新增默认关闭的可信本地 Operator CLI，把 Store-owned current Snapshot 中 unsigned `LOCAL_DIRECTORY + DENY` exact entry 对应的已验证包持久复制为 server-owned、content-addressed、inert Artifact，并记录 append-only Admission。W6.6 只从该 Admission 读取服务端持有的 Artifact，持久化 Review/Decision 并复用 W2-U3 evaluator；调用方不能提供 package path、URL、signature bytes 或 target facts，且审核不自动 Install/Activate/Bind/grant/Apply/execute。不提升 Module Conformance、Operator Module Apply 或广义在线控制面的成熟度；没有 HTTP/upload、UI、SSE 或后台 worker。W6-0、W6-1、W6-2、W6-3、W6-4、U4 与 U3 的历史收口继续保留，旧 NEXT marker 只作为历史边界。W2-R3 的窄边界保持不变。
 >
 > W2-U2 历史状态：`W2_U2_DISCOVERY_SNAPSHOT_ACCEPTED_DEVELOPMENT_SLICE`。
 >
@@ -361,7 +363,7 @@ Module identity selector：
   受信、编译进 Core 的 `text.stats` Action；
 - `channel.transport/v1 + TRUSTED_IN_PROCESS/go-in-process/v1 + channel-binding-config/v1`，用于
   first-party Workspace-scoped loopback Channel Endpoint；
-- `model.generate/v1 + TRUSTED_IN_PROCESS/go-in-process/v1 + model-binding-config/v1`，用于
+- `model.generate/v2 + TRUSTED_IN_PROCESS/go-in-process/v1 + model-binding-config/v2`，用于
   同一内建 DeepSeek artifact/adapter/provider Instance 内的 Flash/Pro 显式替换。
 
 九个 tuple 共用同一个 canonical `module-apply-plan/v1`、Installation/Activation、Current
@@ -384,7 +386,7 @@ Core 在这 9 个 tuple 前还检查 2 个 Document Insight 保留 selector。�
   `TRUSTED_IN_PROCESS/go-in-process/v1`；entrypoint：`content/source.json`；
 - `provides` 必须按 canonical 顺序恰好为
   `[action.provider/v1, context.provide/v1]`，`requires` 必须恰好为
-  `[model.generate/v1]`，`requested_permissions` 必须恰好为 `[knowledge.read]`；
+  `[model.generate/v2]`，`requested_permissions` 必须恰好为 `[knowledge.read]`；
 - Context 必须使用 governed `knowledge-context-binding/v1` 与
   `knowledge-authority-ceiling/v1` 收窄 source/scope/limit；Action 只映射
   `text.stats`，EffectClass 固定为 `none`，结果上限固定为 `256` bytes；两个 Binding 的
@@ -424,7 +426,7 @@ Port，并固定声明 `TRUSTED_IN_PROCESS + go-in-process/v1`；entrypoint 必�
 
 普通单 Port Knowledge Manifest 只有两个 exact 形状。legacy 形状的 `requires` 与
 `requested_permissions` 都为空，继续作为 immutable 兼容路径；E5-A governed 形状必须恰好是
-`requires:[model.generate/v1]` 与 `requested_permissions:[knowledge.read]`。共享 `moduleapi`
+`requires:[model.generate/v2]` 与 `requested_permissions:[knowledge.read]`。共享 `moduleapi`
 classifier 被 Apply、Dry-run、生产加载、Current Store publication、exact retry、公开 Verify 与
 Backup/Restore 复用；permission-only、require-only、重复、额外或重排值均拒绝。governed Require
 必须解析到同一 target Profile 内唯一 exact Model Binding，并沿
@@ -1109,10 +1111,24 @@ W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。
   未提交的 stale selector无权采用，后续当前合格 selector仍须全包复验；
 - Backup artifact closure 是 Installation 与 ingress 的去重并集；Source 离线且没有 Installation 时仍可恢复同一
   inert Artifact/Admission，恢复不得联网、重读 Source、Install、Activate 或 execute；
-- 当前 Store 为 43 tables / 25 explicit indexes / 64 triggers，fingerprint
+- W6-5 的历史 FAC1 Store 为 43 tables / 25 explicit indexes / 64 triggers，fingerprint
   `47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d`，migration 150,301 bytes /
-  SHA-256 `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`。下一入口仅为
-  `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`，W6-5 不创建 Review/Decision。
+  SHA-256 `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`。当前 FAC2 为
+  UserVersion 2、42 tables / 26 explicit indexes / 64 triggers，fingerprint
+  `d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`；`0002` 为 7,173 bytes /
+  SHA-256 `3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`。W6-5 收口时的
+  `W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` 是历史 marker；W6.6 已完成，当前下一入口为
+  `P2_CONTROL_UI_I18N_NEXT`。
+
+### W6.6 server-owned Upgrade Review 对模块作者的当前边界
+
+- 可信 Operator 只能提交 Tenant、scope、Admission/Review identity、operator principal、request digest
+  和 Decision reason；artifact path、URL、signature bytes、current/target facts 由调用方提交时一律拒绝；
+- 服务端从 immutable Admission 读取并复验 Artifact/Manifest/Source/Snapshot/Installation/Binding/Activation
+  closure，生成持久 Review/Decision；同一 content identity exact retry 返回原结果，跨 Tenant、stale basis、物理
+  tamper 和不合格 Decision 失败关闭；
+- Review/Decision 是 inert 审核事实，不创建 Installation、Activation、Bind、Grant、Apply、Run、Attempt、
+  Provider 或外部效果。模块作者元数据不能把审核结果提升为执行 authority；当前 UI 仍不是 W6.6 的入口。
 
 ## 6. 兼容夹具与测试分级
 

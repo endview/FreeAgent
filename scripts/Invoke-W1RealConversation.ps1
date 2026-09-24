@@ -57,8 +57,6 @@ $script:UsageStatusCounts = [ordered]@{
 }
 $script:UsageCompleteFactAttempts = 0
 $script:UsageNoFactAttempts = 0
-$script:UsageCompleteRequestedAttempts = 0
-$script:UsageAnyRequestedUnknownAttempts = 0
 $script:CacheWeightedEligibleAttempts = 0
 $script:CacheWeightedUnknownAttempts = 0
 $script:CacheWeightedHits = [uint64]0
@@ -66,17 +64,6 @@ $script:CacheWeightedMisses = [uint64]0
 $script:CacheRequestHits = 0
 $script:CacheRequestMisses = 0
 $script:CacheRequestUnknown = 0
-$script:EstimatedCostTotal = [decimal]0
-$script:EstimatedCostKnown = 0
-$script:EstimatedCostUnknown = 0
-$script:UsageCurrency = $null
-$script:UsagePriceIdentity = $null
-$script:ProviderCostTotal = [decimal]0
-$script:ProviderCostKnown = 0
-$script:ProviderCostUnknown = 0
-$script:ReconciledCostTotal = [decimal]0
-$script:ReconciledCostKnown = 0
-$script:ReconciledCostUnknown = 0
 
 function Fail-W1RealConversation {
     param([Parameter(Mandatory = $true)][string]$Code)
@@ -299,30 +286,6 @@ function ConvertTo-W1OptionalUsageCount {
     return $parsed
 }
 
-function ConvertTo-W1OptionalUsageCost {
-    param(
-        [Parameter(Mandatory = $true)]$Object,
-        [Parameter(Mandatory = $true)][string]$Name,
-        [Parameter(Mandatory = $true)][string]$Code
-    )
-    $value = Get-W1PropertyValue $Object $Name $Code
-    if ($null -eq $value) { return $null }
-    if (-not ($value -is [string]) -or
-        [string]$value -notmatch '^(0|[1-9][0-9]*)(\.[0-9]+)?$') {
-        Fail-W1RealConversation -Code $Code
-    }
-    [decimal]$parsed = 0
-    if (-not [decimal]::TryParse(
-            [string]$value,
-            [Globalization.NumberStyles]::AllowDecimalPoint,
-            [Globalization.CultureInfo]::InvariantCulture,
-            [ref]$parsed
-        )) {
-        Fail-W1RealConversation -Code $Code
-    }
-    return $parsed
-}
-
 function Add-W1OriginalUsage {
     param(
         [Parameter(Mandatory = $true)]$Result,
@@ -340,23 +303,6 @@ function Add-W1OriginalUsage {
         'NO_USAGE_REPORTED' { 'no_usage_reported' }
         'PENDING_RECONCILIATION' { 'pending_reconciliation' }
         default { Fail-W1RealConversation -Code $Code }
-    }
-    $priceIdentity = [string](Get-W1PropertyValue `
-        $usage 'price_snapshot_id' $Code)
-    if (-not (Test-W1OpaqueIdentity -Value $priceIdentity)) {
-        Fail-W1RealConversation -Code $Code
-    }
-    if ($null -ne $script:UsagePriceIdentity -and
-        $script:UsagePriceIdentity -cne $priceIdentity) {
-        Fail-W1RealConversation -Code 'USAGE_PRICE_SNAPSHOT_DRIFT'
-    }
-    $currency = [string](Get-W1PropertyValue $usage 'currency' $Code)
-    if ($currency -cnotmatch '^[A-Z]{3}$') {
-        Fail-W1RealConversation -Code $Code
-    }
-    if ($null -ne $script:UsageCurrency -and
-        $script:UsageCurrency -cne $currency) {
-        Fail-W1RealConversation -Code 'USAGE_CURRENCY_DRIFT'
     }
 
     $fields = @(
@@ -409,52 +355,6 @@ function Add-W1OriginalUsage {
             -Code 'USAGE_CACHE_TOTAL_OVERFLOW'
     }
 
-    $estimated = ConvertTo-W1OptionalUsageCost `
-        -Object $usage -Name 'estimated_cost' -Code $Code
-    $providerCost = ConvertTo-W1OptionalUsageCost `
-        -Object $usage -Name 'provider_reported_cost' -Code $Code
-    $reconciledCost = ConvertTo-W1OptionalUsageCost `
-        -Object $usage -Name 'reconciled_cost' -Code $Code
-    $nextEstimatedTotal = $script:EstimatedCostTotal
-    $nextProviderTotal = $script:ProviderCostTotal
-    $nextReconciledTotal = $script:ReconciledCostTotal
-    if ($null -ne $estimated) {
-        try {
-            $nextEstimatedTotal = [decimal]::Add(
-                $script:EstimatedCostTotal,
-                $estimated
-            )
-        } catch {
-            Fail-W1RealConversation -Code 'USAGE_COST_TOTAL_OVERFLOW'
-        }
-    }
-    if ($null -ne $providerCost) {
-        try {
-            $nextProviderTotal = [decimal]::Add(
-                $script:ProviderCostTotal,
-                $providerCost
-            )
-        } catch {
-            Fail-W1RealConversation -Code 'USAGE_COST_TOTAL_OVERFLOW'
-        }
-    }
-    if ($null -ne $reconciledCost) {
-        try {
-            $nextReconciledTotal = [decimal]::Add(
-                $script:ReconciledCostTotal,
-                $reconciledCost
-            )
-        } catch {
-            Fail-W1RealConversation -Code 'USAGE_COST_TOTAL_OVERFLOW'
-        }
-    }
-
-    if ($null -eq $script:UsagePriceIdentity) {
-        $script:UsagePriceIdentity = $priceIdentity
-    }
-    if ($null -eq $script:UsageCurrency) {
-        $script:UsageCurrency = $currency
-    }
     $script:UsageStatusCounts[$statusSlot]++
     foreach ($field in $fields) {
         if ($null -eq $values[$field.Slot]) {
@@ -484,30 +384,7 @@ function Add-W1OriginalUsage {
     } else {
         $script:CacheWeightedUnknownAttempts++
     }
-    if ($null -eq $estimated) {
-        $script:EstimatedCostUnknown++
-    } else {
-        $script:EstimatedCostTotal = $nextEstimatedTotal
-        $script:EstimatedCostKnown++
-    }
-    if ($null -eq $providerCost) {
-        $script:ProviderCostUnknown++
-    } else {
-        $script:ProviderCostTotal = $nextProviderTotal
-        $script:ProviderCostKnown++
-    }
-    if ($null -eq $reconciledCost) {
-        $script:ReconciledCostUnknown++
-    } else {
-        $script:ReconciledCostTotal = $nextReconciledTotal
-        $script:ReconciledCostKnown++
-    }
     $script:UsageAttempts++
-    if ($knownFacts -eq $fields.Count -and $null -ne $estimated) {
-        $script:UsageCompleteRequestedAttempts++
-    } else {
-        $script:UsageAnyRequestedUnknownAttempts++
-    }
 }
 
 function New-W1UsageFieldSummary {
@@ -521,28 +398,6 @@ function New-W1UsageFieldSummary {
         total = $total
         known_attempts = $script:UsageKnownCounts[$Slot]
         unknown_attempts = $script:UsageUnknownCounts[$Slot]
-    }
-}
-
-function New-W1CostSummary {
-    param(
-        [Parameter(Mandatory = $true)][decimal]$Total,
-        [Parameter(Mandatory = $true)][int]$Known,
-        [Parameter(Mandatory = $true)][int]$Unknown
-    )
-    $value = if ($Known -gt 0) {
-        $Total.ToString(
-            '0.############################',
-            [Globalization.CultureInfo]::InvariantCulture
-        )
-    } else {
-        $null
-    }
-    return [ordered]@{
-        total = $value
-        currency = $script:UsageCurrency
-        known_attempts = $Known
-        unknown_attempts = $Unknown
     }
 }
 
@@ -571,7 +426,6 @@ function New-W1UsageSummary {
     return [ordered]@{
         expected_original_attempts = 50
         original_attempts_observed = $script:UsageAttempts
-        price_snapshot_id = $script:UsagePriceIdentity
         status_counts = $script:UsageStatusCounts
         tokens = [ordered]@{
             input_tokens = New-W1UsageFieldSummary -Slot 'input'
@@ -595,23 +449,7 @@ function New-W1UsageSummary {
             request_miss_attempts = $script:CacheRequestMisses
             request_unknown_attempts = $script:CacheRequestUnknown
         }
-        estimated_cost = New-W1CostSummary `
-            -Total $script:EstimatedCostTotal `
-            -Known $script:EstimatedCostKnown `
-            -Unknown $script:EstimatedCostUnknown
-        provider_reported_cost = New-W1CostSummary `
-            -Total $script:ProviderCostTotal `
-            -Known $script:ProviderCostKnown `
-            -Unknown $script:ProviderCostUnknown
-        reconciled_cost = New-W1CostSummary `
-            -Total $script:ReconciledCostTotal `
-            -Known $script:ReconciledCostKnown `
-            -Unknown $script:ReconciledCostUnknown
         unknown_coverage = [ordered]@{
-            attempts_with_complete_requested_usage = `
-                $script:UsageCompleteRequestedAttempts
-            attempts_with_any_requested_unknown = `
-                $script:UsageAnyRequestedUnknownAttempts
             attempts_with_complete_usage_facts = `
                 $script:UsageCompleteFactAttempts
             attempts_without_any_usage_facts = $script:UsageNoFactAttempts
@@ -1139,7 +977,7 @@ try {
 
     $seedObject = Read-W1JsonFile -Path $seed -Code 'SEED_INVALID'
     if ([string](Get-W1PropertyValue $seedObject 'schema_version' 'SEED_INVALID') -cne
-        'freeagent.bootstrap-seed/v1') {
+        'freeagent.bootstrap-seed/v2') {
         Fail-W1RealConversation -Code 'SEED_INVALID'
     }
     $script:TenantId = [string](Get-W1PropertyValue `

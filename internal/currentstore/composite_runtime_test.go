@@ -187,7 +187,6 @@ func TestCompositeCancellationBlocksNewBeginButNeverReplaysExactAttempt(
 	t *testing.T,
 ) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	firstInput := newCompositeChildBeginInput(
 		t,
 		fixture,
@@ -254,7 +253,6 @@ func TestCompositeCancellationBlocksNewBeginButNeverReplaysExactAttempt(
 
 func TestRunCancellationDoesNotRewriteOrReplayModelUnknown(t *testing.T) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	input := newCompositeChildBeginInput(
 		t,
 		fixture,
@@ -334,7 +332,6 @@ func TestCompositeFamilyModelDispatchLimitCountsUnknownAndExactRetryAtCap(
 	t *testing.T,
 ) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	unknownInput := newCompositeChildBeginInput(
 		t,
 		fixture,
@@ -455,7 +452,6 @@ func TestCompositeFamilyModelDispatchLimitCountsUnknownAndExactRetryAtCap(
 
 func TestLoadCompositeRootProjectsChildResultsInPlanOrder(t *testing.T) {
 	fixture := newCommittedCompositeRuntimeFixture(t)
-	putCompositeModelPrice(t, fixture.store)
 	rootLease := acquireCompositeTestLease(
 		t,
 		fixture.store,
@@ -810,16 +806,6 @@ func assertCompositeFamilyLatch(
 		if !row.CancelRef.Valid || row.CancelRef.String != wantRef {
 			t.Fatalf("Run %q latch=%v want %q", row.RunID, row.CancelRef, wantRef)
 		}
-	}
-}
-
-func putCompositeModelPrice(t *testing.T, store *Store) {
-	t.Helper()
-	if _, err := store.PutModelPriceSnapshot(
-		context.Background(),
-		testModelPriceSnapshot(),
-	); err != nil {
-		t.Fatalf("PutModelPriceSnapshot: %v", err)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/endview/freeagent/internal/currentbackup"
 	"github.com/endview/freeagent/internal/currentstore"
 	"github.com/endview/freeagent/internal/localchat"
 	"github.com/endview/freeagent/internal/runscheduler"
@@ -75,12 +76,7 @@ func TestRunInitAndChatCommands(t *testing.T) {
 		first.Usage.UncachedInputTokens != nil ||
 		first.Usage.OutputTokens != nil ||
 		first.Usage.ReasoningTokens != nil ||
-		first.Usage.EstimatedCost != nil ||
-		first.Usage.ProviderReportedCost != nil ||
-		first.Usage.ReconciledCost != nil ||
-		first.Usage.Status != "PROVIDER_REPORTED" ||
-		first.Usage.PriceSnapshotID != "price-local-echo-v1" ||
-		first.Usage.Currency != "USD" {
+		first.Usage.Status != "PROVIDER_REPORTED" {
 		t.Fatalf("CLI authoritative UNKNOWN Usage=%+v", first.Usage)
 	}
 	for _, field := range []string{
@@ -89,9 +85,6 @@ func TestRunInitAndChatCommands(t *testing.T) {
 		`"uncached_input_tokens":null`,
 		`"output_tokens":null`,
 		`"reasoning_tokens":null`,
-		`"estimated_cost":null`,
-		`"provider_reported_cost":null`,
-		`"reconciled_cost":null`,
 	} {
 		if !bytes.Contains(firstOutput.Bytes(), []byte(field)) {
 			t.Fatalf(
@@ -1194,6 +1187,117 @@ func TestRunBackupVerifyRestoreCommands(t *testing.T) {
 			original,
 			restoredChat,
 		)
+	}
+}
+
+func TestRunMigrateCreatesMandatoryBackupBeforeNoOp(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	databasePath := filepath.Join(root, "current.sqlite")
+	artifactRoot := filepath.Join(root, "artifacts")
+	if _, err := initializeProductionData(context.Background(), initInput{
+		DatabasePath: databasePath,
+		SeedPath:     exampleSeedPath(t),
+		ArtifactRoot: artifactRoot,
+	}); err != nil {
+		t.Fatalf("initialize production data: %v", err)
+	}
+	bundle := filepath.Join(root, "pre-migration-backup")
+	var output bytes.Buffer
+	if err := run(context.Background(), []string{
+		"migrate",
+		"--db", databasePath,
+		"--artifact-root", artifactRoot,
+		"--backup-out", bundle,
+	}, &output, io.Discard); err != nil {
+		t.Fatalf("run migrate: %v", err)
+	}
+	var result migrateCommandResult
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatalf("decode migrate: %v\n%s", err, output.String())
+	}
+	if result.FromVersion != currentstore.UserVersion ||
+		result.ToVersion != currentstore.UserVersion ||
+		len(result.AppliedVersions) != 0 ||
+		result.BackupManifest.StoreIdentity.UserVersion != currentstore.UserVersion ||
+		result.SchemaFingerprint != currentstore.ExpectedSchemaFingerprint {
+		t.Fatalf("migrate result = %+v", result)
+	}
+	verified, err := currentbackup.VerifyBundle(context.Background(), bundle)
+	if err != nil {
+		t.Fatalf("verify mandatory backup: %v", err)
+	}
+	if verified.ManifestDigest != result.BackupManifest.ManifestDigest {
+		t.Fatalf("backup digest = %q, want %q", verified.ManifestDigest, result.BackupManifest.ManifestDigest)
+	}
+	if _, err := currentstore.VerifyCurrentStoreReadOnly(context.Background(), databasePath); err != nil {
+		t.Fatalf("verify migrated Store: %v", err)
+	}
+}
+
+func TestRunMigrateRejectsActiveAndUnknownStoreBeforeBackup(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*testing.T, string) func()
+	}{
+		{
+			name: "active",
+			mutate: func(t *testing.T, path string) func() {
+				store, err := currentstore.OpenExistingCurrentStore(context.Background(), path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return func() { _ = store.Close() }
+			},
+		},
+		{
+			name: "unknown-version",
+			mutate: func(t *testing.T, path string) func() {
+				db, err := sql.Open("sqlite", path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec(`PRAGMA user_version=99`); err != nil {
+					_ = db.Close()
+					t.Fatal(err)
+				}
+				if err := db.Close(); err != nil {
+					t.Fatal(err)
+				}
+				return func() {}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			databasePath := filepath.Join(root, "current.sqlite")
+			artifactRoot := filepath.Join(root, "artifacts")
+			if _, err := initializeProductionData(context.Background(), initInput{
+				DatabasePath: databasePath,
+				SeedPath:     exampleSeedPath(t),
+				ArtifactRoot: artifactRoot,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			cleanup := test.mutate(t, databasePath)
+			defer cleanup()
+			bundle := filepath.Join(root, "must-not-exist")
+			err := run(context.Background(), []string{
+				"migrate",
+				"--db", databasePath,
+				"--artifact-root", artifactRoot,
+				"--backup-out", bundle,
+			}, io.Discard, io.Discard)
+			if err == nil {
+				t.Fatal("migrate unexpectedly succeeded")
+			}
+			if _, statErr := os.Stat(bundle); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("failed migrate published backup: %v", statErr)
+			}
+		})
 	}
 }
 

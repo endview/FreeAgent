@@ -887,10 +887,12 @@ func canonicalModuleManifest(
 		entrypoint = "content/wasm-action.json"
 	}
 	providedPort := moduleapi.PortNameModelGenerate
+	providedVersion := moduleapi.PortVersionV2
 	if mode == moduleapi.RuntimeModeRequestLocalProcess ||
 		mode == moduleapi.RuntimeModeRequestRemote ||
 		mode == moduleapi.RuntimeModeRequestWASM {
 		providedPort = moduleapi.PortNameActionProvider
+		providedVersion = moduleapi.PortVersionV1
 	}
 	value := map[string]any{
 		"api_version": moduleapi.ModuleManifestAPIVersionV1,
@@ -904,7 +906,7 @@ func canonicalModuleManifest(
 		"provides": []any{
 			map[string]any{
 				"name":          providedPort,
-				"exact_version": moduleapi.PortVersionV1,
+				"exact_version": providedVersion,
 			},
 		},
 	}

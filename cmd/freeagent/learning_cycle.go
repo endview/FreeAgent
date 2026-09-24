@@ -544,22 +544,13 @@ func readLearningCycleAttemptUsage(
 		record.Usage.RunID != runID || record.Usage.AttemptID != attemptID {
 		return nil, errors.New("Learning cycle model Attempt identity drift")
 	}
-	price, err := store.GetModelPriceSnapshot(ctx, record.Attempt.PriceSnapshotID)
-	if err != nil {
-		return nil, err
-	}
 	return &chatCommandUsage{
-		InputTokens:          record.Usage.Tokens.Input,
-		CachedInputTokens:    record.Usage.Tokens.CachedInput,
-		UncachedInputTokens:  record.Usage.Tokens.UncachedInput,
-		OutputTokens:         record.Usage.Tokens.Output,
-		ReasoningTokens:      record.Usage.Tokens.Reasoning,
-		EstimatedCost:        record.Usage.EstimatedCost,
-		ProviderReportedCost: record.Usage.ProviderReportedCost,
-		ReconciledCost:       record.Usage.ReconciledCost,
-		Status:               record.Usage.ReconciliationStatus,
-		PriceSnapshotID:      record.Attempt.PriceSnapshotID,
-		Currency:             price.Snapshot.Currency,
+		InputTokens:         record.Usage.Tokens.Input,
+		CachedInputTokens:   record.Usage.Tokens.CachedInput,
+		UncachedInputTokens: record.Usage.Tokens.UncachedInput,
+		OutputTokens:        record.Usage.Tokens.Output,
+		ReasoningTokens:     record.Usage.Tokens.Reasoning,
+		Status:              record.Usage.UsageStatus,
 	}, nil
 }
 

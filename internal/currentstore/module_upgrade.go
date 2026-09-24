@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/endview/freeagent/internal/controlcontract"
@@ -29,9 +30,12 @@ var (
 // exact target observation. PortBindingIndex is the ordinal among bindings of
 // the selected exact Port; a channel endpoint always uses ordinal zero.
 type ReadModuleUpgradeReviewBasisInput struct {
-	SourceID             string
-	SnapshotID           string
-	TenantID             string
+	SourceID   string
+	SnapshotID string
+	TenantID   string
+	// ArtifactAdmissionID is required by the server-owned W6.6 path. It is
+	// optional only for historical caller-owned U3 fixtures.
+	ArtifactAdmissionID  string
 	BindingTarget        moduleupgrade.BindingTargetV1
 	Port                 moduleapi.PortRef
 	PortBindingIndex     uint32
@@ -233,7 +237,8 @@ func (store *Store) CommitModuleUpgradeReview(ctx context.Context, input CommitM
 			current_activation_id,current_activation_revision,pointer_revision,
 			control_snapshot_id,control_revision,control_digest,
 			catalog_generation_id,catalog_generation,catalog_digest,conclusion,created_at
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			,artifact_admission_id,operator_principal_id,review_request_digest
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`, reviewID, input.ReviewCanonical, len(input.ReviewCanonical), review.TenantID,
 		review.CandidateID, review.ReviewKey, string(target.Kind), profile, workspace,
 		endpoint, review.Current.Activation.InstanceID, review.TargetInstanceID, review.Target.ManifestRef,
@@ -242,7 +247,8 @@ func (store *Store) CommitModuleUpgradeReview(ctx context.Context, input CommitM
 		review.PublishedBasis.Control.SnapshotID, int64(review.PublishedBasis.Control.Revision),
 		review.PublishedBasis.Control.Digest, review.PublishedBasis.Catalog.GenerationID,
 		int64(review.PublishedBasis.Catalog.Generation), review.PublishedBasis.Catalog.Digest,
-		string(review.Conclusion), now)
+		string(review.Conclusion), now, nullableModuleUpgradeValue(review.ArtifactAdmissionID),
+		nullableModuleUpgradeValue(review.OperatorPrincipalID), nullableModuleUpgradeValue(review.ReviewRequestDigest))
 	if err != nil {
 		return result, fmt.Errorf("currentstore: insert module upgrade Review: %w", err)
 	}
@@ -529,6 +535,60 @@ func (store *Store) ListModuleUpgradeReviews(ctx context.Context, tenantID strin
 	return out, nil
 }
 
+// ListModuleUpgradeReviewsBounded is the online-read variant. Unlike the
+// trusted-local audit API above, it always applies a caller-independent hard
+// LIMIT before materializing Review records for a control projection.
+func (store *Store) ListModuleUpgradeReviewsBounded(
+	ctx context.Context,
+	tenantID string,
+	limit int,
+) ([]ModuleUpgradeReviewRecord, error) {
+	if ctx == nil || limit < 1 || limit > 1025 {
+		return nil, ErrInvalidModuleUpgradeReview
+	}
+	if err := validatePublishedBasisTenantID(tenantID); err != nil {
+		return nil, err
+	}
+	unlock, err := store.lockOpen()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	rows, err := store.db.QueryContext(ctx, `
+		SELECT review_id FROM module_upgrade_reviews
+		WHERE tenant_id=?
+		ORDER BY tenant_id COLLATE BINARY,candidate_id COLLATE BINARY,review_id COLLATE BINARY
+		LIMIT ?
+	`, tenantID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]string, 0, limit)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]ModuleUpgradeReviewRecord, 0, len(ids))
+	for _, id := range ids {
+		value, found, err := queryModuleUpgradeReview(ctx, store.db, id)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, ErrModuleUpgradeIntegrity
+		}
+		result = append(result, detachModuleUpgradeReviewRecord(value))
+	}
+	return result, nil
+}
+
 // ListModuleCandidateDecisions is an unbounded trusted-local/offline audit API.
 // W6 must not expose it directly and must supply tenant-scoped pagination.
 func (store *Store) ListModuleCandidateDecisions(ctx context.Context, tenantID string) ([]ModuleCandidateDecisionRecord, error) {
@@ -591,6 +651,18 @@ func rebuildModuleUpgradeReviewBasis(ctx context.Context, q moduleDiscoveryQuery
 	}
 	if !found {
 		return ModuleUpgradeReviewBasis{}, ErrModuleSourceNotFound
+	}
+	if input.ArtifactAdmissionID != "" {
+		admission, admissionFound, admissionErr := queryModuleArtifactAdmissionV1(ctx, q, input.ArtifactAdmissionID)
+		if admissionErr != nil {
+			return ModuleUpgradeReviewBasis{}, admissionErr
+		}
+		if !admissionFound || admission.Record.SourceID != input.SourceID ||
+			admission.Record.SnapshotID != input.SnapshotID ||
+			admission.Record.Module != input.TargetModule ||
+			admission.Record.ArtifactDigest != input.TargetArtifactDigest {
+			return ModuleUpgradeReviewBasis{}, fmt.Errorf("%w: Artifact Admission differs from exact upgrade selection", ErrModuleUpgradeReviewConflict)
+		}
 	}
 	if source.CurrentSnapshotID != input.SnapshotID {
 		return ModuleUpgradeReviewBasis{}, ErrModuleUpgradeReviewStale
@@ -679,6 +751,9 @@ func rebuildModuleUpgradeReviewBasis(ctx context.Context, q moduleDiscoveryQuery
 func validateUpgradeSelection(input ReadModuleUpgradeReviewBasisInput) error {
 	if input.SourceID == "" || !moduleapi.ValidSHA256(input.SnapshotID) || !moduleapi.ValidSHA256(input.TargetArtifactDigest) {
 		return fmt.Errorf("%w: invalid source, Snapshot, or target digest", ErrInvalidModuleUpgradeReview)
+	}
+	if input.ArtifactAdmissionID != "" && !moduleapi.ValidSHA256(input.ArtifactAdmissionID) {
+		return fmt.Errorf("%w: invalid Artifact Admission ID", ErrInvalidModuleUpgradeReview)
 	}
 	if err := validatePublishedBasisTenantID(input.TenantID); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidModuleUpgradeReview, err)
@@ -786,7 +861,7 @@ func restoreReviewAgainstBasis(canonical []byte, basis ModuleUpgradeReviewBasis)
 }
 
 func requireReviewMatchesBasis(review moduleupgrade.ReviewV1, basis ModuleUpgradeReviewBasis) error {
-	if review.CandidateID != basis.CandidateID || review.ReviewKey != basis.Candidate.ReviewKey || review.TenantID != basis.Selection.TenantID || review.BindingTarget != basis.Selection.BindingTarget || review.Port != basis.Selection.Port || review.PortBindingIndex != basis.Selection.PortBindingIndex || review.TargetInstanceID != basis.Selection.TargetInstanceID || review.PublishedBasis != basis.PublishedBasis || review.Target.Module != basis.TargetEntry.Module || review.Target.ArtifactDigest != basis.TargetEntry.ArtifactDigest || review.Target.ArtifactSizeBytes != basis.TargetEntry.ArtifactSizeBytes || review.Target.SignatureID != basis.TargetEntry.SignatureID || !reflect.DeepEqual(review.BindingImpacts, basis.BindingImpacts) {
+	if review.CandidateID != basis.CandidateID || review.ReviewKey != basis.Candidate.ReviewKey || review.TenantID != basis.Selection.TenantID || review.ArtifactAdmissionID != basis.Selection.ArtifactAdmissionID || review.BindingTarget != basis.Selection.BindingTarget || review.Port != basis.Selection.Port || review.PortBindingIndex != basis.Selection.PortBindingIndex || review.TargetInstanceID != basis.Selection.TargetInstanceID || review.PublishedBasis != basis.PublishedBasis || review.Target.Module != basis.TargetEntry.Module || review.Target.ArtifactDigest != basis.TargetEntry.ArtifactDigest || review.Target.ArtifactSizeBytes != basis.TargetEntry.ArtifactSizeBytes || review.Target.SignatureID != basis.TargetEntry.SignatureID || !reflect.DeepEqual(review.BindingImpacts, basis.BindingImpacts) {
 		return fmt.Errorf("%w: Review differs from Store-owned basis", ErrInvalidModuleUpgradeReview)
 	}
 	wantSupply := supplyBasisFromStore(basis)
@@ -878,13 +953,13 @@ func activatedRefFromStore(a ModuleActivation, i ModuleInstallation) moduleapi.A
 }
 
 func equalModuleUpgradeBasis(a, b ModuleUpgradeReviewBasis) bool {
-	return a.CandidateID == b.CandidateID && bytes.Equal(a.CandidateCanonical, b.CandidateCanonical) && a.PublishedBasis == b.PublishedBasis && a.Source.PolicyID == b.Source.PolicyID && a.Source.PolicyRevision == b.Source.PolicyRevision && a.Source.CurrentSnapshotID == b.Source.CurrentSnapshotID && a.Source.ObservationRevision == b.Source.ObservationRevision && a.Snapshot.SnapshotID == b.Snapshot.SnapshotID && a.CurrentActivation == b.CurrentActivation && a.CurrentInstallation.InstallationID == b.CurrentInstallation.InstallationID && a.CurrentInstallation.ManifestRef == b.CurrentInstallation.ManifestRef && bytes.Equal(a.CurrentInstallation.ManifestBytes, b.CurrentInstallation.ManifestBytes) && reflect.DeepEqual(a.BindingImpacts, b.BindingImpacts)
+	return a.CandidateID == b.CandidateID && a.Selection.ArtifactAdmissionID == b.Selection.ArtifactAdmissionID && bytes.Equal(a.CandidateCanonical, b.CandidateCanonical) && a.PublishedBasis == b.PublishedBasis && a.Source.PolicyID == b.Source.PolicyID && a.Source.PolicyRevision == b.Source.PolicyRevision && a.Source.CurrentSnapshotID == b.Source.CurrentSnapshotID && a.Source.ObservationRevision == b.Source.ObservationRevision && a.Snapshot.SnapshotID == b.Snapshot.SnapshotID && a.CurrentActivation == b.CurrentActivation && a.CurrentInstallation.InstallationID == b.CurrentInstallation.InstallationID && a.CurrentInstallation.ManifestRef == b.CurrentInstallation.ManifestRef && bytes.Equal(a.CurrentInstallation.ManifestBytes, b.CurrentInstallation.ManifestBytes) && reflect.DeepEqual(a.BindingImpacts, b.BindingImpacts)
 }
 func reviewMatchesLiveBasis(r moduleupgrade.ReviewV1, b ModuleUpgradeReviewBasis) bool {
 	return requireReviewMatchesBasis(r, b) == nil
 }
 func selectionFromReview(r moduleupgrade.ReviewV1) ReadModuleUpgradeReviewBasisInput {
-	return ReadModuleUpgradeReviewBasisInput{SourceID: r.SupplyBasis.SourceID, SnapshotID: r.SupplyBasis.SnapshotID, TenantID: r.TenantID, BindingTarget: r.BindingTarget, Port: r.Port, PortBindingIndex: r.PortBindingIndex, TargetModule: r.Target.Module, TargetArtifactDigest: r.Target.ArtifactDigest, TargetInstanceID: r.TargetInstanceID}
+	return ReadModuleUpgradeReviewBasisInput{SourceID: r.SupplyBasis.SourceID, SnapshotID: r.SupplyBasis.SnapshotID, TenantID: r.TenantID, ArtifactAdmissionID: r.ArtifactAdmissionID, BindingTarget: r.BindingTarget, Port: r.Port, PortBindingIndex: r.PortBindingIndex, TargetModule: r.Target.Module, TargetArtifactDigest: r.Target.ArtifactDigest, TargetInstanceID: r.TargetInstanceID}
 }
 func mapUpgradeBasisCommitError(err error) error {
 	if errors.Is(err, ErrModuleUpgradeSuppressed) {
@@ -949,9 +1024,16 @@ func queryModuleUpgradeReview(ctx context.Context, q moduleDiscoveryQueryer, id 
 	var canonical []byte
 	var candidateID, reviewKey, tenant, kind string
 	var profile, workspace, endpoint sql.NullString
+	var admissionID, operatorPrincipalID, reviewRequestDigest sql.NullString
 	var currentInstance, targetInstance, targetManifestRef, installationID, activationID, controlID, controlDigest, catalogID, catalogDigest, conclusion string
 	var activationRev, pointerRev, controlRev, catalogRev, created int64
-	err := q.QueryRowContext(ctx, `SELECT review_id,review_canonical,tenant_id,candidate_id,review_key,binding_target_kind,profile_id,workspace_id,endpoint_id,current_instance_id,target_instance_id,target_manifest_ref,current_installation_id,current_activation_id,current_activation_revision,pointer_revision,control_snapshot_id,control_revision,control_digest,catalog_generation_id,catalog_generation,catalog_digest,conclusion,created_at FROM module_upgrade_reviews WHERE review_id=?`, id).Scan(&r.ReviewID, &canonical, &tenant, &candidateID, &reviewKey, &kind, &profile, &workspace, &endpoint, &currentInstance, &targetInstance, &targetManifestRef, &installationID, &activationID, &activationRev, &pointerRev, &controlID, &controlRev, &controlDigest, &catalogID, &catalogRev, &catalogDigest, &conclusion, &created)
+	err := q.QueryRowContext(ctx, `SELECT review_id,review_canonical,tenant_id,candidate_id,review_key,binding_target_kind,profile_id,workspace_id,endpoint_id,current_instance_id,target_instance_id,target_manifest_ref,current_installation_id,current_activation_id,current_activation_revision,pointer_revision,control_snapshot_id,control_revision,control_digest,catalog_generation_id,catalog_generation,catalog_digest,conclusion,created_at,artifact_admission_id,operator_principal_id,review_request_digest FROM module_upgrade_reviews WHERE review_id=?`, id).Scan(&r.ReviewID, &canonical, &tenant, &candidateID, &reviewKey, &kind, &profile, &workspace, &endpoint, &currentInstance, &targetInstance, &targetManifestRef, &installationID, &activationID, &activationRev, &pointerRev, &controlID, &controlRev, &controlDigest, &catalogID, &catalogRev, &catalogDigest, &conclusion, &created, &admissionID, &operatorPrincipalID, &reviewRequestDigest)
+	if err != nil && strings.Contains(err.Error(), "no such column: artifact_admission_id") {
+		// FAC2 v1 remains a known read-only backup source. Its caller-owned U3
+		// Reviews predate the W6.6 relational closure and therefore restore the
+		// three new projections as NULL/empty values.
+		err = q.QueryRowContext(ctx, `SELECT review_id,review_canonical,tenant_id,candidate_id,review_key,binding_target_kind,profile_id,workspace_id,endpoint_id,current_instance_id,target_instance_id,target_manifest_ref,current_installation_id,current_activation_id,current_activation_revision,pointer_revision,control_snapshot_id,control_revision,control_digest,catalog_generation_id,catalog_generation,catalog_digest,conclusion,created_at FROM module_upgrade_reviews WHERE review_id=?`, id).Scan(&r.ReviewID, &canonical, &tenant, &candidateID, &reviewKey, &kind, &profile, &workspace, &endpoint, &currentInstance, &targetInstance, &targetManifestRef, &installationID, &activationID, &activationRev, &pointerRev, &controlID, &controlRev, &controlDigest, &catalogID, &catalogRev, &catalogDigest, &conclusion, &created)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, false, nil
 	}
@@ -971,7 +1053,7 @@ func queryModuleUpgradeReview(ctx context.Context, q moduleDiscoveryQueryer, id 
 		return r, false, fmt.Errorf("%w: Review %s: %v", ErrModuleUpgradeIntegrity, id, err)
 	}
 	t := review.BindingTarget
-	if tenant != review.TenantID || candidateID != review.CandidateID || reviewKey != review.ReviewKey || kind != string(t.Kind) || (profile.Valid && profile.String != t.ProfileID) || profile.Valid != (t.ProfileID != "") || (workspace.Valid && workspace.String != t.WorkspaceID) || workspace.Valid != (t.WorkspaceID != "") || (endpoint.Valid && endpoint.String != t.EndpointID) || endpoint.Valid != (t.EndpointID != "") || currentInstance != review.Current.Activation.InstanceID || targetInstance != review.TargetInstanceID || targetManifestRef != review.Target.ManifestRef || installationID != review.Current.InstallationID || activationRev != int64(review.Current.Activation.ActivationRevision) || pointerRev != int64(review.PublishedBasis.PointerRevision) || controlID != review.PublishedBasis.Control.SnapshotID || controlRev != int64(review.PublishedBasis.Control.Revision) || controlDigest != review.PublishedBasis.Control.Digest || catalogID != review.PublishedBasis.Catalog.GenerationID || catalogRev != int64(review.PublishedBasis.Catalog.Generation) || catalogDigest != review.PublishedBasis.Catalog.Digest || conclusion != string(review.Conclusion) {
+	if tenant != review.TenantID || candidateID != review.CandidateID || reviewKey != review.ReviewKey || kind != string(t.Kind) || (profile.Valid && profile.String != t.ProfileID) || profile.Valid != (t.ProfileID != "") || (workspace.Valid && workspace.String != t.WorkspaceID) || workspace.Valid != (t.WorkspaceID != "") || (endpoint.Valid && endpoint.String != t.EndpointID) || endpoint.Valid != (t.EndpointID != "") || currentInstance != review.Current.Activation.InstanceID || targetInstance != review.TargetInstanceID || targetManifestRef != review.Target.ManifestRef || installationID != review.Current.InstallationID || activationRev != int64(review.Current.Activation.ActivationRevision) || pointerRev != int64(review.PublishedBasis.PointerRevision) || controlID != review.PublishedBasis.Control.SnapshotID || controlRev != int64(review.PublishedBasis.Control.Revision) || controlDigest != review.PublishedBasis.Control.Digest || catalogID != review.PublishedBasis.Catalog.GenerationID || catalogRev != int64(review.PublishedBasis.Catalog.Generation) || catalogDigest != review.PublishedBasis.Catalog.Digest || conclusion != string(review.Conclusion) || nullableModuleUpgradeString(admissionID) != review.ArtifactAdmissionID || nullableModuleUpgradeString(operatorPrincipalID) != review.OperatorPrincipalID || nullableModuleUpgradeString(reviewRequestDigest) != review.ReviewRequestDigest {
 		return r, false, fmt.Errorf("%w: Review %s projection differs", ErrModuleUpgradeIntegrity, id)
 	}
 	activation, err := queryModuleActivationByID(ctx, q, activationID)
@@ -989,6 +1071,20 @@ func queryModuleUpgradeReview(ctx context.Context, q moduleDiscoveryQueryer, id 
 	r.Candidate = candidate
 	r.CreatedAt, err = timeFromUnixMicro(created)
 	return r, true, err
+}
+
+func nullableModuleUpgradeValue(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func nullableModuleUpgradeString(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
 }
 
 func parseCandidateDecision(canonical []byte) (moduleapi.ModuleCandidateDecisionV1, []byte, string, error) {

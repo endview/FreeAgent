@@ -639,7 +639,7 @@ func newCompositeLoopFixtureWithReviewer(
 	)
 	modelPort := moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}
 	_, intentCanonical, intentDigest, err :=
 		corecontract.NewAdmissionIntentV1(corecontract.AdmissionIntentV1{

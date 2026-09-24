@@ -527,13 +527,6 @@ func applyProjection(
 		Totals:        tokenTotalsReport(tokens),
 		CacheHitRatio: ratio,
 	}
-	report.Costs = CostReport{
-		Estimated: costTotalReport(projection.Aggregate.EstimatedCost),
-		ProviderReported: costTotalReport(
-			projection.Aggregate.ProviderReportedCost,
-		),
-		Reconciled: costTotalReport(projection.Aggregate.ReconciledCost),
-	}
 	report.Attempts = make([]AttemptFact, 0, projection.Aggregate.AttemptSlotsUsed)
 	for _, run := range projection.Runs {
 		if run.Attempt == nil {
@@ -549,24 +542,21 @@ func applyProjection(
 			)
 		}
 		report.Attempts = append(report.Attempts, AttemptFact{
-			WorkspaceID:         report.WorkspaceID,
-			RootRunID:           report.RootRunID,
-			RunID:               run.RunID,
-			Role:                run.Role,
-			SlotID:              run.SlotID,
-			AttemptID:           attempt.AttemptID,
-			LogicalStepID:       attempt.LogicalStepID,
-			State:               attempt.State,
-			Provider:            attempt.Provider,
-			Model:               attempt.Model,
-			RequestDigest:       attempt.RequestDigest,
-			PriceSnapshotID:     attempt.PriceSnapshotID,
-			PriceSnapshotDigest: attempt.PriceSnapshotDigest,
-			Currency:            attempt.Currency,
-			CreatedAt:           attempt.CreatedAt,
-			UpdatedAt:           attempt.UpdatedAt,
-			Elapsed:             attempt.UpdatedAt.Sub(attempt.CreatedAt),
-			Tokens:              attempt.Usage.Tokens.Clone(),
+			WorkspaceID:   report.WorkspaceID,
+			RootRunID:     report.RootRunID,
+			RunID:         run.RunID,
+			Role:          run.Role,
+			SlotID:        run.SlotID,
+			AttemptID:     attempt.AttemptID,
+			LogicalStepID: attempt.LogicalStepID,
+			State:         attempt.State,
+			Provider:      attempt.Provider,
+			Model:         attempt.Model,
+			RequestDigest: attempt.RequestDigest,
+			CreatedAt:     attempt.CreatedAt,
+			UpdatedAt:     attempt.UpdatedAt,
+			Elapsed:       attempt.UpdatedAt.Sub(attempt.CreatedAt),
+			Tokens:        attempt.Usage.Tokens.Clone(),
 		})
 	}
 	if uint32(len(report.Attempts)) != projection.Aggregate.AttemptSlotsUsed {
@@ -623,19 +613,4 @@ func tokenTotalsReport(
 		Output:        cloneUint64(tokens.Output),
 		Reasoning:     cloneUint64(tokens.Reasoning),
 	}
-}
-
-func costTotalReport(
-	fact currentstore.CompositeFamilyCostTotalV1,
-) CostTotalReport {
-	result := CostTotalReport{
-		Status:     fact.Status,
-		Currency:   fact.Currency,
-		Currencies: append([]string(nil), fact.Currencies...),
-	}
-	if fact.Value != nil {
-		value := *fact.Value
-		result.Value = &value
-	}
-	return result
 }

@@ -94,12 +94,6 @@ func TestDynamicKnowledgePublicationAdmissionPendingRecovery(t *testing.T) {
 	); err != nil {
 		t.Fatalf("CommitRunAdmission dynamic Knowledge: %v", err)
 	}
-	if _, err := fixture.admission.store.PutModelPriceSnapshot(
-		context.Background(),
-		testModelPriceSnapshot(),
-	); err != nil {
-		t.Fatal(err)
-	}
 	lease, err := fixture.admission.store.AcquireRunLease(
 		context.Background(),
 		AcquireRunLeaseInput{
@@ -1255,7 +1249,7 @@ func prepareDynamicKnowledgeAdmission(
 	intent := fixture.intent
 	intent.AdmissionKey = "admission-dynamic-knowledge"
 	intent.RequestedPorts = []moduleapi.PortRef{
-		{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1},
+		{Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2},
 		contextPort,
 	}
 	intent.Deadline = time.Now().UTC().Add(3 * time.Hour).

@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -21,7 +20,6 @@ import (
 
 	"github.com/endview/freeagent/internal/corecontract"
 	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/deepseekcost"
 	"github.com/endview/freeagent/internal/modulehost"
 )
 
@@ -32,6 +30,9 @@ const (
 	// ReportSchemaVersionV2 freezes the safe boundary-observation buckets and
 	// the fixed CHILD/REVIEWER/ROOT role_cache projection.
 	ReportSchemaVersionV2 = "freeagent.s3-store-audit/v2"
+	// ReportSchemaVersionV3 removes retired monetary observations while
+	// preserving token coverage and boundary evidence.
+	ReportSchemaVersionV3 = "freeagent.s3-store-audit/v3"
 )
 
 const (
@@ -92,25 +93,6 @@ type RoleCacheObservation struct {
 	CacheHitRatio              *float64           `json:"cache_hit_ratio"`
 }
 
-type CostTotal struct {
-	Status           string       `json:"status"`
-	Value            *string      `json:"value"`
-	Currency         string       `json:"currency"`
-	Currencies       []string     `json:"currencies"`
-	KnownEstimates   uint64       `json:"known_estimates"`
-	UnknownEstimates uint64       `json:"unknown_estimates"`
-	KnownSubtotal    CostSubtotal `json:"known_subtotal"`
-}
-
-// CostSubtotal reports only facts that were actually present and valid. It is
-// never promoted to the authoritative total while any estimate is unknown.
-type CostSubtotal struct {
-	Status     string   `json:"status"`
-	Value      *string  `json:"value"`
-	Currency   string   `json:"currency"`
-	Currencies []string `json:"currencies"`
-}
-
 type ExpectedReport struct {
 	Families            uint64 `json:"families"`
 	Runs                uint64 `json:"runs"`
@@ -145,10 +127,6 @@ type ObservedReport struct {
 	TokenFieldCoverage         TokenFieldCoverage              `json:"token_field_coverage"`
 	KnownTokenSubtotal         TokenTotals                     `json:"known_token_subtotal"`
 	CacheHitRatio              *float64                        `json:"cache_hit_ratio"`
-	EstimatedCost              CostTotal                       `json:"estimated_cost"`
-	ProviderReportedCost       CostTotal                       `json:"provider_reported_cost"`
-	ReconciledCost             CostTotal                       `json:"reconciled_cost"`
-	DerivedDeepSeekCost        CostTotal                       `json:"derived_deepseek_cost"`
 }
 
 // Report intentionally contains no Run/Attempt/workspace ID, content digest,
@@ -174,10 +152,6 @@ type observer interface {
 		context.Context,
 		string,
 	) (currentstore.TerminalRunResult, error)
-	GetModelPriceSnapshot(
-		context.Context,
-		string,
-	) (currentstore.ModelPriceSnapshotRecord, error)
 	GetFairRunTargetView(
 		context.Context,
 		string,
@@ -311,11 +285,6 @@ func auditObserver(ctx context.Context, reader observer, report *Report) error {
 	report.Observed.Families = uint64(len(rootRunIDs))
 	tokens := newTokenAccumulator()
 	roleCache := newRoleCacheAccumulators()
-	estimated := newCostAccumulator()
-	providerReported := newCostAccumulator()
-	reconciled := newCostAccumulator()
-	derived := newCostAccumulator()
-	priceRecords := make(map[string]currentstore.ModelPriceSnapshotRecord)
 	for _, rootRunID := range rootRunIDs {
 		projection, err := reader.GetCompositeFamilyUsageProjection(ctx, rootRunID)
 		if err != nil {
@@ -364,7 +333,7 @@ func auditObserver(ctx context.Context, reader observer, report *Report) error {
 			report.Observed.AttemptStates[string(attempt.State)]++
 			report.Observed.Providers[attempt.Provider]++
 			report.Observed.Models[attempt.Model]++
-			report.Observed.UsageStatuses[attempt.Usage.ReconciliationStatus]++
+			report.Observed.UsageStatuses[attempt.Usage.UsageStatus]++
 			if attempt.State == corecontract.ModelAttemptUnknown {
 				reason, reasonErr := reader.GetModelUnknownReason(
 					ctx,
@@ -377,20 +346,6 @@ func auditObserver(ctx context.Context, reader observer, report *Report) error {
 				report.Observed.ModelUnknownReasons[classifyModelUnknownReason(reason)]++
 			}
 			tokens.add(attempt.Usage.Tokens)
-			estimated.add(attempt.Usage.EstimatedCost, attempt.Currency)
-			providerReported.add(
-				attempt.Usage.ProviderReportedCost,
-				attempt.Currency,
-			)
-			reconciled.add(attempt.Usage.ReconciledCost, attempt.Currency)
-			addDerivedCost(
-				ctx,
-				reader,
-				attempt,
-				priceRecords,
-				derived,
-				report,
-			)
 		}
 	}
 	report.Observed.Tokens = tokens.report()
@@ -432,21 +387,6 @@ func auditObserver(ctx context.Context, reader observer, report *Report) error {
 		report.addFailure("MODEL_UNKNOWN_REASON_COVERAGE_INCONSISTENT")
 	}
 	report.Observed.CacheHitRatio = cacheHitRatio(report.Observed.Tokens)
-	report.Observed.EstimatedCost = estimated.report()
-	report.Observed.ProviderReportedCost = providerReported.report()
-	report.Observed.ReconciledCost = reconciled.report()
-	report.Observed.DerivedDeepSeekCost = derived.report()
-	for _, cost := range []CostTotal{
-		report.Observed.EstimatedCost,
-		report.Observed.ProviderReportedCost,
-		report.Observed.ReconciledCost,
-		report.Observed.DerivedDeepSeekCost,
-	} {
-		if !validCostCoverage(cost, report.Observed.UsageRows) {
-			report.addFailure("COST_COVERAGE_INCONSISTENT")
-			break
-		}
-	}
 	if len(report.FailureCodes) != 0 {
 		return ErrAuditFailed
 	}
@@ -486,52 +426,9 @@ func validTerminalClosure(
 	}
 }
 
-func addDerivedCost(
-	ctx context.Context,
-	reader observer,
-	attempt *currentstore.CompositeFamilyAttemptUsageFactV1,
-	prices map[string]currentstore.ModelPriceSnapshotRecord,
-	accumulator *costAccumulator,
-	report *Report,
-) {
-	if attempt.Provider != deepseekcost.ProviderDeepSeekV1 {
-		accumulator.add(nil, attempt.Currency)
-		return
-	}
-	price, ok := prices[attempt.PriceSnapshotID]
-	if !ok {
-		var err error
-		price, err = reader.GetModelPriceSnapshot(ctx, attempt.PriceSnapshotID)
-		if err != nil {
-			report.addFailure("PRICE_SNAPSHOT_INVALID")
-			accumulator.add(nil, attempt.Currency)
-			return
-		}
-		prices[attempt.PriceSnapshotID] = price
-	}
-	if price.Snapshot.Digest != attempt.PriceSnapshotDigest ||
-		price.Snapshot.Currency != attempt.Currency ||
-		price.Snapshot.Provider != attempt.Provider ||
-		price.Snapshot.Model != attempt.Model {
-		report.addFailure("PRICE_SNAPSHOT_MISMATCH")
-		accumulator.add(nil, attempt.Currency)
-		return
-	}
-	estimate, err := deepseekcost.Calculate(
-		price.Snapshot,
-		attempt.Usage.Tokens.Clone(),
-	)
-	if err != nil {
-		report.addFailure("DERIVED_COST_INVALID")
-		accumulator.add(nil, attempt.Currency)
-		return
-	}
-	accumulator.add(estimate.Value, estimate.Currency)
-}
-
 func newReport(expectations Expectations) Report {
 	return Report{
-		SchemaVersion: ReportSchemaVersionV2,
+		SchemaVersion: ReportSchemaVersionV3,
 		Status:        "FAIL",
 		Expected: ExpectedReport{
 			Families:            expectations.Families,
@@ -1105,150 +1002,4 @@ func safeAddUint64(total *uint64, value uint64) bool {
 	}
 	*total += value
 	return true
-}
-
-type costAccumulator struct {
-	count        uint64
-	knownCount   uint64
-	unknownCount uint64
-	currencies   map[string]struct{}
-	total        *big.Rat
-}
-
-func newCostAccumulator() *costAccumulator {
-	return &costAccumulator{
-		currencies: make(map[string]struct{}),
-		total:      new(big.Rat),
-	}
-}
-
-func (accumulator *costAccumulator) add(value *string, currency string) {
-	accumulator.count++
-	if value == nil || strings.TrimSpace(currency) == "" {
-		accumulator.unknownCount++
-		return
-	}
-	parsed, ok := new(big.Rat).SetString(*value)
-	if !ok || parsed.Sign() < 0 {
-		accumulator.unknownCount++
-		return
-	}
-	if _, ok := finiteDecimal(parsed); !ok {
-		accumulator.unknownCount++
-		return
-	}
-	accumulator.knownCount++
-	accumulator.currencies[currency] = struct{}{}
-	accumulator.total.Add(accumulator.total, parsed)
-}
-
-func (accumulator *costAccumulator) report() CostTotal {
-	report := CostTotal{
-		Status:           "UNKNOWN",
-		Currencies:       []string{},
-		KnownEstimates:   accumulator.knownCount,
-		UnknownEstimates: accumulator.unknownCount,
-		KnownSubtotal: CostSubtotal{
-			Status:     "UNKNOWN",
-			Currencies: []string{},
-		},
-	}
-	currencies := make([]string, 0, len(accumulator.currencies))
-	for currency := range accumulator.currencies {
-		currencies = append(currencies, currency)
-	}
-	sort.Strings(currencies)
-	if accumulator.knownCount == 0 {
-		return report
-	}
-	if len(currencies) != 1 {
-		report.KnownSubtotal = CostSubtotal{
-			Status:     "MIXED_CURRENCY",
-			Currencies: currencies,
-		}
-		if accumulator.unknownCount == 0 && accumulator.count != 0 {
-			report.Status = "MIXED_CURRENCY"
-			report.Currencies = append([]string(nil), currencies...)
-		}
-		return report
-	}
-	value, ok := finiteDecimal(accumulator.total)
-	if !ok {
-		return report
-	}
-	report.KnownSubtotal = CostSubtotal{
-		Status:     "KNOWN",
-		Value:      &value,
-		Currency:   currencies[0],
-		Currencies: []string{},
-	}
-	if accumulator.unknownCount == 0 && accumulator.count != 0 {
-		report.Status = "KNOWN"
-		report.Value = &value
-		report.Currency = currencies[0]
-	}
-	return report
-}
-
-func validCostCoverage(cost CostTotal, rows uint64) bool {
-	return validRowCoverage(
-		cost.KnownEstimates,
-		cost.UnknownEstimates,
-		rows,
-	)
-}
-
-func finiteDecimal(value *big.Rat) (string, bool) {
-	if value == nil || value.Sign() < 0 {
-		return "", false
-	}
-	denominator := new(big.Int).Set(value.Denom())
-	two := big.NewInt(2)
-	five := big.NewInt(5)
-	remainder := new(big.Int)
-	twos := 0
-	fives := 0
-	for {
-		quotient, rest := new(big.Int).QuoRem(denominator, two, remainder)
-		if rest.Sign() != 0 {
-			break
-		}
-		denominator = quotient
-		twos++
-	}
-	for {
-		quotient, rest := new(big.Int).QuoRem(denominator, five, remainder)
-		if rest.Sign() != 0 {
-			break
-		}
-		denominator = quotient
-		fives++
-	}
-	if denominator.Cmp(big.NewInt(1)) != 0 {
-		return "", false
-	}
-	scale := twos
-	if fives > scale {
-		scale = fives
-	}
-	numerator := new(big.Int).Set(value.Num())
-	if twos < scale {
-		numerator.Mul(numerator, new(big.Int).Exp(two, big.NewInt(int64(scale-twos)), nil))
-	}
-	if fives < scale {
-		numerator.Mul(numerator, new(big.Int).Exp(five, big.NewInt(int64(scale-fives)), nil))
-	}
-	digits := numerator.String()
-	if scale == 0 {
-		return digits, true
-	}
-	if len(digits) <= scale {
-		digits = strings.Repeat("0", scale-len(digits)+1) + digits
-	}
-	integer := digits[:len(digits)-scale]
-	fraction := strings.TrimRight(digits[len(digits)-scale:], "0")
-	if fraction == "" {
-		return integer, true
-	}
-	return fmt.Sprintf("%s.%s", integer, fraction), true
 }

@@ -15,7 +15,7 @@ func TestAdmissionIntentV1GoldenAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const wantDigest = "b15d61c6a06a3f2a6eff7a4232747514a7657c658f56c37ab9aaa47de90cf380"
+	const wantDigest = "be038e3cbeac738df80eac7334fcfaaf91132f98d31afb0cf2423896840e46c3"
 	if digest != wantDigest {
 		t.Fatalf("admission intent digest=%s want %s", digest, wantDigest)
 	}
@@ -120,7 +120,7 @@ func validAdmissionIntent() AdmissionIntentV1 {
 		RequestedPorts: []moduleapi.PortRef{
 			{
 				Name:         moduleapi.PortNameModelGenerate,
-				ExactVersion: moduleapi.PortVersionV1,
+				ExactVersion: moduleapi.PortVersionV2,
 			},
 			{Name: "knowledge.retrieve", ExactVersion: "v1"},
 		},

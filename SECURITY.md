@@ -291,7 +291,8 @@ W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT`。
 ## W6-5 server-owned module artifact ingress 当前安全边界
 
 当前状态：`W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE /
-W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。
+W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE`；当前下一入口为
+`P2_CONTROL_UI_I18N_NEXT`。
 
 - 唯一入口是默认关闭的可信本地 Operator CLI `module-artifact-ingress`；必须显式携带
   `--enable-module-artifact-ingress`。关闭、参数缺失或多余参数时不得打开 Current Store、读取 Source、
@@ -329,9 +330,16 @@ W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT`。
   必须离线验证 Store/manifest/artifact closure；即使 Source 已移除且没有 Installation，也必须恢复同一 inert
   Artifact 与 Admission，且不得联网、重开 Source、Install、Activate 或 execute。临时 DB、bundle 与 restore
   tree 必须在可信私有 staging 中创建，所有 copy 只从 held handle 读取，并在 publish/cleanup 后同步相关 parent；
-- 当前 Store 为 43 tables / 25 explicit indexes / 64 triggers，fingerprint
+- W6-5 历史 FAC1 Store 为 43 tables / 25 explicit indexes / 64 triggers，fingerprint
   `47981b9bf147ec81c6e98382f281db0d5395187a1f090f7ce183c116fba82a0d`，migration 150,301 bytes /
-  SHA-256 `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`。
+  SHA-256 `6def433a59fa8f4876894572f1610cae499abc5b389ab5930ea697055419ca86`。当前 FAC2 Store 为
+  UserVersion 2、42 tables / 26 explicit indexes / 64 triggers，fingerprint
+  `d5d876f327dc29dc6f4a10476652641172ab8e1f0451a8714fc450f58733541e`；`0001` 保持字节冻结，
+  `0002_server_owned_review.sql` 为 7,173 bytes / SHA-256
+  `3091a49ebcf724f573f91cc0fd22a7c58ebb52fa9d7ed552e32b6526ebeca3cb`。
 
-`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` 只允许下一轮独立设计消费 server-owned Artifact 的
-Upgrade Review；W6-5 本身不创建 Review/Decision，不 Install、Activate、Bind、grant、Apply 或 execute。
+`W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT` 是 W6-5 收口时的历史 marker。W6.6 当前只允许
+默认关闭的可信本地 `module-upgrade-review-server-owned` 与 `module-upgrade-decide-server-owned`：
+Review/Decision 从已接纳 Admission 重建 basis，持久化并 exact retry；调用方不能提供 artifact path、URL、
+signature bytes 或 target facts。跨 tenant、stale basis、Artifact tamper 和不合格 Decision 均失败关闭，
+且不自动 Install、Activate、Bind、Grant、Apply、Execute，不调用 Provider。

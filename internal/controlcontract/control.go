@@ -60,7 +60,6 @@ type ChannelIdentityDefinition struct {
 
 type WorkspaceDefinition struct {
 	Workspace         corecontract.WorkspaceRef               `json:"workspace"`
-	BudgetPolicy      corecontract.PolicyRef                  `json:"budget_policy"`
 	ChannelEndpoints  []ChannelEndpointDefinition             `json:"channel_endpoints,omitempty"`
 	ChannelIdentities []ChannelIdentityDefinition             `json:"channel_identities,omitempty"`
 	TransferGrants    []corecontract.WorkspaceTransferGrantV1 `json:"transfer_grants,omitempty"`
@@ -70,7 +69,6 @@ type ProfileDefinition struct {
 	Profile          corecontract.ProfileRef       `json:"profile"`
 	ModelProfile     *corecontract.ModelProfileRef `json:"model_profile,omitempty"`
 	ContextPolicy    corecontract.PolicyRef        `json:"context_policy"`
-	CostPolicy       corecontract.PolicyRef        `json:"cost_policy"`
 	SchedulingPolicy corecontract.PolicyRef        `json:"scheduling_policy"`
 	Bindings         []BindingSpec                 `json:"bindings"`
 }
@@ -133,11 +131,11 @@ type ControlSnapshot struct {
 func NewControlSnapshot(
 	input ControlSnapshot,
 ) (ControlSnapshot, ControlSnapshotRef, []byte, error) {
-	if input.SchemaVersion != ControlSnapshotSchemaVersionV1 {
+	if input.SchemaVersion != ControlSnapshotSchemaVersionV2 {
 		return ControlSnapshot{}, ControlSnapshotRef{}, nil,
 			fmt.Errorf(
 				"controlcontract: control snapshot schema_version must be %q",
-				ControlSnapshotSchemaVersionV1,
+				ControlSnapshotSchemaVersionV2,
 			)
 	}
 	if !validOpaque(input.SnapshotID) {
@@ -618,13 +616,6 @@ func canonicalWorkspaces(
 				err,
 			)
 		}
-		if err := workspace.BudgetPolicy.Validate(); err != nil {
-			return nil, fmt.Errorf(
-				"controlcontract: workspace %d budget policy: %w",
-				index,
-				err,
-			)
-		}
 		if _, duplicate := seen[workspace.Workspace.ID]; duplicate {
 			return nil, fmt.Errorf(
 				"controlcontract: duplicate workspace ID %q",
@@ -997,7 +988,6 @@ func canonicalProfiles(
 		}
 		for name, policy := range map[string]corecontract.PolicyRef{
 			"context":    profile.ContextPolicy,
-			"cost":       profile.CostPolicy,
 			"scheduling": profile.SchedulingPolicy,
 		} {
 			if err := policy.Validate(); err != nil {

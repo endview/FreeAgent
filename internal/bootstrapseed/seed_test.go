@@ -34,9 +34,9 @@ func TestExampleSeedImportsThroughNormalAPIsAndIsIdempotent(t *testing.T) {
 	prepared := prepareExample(t)
 	assertion := prepared.ModelAssertion()
 	if assertion.ModuleID != "freeagent.builtin.model.echo" ||
-		assertion.ExactVersion != "1.0.0" ||
+		assertion.ExactVersion != "2.0.0" ||
 		assertion.ArtifactDigest == "" ||
-		assertion.ArtifactSizeBytes != 36320 ||
+		assertion.ArtifactSizeBytes != 36863 ||
 		assertion.ArtifactDirectory == "" ||
 		assertion.ExpectedAdapterIdentity != localEchoAdapterIdentity {
 		t.Fatalf("ModelAssertion() = %+v", assertion)
@@ -124,8 +124,8 @@ func TestExampleSeedImportsThroughNormalAPIsAndIsIdempotent(t *testing.T) {
 	if err != nil || config.Kind != currentstore.ContentConfig {
 		t.Fatalf("GetContent(config) = %+v, %v", config, err)
 	}
-	if _, err := moduleapi.RestoreModelBindingConfigV1(config.CanonicalBytes); err != nil {
-		t.Fatalf("RestoreModelBindingConfigV1() error = %v", err)
+	if _, err := moduleapi.RestoreModelBindingConfigV2(config.CanonicalBytes); err != nil {
+		t.Fatalf("RestoreModelBindingConfigV2() error = %v", err)
 	}
 	contextConfig, err := store.GetContent(
 		context.Background(),
@@ -178,9 +178,7 @@ func TestExampleSeedImportsThroughNormalAPIsAndIsIdempotent(t *testing.T) {
 		t.Fatalf("context AuthorityCeilingRef = %s, model = %s", contextBinding.AuthorityCeilingRef, modelBinding.AuthorityCeilingRef)
 	}
 	for _, policy := range []corecontract.PolicyRef{
-		control.Workspaces[0].BudgetPolicy,
 		profile.ContextPolicy,
-		profile.CostPolicy,
 		profile.SchedulingPolicy,
 	} {
 		record, getErr := store.GetContent(context.Background(), policy.Digest)
@@ -207,13 +205,6 @@ func TestExampleSeedImportsThroughNormalAPIsAndIsIdempotent(t *testing.T) {
 				t.Fatalf("RestoreContextPolicyV1() error = %v", contextErr)
 			}
 		}
-	}
-	price, err := store.GetModelPriceSnapshot(
-		context.Background(),
-		"price-local-echo-v1",
-	)
-	if err != nil || price.Snapshot.PricingStatus != corecontract.PricingKnown {
-		t.Fatalf("GetModelPriceSnapshot() = %+v, %v", price, err)
 	}
 }
 
@@ -265,7 +256,7 @@ func TestOptionalModelProfileImportsExactContentAndPublicationRef(
 	if err != nil {
 		t.Fatalf("RestoreModelProfileV1() error = %v", err)
 	}
-	if restored.ModelBuildID != "freeagent.builtin.model.echo/1.0.0" ||
+	if restored.ModelBuildID != "freeagent.builtin.model.echo/2.0.0" ||
 		restored.AdapterArtifactDigest != prepared.ModelAssertion().ArtifactDigest ||
 		restored.AdapterIdentity != localEchoAdapterIdentity ||
 		restored.ContextWindowTokens != 16384 {
@@ -337,7 +328,7 @@ func TestPrepareRejectsNoncanonicalUnknownSecretAndArtifactDrift(t *testing.T) {
 	}
 	seedHash := sha256.Sum256(canonical)
 	if got, want := hex.EncodeToString(seedHash[:]),
-		"34f712989fd31120c2c4ccc026d36ed9e365813747e6de8bf2ca85af9ddb5a3d"; got != want {
+		"ac2dd68e0ec8514c043a98db1356a964c89e25db727af618e1d13ff67c06255d"; got != want {
 		t.Fatalf("canonical example seed SHA-256 = %s, want %s", got, want)
 	}
 	artifactBase := filepath.Dir(seedPath)
@@ -763,7 +754,7 @@ func TestSeedAssertionsCannotAuthorizeAnUnallowlistedAdapter(t *testing.T) {
 		t.Fatalf("LoadPublishedBasis() error = %v, want no publication", err)
 	}
 
-	// Content, price and installation staging are harmless until Catalog
+	// Content and installation staging are harmless until Catalog
 	// publication. A later explicit import with real local authority can reuse
 	// that exact staging without repair SQL or an alternate Store path.
 	if _, err := prepared.Import(
@@ -812,13 +803,13 @@ func exactModelProfileSeed(
 	binding := seed["model_binding"].(map[string]any)
 	configObject := binding["config"].(map[string]any)
 	configInput := canonicalObject(t, configObject)
-	var config moduleapi.ModelBindingConfigV1
+	var config moduleapi.ModelBindingConfigV2
 	if err := json.Unmarshal(configInput, &config); err != nil {
 		t.Fatalf("decode model Binding config: %v", err)
 	}
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(config)
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(config)
 	if err != nil {
-		t.Fatalf("NewModelBindingConfigV1() error = %v", err)
+		t.Fatalf("NewModelBindingConfigV2() error = %v", err)
 	}
 	configRef, err := currentstore.ComputeContentDigest(
 		currentstore.ContentConfig,

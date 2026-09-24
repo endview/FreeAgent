@@ -127,7 +127,7 @@ func TestW2E5APublicationRejectsRequiresAndPermissionFailuresWithoutWrites(
 				modelBinding := fixture.control.Profiles[0].Bindings[0]
 				changed := fixture.publication.modelConfig
 				changed.Parameters = []byte(`{"temperature":1}`)
-				_, canonical, err := moduleapi.NewModelBindingConfigV1(changed)
+				_, canonical, err := moduleapi.NewModelBindingConfigV2(changed)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -535,12 +535,6 @@ func newE5APublicationFixture(
 		Version: "v1",
 		Digest:  strings.Repeat("3", 64),
 	}
-	budget := putPublicationPolicy(
-		t,
-		publication.store,
-		"budget-policy-e5a",
-		corecontract.PolicyCost,
-	)
 	source := moduleapi.KnowledgeSourceRefV1{
 		ID:      "shared.docs.e5a",
 		Version: "1.1.0",
@@ -621,14 +615,13 @@ func newE5APublicationFixture(
 	)
 
 	control := controlcontract.ControlSnapshot{
-		SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV1,
+		SchemaVersion: controlcontract.ControlSnapshotSchemaVersionV2,
 		SnapshotID:    "control-e5a",
 		TenantID:      publication.tenantID,
 		Revision:      1,
 		Agents:        []corecontract.AgentRef{agent},
 		Workspaces: []controlcontract.WorkspaceDefinition{{
-			Workspace:    workspace,
-			BudgetPolicy: budget,
+			Workspace: workspace,
 		}},
 		Profiles: []controlcontract.ProfileDefinition{{
 			Profile: corecontract.ProfileRef{
@@ -637,7 +630,6 @@ func newE5APublicationFixture(
 				Digest:  strings.Repeat("1", 64),
 			},
 			ContextPolicy:    publication.context,
-			CostPolicy:       publication.cost,
 			SchedulingPolicy: publication.scheduling,
 			Bindings: []controlcontract.BindingSpec{
 				{
@@ -802,7 +794,7 @@ func installActivateE5A(
 func e5AModelPort() moduleapi.PortRef {
 	return moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}
 }
 

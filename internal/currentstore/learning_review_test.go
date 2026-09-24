@@ -233,7 +233,7 @@ func TestLearningReviewAdmissionRejectsCrossTenantRunWithoutWrites(t *testing.T)
 	intent.AdmissionKey = "admission-cross-tenant-review"
 	intent.TaskInputRef = reviewTask.Digest
 	intent.RequestedPorts = []moduleapi.PortRef{{
-		Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1,
+		Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2,
 	}}
 	_, intentCanonical, intentDigest, err := corecontract.NewAdmissionIntentV1(intent)
 	if err != nil {
@@ -692,12 +692,12 @@ func newLearningReviewStoreFixture(
 	if err != nil {
 		t.Fatal(err)
 	}
-	modelConfig, err := moduleapi.RestoreModelBindingConfigV1(baseConfigRecord.CanonicalBytes)
+	modelConfig, err := moduleapi.RestoreModelBindingConfigV2(baseConfigRecord.CanonicalBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 	modelConfig.Parameters = bytes.Clone(parameters)
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(modelConfig)
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(modelConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -706,6 +706,12 @@ func newLearningReviewStoreFixture(
 		t.Fatal(err)
 	}
 	baseBinding.ConfigRef = config.Digest
+	reviewContextPolicy := putPublicationContextPolicyWithLimits(
+		t,
+		base.store,
+		10_000,
+		512,
+	)
 
 	reviewerAgent := corecontract.AgentRef{
 		ID: "agent-learning-reviewer", Version: "v1", Digest: strings.Repeat("8", 64),
@@ -715,11 +721,13 @@ func newLearningReviewStoreFixture(
 	}
 	profile := control.Profiles[0]
 	profile.Profile = reviewerProfile
+	profile.ContextPolicy = reviewContextPolicy
 	profile.Bindings = []controlcontract.BindingSpec{baseBinding}
 	// Keep the proposer's current Profile compilable as a model-only Reviewer
 	// solely so negative tests can prove same-Profile rejection without being
 	// masked by an unrelated Binding/config failure. The proposer Run remains
 	// bound to its earlier immutable snapshot.
+	control.Profiles[0].ContextPolicy = reviewContextPolicy
 	control.Profiles[0].Bindings = []controlcontract.BindingSpec{baseBinding}
 	otherWorkspace := control.Workspaces[0]
 	otherWorkspace.Workspace = corecontract.WorkspaceRef{
@@ -796,7 +804,7 @@ func newLearningReviewStoreFixture(
 			ProfileID:     reviewerProfile.ID,
 			TaskInputRef:  task.Digest,
 			RequestedPorts: []moduleapi.PortRef{{
-				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1,
+				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2,
 			}},
 			Deadline:          time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond),
 			CancellationScope: "run",

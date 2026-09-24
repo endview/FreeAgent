@@ -52,7 +52,7 @@ var (
 
 var chatModelGeneratePortV1 = moduleapi.PortRef{
 	Name:         moduleapi.PortNameModelGenerate,
-	ExactVersion: moduleapi.PortVersionV1,
+	ExactVersion: moduleapi.PortVersionV2,
 }
 
 // ChatInput is the complete S1 Pure Chat ingress value. An explicit RequestID

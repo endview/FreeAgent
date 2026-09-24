@@ -26,12 +26,12 @@ const (
 	CoreDeterministicFailureEventKind = "CORE_DETERMINISTIC_FAILURE"
 	LoopContinuationSchemaVersionV1   = "loop-continuation/v1"
 	RunAdmittedPayloadSchemaVersionV1 = "run-admitted-event/v1"
-	budgetStateRefPrefixV1            = "usage-ledger/v1/"
+	usageLedgerRefPrefixV1            = "usage-ledger/v1/"
 	maxInt64DecimalBytes              = 19
-	// MaxBudgetStateRefBytesV1 is deliberately larger than the generic opaque
+	// MaxUsageLedgerRefBytesV1 is deliberately larger than the generic opaque
 	// ID limit: it includes the protocol prefix, a maximum-length RunID, the
 	// sequence separator, and a signed-SQLite-range decimal sequence.
-	MaxBudgetStateRefBytesV1 = len(budgetStateRefPrefixV1) +
+	MaxUsageLedgerRefBytesV1 = len(usageLedgerRefPrefixV1) +
 		maxOpaqueIDBytes + 1 + maxInt64DecimalBytes
 	// MaxLoopContinuationCanonicalBytesV1 is a protocol bound, not an
 	// implementation tuning knob. A continuation contains at most two opaque
@@ -80,54 +80,54 @@ type RunAdmittedEventV1 struct {
 	MemberSnapshotDigest string `json:"member_snapshot_digest"`
 }
 
-// NewBudgetStateRefV1 constructs the only canonical S1 Usage Ledger
+// NewUsageLedgerRefV1 constructs the only canonical S1 Usage Ledger
 // reference. Its total wire length has a dedicated limit because a reference
 // contains a full opaque RunID plus protocol framing.
-func NewBudgetStateRefV1(
+func NewUsageLedgerRefV1(
 	runID string,
 	sequence uint64,
 ) (string, error) {
 	if !validOpaque(runID, maxOpaqueIDBytes) {
 		return "", fmt.Errorf(
-			"corecontract: invalid Run ID for BudgetStateRef",
+			"corecontract: invalid Run ID for UsageLedgerRef",
 		)
 	}
 	if sequence > math.MaxInt64 {
 		return "", fmt.Errorf(
-			"corecontract: BudgetStateRef sequence exceeds Current Store integer range",
+			"corecontract: UsageLedgerRef sequence exceeds Current Store integer range",
 		)
 	}
-	reference := budgetStateRefPrefixV1 +
+	reference := usageLedgerRefPrefixV1 +
 		runID +
 		"/" +
 		strconv.FormatUint(sequence, 10)
-	if len(reference) > MaxBudgetStateRefBytesV1 {
+	if len(reference) > MaxUsageLedgerRefBytesV1 {
 		return "", fmt.Errorf(
-			"corecontract: BudgetStateRef exceeds %d bytes",
-			MaxBudgetStateRefBytesV1,
+			"corecontract: UsageLedgerRef exceeds %d bytes",
+			MaxUsageLedgerRefBytesV1,
 		)
 	}
 	return reference, nil
 }
 
-// ParseBudgetStateRefV1 parses a canonical S1 Usage Ledger reference and
+// ParseUsageLedgerRefV1 parses a canonical S1 Usage Ledger reference and
 // binds it to the expected Run. RunIDs may themselves contain '/', so the
 // sequence is separated using the final slash.
-func ParseBudgetStateRefV1(
+func ParseUsageLedgerRefV1(
 	reference string,
 	expectedRunID string,
 ) (uint64, error) {
-	if len(reference) > MaxBudgetStateRefBytesV1 ||
-		!strings.HasPrefix(reference, budgetStateRefPrefixV1) {
+	if len(reference) > MaxUsageLedgerRefBytesV1 ||
+		!strings.HasPrefix(reference, usageLedgerRefPrefixV1) {
 		return 0, fmt.Errorf(
-			"corecontract: invalid BudgetStateRef format",
+			"corecontract: invalid UsageLedgerRef format",
 		)
 	}
-	remainder := strings.TrimPrefix(reference, budgetStateRefPrefixV1)
+	remainder := strings.TrimPrefix(reference, usageLedgerRefPrefixV1)
 	separator := strings.LastIndexByte(remainder, '/')
 	if separator <= 0 || separator == len(remainder)-1 {
 		return 0, fmt.Errorf(
-			"corecontract: invalid BudgetStateRef format",
+			"corecontract: invalid UsageLedgerRef format",
 		)
 	}
 	runID := remainder[:separator]
@@ -136,24 +136,24 @@ func ParseBudgetStateRefV1(
 		!validOpaque(runID, maxOpaqueIDBytes) ||
 		runID != expectedRunID {
 		return 0, fmt.Errorf(
-			"corecontract: BudgetStateRef does not belong to expected Run",
+			"corecontract: UsageLedgerRef does not belong to expected Run",
 		)
 	}
 	if !canonicalUnsignedDecimal(sequenceText) {
 		return 0, fmt.Errorf(
-			"corecontract: invalid BudgetStateRef sequence",
+			"corecontract: invalid UsageLedgerRef sequence",
 		)
 	}
 	sequence, err := strconv.ParseUint(sequenceText, 10, 64)
 	if err != nil || sequence > math.MaxInt64 {
 		return 0, fmt.Errorf(
-			"corecontract: BudgetStateRef sequence exceeds Current Store integer range",
+			"corecontract: UsageLedgerRef sequence exceeds Current Store integer range",
 		)
 	}
-	rebuilt, err := NewBudgetStateRefV1(runID, sequence)
+	rebuilt, err := NewUsageLedgerRefV1(runID, sequence)
 	if err != nil || rebuilt != reference {
 		return 0, fmt.Errorf(
-			"corecontract: BudgetStateRef is not canonical",
+			"corecontract: UsageLedgerRef is not canonical",
 		)
 	}
 	return sequence, nil
@@ -174,7 +174,7 @@ func canonicalUnsignedDecimal(value string) bool {
 func NewInitialLoopState(
 	runID string,
 ) (string, []byte, error) {
-	budgetStateRef, err := NewBudgetStateRefV1(runID, 0)
+	usageLedgerRef, err := NewUsageLedgerRefV1(runID, 0)
 	if err != nil {
 		return "", nil, err
 	}
@@ -186,7 +186,7 @@ func NewInitialLoopState(
 	if err != nil {
 		return "", nil, err
 	}
-	return budgetStateRef,
+	return usageLedgerRef,
 		continuation,
 		nil
 }
@@ -195,7 +195,7 @@ func NewInitialLoopState(
 // composite family. It has no Attempt identity and shares the normal per-Run
 // Usage ledger starting at sequence zero.
 func NewWaitingChildrenLoopState(runID string) (string, []byte, error) {
-	budgetStateRef, err := NewBudgetStateRefV1(runID, 0)
+	usageLedgerRef, err := NewUsageLedgerRefV1(runID, 0)
 	if err != nil {
 		return "", nil, err
 	}
@@ -207,7 +207,7 @@ func NewWaitingChildrenLoopState(runID string) (string, []byte, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	return budgetStateRef, continuation, nil
+	return usageLedgerRef, continuation, nil
 }
 
 // NewWaitingRepairActivationLoopState constructs a dormant, restart-safe
@@ -217,7 +217,7 @@ func NewWaitingChildrenLoopState(runID string) (string, []byte, error) {
 func NewWaitingRepairActivationLoopState(
 	runID string,
 ) (string, []byte, error) {
-	budgetStateRef, err := NewBudgetStateRefV1(runID, 0)
+	usageLedgerRef, err := NewUsageLedgerRefV1(runID, 0)
 	if err != nil {
 		return "", nil, err
 	}
@@ -229,7 +229,7 @@ func NewWaitingRepairActivationLoopState(
 	if err != nil {
 		return "", nil, err
 	}
-	return budgetStateRef, continuation, nil
+	return usageLedgerRef, continuation, nil
 }
 
 // NewLoopContinuationV1 creates the complete S1 continuation state. Attempt

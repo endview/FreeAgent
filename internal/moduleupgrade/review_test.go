@@ -265,7 +265,7 @@ func TestReviewV1RejectsWouldApplyWhenAnyFanoutPortIsRemoved(t *testing.T) {
 	fixture := newReviewFixtureV1(t)
 	modelPort := moduleapi.PortRef{
 		Name:         moduleapi.PortNameModelGenerate,
-		ExactVersion: moduleapi.PortVersionV1,
+		ExactVersion: moduleapi.PortVersionV2,
 	}
 	fixture.review.Current.Manifest.Provides = append(
 		fixture.review.Current.Manifest.Provides,

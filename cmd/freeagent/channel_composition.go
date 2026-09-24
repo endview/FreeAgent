@@ -125,10 +125,11 @@ func openProductionChannelCompositionWithOptions(
 	if err != nil {
 		return fail(err)
 	}
-	registry, err := newProductionAdapterRegistryWithActionRuntimesAndExtras(
+	registry, err := newProductionAdapterRegistryWithModelRuntimesAndExtras(
 		root,
 		catalog.Entries,
 		options.DeepSeek,
+		options.Zhipu,
 		options.RemoteAction,
 		options.WASMAction,
 		registration,

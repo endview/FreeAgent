@@ -40,20 +40,20 @@ func TestInitialLoopStateIsFixedAndRestartSafe(t *testing.T) {
 	}
 }
 
-func TestBudgetStateRefV1RoundTripAndDedicatedLengthLimit(t *testing.T) {
+func TestUsageLedgerRefV1RoundTripAndDedicatedLengthLimit(t *testing.T) {
 	runID := strings.Repeat("r", maxOpaqueIDBytes)
-	reference, err := NewBudgetStateRefV1(runID, math.MaxInt64)
+	reference, err := NewUsageLedgerRefV1(runID, math.MaxInt64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reference) != MaxBudgetStateRefBytesV1 {
+	if len(reference) != MaxUsageLedgerRefBytesV1 {
 		t.Fatalf(
 			"reference length=%d want=%d",
 			len(reference),
-			MaxBudgetStateRefBytesV1,
+			MaxUsageLedgerRefBytesV1,
 		)
 	}
-	sequence, err := ParseBudgetStateRefV1(reference, runID)
+	sequence, err := ParseUsageLedgerRefV1(reference, runID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,23 +65,23 @@ func TestBudgetStateRefV1RoundTripAndDedicatedLengthLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ParseBudgetStateRefV1(initial, runID); err != nil {
+	if _, err := ParseUsageLedgerRefV1(initial, runID); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestBudgetStateRefV1RejectsWrongRunFormatAndSequence(t *testing.T) {
-	reference, err := NewBudgetStateRefV1("run/with/slash", 7)
+func TestUsageLedgerRefV1RejectsWrongRunFormatAndSequence(t *testing.T) {
+	reference, err := NewUsageLedgerRefV1("run/with/slash", 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ParseBudgetStateRefV1(
+	if _, err := ParseUsageLedgerRefV1(
 		reference,
 		"other-run",
 	); err == nil {
-		t.Fatal("BudgetStateRef for a different Run was accepted")
+		t.Fatal("UsageLedgerRef for a different Run was accepted")
 	}
-	if sequence, err := ParseBudgetStateRefV1(
+	if sequence, err := ParseUsageLedgerRefV1(
 		reference,
 		"run/with/slash",
 	); err != nil || sequence != 7 {
@@ -105,7 +105,7 @@ func TestBudgetStateRefV1RejectsWrongRunFormatAndSequence(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test, func(t *testing.T) {
-			if _, err := ParseBudgetStateRefV1(
+			if _, err := ParseUsageLedgerRefV1(
 				test,
 				"run-1",
 			); err == nil {
@@ -113,11 +113,11 @@ func TestBudgetStateRefV1RejectsWrongRunFormatAndSequence(t *testing.T) {
 			}
 		})
 	}
-	if _, err := NewBudgetStateRefV1(
+	if _, err := NewUsageLedgerRefV1(
 		"run-1",
 		uint64(math.MaxInt64)+1,
 	); err == nil {
-		t.Fatal("overflowing BudgetStateRef sequence was accepted")
+		t.Fatal("overflowing UsageLedgerRef sequence was accepted")
 	}
 }
 

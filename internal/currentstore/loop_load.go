@@ -26,7 +26,7 @@ type LoopFrameRecord struct {
 	RunID                    string
 	Revision                 uint64
 	Step                     string
-	BudgetStateRef           string
+	UsageLedgerRef           string
 	Continuation             []byte
 	PendingAttemptID         string
 	PendingDispatchAttemptID string
@@ -419,7 +419,7 @@ func loadRunClosureV1(
 			state != corecontract.InitialRunState ||
 			disposition.String != "WAITING_EXTERNAL" || !disposition.Valid ||
 			runRevision != 0 || cancelRef.Valid || frame.Revision != 0 ||
-			frame.BudgetStateRef != expectedBudget ||
+			frame.UsageLedgerRef != expectedBudget ||
 			!bytes.Equal(frame.Continuation, expectedContinuation) ||
 			frame.PendingAttemptID != "" || frame.PendingDispatchAttemptID != "" ||
 			frame.WaitingReason != compositeRepairDormantWaitingReason ||
@@ -1433,7 +1433,7 @@ func loadLoopFrame(
 		SELECT
 			frame_revision,
 			step,
-			budget_state_ref,
+			usage_ledger_ref,
 			continuation,
 			pending_attempt_id,
 			pending_dispatch_attempt_id,
@@ -1583,7 +1583,7 @@ func loadLoopFrame(
 		RunID:                    lease.RunID,
 		Revision:                 uint64(frameRevision),
 		Step:                     step,
-		BudgetStateRef:           budgetRef,
+		UsageLedgerRef:           budgetRef,
 		Continuation:             bytes.Clone(continuation),
 		PendingAttemptID:         pending.String,
 		PendingDispatchAttemptID: pendingDispatch.String,
@@ -1619,7 +1619,7 @@ func loadLoopFrameForObservationV1(
 		expiry          sql.NullInt64
 	)
 	if err := connection.QueryRowContext(ctx, `
-		SELECT frame_revision,step,budget_state_ref,continuation,
+		SELECT frame_revision,step,usage_ledger_ref,continuation,
 			pending_attempt_id,pending_dispatch_attempt_id,waiting_reason,
 			last_authoritative_event,lease_owner,lease_epoch,lease_expiry
 		FROM loop_frames WHERE run_id=?
@@ -1647,7 +1647,7 @@ func loadLoopFrameForObservationV1(
 	}
 	frame := LoopFrameRecord{
 		RunID: runID, Revision: uint64(frameRevision), Step: step,
-		BudgetStateRef: budgetRef, Continuation: bytes.Clone(continuation),
+		UsageLedgerRef: budgetRef, Continuation: bytes.Clone(continuation),
 		PendingAttemptID:         pending.String,
 		PendingDispatchAttemptID: pendingDispatch.String,
 		WaitingReason:            waiting.String,
@@ -1704,9 +1704,7 @@ func loadLoopRecoveryContents(
 		manifest.TaskInputRef: ContentTaskInput,
 	}
 	for _, policy := range []corecontract.PolicyRef{
-		manifest.BudgetPolicy,
 		member.ContextPolicy,
-		member.CostPolicy,
 		member.SchedulingPolicy,
 	} {
 		required[policy.Digest] = ContentPolicy
@@ -1874,7 +1872,7 @@ func loadLoopModelDispatches(
 		ctx,
 		connection,
 		frame.RunID,
-		frame.BudgetStateRef,
+		frame.UsageLedgerRef,
 	)
 	if err != nil {
 		return nil, loopReadIntegrity("Usage ledger", err)
@@ -1913,7 +1911,7 @@ func loadLoopModelDispatches(
 	if err != nil {
 		return nil, loopReadIntegrity("model Binding config", err)
 	}
-	expectedParameters, err := expectedModelParametersForRun(
+	expectedParameters, err := storedModelParametersForRun(
 		recoveryRun,
 		config.Parameters,
 	)
@@ -1941,8 +1939,6 @@ func loadLoopModelDispatches(
 			) ||
 			attempt.Provider != config.Provider ||
 			attempt.Model != config.Model ||
-			attempt.BillingVersion != config.BillingVersion ||
-			attempt.PriceSnapshotID != config.PriceSnapshotID ||
 			!bytes.Equal(
 				attempt.ParametersCanonical,
 				expectedParameters,
@@ -1952,15 +1948,13 @@ func loadLoopModelDispatches(
 				ErrAdmissionIntegrity,
 			)
 		}
-		budget, err := restoreModelBudget(
-			attempt.BudgetCanonical,
+		sequence, err := corecontract.ParseUsageLedgerRefV1(
+			attempt.UsageLedgerRef,
 			frame.RunID,
 		)
-		if err != nil ||
-			budget.BudgetPolicy != manifest.BudgetPolicy ||
-			budget.LedgerSequence > ledgerHead {
+		if err != nil || sequence > ledgerHead {
 			return nil, loopReadIntegrity(
-				"model Attempt budget",
+				"model Attempt Usage ledger reference",
 				ErrAdmissionIntegrity,
 			)
 		}
@@ -2105,15 +2099,15 @@ func loadLoopActionDispatches(
 				ErrAdmissionIntegrity,
 			)
 		}
-		sequence, err := corecontract.ParseBudgetStateRefV1(
-			attempt.BudgetStateRef,
+		sequence, err := corecontract.ParseUsageLedgerRefV1(
+			attempt.UsageLedgerRef,
 			attempt.RunID,
 		)
 		if err != nil {
 			return nil, loopReadIntegrity("Action budget", err)
 		}
-		ledgerHead, err := corecontract.ParseBudgetStateRefV1(
-			frame.BudgetStateRef,
+		ledgerHead, err := corecontract.ParseUsageLedgerRefV1(
+			frame.UsageLedgerRef,
 			frame.RunID,
 		)
 		if err != nil || sequence > ledgerHead {
@@ -2291,15 +2285,15 @@ func loadLoopChannelDispatches(
 				ErrAdmissionIntegrity,
 			)
 		}
-		sequence, err := corecontract.ParseBudgetStateRefV1(
-			attempt.BudgetStateRef,
+		sequence, err := corecontract.ParseUsageLedgerRefV1(
+			attempt.UsageLedgerRef,
 			attempt.RunID,
 		)
 		if err != nil {
 			return nil, loopReadIntegrity("Channel budget", err)
 		}
-		ledgerHead, err := corecontract.ParseBudgetStateRefV1(
-			frame.BudgetStateRef,
+		ledgerHead, err := corecontract.ParseUsageLedgerRefV1(
+			frame.UsageLedgerRef,
 			frame.RunID,
 		)
 		if err != nil || sequence > ledgerHead {

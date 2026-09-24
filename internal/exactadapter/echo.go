@@ -21,7 +21,7 @@ var (
 	)
 
 	// ErrEchoInvocation identifies an invocation that is not the exact
-	// model.generate/v1 request and provider frozen into this adapter.
+	// model.generate/v2 request and provider frozen into this adapter.
 	ErrEchoInvocation = errors.New(
 		"exactadapter: deterministic Echo rejected invocation",
 	)
@@ -29,10 +29,10 @@ var (
 
 var modelGeneratePortV1 = moduleapi.PortRef{
 	Name:         moduleapi.PortNameModelGenerate,
-	ExactVersion: moduleapi.PortVersionV1,
+	ExactVersion: moduleapi.PortVersionV2,
 }
 
-// DeterministicEcho is a stateless local model.generate/v1 adapter for tests
+// DeterministicEcho is a stateless local model.generate/v2 adapter for tests
 // and local vertical-chain validation. It never estimates or fabricates token,
 // cache, reasoning, or cost values.
 type DeterministicEcho struct {
@@ -91,7 +91,7 @@ func (echo *DeterministicEcho) Invoke(
 	}
 	if prepared.Invocation.Port != modelGeneratePortV1 {
 		return modulehost.InvocationResult{}, fmt.Errorf(
-			"%w: Port must be model.generate/v1",
+			"%w: Port must be model.generate/v2",
 			ErrEchoInvocation,
 		)
 	}
@@ -173,9 +173,9 @@ func (echo *DeterministicEcho) Invoke(
 			err,
 		)
 	}
-	_, usage, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion: moduleapi.ModelUsageReceiptSchemaV1,
+	_, usage, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion: moduleapi.ModelUsageReceiptSchemaV2,
 			RawReceipt:    json.RawMessage(`null`),
 		},
 	)

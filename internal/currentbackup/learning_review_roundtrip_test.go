@@ -353,7 +353,7 @@ func newLearningReviewBackupFixture(t *testing.T) learningReviewBackupFixture {
 	foundBinding := false
 	for _, binding := range baseProfile.Bindings {
 		if binding.Port.Name == moduleapi.PortNameModelGenerate &&
-			binding.Port.ExactVersion == moduleapi.PortVersionV1 {
+			binding.Port.ExactVersion == moduleapi.PortVersionV2 {
 			modelBinding = binding
 			foundBinding = true
 			break
@@ -366,12 +366,12 @@ func newLearningReviewBackupFixture(t *testing.T) learningReviewBackupFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config, err := moduleapi.RestoreModelBindingConfigV1(configRecord.CanonicalBytes)
+	config, err := moduleapi.RestoreModelBindingConfigV2(configRecord.CanonicalBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 	config.Parameters = json.RawMessage(`{"max_tokens":512}`)
-	_, configCanonical, err := moduleapi.NewModelBindingConfigV1(config)
+	_, configCanonical, err := moduleapi.NewModelBindingConfigV2(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -635,7 +635,7 @@ func commitBackupReviewAdmission(
 			ProfileID:     profile.ID,
 			TaskInputRef:  task.Digest,
 			RequestedPorts: []moduleapi.PortRef{{
-				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV1,
+				Name: moduleapi.PortNameModelGenerate, ExactVersion: moduleapi.PortVersionV2,
 			}},
 			Deadline:          time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond),
 			CancellationScope: "run",
@@ -803,17 +803,15 @@ func commitBackupReviewerOutcome(
 func backupReviewUsageCanonical(t *testing.T) []byte {
 	t.Helper()
 	zero := uint64(0)
-	zeroCost := "0"
-	_, canonical, err := moduleapi.NewModelUsageReceiptV1(
-		moduleapi.ModelUsageReceiptV1{
-			SchemaVersion:        moduleapi.ModelUsageReceiptSchemaV1,
-			InputTokens:          &zero,
-			CachedInputTokens:    &zero,
-			UncachedInputTokens:  &zero,
-			OutputTokens:         &zero,
-			ReasoningTokens:      &zero,
-			ProviderReportedCost: &zeroCost,
-			RawReceipt:           []byte(`{"provider":"backup-review-test"}`),
+	_, canonical, err := moduleapi.NewModelUsageReceiptV2(
+		moduleapi.ModelUsageReceiptV2{
+			SchemaVersion:       moduleapi.ModelUsageReceiptSchemaV2,
+			InputTokens:         &zero,
+			CachedInputTokens:   &zero,
+			UncachedInputTokens: &zero,
+			OutputTokens:        &zero,
+			ReasoningTokens:     &zero,
+			RawReceipt:          []byte(`{"provider":"backup-review-test"}`),
 		},
 	)
 	if err != nil {
