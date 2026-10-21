@@ -87,7 +87,7 @@ ext test [--path <directory>] --fixture <file> [--host mock]
 ext run [--data-dir <directory>] [--path <directory>] --workflow <name> [--input <json>|--input-file <file>] [--session <id>] [--request <key>] [--json]
   ext run [--path <directory>] --fixture <file> [--host mock] (fixture compatibility)
 ext logs [--data-dir <directory>] [--json] <id>
-  run [--session <id>] [--model <id>] [--permission <ask|workspace|full>] [--confirm-full-access] [--request <key>] [--template <file>] [--json] [--interactive] <task>
+run [--session <id>] [--model <id>] [--permission <ask|workspace|full>] [--confirm-full-access] [--request <key>] [--template <file>] [--json] [--interactive] <task>
 continue --run <id> [--model <id>] [--max-steps <n>] [--max-seconds <n>] [--interactive] [--json]
 sessions [--show <id>]
 inspect --run <id>
@@ -95,6 +95,8 @@ preview --run <id> [--json]
 confirm --run <id> --digest <digest> [--approve] [--json]
   Without --approve the pending call is declined.
 abandon --run <id>
+control <state|catalog|list|plan|confirm|reject|revert-plan|review> [--kind <kind> --arguments <json>] [--operation <id>] [--code <code>]
+  Changes the same settings as the GUI and the AI conversation; a model proposal needs its confirmation code.
 tools list
 tools test <server>
 doctor
@@ -104,7 +106,7 @@ restore --source <backup-directory> --data-dir <new-directory>
 --version
 
 Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /more /history /sessions /resume <number> /new /status /continue /abandon /file <path> /begin ... /end /exit
-Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes, and Full access auto-runs enabled modifying tools. Commands and loopback HTTP are not sandboxes.
+Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes and sandboxed commands, and Full access auto-runs enabled modifying tools. On Windows commands run in an AppContainer sandbox; Full access runs them on the host. MCP and loopback HTTP are not sandboxed.
 Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
 		return err
 	case "init":

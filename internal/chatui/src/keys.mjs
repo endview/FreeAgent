@@ -43,12 +43,32 @@ export function hasModels(environment) {
   return Object.keys(environment?.models || {}).length > 0;
 }
 
-export function keyFormValue(profile) {
-  return {
+// An unsaved draft overrides the saved values; the secret exists only in it.
+export function keyFormValue(profile, draft = null) {
+  const saved = {
     name: profile?.name || '',
     base_url: profile?.base_url || '',
     protocol: profile?.protocol || 'openai-compatible',
     note: profile?.note || '',
     source: profile?.source || 'saved',
+    key: '',
   };
+  if (!draft) return saved;
+  return {
+    name: draft.name ?? saved.name,
+    base_url: draft.base_url ?? saved.base_url,
+    protocol: draft.protocol || saved.protocol,
+    note: draft.note ?? saved.note,
+    source: draft.source || saved.source,
+    key: draft.key || '',
+  };
+}
+
+// A form that still matches the saved profile needs no draft, so a later
+// external update to that profile is shown instead of stale form values.
+export function keyDraftChanged(profile, form) {
+  const saved = keyFormValue(profile);
+  return Boolean(form.key) || form.name !== saved.name || form.base_url !== saved.base_url ||
+    form.protocol !== saved.protocol || form.note !== saved.note ||
+    (Boolean(form.source) && form.source !== saved.source);
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/endview/freeagent/internal/buildinfo"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 )
 
@@ -45,6 +46,7 @@ func runExtensionHelper() int {
 			var params map[string]any
 			if json.Unmarshal(request.Params, &params) != nil ||
 				params["protocol"] != extensionProtocol ||
+				params["host_version"] != buildinfo.Version ||
 				params["workspace"] == "" || params["data_dir"] == "" {
 				return 3
 			}

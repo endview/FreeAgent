@@ -162,10 +162,10 @@ values. Keys are resolved immediately before each dispatch. The output reports
 `network_tested: false` and
 `credentials_resolved: false`; success does not prove provider compatibility.
 
-Profile edits acquire the sole-writer lock, so exit chat or close the desktop
-or web window before editing profiles. While another process owns the data
-directory, `config show`, `sessions` and `inspect` still read; write commands
-report that the directory is in use.
+While the desktop app or `web` owns the data directory, profile edits attach to
+that owner and use the same typed control operations as the GUI; `config show`
+shows the owner's redacted view. Without an owner they open the directory
+directly. Interactive `chat` still needs the directory to itself.
 Unfinished runs do not block adding profiles or changing the default. Their
 saved bindings are not rewritten; changing a bound profile stops the next
 dispatch until an explicit safe-boundary switch adopts the new revision.
@@ -269,9 +269,20 @@ are errors. An empty `new_text` deletes the matched text, but `null` does not.
 ## Optional Commands
 
 ```text
-freeagent config commands --data-dir <data> --enabled --allow <absolute-executable> --timeout 120 --output-bytes 32768
+freeagent config commands --data-dir <data> --enabled --allow <absolute-executable> --timeout 120 --output-bytes 32768 [--inherit-environment] [--git-write]
 freeagent config commands --data-dir <data> --enabled=false
 ```
+
+On Windows, `command_run` runs in an AppContainer sandbox and the execution
+profile decides its access. Ask runs commands read-only and asks for each one.
+Workspace lets them write the workspace, and selected roots when the file scope
+includes them, with network off and without asking. Full access runs them on
+the host as the current user; the receipt records `host_escape_hatch`. Builds
+without the sandbox report sandboxed commands as unsupported. Command rules,
+edited in Settings or through the `commands.set_policy` control operation, allow,
+ask or deny a program with given arguments: `deny` always blocks and `ask` always
+asks. `--git-write` lets sandboxed commands write `.git`; `.git` itself, hooks and
+config stay protected.
 
 Repeat `--allow` for up to 32 executables. The command selection replaces the
 complete command policy; omitting `--allow` selects no path restriction.
@@ -306,8 +317,8 @@ origins. Explicit ports distinguish origins, including default ports.
 This command replaces the complete HTTP selection and does not probe any URL.
 `tools list` also lists selected commands/HTTP offline, without starting MCP.
 
-`http_get` accepts only `{"url":"<complete-url>"}`. Every exact URL requires
-confirmation, including queries. Remote targets require HTTPS and public
+`http_get` accepts only `{"url":"<complete-url>"}`. Outside Full access, every exact
+URL requires confirmation, including queries. Remote targets require HTTPS and public
 addresses; explicitly selected localhost/loopback origins may use HTTP.
 DNS answers are checked together and the first approved address is pinned for
 the request. There is no address fallback, redirect, proxy, retry, cookie jar,
@@ -396,7 +407,8 @@ certification. The locked SDK and local fixture negotiate tested tool-only
 MCP stdio; server-initiated requests/notifications are rejected.
 
 Names are mapped to stable `mcp_<hash>` aliases. Tool descriptions show original
-names. Every external call requires confirmation regardless of annotations.
+names. Outside Full access, every MCP call requires confirmation regardless of
+annotations.
 Unsupported schemas are rejected individually; external references, unknown
 keywords and `format` are rejected, not weakened. Text and structured results
 are supported; unsupported content is reported as an error with possible effects.

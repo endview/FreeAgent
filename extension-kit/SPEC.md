@@ -28,12 +28,15 @@ method schema when that entrypoint is enabled.
 ```json
 {
   "protocol": "freeagent-ext/1",
-  "host_version": "6.0.0-dev.1",
+  "host_version": "v7.0.1-dev.1",
   "workspace": "C:\\work",
   "data_dir": "C:\\data\\extensions\\com.example.demo\\data",
   "settings": {}
 }
 ```
+
+`host_version` is the release version of the host, or `dev` for a source build.
+Use it for diagnostics only; compatibility is decided by `protocol`.
 
 The extension must return its own identity and the capabilities it actually
 registered:

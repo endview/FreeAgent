@@ -13,7 +13,7 @@ import { STATES, shouldSend, followsLatest, canSubmit, reduceStream, safeStorage
   isCurrentSnapshot, restoreRawBodies, providerFailureText, chatTitle, stateMeta,
   reasonText, activityLabel, submitMode, endRisk, evidenceGroups, shortHash, turnSignature,
   groupChats, prioritizePinned, matchChat, DRAWER_QUERY, attentionTitle, permissionMode } from './state.mjs';
-import { hasModels, keyFormValue, keyHost, keyStatus, modelDisplay, modelsForKey } from './keys.mjs';
+import { hasModels, keyDraftChanged, keyFormValue, keyHost, keyStatus, modelDisplay, modelsForKey } from './keys.mjs';
 import { nextIndex, modelMenuItems } from './menu.mjs';
 import { commandEntries, commandQuery, filterCommands, commandNeedsInput, commandInputDefaults } from './commands.mjs';
 import { installDesktopBridge, setDesktopBusy, notifyDesktopAttention, selectDesktopFolder, selectDesktopFile } from './desktop.mjs';
@@ -47,7 +47,7 @@ const state = { env: null, chats: [], chat: '', drafting: false, creating: false
   raw: new Map(), refresh: { current: 0, earlier: 0, generation: 0 },
   streamRevision: 0, epoch: 0, mutation: false, page: 'chat', keys: null, keyProfile: null,
   keyModels: new Map(), workspaceChanging: false, activeChat: '', offlineSince: 0,
-  keyProbe: null, keyNotice: '', keyModelQuery: '',
+  keyProbe: null, keyNotice: '', keyModelQuery: '', keyDrafts: new Map(), keyManualModel: '',
   connectionEver: false, runAnchor: null, runNotice: '', endIntent: 'end', endPrompt: '',
   earlierLoading: false, chatQuery: '', modelMenuOpen: false, modelMenuIndex: -1,
   pendingModel: '', pendingPermission: '', permissionConfirmed: false, permissionMenuOpen: false,
@@ -948,7 +948,7 @@ function keyModelRows(profile) {
     <button class="text-action" data-action="key-enable" data-model="${esc(model)}" ${profile ? '' : 'disabled'}>添加</button>
   </li>`).join('');
   const addAll = available.length && profile ? `<button class="text-action" data-action="key-enable-all">自动填充 ${available.length} 个模型</button>` : '';
-  const manual = `<div class="manual-model"><label>手动填写模型<input id="manual-model" type="text" maxlength="256" placeholder="服务商未提供模型列表"></label><button class="text-action" data-action="key-enable-manual" ${profile ? '' : 'disabled'}>添加</button></div>${addAll}`;
+  const manual = `<div class="manual-model"><label>手动填写模型<input id="manual-model" type="text" maxlength="256" value="${esc(state.keyManualModel)}" placeholder="服务商未提供模型列表"></label><button class="text-action" data-action="key-enable-manual" ${profile ? '' : 'disabled'}>添加</button></div>${addAll}`;
   const search = probe?.models?.length ? `<label class="model-search">筛选模型<input id="key-model-search" type="search" value="${esc(state.keyModelQuery)}" placeholder="搜索型号"></label>` : '';
   return `${search}<ul class="key-model-list">${rows || '<li class="key-hint">此配置还没有启用模型。</li>'}${availableRows}</ul>${manual}`;
 }
@@ -956,7 +956,11 @@ function renderKeysView() {
   const root = $('#keys-view');
   const profiles = state.keys?.profiles || [];
   const profile = selectedKeyProfile();
-  const value = keyFormValue(profile);
+  // Refreshes on window focus rebuild this view; keep unsaved input and caret.
+  const active = root.contains(document.activeElement) ? document.activeElement : null;
+  const focusID = active?.id || '';
+  const caret = typeof active?.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
+  const value = keyFormValue(profile, state.keyDrafts.get(profile?.id || ''));
   const protocolLocked = profile && modelsForKey(state.env, profile.id).length > 0;
   root.innerHTML = `<div class="keys-header"><div><h2 id="keys-title">Key 管理</h2><p>Key 只保存在本机；模型配置引用 Key，不保存 Key 原文。</p></div>
     <button class="icon" data-action="key-new" title="新增 Key" aria-label="新增 Key">${icon('plus')}</button></div>
@@ -980,6 +984,21 @@ function renderKeysView() {
       <section class="key-model-section"><header><h3>模型</h3><span class="key-hint">${profile && state.keyModels.get(profile.id) ? `最近获取 ${(state.keyModels.get(profile.id).models || []).length} 个` : ''}</span></header>${keyModelRows(profile)}</section>
     </div></div>`;
   decorate(root);
+  const secret = root.querySelector('#key-secret');
+  if (secret && value.key) secret.value = value.key;
+  const focused = focusID ? root.querySelector('#' + CSS.escape(focusID)) : null;
+  if (focused) {
+    focused.focus({ preventScroll: true });
+    if (caret) try { focused.setSelectionRange(...caret); } catch { /* not a text field */ }
+  }
+}
+function rememberKeyDraft() {
+  if (!$('#key-form')) return;
+  const profile = selectedKeyProfile();
+  const id = profile?.id || '';
+  const form = keyForm();
+  if (keyDraftChanged(profile, form)) state.keyDrafts.set(id, form);
+  else state.keyDrafts.delete(id);
 }
 async function loadKeys(select = state.keyProfile) {
   state.keys = await api('keys');
@@ -2028,9 +2047,11 @@ async function copy(raw, source) {
 async function saveKey() {
   const form = $('#key-form');
   if (!form.reportValidity()) return;
+  rememberKeyDraft();
   const value = keyForm();
   const path = value.id ? `keys/${encodeURIComponent(value.id)}/update` : 'keys';
   const saved = await api(path, value);
+  state.keyDrafts.delete(value.id);
   if (!value.id && state.keyProbe) state.keyModels.set(saved.id, state.keyProbe);
   state.keyProbe = null;
   state.keyProfile = saved.id;
@@ -2039,6 +2060,7 @@ async function saveKey() {
   renderKeysView();
 }
 async function testKey() {
+  rememberKeyDraft();
   const value = keyForm();
   if (value.source === '') {
     error('环境变量来源由 CLI 管理，界面不能直接测试。');
@@ -2063,16 +2085,6 @@ async function testKey() {
   }
   state.keyNotice = result.category === 'ok' ? `连接成功，共 ${result.models?.length || 0} 个模型。` : `连接测试：${result.category}${result.detail ? `，${result.detail}` : ''}`;
   renderKeysView();
-  restoreKeyForm(value);
-}
-function restoreKeyForm(value) {
-  const root = $('#keys-view');
-  for (const [id, raw] of [['key-name', value.name], ['key-base-url', value.base_url], ['key-note', value.note], ['key-secret', value.key]]) {
-    const node = root.querySelector(`#${id}`);
-    if (node && raw !== undefined) node.value = raw;
-  }
-  const protocol = root.querySelector('#key-protocol');
-  if (protocol && value.protocol) protocol.value = value.protocol;
 }
 async function fetchKeyModels() {
   const profile = selectedKeyProfile();
@@ -2136,6 +2148,7 @@ async function deleteKey() {
   } else if (!window.confirm(`删除 Key“${profile.name}”？`)) return;
   await api(`keys/${encodeURIComponent(profile.id)}/delete`, { disable_models: disableModels, new_default: newDefault });
   state.keyModels.delete(profile.id);
+  state.keyDrafts.delete(profile.id);
   state.keyProfile = '';
   await loadKeys();
   await refreshEnvironment();
@@ -2213,7 +2226,12 @@ async function act(action, node = null) {
     case 'key-models': await fetchKeyModels(); break;
     case 'key-delete': await deleteKey(); break;
     case 'key-enable': await enableKeyModel(node?.dataset.model || ''); break;
-    case 'key-enable-manual': await enableKeyModel($('#manual-model')?.value || ''); break;
+    case 'key-enable-manual':
+      state.keyManualModel = $('#manual-model')?.value || '';
+      await enableKeyModel(state.keyManualModel);
+      state.keyManualModel = '';
+      renderKeysView();
+      break;
     case 'key-enable-all': await enableKeyModels((state.keyModels.get(selectedKeyProfile()?.id)?.models || state.keyProbe?.models || []).filter((model) => !modelsForKey(state.env, selectedKeyProfile()?.id).some((item) => item.model === model))); break;
     case 'key-default': await setDefaultModel(node?.dataset.modelId || ''); break;
     case 'key-disable': await disableKeyModel(node?.dataset.modelId || ''); break;
@@ -2351,6 +2369,7 @@ document.addEventListener('click', async (event) => {
       state.keyProfile = node.dataset.keyId;
       state.keyNotice = '';
       state.keyModelQuery = '';
+      state.keyManualModel = '';
       renderKeysView();
     } else if (node.dataset.action === 'earlier') {
       await loadEarlier();
@@ -2562,8 +2581,17 @@ $('#keys-view').addEventListener('change', (event) => {
     const secret = $('#key-secret');
     if (secret) secret.value = '';
   }
+  if (event.target.id === 'key-preset' || event.target.closest('#key-form')) rememberKeyDraft();
 });
 $('#keys-view').addEventListener('input', (event) => {
+  if (event.target.closest('#key-form')) {
+    rememberKeyDraft();
+    return;
+  }
+  if (event.target.id === 'manual-model') {
+    state.keyManualModel = event.target.value;
+    return;
+  }
   if (event.target.id !== 'key-model-search') return;
   state.keyModelQuery = event.target.value;
   renderKeysView();

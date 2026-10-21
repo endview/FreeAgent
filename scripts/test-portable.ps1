@@ -211,8 +211,9 @@ try {
     $copiedCli = Join-Path $Root 'freeagent.exe'
     Copy-Item -LiteralPath $cli -Destination $copiedCli
     $copiedVersion = Invoke-Cli -Executable $copiedCli -Arguments @('--version')
+    $versionPrefix = '^freeagent version=' + [regex]::Escape($manifest.candidate) + '(\+dirty)? commit=[0-9a-f]{40} '
     if ($version.exit_code -ne 0 -or $copiedVersion.exit_code -ne 0 -or
-        $version.text -notmatch '^freeagent version=' -or $copiedVersion.text -notmatch '^freeagent version=') {
+        $version.text -notmatch $versionPrefix -or $copiedVersion.text -notmatch $versionPrefix) {
         throw 'CLI version check failed.'
     }
 

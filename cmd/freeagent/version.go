@@ -6,20 +6,16 @@ import (
 	"io"
 	"regexp"
 	"runtime"
+
+	"github.com/endview/freeagent/internal/buildinfo"
 )
 
 const (
-	defaultBuildVersion = "dev"
-	defaultBuildCommit  = "unknown"
+	defaultBuildVersion = buildinfo.DefaultVersion
+	defaultBuildCommit  = buildinfo.DefaultCommit
 )
 
-// These variables are intentionally package-level strings so release builds can
-// set them deterministically with go build -ldflags -X=main.<name>=<value>.
-var (
-	buildVersion = defaultBuildVersion
-	buildCommit  = defaultBuildCommit
-	buildTarget  = runtime.GOOS + "/" + runtime.GOARCH
-)
+var buildTarget = runtime.GOOS + "/" + runtime.GOARCH
 
 var (
 	semanticVersionPattern = regexp.MustCompile(
@@ -41,8 +37,8 @@ func isVersionRequest(args []string) bool {
 
 func currentBuildInfo() buildInfo {
 	return buildInfo{
-		Version: buildVersion,
-		Commit:  buildCommit,
+		Version: buildinfo.Version,
+		Commit:  buildinfo.Commit,
 		Target:  buildTarget,
 	}
 }

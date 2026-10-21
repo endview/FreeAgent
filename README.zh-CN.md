@@ -3,7 +3,7 @@
 一个精简的本地 Harness：持久对话、连续模型与工具调用、流式输出、确认修改、
 取消和中断恢复。基础文件任务不需要安装 MCP。
 
-当前是 **尚未发布的 v7.0.0-dev.1 开发候选**。采用独立的 Harness-v5 数据目录和 v7 存储格式，
+当前是 **尚未发布的 v7.0.1-dev.1 开发候选**。采用独立的 Harness-v5 数据目录和 v7 存储格式，
 不支持旧配置、数据库、备份、命令或 SDK，不迁移、不导入，也不扫描旧安装。
 v7 控制服务、GUI/CLI attach、Windows 沙箱命令启动器和当前 Provider 适配器已实现。
 2026-10-21 已通过 v7.0 验收：DeepSeek 真实 Chat、工具、Responses 与联网搜索，
@@ -93,7 +93,8 @@ key 从不作为命令参数传入。Windows 上保存的 key 用 DPAPI 按当�
 - `run --model <名称>` 仅指定本次任务；`continue --model <名称>` 仅在完整工具组边界切换。
 - `/more` 或 `continue --max-steps <数值> --max-seconds <数值>` 显式增加有限执行额度，不清零历史，不重放 UNKNOWN。
 - `config commands --enabled --allow <绝对可执行路径>` 启用可选命令和白名单；
-  `--allow` 可重复，不设置白名单时仍须逐次确认，不能视为沙箱。
+  `--allow` 可重复，只限制可运行的程序路径，不限制参数和子进程。
+  `--git-write` 允许沙箱命令写入 `.git`，hooks 和 config 仍为只读。
 - `config http --enabled --origin <scheme://host[:port]>` 启用可选 GET；
   `--origin` 可重复，每个完整 URL 仍须确认。`--enabled=false` 关闭可选工具。
 - `config context --summary-bytes 4096` 显式开启任务内摘要；零表示关闭。
@@ -102,13 +103,19 @@ key 从不作为命令参数传入。Windows 上保存的 key 用 DPAPI 按当�
 - `/settings memory` 或 `config memory --knowledge` 显式开启默认关闭的本地知识库。
 - `sessions` 列出会话；`chat --resume <id>` 继续对话。
 - `run --session <id> --request <key> --json "<任务>"` 支持一次任务与结构化输出。
-- 文件修改、创建、具体批量变更、命令、HTTP 和所有 MCP 调用均要求确认；
+- 默认的 Ask 模式下，文件修改、创建、具体批量变更、命令、HTTP 和所有 MCP 调用均要求确认；
+  `run --permission workspace` 让工作区内的内置文件修改和沙箱命令直接执行，
+  `--permission full --confirm-full-access` 跳过工具审批并在宿主机运行命令。
+  模型提出的设置变更始终需要确认：CLI 显示短确认码，Chat 显示确认卡片。
   非交互任务停在 `waiting_confirmation`，
   用 `continue --run <id> --interactive` 继续，或先 `preview --run <id>` 查看，
   再 `confirm --run <id> --digest <digest> --approve` 批准；不带 `--approve` 即拒绝。
   摘要与待确认调用不一致时拒绝执行，需要重新预览。
 - `inspect --run <id>` 查看运行与调用事实；`abandon --run <id>` 结束未完成任务。
-- 数据目录被其他进程占用时，`sessions` 和 `inspect` 显示只读视图，写命令提示目录正在使用。
+- `control state|plan|confirm|reject|revert-plan` 查看和修改设置，与 GUI、AI 对话使用同一个控制服务。
+- 桌面版或 `web` 正在使用数据目录时，`run`、`continue`、`preview`、`confirm`、`control`、
+  `config`、`key` 和 `memory` 会连接到该进程继续操作，`sessions` 和 `inspect` 显示只读视图；
+  交互式 `chat` 需要独占数据目录。
 - 退出码：0 完成，1 失败，2 用法或配置错误，3 等待确认，4 停止或达到上限，5 结果未知。
 - `tools list` 与 `doctor` 不联网、不启动外部程序；
   `tools test <server>` 明确启动受信程序，只握手和发现工具。
@@ -137,10 +144,13 @@ key 从不作为命令参数传入。Windows 上保存的 key 用 DPAPI 按当�
 
 ## 边界
 
-内置列举、读取、搜索、受控编辑、创建和批量变更只处理选定工作目录，拒绝链接、硬链接、
+内置列举、读取、搜索、受控编辑、创建和批量变更默认只处理选定工作目录，除非显式选择了
+额外目录或全部非保护路径；拒绝链接、硬链接、
 `.git` 和 Harness 数据目录。编辑检查 SHA-256 冲突，但不是事务文件系统；
 不要同时修改同一个文件。MCP 是受信本地代码，不提供恶意程序沙箱。
 批量批准绑定具体内容，每项结果独立记录；部分成功不会回滚或自动重放。
+Windows 下命令在 AppContainer 沙箱中运行：Ask 模式只读，Workspace 模式可写工作区且不联网；
+只有 Full access 在宿主机以当前用户运行，并在回执中标记 `host_escape_hatch`。
 命令记录实际退出、超时、截断和观察到的文件变化；停止不等于没有副作用。
 HTTP 仅允许显式来源，远程需 HTTPS 和公共地址；显式回环来源可用 HTTP。
 不使用代理、Cookie、凭据转发、重定向或自动重试；GET 仍可能产生外部副作用。

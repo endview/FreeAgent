@@ -21,6 +21,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/endview/freeagent/internal/buildinfo"
 	"github.com/endview/freeagent/internal/mcpstdio"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -1457,7 +1458,7 @@ func (client *extensionClient) initialize(parent context.Context, host *extensio
 		return err
 	}
 	raw, err := client.rpc.Call(ctx, "initialize", map[string]any{
-		"protocol": extensionProtocol, "host_version": "6.1.0-dev.1",
+		"protocol": extensionProtocol, "host_version": buildinfo.Version,
 		"workspace": config.Workspace, "data_dir": dataDir,
 		"settings": config.Extensions.Settings[manifest.ID],
 	})

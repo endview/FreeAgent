@@ -4,7 +4,7 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **unreleased v7.0.0-dev.1 development candidate**. It uses a new
+This is the **unreleased v7.0.1-dev.1 development candidate**. It uses a new
 current-only `Harness-v5` data directory and the v7 store format. Old
 configurations, databases, backups, commands, and SDKs are not supported or
 imported. Do not point it at an old data directory.
@@ -115,14 +115,15 @@ config model --id <name> [--default] --provider echo
 config model --id <name> --default
 config model --id <name> --remove [--new-default <id>]
 config workspace --path <directory>
-config commands --enabled [--allow <absolute-executable>] [--timeout 120 --output-bytes 32768]
+config commands --enabled [--allow <absolute-executable>] [--timeout 120 --output-bytes 32768] [--inherit-environment] [--git-write]
 config http --enabled --origin <scheme://host[:port]> [--timeout 20 --output-bytes 32768]
 config context --summary-bytes <0-16384>
 config collaboration --mode off|ask|auto
 config memory [--knowledge] [--max-entries 16 --context-bytes 16384 --document-bytes 65536]
+control <state|catalog|list|plan|confirm|reject|revert-plan|review> [--kind <kind> --arguments <json>] [--operation <id>] [--code <code>]
 chat [--resume <session>]
 web [--port <loopback-port>]
-run [--session <id>] [--model <id>] [--request <key>] [--template <workspace-file>] [--json] [--interactive] <task>
+run [--session <id>] [--model <id>] [--permission ask|workspace|full] [--confirm-full-access] [--request <key>] [--template <workspace-file>] [--json] [--interactive] <task>
 continue --run <id> [--model <id>] [--max-steps <n>] [--max-seconds <n>] [--interactive] [--json]
 sessions [--show <id>]
 inspect --run <id>
@@ -131,6 +132,7 @@ confirm --run <id> --digest <digest> [--approve] [--json]
 abandon --run <id>
 tools list
 tools test <server>
+ext <new|check|test|run|logs> [flags]
 memory <scopes|list|read|save|save-result|update|disable|enable|delete|copy|import|search|sources|select|clear|agent> [flags]
 collab create --plan <json-file>
 collab continue --parent <id> [--interactive]
@@ -166,7 +168,13 @@ limits, in addition to `/history`, `/sessions`, `/resume
 ... `/end`, and `/exit`. Ctrl+C during a task cancels that task and returns to
 input when possible; Ctrl+C while idle exits chat.
 
-File changes, commands, HTTP GET and **every MCP call** require explicit confirmation. Noninteractive
+In the default Ask mode, file changes, commands, HTTP GET and **every MCP
+call** require explicit confirmation. `run --permission workspace` runs built-in
+workspace file changes and sandboxed commands without asking;
+`--permission full --confirm-full-access` skips tool approval and runs commands
+on the host. Settings changes proposed by the model always need confirmation:
+the CLI shows a short code, Chat shows a card. `control` changes the same settings
+as the GUI and the AI conversation through one control service. Noninteractive
 tasks stop at `waiting_confirmation`; continue them with `--interactive`, or
 run `preview --run <id>` and then `confirm --run <id> --digest <digest>
 --approve`. Without `--approve`, `confirm` declines the call. A digest that no
@@ -195,7 +203,8 @@ learning. See [Memory](docs/MEMORY.md) for commands and deletion boundaries.
 ## Boundaries
 
 - File listing, bounded UTF-8 reading, literal search, editing, creation and
-  concrete batch changes are restricted to the selected workspace. Links, hardlinks, `.git`
+  concrete batch changes are restricted to the selected workspace unless allowed
+  roots or all non-protected paths are selected. Links, hardlinks, `.git`
   and the harness data directory are excluded.
 - Directory listing is sorted and paginated with `next_offset`. File reading
   returns whole UTF-8 characters, including when a requested page is smaller
@@ -206,10 +215,12 @@ learning. See [Memory](docs/MEMORY.md) for commands and deletion boundaries.
 - Batch approval binds the exact targets, original hashes and proposed changes.
   Files are revalidated before dispatch; per-file progress is saved. Partial
   success is not rolled back or automatically replayed.
-- Local commands are disabled by default. Optional exact executable allowlists
-  restrict which path may run, not its arguments or descendants. Each command
-  still requires exact argv/cwd/environment approval. Cleanup is best effort,
-  not undo or a sandbox.
+- Local commands are disabled by default. On Windows they run in an
+  AppContainer sandbox: read-only in Ask mode, workspace writes without network
+  in Workspace mode. Only Full access runs them on the host as the current user,
+  recorded with `host_escape_hatch`. Command rules allow, ask or deny a program and
+  its arguments; executable allowlists restrict which path may run, not its
+  descendants. Cleanup is best effort, not undo.
 - HTTP GET is disabled by default, origin-allowlisted and approved per URL.
   Remote targets require HTTPS and public addresses; explicitly configured
   loopback origins may use HTTP. No proxy, cookies, credentials, redirects or
@@ -222,10 +233,12 @@ learning. See [Memory](docs/MEMORY.md) for commands and deletion boundaries.
 - Interrupted dispatched calls remain `UNKNOWN`. Ordinary continuation and
   duplicate requests never replay them. Abandoning a task retains its unknown
   records and warns later tasks in that workspace.
-- Only one writer owns a data directory. There is no HTTP control platform or
-  background service; `web` explicitly starts an optional loopback Chat.
-  While another process owns it, `sessions` and `inspect` show a read-only
-  view and write commands report that the directory is in use.
+- Only one owner process writes a data directory. There is no HTTP control
+  platform or background service; `web` explicitly starts an optional loopback
+  Chat. While the desktop app or `web` owns it, `run`, `continue`, `preview`,
+  `confirm`, `control`, `config`, `key` and `memory` attach to that owner and
+  `sessions` and `inspect` show a read-only view. Interactive `chat` needs
+  the directory to itself.
 - MCP is opt-in trusted local code, **not a sandbox**. It can access anything its
   operating-system account can access. Installation and updates are the user's
   responsibility.

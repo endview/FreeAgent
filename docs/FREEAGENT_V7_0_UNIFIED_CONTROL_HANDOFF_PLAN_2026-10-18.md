@@ -473,7 +473,7 @@ The catalog covers all persistent product settings, including:
 - Key profile creation, update, test, model discovery and removal;
 - secure Key re-entry through hidden GUI or CLI input;
 - workspace selection;
-- file scope, per-root access mode, additional roots and blocked paths;
+- file scope, additional roots and blocked paths;
 - permission mode, sandbox mode and Full access confirmation;
 - file, command, network and memory tool switches;
 - command execution mode, executable allowlist, rules, timeout and output cap;
@@ -1056,18 +1056,9 @@ the sandbox profile is not ready.
 
 Command-visible additional roots are the selected file roots, and only when
 the Run's file scope includes them; a workspace-only Run grants commands the
-workspace alone. Additional roots are current-format records, not strings.
-Each record contains:
-
-- canonical path;
-- access mode: read, write or git_write;
-- user confirmation revision;
-- content or directory identity when required;
-- capability grant ID;
-- grant status.
-
-The data directory format is Harness-v5. Old AdditionalRoots arrays are not
-converted. A new Harness-v5 data directory is created instead.
+workspace alone. Additional roots are stored as canonical paths; their access
+follows the Run's sandbox mode. Per-root access records were dropped in the
+October 21 review together with the grant ledger they depended on.
 
 ### 11.4 Skill and Extension trust
 
@@ -1578,7 +1569,7 @@ This revision resolves the architecture review findings:
 - attach is a full client, has owner promotion semantics, protected
   credentials and generation-scoped cursors;
 - desktop config and workspace operations use the owner control API;
-- AdditionalRoots becomes a current-only per-root access record in Harness-v5.
+- AdditionalRoots stays a list of canonical paths in Harness-v5.
 
 The host boundary and high-risk review adds:
 

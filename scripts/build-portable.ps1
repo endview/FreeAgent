@@ -29,16 +29,20 @@ try {
     $env:GOOS = 'windows'
     $env:GOARCH = 'amd64'
     $env:CGO_ENABLED = '0'
-    & $Go build -trimpath -buildvcs=false -ldflags '-H=windowsgui' `
-        -o (Join-Path $package 'FreeAgent.exe') ./cmd/freeagent-desktop
-    if ($LASTEXITCODE -ne 0) { throw 'Portable desktop binary build failed.' }
-    & $Go build -trimpath -buildvcs=false `
-        -o (Join-Path $package 'bin/freeagent.exe') ./cmd/freeagent
-    if ($LASTEXITCODE -ne 0) { throw 'Portable CLI binary build failed.' }
     $sourceBase = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Source revision could not be recorded.' }
     $sourceDirty = -not [string]::IsNullOrWhiteSpace((& git status --porcelain=v1 | Out-String))
     if ($LASTEXITCODE -ne 0) { throw 'Source status could not be recorded.' }
+    # The CLI reports this version and commit; a dirty tree is marked in the
+    # version's build metadata.
+    $buildVersion = if ($sourceDirty) { "$candidate+dirty" } else { $candidate }
+    $buildInfo = 'github.com/endview/freeagent/internal/buildinfo'
+    & $Go build -trimpath -buildvcs=false -ldflags '-H=windowsgui' `
+        -o (Join-Path $package 'FreeAgent.exe') ./cmd/freeagent-desktop
+    if ($LASTEXITCODE -ne 0) { throw 'Portable desktop binary build failed.' }
+    & $Go build -trimpath -buildvcs=false -ldflags "-X $buildInfo.Version=$buildVersion -X $buildInfo.Commit=$sourceBase" `
+        -o (Join-Path $package 'bin/freeagent.exe') ./cmd/freeagent
+    if ($LASTEXITCODE -ne 0) { throw 'Portable CLI binary build failed.' }
     $versionLine = & (Join-Path $package 'bin/freeagent.exe') --version
     if ($LASTEXITCODE -ne 0) { throw 'Built CLI version check failed.' }
 } finally {
