@@ -11,6 +11,17 @@ import (
 	"github.com/endview/freeagent/internal/harness"
 )
 
+// canonicalTempDir matches the saved form of a root: Windows runners may
+// report TEMP with an 8.3 short name that root normalization expands.
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestChatServerRuntimePermissionsAndGenerationConflicts(t *testing.T) {
 	ui := setupUI(t, harness.EchoModel{})
 	code, raw := ui.request(t, http.MethodGet, "/api/commands", nil)
@@ -42,7 +53,7 @@ func TestChatServerRuntimePermissionsAndGenerationConflicts(t *testing.T) {
 		t.Fatalf("stale command update %d %s", code, raw)
 	}
 
-	external := t.TempDir()
+	external := canonicalTempDir(t)
 	code, raw = ui.request(t, http.MethodPut, "/api/permissions/files", map[string]any{
 		"roots": []string{external}, "computer_files": false, "base_generation": "2",
 	})
@@ -72,7 +83,7 @@ func TestChatServerRuntimePermissionsAndGenerationConflicts(t *testing.T) {
 
 func TestChatServerExecutionProfileAndCommandRules(t *testing.T) {
 	ui := setupUI(t, harness.EchoModel{})
-	external := t.TempDir()
+	external := canonicalTempDir(t)
 	code, raw := ui.request(t, http.MethodPut, "/api/permissions/profile", map[string]any{
 		"permission_mode": "workspace", "file_scope": "selected_roots", "additional_roots": []string{external},
 		"network_policy": map[string]any{"mode": "off"}, "base_generation": "1",

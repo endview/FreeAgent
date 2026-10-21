@@ -779,5 +779,14 @@ Windows: update-notices.ps1 -Check                PASS
 pnpm test / pnpm build (internal/chatui)          62/62 PASS / unchanged assets
 ```
 
+The first GitHub Actions run on `windows-latest` found two more issues:
+
+- Two Chat settings tests compared a `t.TempDir()` root verbatim, but the
+  runner's `TEMP` is an 8.3 short name that root normalization expands. The
+  tests now compare the canonical path; reproduced locally with a short `TEMP`.
+- The extension `initialize` handshake used the 2-second call timeout, which
+  also had to cover a cold Python start. The handshake now allows at least 10
+  seconds; later calls keep the manifest timeout.
+
 The release package is rebuilt from the tagged commit and attached to the
 GitHub release `v7.0.0-dev.1` with its SHA-256 in `SHA256SUMS.txt`.

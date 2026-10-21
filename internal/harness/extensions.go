@@ -29,6 +29,7 @@ import (
 const (
 	extensionProtocol        = "freeagent-ext/1"
 	defaultExtensionTimeout  = 2000
+	extensionStartupTimeout  = 10 * time.Second
 	defaultExtensionChars    = 2000
 	maxExtensionManifest     = 1 << 20
 	maxExtensionBlocks       = 128
@@ -1446,7 +1447,9 @@ func (host *extensionHost) extensionWorkflowTools(ctx context.Context, id string
 }
 
 func (client *extensionClient) initialize(parent context.Context, host *extensionHost, manifest ExtensionManifest, config Config) error {
-	timeout := extensionTimeout(manifest)
+	// The handshake also covers interpreter startup, which can be slow on a
+	// cold or scanned first launch; later calls keep the manifest timeout.
+	timeout := max(extensionTimeout(manifest), extensionStartupTimeout)
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	dataDir := filepath.Join(host.dataDir, "extensions", manifest.ID, "data")
