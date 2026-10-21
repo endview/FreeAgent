@@ -1,0 +1,12 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "com.example.tool",
+  "version": "0.1.0",
+  "name": "Tool extension",
+  "description": "A read-only extension tool.",
+  "run": {
+    "command": "python",
+    "args": ["main.py"]
+  },
+  "tools": true
+}

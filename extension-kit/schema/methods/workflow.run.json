@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["invocation", "name", "input"],
+  "properties": {
+    "invocation": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "input": {"type": "object"},
+    "message": {},
+    "history": {"type": "array"}
+  }
+}

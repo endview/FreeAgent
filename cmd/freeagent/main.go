@@ -1,1190 +1,1075 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/endview/freeagent/internal/corecontract"
-	"github.com/endview/freeagent/internal/currentbackup"
-	"github.com/endview/freeagent/internal/currentstore"
-	"github.com/endview/freeagent/internal/localchat"
-	"github.com/endview/freeagent/internal/runscheduler"
-)
-
-const (
-	defaultTenantID    = "default"
-	defaultPrincipalID = "local-operator"
-	defaultWorkspaceID = "local-chat"
-	defaultAgentID     = "assistant"
-	defaultProfileID   = "pure-chat"
-	defaultListen      = "127.0.0.1:8080"
-	backupToolVersion  = "freeagent-cli/s1"
+	"github.com/endview/freeagent/internal/apppaths"
+	"github.com/endview/freeagent/internal/harness"
 )
 
 func main() {
-	args := os.Args[1:]
-	var ctx context.Context = context.Background()
-	var stop context.CancelFunc = func() {}
-	if !isVersionRequest(args) {
-		ctx, stop = signal.NotifyContext(
-			ctx,
-			os.Interrupt,
-			syscall.SIGTERM,
-		)
+	signals := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if len(os.Args) == 1 || os.Args[1] == "chat" || os.Args[1] == "--data-dir" {
+		signals = []os.Signal{syscall.SIGTERM}
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), signals...)
 	defer stop()
-	if err := run(ctx, args, os.Stdout, os.Stderr); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	handled, err := showDoubleClickHint(os.Args[1:])
+	if !handled && err == nil {
+		err = run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	}
+	if err != nil {
+		reportError(os.Stderr, err)
+		code := exitCode(err)
+		if code != 0 {
+			keepLaunchErrorVisible()
+		}
+		os.Exit(code)
 	}
 }
 
-func run(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) error {
-	if ctx == nil {
-		return errors.New("freeagent: context is nil")
-	}
+func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return commandUsageError()
+		args = []string{"chat"}
+	} else if args[0] == "--data-dir" {
+		args = append([]string{"chat"}, args...)
+	}
+	if ctx == nil || stdin == nil || stdout == nil || stderr == nil {
+		return usageErr("freeagent: context and input/output streams are required")
 	}
 	switch args[0] {
 	case "--version":
 		return runVersion(args[1:], stdout, currentBuildInfo())
+	case "help", "--help", "-h":
+		_, _ = fmt.Fprintln(stdout, "Optional collaboration: /collaboration off|ask|auto|once; /settings advanced; run --collaboration off|ask|auto; config collaboration --mode off|ask|auto. Explicit plan inspection and controls: collab create/continue/inspect/control/adjust/preview/confirm/resolve.")
+		_, err := fmt.Fprintln(stdout, `FreeAgent Harness
+
+freeagent [--data-dir <directory>] opens a work session
+init --workspace <directory> [--data-dir <directory>]
+key list [--json]
+key add --name <name> --url <address> [--note <text>] [--preset deepseek] [--key-stdin | --key-env <variable> | --no-key]
+  Without a source flag the key is read with hidden input. Keys are never passed as arguments.
+key edit <id|name> [--name <name>] [--url <address>] [--note <text>] [--key-prompt | --key-stdin | --key-env <variable> | --no-key]
+key remove <id|name> [--force | --disable-models [--new-default <id>]] [--data-dir <directory>]
+key test <id|name> [--json]
+key models <id|name> [--json]
+config show
+config model --id <name> [--default] [--key <key profile id|name> --model <name>] [--provider <echo|openai-compatible>]
+  --key names a key profile from "key list", not the key itself. --provider echo is for tests only.
+  Optional capabilities: --tools <supported|none> --context-bytes <n> --output-tokens <n> --strength <light|standard|strong>
+config model --id <name> --default            switches the default model
+config model --id <name> --remove [--new-default <id>]
+config workspace --path <directory>
+config auto --enabled [--default] [--allow-model <id>] [--assessment-model <id>] [--max-candidates 8 --max-assessments 1 --max-upgrades 1]
+config commands --enabled [--allow <absolute-path>] [--timeout 120 --output-bytes 32768 --inherit-environment --git-write]
+config http --enabled --origin <scheme://host[:port]> [--timeout 20 --output-bytes 32768]
+config context --summary-bytes <0-16384>
+config memory [--knowledge] [--max-entries 16 --context-bytes 16384 --document-bytes 65536]
+memory <scopes|list|read|save|save-result|update|disable|enable|delete|copy|import|search|sources|select|clear|agent> [flags]
+chat [--resume <session>]
+web [--port <number>]
+ext new [--out <directory>] <context|workflow|tool> <id>
+ext check [--path <directory>] [<directory>]
+ext test [--path <directory>] --fixture <file> [--host mock]
+ext run [--data-dir <directory>] [--path <directory>] --workflow <name> [--input <json>|--input-file <file>] [--session <id>] [--request <key>] [--json]
+  ext run [--path <directory>] --fixture <file> [--host mock] (fixture compatibility)
+ext logs [--data-dir <directory>] [--json] <id>
+  run [--session <id>] [--model <id>] [--permission <ask|workspace|full>] [--confirm-full-access] [--request <key>] [--template <file>] [--json] [--interactive] <task>
+continue --run <id> [--model <id>] [--max-steps <n>] [--max-seconds <n>] [--interactive] [--json]
+sessions [--show <id>]
+inspect --run <id>
+preview --run <id> [--json]
+confirm --run <id> --digest <digest> [--approve] [--json]
+  Without --approve the pending call is declined.
+abandon --run <id>
+tools list
+tools test <server>
+doctor
+backup --out <new-directory>
+backup-verify --source <backup-directory>
+restore --source <backup-directory> --data-dir <new-directory>
+--version
+
+Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /more /history /sessions /resume <number> /new /status /continue /abandon /file <path> /begin ... /end /exit
+Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes, and Full access auto-runs enabled modifying tools. Commands and loopback HTTP are not sandboxes.
+Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
+		return err
 	case "init":
 		return runInit(ctx, args[1:], stdout, stderr)
-	case "conversation-create":
-		return runConversationCreate(ctx, args[1:], stdout, stderr)
-	case "conversation-get":
-		return runConversationGet(ctx, args[1:], stdout, stderr)
+	case "key":
+		return runKey(ctx, args[1:], stdin, stdout, stderr)
+	case "config":
+		return runConfig(ctx, args[1:], stdin, stdout, stderr)
+	case "control":
+		return runControl(ctx, args[1:], stdin, stdout, stderr)
+	case "memory":
+		return runMemory(ctx, args[1:], stdin, stdout, stderr)
+	case "sessions":
+		return runSessions(ctx, args[1:], stdout, stderr)
+	case "inspect":
+		return runInspect(ctx, args[1:], stdout, stderr)
+	case "preview":
+		return runPreview(ctx, args[1:], stdout, stderr)
+	case "confirm":
+		return runConfirm(ctx, args[1:], stdin, stdout, stderr)
+	case "abandon":
+		return runAbandon(ctx, args[1:], stdout, stderr)
+	case "tools":
+		return runTools(ctx, args[1:], stdout, stderr)
+	case "collab":
+		return runCollaboration(ctx, args[1:], stdin, stdout, stderr)
+	case "run":
+		return runTask(ctx, args[1:], stdin, stdout, stderr)
+	case "continue":
+		return runContinue(ctx, args[1:], stdin, stdout, stderr)
 	case "chat":
-		return runChat(ctx, args[1:], stdout, stderr)
-	case "s3-eval":
-		return runS3Eval(ctx, args[1:], stdout, stderr)
-	case "s3-store-audit":
-		return runS3StoreAudit(ctx, args[1:], stdout, stderr)
-	case "s3-cell-audit":
-		return runS3CellAudit(ctx, args[1:], stdout, stderr)
-	case "module-verify":
-		return runModuleVerify(ctx, args[1:], stdout, stderr)
-	case "module-list":
-		return runModuleList(ctx, args[1:], stdout, stderr)
-	case "module-history":
-		return runModuleHistory(ctx, args[1:], stdout, stderr)
-	case "module-inspect":
-		return runModuleInspect(ctx, args[1:], stdout, stderr)
-	case "module-apply":
-		return runModuleApply(ctx, args[1:], stdout, stderr)
-	case "module-dry-run":
-		return runModuleDryRun(ctx, args[1:], stdout, stderr)
-	case "module-disable":
-		return runModuleDisable(ctx, args[1:], stdout, stderr)
-	case "module-source-register":
-		return runModuleSourceRegister(ctx, args[1:], stdout, stderr)
-	case "module-source-refresh":
-		return runModuleSourceRefresh(ctx, args[1:], stdout, stderr)
-	case "module-artifact-ingress":
-		return runModuleArtifactIngress(ctx, args[1:], stdout, stderr)
-	case "module-publisher-key-revoke":
-		return runModulePublisherKeyRevoke(ctx, args[1:], stdout, stderr)
-	case "module-upgrade-review":
-		return runModuleUpgradeReview(ctx, args[1:], stdout, stderr)
-	case "module-upgrade-review-server-owned":
-		return runModuleUpgradeReviewServerOwned(ctx, args[1:], stdout, stderr)
-	case "module-upgrade-decide-server-owned":
-		return runModuleUpgradeDecisionServerOwned(ctx, args[1:], stdout, stderr)
-	case "module-upgrade-decide":
-		return runModuleUpgradeDecide(ctx, args[1:], stdout, stderr)
-	case "module-upgrade-apply":
-		return runModuleUpgradeApply(ctx, args[1:], stdout, stderr)
-	case "learning-materialize":
-		return runLearningMaterialize(ctx, args[1:], stdout, stderr)
-	case "learning-cycle-schedule-create":
-		return runLearningCycleScheduleCreate(ctx, args[1:], stdout, stderr)
-	case "learning-cycle-schedule-get":
-		return runLearningCycleScheduleGet(ctx, args[1:], stdout, stderr)
-	case "learning-cycle-schedule-enable":
-		return runLearningCycleScheduleEnable(ctx, args[1:], stdout, stderr)
-	case "learning-cycle-schedule-disable":
-		return runLearningCycleScheduleDisable(ctx, args[1:], stdout, stderr)
-	case "learning-cycle-tick":
-		return runLearningCycleTick(ctx, args[1:], stdout, stderr)
-	case "learning-cycle-reconcile":
-		return runLearningCycleReconcile(ctx, args[1:], stdout, stderr)
-	case "learning-cycle-report":
-		return runLearningCycleReport(ctx, args[1:], stdout, stderr)
-	case "serve":
-		return runServe(ctx, args[1:], stdout, stderr)
-	case "backup":
-		return runBackup(ctx, args[1:], stdout, stderr)
-	case "backup-verify":
-		return runBackupVerify(ctx, args[1:], stdout, stderr)
-	case "restore":
-		return runRestore(ctx, args[1:], stdout, stderr)
-	case "migrate":
-		return runMigrate(ctx, args[1:], stdout, stderr)
+		return runChat(ctx, args[1:], stdin, stdout, stderr)
+	case "web":
+		return runWeb(ctx, args[1:], stdin, stdout, stderr)
+	case "ext":
+		return runExtensions(ctx, args[1:], stdin, stdout, stderr)
+	case "doctor":
+		return runDoctor(ctx, args[1:], stdout, stderr)
+	case "backup", "backup-verify", "restore":
+		return runBackupCommand(ctx, args[0], args[1:], stdout, stderr)
 	default:
-		return fmt.Errorf("freeagent: unknown command %q; %w", args[0], commandUsageError())
+		return fmt.Errorf("freeagent: unknown command %q; %w", args[0], usageError())
 	}
 }
 
-func commandUsageError() error {
-	return errors.New(
-		"usage: freeagent --version | freeagent <init|conversation-create|conversation-get|chat|module-verify|module-list|module-history|module-inspect|module-dry-run|module-apply|module-disable|module-source-register|module-source-refresh|module-artifact-ingress|module-publisher-key-revoke|module-upgrade-review|module-upgrade-review-server-owned|module-upgrade-decide|module-upgrade-decide-server-owned|module-upgrade-apply|learning-materialize|learning-cycle-schedule-create|learning-cycle-schedule-get|learning-cycle-schedule-enable|learning-cycle-schedule-disable|learning-cycle-tick|learning-cycle-reconcile|learning-cycle-report|s3-eval|s3-store-audit|s3-cell-audit|serve|backup|backup-verify|restore|migrate> [flags]",
-	)
+func usageError() error {
+	return usageErr("usage: freeagent <init|key|config|control|memory|chat|web|ext|run|continue|sessions|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore> [flags]; use --help")
 }
 
-func runConversationCreate(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) (returnErr error) {
-	flags := newFlagSet("conversation-create", stderr)
-	databasePath := flags.String("db", "", "existing Current Store database path")
-	conversationID := flags.String("conversation", "", "new stable Conversation identity")
-	tenantID := flags.String("tenant", defaultTenantID, "tenant identity")
-	principalID := flags.String("principal", defaultPrincipalID, "principal identity")
-	workspaceID := flags.String("workspace", defaultWorkspaceID, "workspace identity")
-	agentID := flags.String("agent", defaultAgentID, "agent identity")
-	profileID := flags.String("profile", defaultProfileID, "profile identity")
-	if err := flags.Parse(args); err != nil {
+func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("init", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "new harness data directory")
+	workspace := flags.String("workspace", "", "workspace directory")
+	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(*databasePath) == "" ||
-		strings.TrimSpace(*conversationID) == "" {
-		return errors.New(
-			"freeagent conversation-create: --db and --conversation are required",
-		)
+	if flags.NArg() != 0 || strings.TrimSpace(*workspace) == "" {
+		return usageErr("freeagent init: --workspace is required")
 	}
-	store, err := currentstore.OpenExistingCurrentStore(ctx, *databasePath)
-	if err != nil {
-		return fmt.Errorf("freeagent conversation-create: %w", err)
-	}
-	defer func() { returnErr = errors.Join(returnErr, store.Close()) }()
-	result, err := store.CreateConversation(ctx, currentstore.CreateConversationInput{
-		ConversationID: *conversationID,
-		TenantID:       *tenantID,
-		PrincipalID:    *principalID,
-		WorkspaceID:    *workspaceID,
-		AgentID:        *agentID,
-		ProfileID:      *profileID,
-	})
-	if err != nil {
-		return fmt.Errorf("freeagent conversation-create: %w", err)
-	}
-	return writeCommandJSON(stdout, newConversationCommandResult(result.Record, result.Created))
-}
-
-func runConversationGet(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) (returnErr error) {
-	flags := newFlagSet("conversation-get", stderr)
-	databasePath := flags.String("db", "", "existing Current Store database path")
-	conversationID := flags.String("conversation", "", "stable Conversation identity")
-	tenantID := flags.String("tenant", defaultTenantID, "tenant identity")
-	if err := flags.Parse(args); err != nil {
+	if err := resolveDataDir(dataDir); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(*databasePath) == "" ||
-		strings.TrimSpace(*conversationID) == "" {
-		return errors.New(
-			"freeagent conversation-get: --db and --conversation are required",
-		)
-	}
-	store, err := currentstore.OpenExistingCurrentStore(ctx, *databasePath)
+	workspacePath, err := filepath.Abs(*workspace)
 	if err != nil {
-		return fmt.Errorf("freeagent conversation-get: %w", err)
-	}
-	defer func() { returnErr = errors.Join(returnErr, store.Close()) }()
-	record, err := store.GetConversation(ctx, *tenantID, *conversationID)
-	if err != nil {
-		return fmt.Errorf("freeagent conversation-get: %w", err)
-	}
-	return writeCommandJSON(stdout, newConversationCommandResult(record, false))
-}
-
-func runInit(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) error {
-	flags := newFlagSet("init", stderr)
-	databasePath := flags.String("db", "", "new Current Store database path")
-	seedPath := flags.String("seed", "", "canonical bootstrap seed path")
-	artifactRoot := flags.String("artifact-root", "", "new content-addressed artifact root")
-	var localMCPArtifactGrants repeatedStringFlag
-	flags.Var(
-		&localMCPArtifactGrants,
-		"allow-local-mcp-artifact",
-		"operator-approved LOCAL_PROCESS MCP artifact SHA-256 (repeatable)",
-	)
-	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(*databasePath) == "" ||
-		strings.TrimSpace(*seedPath) == "" {
-		return errors.New("freeagent init: --db and --seed are required")
+	config := harness.DefaultConfig(workspacePath)
+	if err := config.Validate(); err != nil {
+		return err
 	}
-	result, err := initializeProductionData(ctx, initInput{
-		DatabasePath: *databasePath,
-		SeedPath:     *seedPath,
-		ArtifactRoot: resolvedArtifactRoot(*databasePath, *artifactRoot),
-		LocalMCPArtifactGrants: append(
-			[]string(nil),
-			localMCPArtifactGrants...,
-		),
-	})
-	if err != nil {
+	if err := harness.InitStore(ctx, *dataDir); err != nil {
 		return fmt.Errorf("freeagent init: %w", err)
 	}
-	return writeCommandJSON(stdout, result)
-}
-
-func runChat(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) (returnErr error) {
-	flags := newFlagSet("chat", stderr)
-	databasePath := flags.String("db", "", "existing Current Store database path")
-	artifactRoot := flags.String("artifact-root", "", "content-addressed artifact root")
-	message := flags.String("message", "", "chat message")
-	requestID := flags.String("request-id", "", "stable request identity")
-	deadlineText := flags.String("deadline", "", "stable UTC RFC3339 deadline")
-	tenantID := flags.String("tenant", defaultTenantID, "tenant identity")
-	principalID := flags.String("principal", defaultPrincipalID, "principal identity")
-	workspaceID := flags.String("workspace", defaultWorkspaceID, "workspace identity")
-	agentID := flags.String("agent", defaultAgentID, "agent identity")
-	profileID := flags.String("profile", defaultProfileID, "profile identity")
-	conversationID := flags.String(
-		"conversation",
-		"",
-		"existing Conversation identity; enables one-turn-per-Run admission",
-	)
-	expectedConversationRevision := flags.Uint64(
-		"conversation-revision",
-		0,
-		"exact Conversation revision observed before this turn",
-	)
-	expectedHeadRunID := flags.String(
-		"conversation-head-run",
-		"",
-		"exact current Conversation head Run (required after turn one)",
-	)
-	composite := flags.Bool(
-		"composite",
-		false,
-		"explicitly run the selected frozen Composite Agent family",
-	)
-	schedulerFlags := bindFairSchedulerFlags(flags)
-	deepSeekFlags := bindDeepSeekRuntimeFlags(flags)
-	zhipuFlags := bindZhipuRuntimeFlags(flags)
-	remoteActionFlags := bindRemoteActionRuntimeFlags(flags)
-	wasmActionFlags := bindWASMActionRuntimeFlags(flags)
-	if err := flags.Parse(args); err != nil {
+	if err := harness.WriteConfig(*dataDir, config); err != nil {
+		return fmt.Errorf("freeagent init: write config: %w", err)
+	}
+	if err := writeJSON(stdout, map[string]any{"data_dir": *dataDir, "workspace": workspacePath}); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(*databasePath) == "" ||
-		strings.TrimSpace(*message) == "" {
-		return errors.New("freeagent chat: --db and --message are required")
-	}
-	if *composite && strings.TrimSpace(*conversationID) != "" {
-		return errors.New(
-			"freeagent chat: --composite and --conversation are mutually exclusive in W1",
-		)
-	}
-	deadline, err := parseOptionalDeadline(*deadlineText)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: %w", err)
-	}
-	schedulerConfig, err := schedulerFlags.config(flags, *tenantID)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: %w", err)
-	}
-	deepSeekConfig, err := deepSeekFlags.config(flags)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: %w", err)
-	}
-	zhipuConfig, err := zhipuFlags.config(flags)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: %w", err)
-	}
-	remoteActionConfig, err := remoteActionFlags.config(flags)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: %w", err)
-	}
-	wasmActionConfig, err := wasmActionFlags.config(flags)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: %w", err)
-	}
-
-	composition, err := openProductionCompositionWithOptions(
-		ctx,
-		*databasePath,
-		resolvedArtifactRoot(*databasePath, *artifactRoot),
-		*tenantID,
-		productionCompositionOptions{
-			FairScheduler: schedulerConfig,
-			DeepSeek:      deepSeekConfig,
-			Zhipu:         zhipuConfig,
-			RemoteAction:  remoteActionConfig,
-			WASMAction:    wasmActionConfig,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: %w", err)
-	}
-	defer func() { returnErr = errors.Join(returnErr, composition.Close()) }()
-	chatInput := localchat.ChatInput{
-		TenantID:                     *tenantID,
-		PrincipalID:                  *principalID,
-		WorkspaceID:                  *workspaceID,
-		AgentID:                      *agentID,
-		ProfileID:                    *profileID,
-		Message:                      *message,
-		RequestID:                    *requestID,
-		Deadline:                     deadline,
-		ConversationID:               *conversationID,
-		ExpectedConversationRevision: *expectedConversationRevision,
-		ExpectedHeadRunID:            *expectedHeadRunID,
-	}
-	if *composite {
-		if composition.composite == nil {
-			return errors.New("freeagent chat: Composite service is unavailable")
-		}
-		result, compositeErr := composition.composite.Chat(ctx, chatInput)
-		if compositeErr != nil {
-			return fmt.Errorf("freeagent chat: %w", compositeErr)
-		}
-		return writeCommandJSON(stdout, newCompositeChatCommandResult(result))
-	}
-	result, err := composition.chat.Chat(ctx, chatInput)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: %w", err)
-	}
-	commandResult := newChatCommandResult(result)
-	commandResult.Usage, err = readChatCommandUsage(
-		ctx,
-		composition.store,
-		result,
-	)
-	if err != nil {
-		return fmt.Errorf("freeagent chat: read authoritative Usage: %w", err)
-	}
-	return writeCommandJSON(stdout, commandResult)
-}
-
-func runServe(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) (returnErr error) {
-	flags := newFlagSet("serve", stderr)
-	databasePath := flags.String("db", "", "existing Current Store database path")
-	artifactRoot := flags.String("artifact-root", "", "content-addressed artifact root")
-	tenantID := flags.String("tenant", defaultTenantID, "tenant used to compose exact adapters")
-	listenAddress := flags.String("listen", defaultListen, "loopback listen address")
-	enableControl := flags.Bool(
-		"enable-control",
-		false,
-		"explicitly enable the local Control API listener",
-	)
-	controlHandoffPath := flags.String(
-		"control-handoff-path",
-		"",
-		"exclusive owner-only Control bootstrap handoff leaf",
-	)
-	enableChannel := flags.Bool(
-		"enable-channel",
-		false,
-		"explicitly enable one configured loopback Channel endpoint",
-	)
-	channelWorkspace := flags.String(
-		"channel-workspace",
-		"",
-		"Workspace that owns the explicitly enabled Channel endpoint",
-	)
-	channelEndpoint := flags.String(
-		"channel-endpoint",
-		"",
-		"exact enabled Channel endpoint identity",
-	)
-	channelCredentialFile := flags.String(
-		"channel-secret-file",
-		"",
-		"ordinary file containing the runtime Channel bearer secret",
-	)
-	schedulerFlags := bindFairSchedulerFlags(flags)
-	deepSeekFlags := bindDeepSeekRuntimeFlags(flags)
-	zhipuFlags := bindZhipuRuntimeFlags(flags)
-	remoteActionFlags := bindRemoteActionRuntimeFlags(flags)
-	wasmActionFlags := bindWASMActionRuntimeFlags(flags)
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if flags.NArg() != 0 || strings.TrimSpace(*databasePath) == "" {
-		return errors.New("freeagent serve: --db is required")
-	}
-	if err := validateControlServeFlagsV1(
-		*enableControl,
-		*controlHandoffPath,
-	); err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	if err := localchat.ValidateLoopbackAddress(*listenAddress); err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	schedulerConfig, err := schedulerFlags.config(flags, *tenantID)
-	if err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	deepSeekConfig, err := deepSeekFlags.config(flags)
-	if err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	zhipuConfig, err := zhipuFlags.config(flags)
-	if err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	remoteActionConfig, err := remoteActionFlags.config(flags)
-	if err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	wasmActionConfig, err := wasmActionFlags.config(flags)
-	if err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	channelOptionPresent := strings.TrimSpace(*channelWorkspace) != "" ||
-		strings.TrimSpace(*channelEndpoint) != "" ||
-		strings.TrimSpace(*channelCredentialFile) != ""
-	if !*enableChannel && channelOptionPresent {
-		return errors.New(
-			"freeagent serve: Channel options require explicit --enable-channel",
-		)
-	}
-	if *enableChannel && (strings.TrimSpace(*channelWorkspace) == "" ||
-		strings.TrimSpace(*channelEndpoint) == "" ||
-		strings.TrimSpace(*channelCredentialFile) == "") {
-		return errors.New(
-			"freeagent serve: --enable-channel requires --channel-workspace, --channel-endpoint, and --channel-secret-file",
-		)
-	}
-	if *enableChannel && schedulerConfig != nil {
-		return errors.New(
-			"freeagent serve: fair Scheduler and Channel cannot be enabled together in S3-A",
-		)
-	}
-	var composition *productionComposition
-	err = nil
-	if *enableChannel {
-		resolver, resolverErr := newFileChannelSecretResolver(*channelCredentialFile)
-		if resolverErr != nil {
-			return fmt.Errorf("freeagent serve: %w", resolverErr)
-		}
-		composition, err = openProductionChannelCompositionWithOptions(
-			ctx,
-			*databasePath,
-			resolvedArtifactRoot(*databasePath, *artifactRoot),
-			productionChannelEndpointInput{
-				TenantID:       *tenantID,
-				WorkspaceID:    *channelWorkspace,
-				EndpointID:     *channelEndpoint,
-				SecretResolver: resolver,
-			},
-			productionCompositionOptions{
-				DeepSeek:     deepSeekConfig,
-				Zhipu:        zhipuConfig,
-				RemoteAction: remoteActionConfig,
-				WASMAction:   wasmActionConfig,
-			},
-		)
-	} else {
-		composition, err = openProductionCompositionWithOptions(
-			ctx,
-			*databasePath,
-			resolvedArtifactRoot(*databasePath, *artifactRoot),
-			*tenantID,
-			productionCompositionOptions{
-				FairScheduler: schedulerConfig,
-				DeepSeek:      deepSeekConfig,
-				Zhipu:         zhipuConfig,
-				RemoteAction:  remoteActionConfig,
-				WASMAction:    wasmActionConfig,
-			},
-		)
-	}
-	if err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	safeToCloseComposition := true
-	defer func() {
-		if safeToCloseComposition {
-			returnErr = errors.Join(returnErr, composition.Close())
-		}
-	}()
-	handler, err := localchat.New(&tenantChatUseCase{
-		tenantID: *tenantID,
-		next:     composition.chat,
-	})
-	if err != nil {
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	var rootHandler http.Handler = handler
-	ready := map[string]string{
-		"deepseek_adapter": "disabled",
-		"zhipu_adapter":    "disabled",
-		"fair_scheduler":   "disabled",
-		"listen":           "",
-		"status":           "ready",
-	}
-	if deepSeekConfig != nil {
-		ready["deepseek_adapter"] = "enabled"
-	}
-	if zhipuConfig != nil {
-		ready["zhipu_adapter"] = "enabled"
-	}
-	if schedulerConfig != nil {
-		ready["fair_scheduler"] = "enabled"
-		ready["scheduler_limits"] = fmt.Sprintf(
-			"global=%d,workspace=%d,family=%d",
-			schedulerConfig.Limits.GlobalWorkers,
-			schedulerConfig.Limits.MaxActivePerWorkspace,
-			schedulerConfig.Limits.MaxActivePerFamily,
-		)
-	}
-	if *enableChannel {
-		if composition.channel == nil || composition.channel.handler == nil {
-			return errors.New("freeagent serve: explicit Channel composition is incomplete")
-		}
-		path := composition.channel.handler.Path()
-		if isReservedCoreHTTPPath(path) {
-			return errors.New("freeagent serve: Channel inbound path conflicts with a Core route")
-		}
-		rootHandler = &exactChannelHTTPMux{
-			path:     path,
-			channel:  composition.channel.handler,
-			fallback: handler,
-		}
-		ready["channel_endpoint"] = composition.channel.endpoint.EndpointID
-		ready["channel_path"] = path
-	}
-	if *enableControl {
-		// From this point the W6-1 coordinator owns the one Composition and
-		// Store lifecycle. The default-off path below remains byte-for-byte on
-		// the established single-listener lifecycle.
-		safeToCloseComposition = false
-		return runControlEnabledServeV1(controlServeInputV1{
-			Lifecycle:     ctx,
-			Stdout:        stdout,
-			Composition:   composition,
-			ArtifactRoot:  resolvedArtifactRoot(*databasePath, *artifactRoot),
-			TenantID:      *tenantID,
-			ListenAddress: *listenAddress,
-			HandoffPath:   *controlHandoffPath,
-			ChatHandler:   rootHandler,
-			Ready:         ready,
-		})
-	}
-	listener, err := net.Listen("tcp", *listenAddress)
-	if err != nil {
-		return fmt.Errorf("freeagent serve: listen: %w", err)
-	}
-	authority, err := localchat.CanonicalAuthority(listener.Addr())
-	if err != nil {
-		_ = listener.Close()
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	securedHandler, err := localchat.NewAuthorityGuard(rootHandler, authority)
-	if err != nil {
-		_ = listener.Close()
-		return fmt.Errorf("freeagent serve: %w", err)
-	}
-	requestContext, cancelRequests := context.WithCancel(context.WithoutCancel(ctx))
-	defer cancelRequests()
-	trackedHandler := &drainingHTTPHandler{next: securedHandler}
-	server := &http.Server{
-		Handler:           trackedHandler,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      3 * time.Minute,
-		IdleTimeout:       60 * time.Second,
-		BaseContext: func(net.Listener) context.Context {
-			return requestContext
-		},
-	}
-	ready["listen"] = listener.Addr().String()
-	if err := writeCommandJSON(stdout, ready); err != nil {
-		_ = listener.Close()
-		return err
-	}
-	drained, serveErr := serveHTTPUntilStopped(
-		ctx,
-		server,
-		listener,
-		trackedHandler,
-		cancelRequests,
-	)
-	if !drained {
-		// Closing the Store while a handler is still committing an Attempt or
-		// terminal result is worse than leaking it until process exit.
-		safeToCloseComposition = false
-	} else if recoveryErr := runProductionShutdownRecovery(
-		ctx,
-		composition.store,
-	); recoveryErr != nil {
-		// A failed Store-only closeout may leave a PENDING effect. Do not close
-		// the Store as if the durable terminal boundary had been proven.
-		safeToCloseComposition = false
-		serveErr = errors.Join(serveErr, recoveryErr)
-	}
-	if serveErr != nil {
-		return fmt.Errorf("freeagent serve: %w", serveErr)
-	}
+	_, _ = fmt.Fprintf(stderr, `Next, add a key and a model that uses it:
+  freeagent key add --name <name> --url <address>
+  freeagent config model --data-dir %s --id <id> --key <name> --model <model>
+`, shellArg(*dataDir))
 	return nil
 }
 
-func runBackup(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) error {
-	flags := newFlagSet("backup", stderr)
-	databasePath := flags.String("db", "", "closed Current Store database path")
-	artifactRoot := flags.String("artifact-root", "", "content-addressed artifact root")
-	destination := flags.String("out", "", "new backup bundle directory")
-	if err := flags.Parse(args); err != nil {
+func runSessions(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("sessions", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	show := flags.String("show", "", "show session history")
+	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(*databasePath) == "" ||
-		strings.TrimSpace(*destination) == "" {
-		return errors.New("freeagent backup: --db and --out are required")
+	if flags.NArg() != 0 {
+		return usageError()
 	}
-	manifest, err := currentbackup.CreateBundle(
-		ctx,
-		*databasePath,
-		resolvedArtifactRoot(*databasePath, *artifactRoot),
-		*destination,
-		backupToolVersion,
-	)
+	if err := resolveDataDir(dataDir); err != nil {
+		return err
+	}
+	store, err := openStoreForReading(ctx, *dataDir, stderr)
 	if err != nil {
-		return fmt.Errorf("freeagent backup: %w", err)
+		return err
 	}
-	bundle, err := filepath.Abs(*destination)
+	defer store.Close()
+	if *show != "" {
+		if _, err := store.GetConversation(ctx, *show); err != nil {
+			return err
+		}
+		history, err := store.ListMessages(ctx, *show)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, history)
+	}
+	sessions, err := store.ListConversations(ctx)
 	if err != nil {
-		return fmt.Errorf("freeagent backup: resolve output: %w", err)
+		return err
 	}
-	return writeCommandJSON(stdout, backupCommandResult{
-		Bundle:   bundle,
-		Manifest: manifest,
-	})
+	return writeJSON(stdout, sessions)
 }
 
-func runBackupVerify(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) error {
-	flags := newFlagSet("backup-verify", stderr)
-	bundle := flags.String("bundle", "", "existing backup bundle directory")
-	if err := flags.Parse(args); err != nil {
-		return err
+// openStoreForReading opens the store for a command that only reads. While
+// another process owns the data directory it shows a read-only view instead.
+func openStoreForReading(ctx context.Context, dataDir string, stderr io.Writer) (*harness.Store, error) {
+	store, err := harness.OpenStore(ctx, dataDir)
+	if !errors.Is(err, harness.ErrOwnerActive) {
+		return store, err
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(*bundle) == "" {
-		return errors.New("freeagent backup-verify: --bundle is required")
-	}
-	manifest, err := currentbackup.VerifyBundle(ctx, *bundle)
+	store, err = harness.OpenStoreReadOnly(ctx, dataDir)
 	if err != nil {
-		return fmt.Errorf("freeagent backup-verify: %w", err)
+		_, _ = fmt.Fprintln(stderr, "The data directory is in use and could not be read. Close the desktop app and try again.")
+		return nil, &exitError{code: exitFailure, err: err}
 	}
-	resolved, err := filepath.Abs(*bundle)
-	if err != nil {
-		return fmt.Errorf("freeagent backup-verify: resolve bundle: %w", err)
-	}
-	return writeCommandJSON(stdout, backupCommandResult{
-		Bundle:   resolved,
-		Manifest: manifest,
-	})
+	_, _ = fmt.Fprintln(stderr, "data directory is in use by another FreeAgent process; showing a read-only view")
+	return store, nil
 }
 
-func runRestore(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) error {
-	flags := newFlagSet("restore", stderr)
-	bundle := flags.String("bundle", "", "existing backup bundle directory")
-	databasePath := flags.String("db", "", "new Current Store database path")
-	artifactRoot := flags.String("artifact-root", "", "new content-addressed artifact root")
-	if err := flags.Parse(args); err != nil {
+func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("run", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	conversationID := flags.String("session", "", "session id; created when omitted")
+	requestKey := flags.String("request", "", "stable idempotency key")
+	interactive := flags.Bool("interactive", false, "prompt to approve file edits")
+	asJSON := flags.Bool("json", false, "write only structured output to stdout")
+	template := flags.String("template", "", "explicit ordinary workspace template file")
+	modelID := flags.String("model", "", "explicit local model profile for this task")
+	permission := flags.String("permission", "", "this task only: ask, workspace or full")
+	confirmFullAccess := flags.Bool("confirm-full-access", false, "confirm Full access for this task")
+	collaborationMode := flags.String("collaboration", "", "this task only: off, ask or auto")
+	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(*bundle) == "" ||
-		strings.TrimSpace(*databasePath) == "" {
-		return errors.New("freeagent restore: --bundle and --db are required")
+	task := strings.Join(flags.Args(), " ")
+	if strings.TrimSpace(task) == "" {
+		return usageErr("freeagent run: task text is required")
 	}
-	resolvedArtifacts := resolvedArtifactRoot(*databasePath, *artifactRoot)
-	if err := currentbackup.RestoreBundle(
-		ctx,
-		*bundle,
-		*databasePath,
-		resolvedArtifacts,
-	); err != nil {
-		return fmt.Errorf("freeagent restore: %w", err)
+	if err := resolveDataDir(dataDir); err != nil {
+		return err
 	}
-	verification, err := currentstore.VerifyCurrentStoreReadOnly(ctx, *databasePath)
+	if err := requireModels(*dataDir, stderr); err != nil {
+		return err
+	}
+	options := harness.RunOptions{ModelID: *modelID, Permission: harness.PermissionMode(*permission), ConfirmFullAccess: *confirmFullAccess}
+	if *permission != "" {
+		if err := options.Permission.Validate(); err != nil {
+			return usageErr(err.Error())
+		}
+	}
+	if *requestKey == "" {
+		*requestKey = fmt.Sprintf("%x", time.Now().UTC().UnixNano())
+	}
+	_, _, service, closeAll, err := openRuntime(ctx, *dataDir)
+	if errors.Is(err, harness.ErrOwnerActive) {
+		if err := rejectAttachedOptions(*template, *modelID, 0, 0); err != nil {
+			return err
+		}
+		if *collaborationMode != "" {
+			settings := harness.DefaultCollaborationSettings()
+			settings.Mode = *collaborationMode
+			options.Collaboration = &settings
+		}
+		client, attachErr := attachedOwner(ctx, *dataDir)
+		if attachErr != nil {
+			return fmt.Errorf("%w: %v", harness.ErrOwnerActive, attachErr)
+		}
+		return runAttachedSubmit(ctx, client, *dataDir, *conversationID, *requestKey, task, options, *interactive, stdin, stdout, stderr, *asJSON)
+	}
 	if err != nil {
-		return fmt.Errorf("freeagent restore: verify restored Store: %w", err)
+		return err
 	}
-	database, err := filepath.Abs(*databasePath)
-	if err != nil {
-		return fmt.Errorf("freeagent restore: resolve database: %w", err)
+	defer closeAll()
+	tasks := harness.NewTaskService(service)
+	if *collaborationMode != "" {
+		settings, err := tasks.CollaborationSettings(ctx, *conversationID)
+		if err != nil {
+			return err
+		}
+		settings.Mode = *collaborationMode
+		options.Collaboration = &settings
 	}
-	artifacts, err := filepath.Abs(resolvedArtifacts)
-	if err != nil {
-		return fmt.Errorf("freeagent restore: resolve artifact root: %w", err)
+	if *template != "" {
+		task, err = tasks.Template(ctx, *template, task)
+		if err != nil {
+			return err
+		}
 	}
-	return writeCommandJSON(stdout, restoreCommandResult{
-		DatabasePath:    database,
-		ArtifactRoot:    artifacts,
-		StoreInstanceID: verification.StoreInstanceID,
-	})
+	var reader *terminalInput
+	if *interactive {
+		reader = newTerminalInput(ctx, stdin)
+		tasks.SetApproval(terminalApproval(reader, stderr))
+		options.Review = reviewChatSuggestion(reader, stderr)
+	}
+	streamed := false
+	tasks.SetEvents(terminalEvents(stdout, stderr, *asJSON, &streamed))
+	result, runErr := tasks.SubmitWithOptions(ctx, *conversationID, *requestKey, task, options)
+	if reader != nil && runErr == nil {
+		result, runErr = settleLocalControlProposals(ctx, tasks, result, reader.read, stderr)
+	}
+	if err := printResult(stdout, stderr, result, *asJSON, streamed); err != nil {
+		return errors.Join(err, runErr)
+	}
+	return runOutcome(stderr, result, runErr)
 }
 
-func runMigrate(
-	ctx context.Context,
-	args []string,
-	stdout io.Writer,
-	stderr io.Writer,
-) error {
-	flags := newFlagSet("migrate", stderr)
-	databasePath := flags.String("db", "", "closed Current Store database path")
-	artifactRoot := flags.String("artifact-root", "", "content-addressed artifact root")
-	backupDestination := flags.String("backup-out", "", "new mandatory pre-migration backup bundle")
-	if err := flags.Parse(args); err != nil {
+func runContinue(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("continue", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	runID := flags.String("run", "", "run id")
+	interactive := flags.Bool("interactive", false, "prompt to approve file edits")
+	asJSON := flags.Bool("json", false, "write structured output")
+	modelID := flags.String("model", "", "switch at a complete saved model/tool group before continuing")
+	maxSteps := flags.Int("max-steps", 0, "explicitly increase this run's finite step limit")
+	maxSeconds := flags.Int("max-seconds", 0, "explicitly increase this run's effective execution time limit")
+	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || strings.TrimSpace(*databasePath) == "" ||
-		strings.TrimSpace(*backupDestination) == "" {
-		return errors.New("freeagent migrate: --db and --backup-out are required")
+	if flags.NArg() != 0 || strings.TrimSpace(*runID) == "" {
+		return usageErr("freeagent continue: --run is required")
 	}
-	resolvedArtifacts := resolvedArtifactRoot(*databasePath, *artifactRoot)
-	var manifest currentbackup.Manifest
-	var migration currentstore.MigrationResult
-	err := currentstore.WithOfflineLease(
-		ctx,
-		*databasePath,
-		func(lease *currentstore.OfflineLease) error {
-			var err error
-			manifest, err = currentbackup.CreateBundleFromOfflineLease(
-				ctx,
-				lease,
-				resolvedArtifacts,
-				*backupDestination,
-				backupToolVersion,
-			)
+	if err := resolveDataDir(dataDir); err != nil {
+		return err
+	}
+	if err := requireModels(*dataDir, stderr); err != nil {
+		return err
+	}
+	_, _, service, closeAll, err := openRuntime(ctx, *dataDir)
+	if errors.Is(err, harness.ErrOwnerActive) {
+		if err := rejectAttachedOptions("", *modelID, *maxSteps, *maxSeconds); err != nil {
+			return err
+		}
+		client, attachErr := attachedOwner(ctx, *dataDir)
+		if attachErr != nil {
+			return fmt.Errorf("%w: %v", harness.ErrOwnerActive, attachErr)
+		}
+		run, _, _, inspectErr := client.Inspect(ctx, *runID)
+		if inspectErr != nil {
+			return inspectErr
+		}
+		return runAttachedContinue(ctx, client, *dataDir, run.ConversationID, *runID, *interactive, stdin, stdout, stderr, *asJSON)
+	}
+	if err != nil {
+		return err
+	}
+	defer closeAll()
+	tasks := harness.NewTaskService(service)
+	if *modelID != "" {
+		if err := tasks.SwitchModel(ctx, *runID, *modelID); err != nil {
+			return err
+		}
+	}
+	if *maxSteps != 0 || *maxSeconds != 0 {
+		limits, err := tasks.Limits(ctx, *runID)
+		if err != nil {
+			return err
+		}
+		if *maxSteps != 0 {
+			limits.MaxSteps = *maxSteps
+		}
+		if *maxSeconds != 0 {
+			limits.MaxRunSeconds = *maxSeconds
+		}
+		if err := tasks.IncreaseLimits(ctx, *runID, limits); err != nil {
+			return err
+		}
+	}
+	options := harness.RunOptions{}
+	var reader *terminalInput
+	if *interactive {
+		reader = newTerminalInput(ctx, stdin)
+		tasks.SetApproval(terminalApproval(reader, stderr))
+		options.Review = reviewChatSuggestion(reader, stderr)
+	}
+	streamed := false
+	tasks.SetEvents(terminalEvents(stdout, stderr, *asJSON, &streamed))
+	result, runErr := tasks.ContinueWithOptions(ctx, *runID, options)
+	if reader != nil && runErr == nil {
+		result, runErr = settleLocalControlProposals(ctx, tasks, result, reader.read, stderr)
+	}
+	if err := printResult(stdout, stderr, result, *asJSON, streamed); err != nil {
+		return errors.Join(err, runErr)
+	}
+	return runOutcome(stderr, result, runErr)
+}
+
+func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	ctx, stopChat := context.WithCancel(ctx)
+	defer stopChat()
+	controller := &chatCancellation{idle: stopChat}
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt)
+	defer signal.Stop(interrupts)
+	go func() {
+		for {
+			select {
+			case <-interrupts:
+				controller.cancel()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	flags := flag.NewFlagSet("chat", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	conversationID := flags.String("resume", "", "session id; created when omitted")
+	if err := parseFlags(flags, args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return usageError()
+	}
+	if err := resolveDataDir(dataDir); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(*dataDir, "config.json")); errors.Is(err, os.ErrNotExist) {
+		return usagef("select a workspace first: freeagent init --workspace <directory> --data-dir %q", *dataDir)
+	}
+	if err := requireModels(*dataDir, stderr); err != nil {
+		return err
+	}
+	config, store, service, closeAll, err := openRuntime(ctx, *dataDir)
+	if err != nil {
+		return err
+	}
+	defer closeAll()
+	tasks := harness.NewTaskService(service)
+	if *conversationID == "" {
+		conversation, err := tasks.NewConversation(ctx, "Interactive chat")
+		if err != nil {
+			return err
+		}
+		*conversationID = conversation.ID
+		_, _ = fmt.Fprintln(stderr, "New conversation")
+	} else {
+		if _, err := store.GetConversation(ctx, *conversationID); err != nil {
+			return err
+		}
+	}
+	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /status /continue /more /abandon /file <path> /begin ... /end /exit\n", config.Workspace)
+	reader := newTerminalInput(ctx, stdin)
+	tasks.SetApproval(terminalApproval(reader, stderr))
+	var references []string
+	var nextCollaboration *harness.CollaborationSettings
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		_, _ = io.WriteString(stdout, "> ")
+		line, readErr := reader.read(ctx)
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return nil
+			}
+			return readErr
+		}
+		prompt := strings.TrimSpace(line)
+		if prompt == "" {
+			continue
+		}
+		if prompt == "/exit" || prompt == "/quit" {
+			return nil
+		}
+		if prompt == "/history" {
+			messages, err := tasks.Messages(ctx, *conversationID)
 			if err != nil {
 				return err
 			}
-			migration, err = currentstore.MigrateOfflineCurrentStore(ctx, lease)
-			return err
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("freeagent migrate: %w", err)
+			for _, item := range messages {
+				_, _ = fmt.Fprintf(stdout, "%s: %s\n", item.Role, item.Content)
+			}
+			continue
+		}
+		if prompt == "/sessions" || strings.HasPrefix(prompt, "/resume ") {
+			sessions, err := tasks.Conversations(ctx)
+			if err != nil {
+				return err
+			}
+			if prompt == "/sessions" {
+				for index, session := range sessions {
+					_, _ = fmt.Fprintf(stdout, "%d. %s\n", index+1, session.Title)
+				}
+			} else {
+				number, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(prompt, "/resume ")))
+				if err != nil || number < 1 || number > len(sessions) || sessions[number-1].Workspace != config.Workspace {
+					_, _ = fmt.Fprintln(stderr, "Choose a listed conversation in this workspace.")
+				} else {
+					*conversationID = sessions[number-1].ID
+					_, _ = fmt.Fprintln(stderr, "Conversation:", sessions[number-1].Title)
+					references = nil
+					nextCollaboration = nil
+				}
+			}
+			continue
+		}
+		if prompt == "/new" {
+			conversation, err := tasks.NewConversation(ctx, "Interactive chat")
+			if err != nil {
+				return err
+			}
+			*conversationID = conversation.ID
+			references = nil
+			nextCollaboration = nil
+			_, _ = fmt.Fprintln(stderr, "New conversation")
+			continue
+		}
+		if prompt == "/status" {
+			last, err := tasks.Latest(ctx, *conversationID)
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, "No task yet.")
+			} else {
+				_, _, evidence, err := tasks.Inspect(ctx, last.ID)
+				if err != nil {
+					return err
+				}
+				_ = printChatResult(stdout, stderr, harness.RunResult{Run: last, Answer: last.Output, Evidence: evidence}, false)
+			}
+			continue
+		}
+		if prompt == "/model" || strings.HasPrefix(prompt, "/model ") {
+			err := chatModelSelection(ctx, tasks, *conversationID, strings.TrimSpace(strings.TrimPrefix(prompt, "/model")), stdout, stderr)
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+			}
+			continue
+		}
+		if prompt == "/collaboration" || strings.HasPrefix(prompt, "/collaboration ") {
+			nextCollaboration, err = chatCollaboration(ctx, tasks, *conversationID,
+				strings.TrimSpace(strings.TrimPrefix(prompt, "/collaboration")), reader, stderr)
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+			}
+			continue
+		}
+		if prompt == "/settings" || strings.HasPrefix(prompt, "/settings ") {
+			if err := chatSettings(ctx, tasks, *conversationID,
+				strings.TrimSpace(strings.TrimPrefix(prompt, "/settings")), reader, stdout, stderr); err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+			}
+			continue
+		}
+		if prompt == "/memory" || strings.HasPrefix(prompt, "/memory ") {
+			if err := chatMemory(ctx, tasks, *conversationID,
+				strings.TrimSpace(strings.TrimPrefix(prompt, "/memory")), reader, stdout, stderr); err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+			}
+			continue
+		}
+		if prompt == "/more" {
+			err := chatIncreaseLimits(ctx, tasks, *conversationID, reader, stderr)
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+				continue
+			}
+			prompt = "/continue"
+		}
+		if strings.HasPrefix(prompt, "/file ") {
+			name := strings.TrimSpace(strings.TrimPrefix(prompt, "/file "))
+			if len(references) >= 16 {
+				_, _ = fmt.Fprintln(stderr, "At most 16 file references per input.")
+			} else {
+				references = append(references, name)
+				_, _ = fmt.Fprintln(stderr, "Reference selected:", name)
+			}
+			continue
+		}
+		if prompt == "/begin" {
+			var text strings.Builder
+			for {
+				line, err := reader.read(ctx)
+				if err != nil {
+					return err
+				}
+				if strings.TrimSpace(line) == "/end" {
+					break
+				}
+				if text.Len()+len(line) > config.MaxContextBytes {
+					return harness.ErrContextLimit
+				}
+				text.WriteString(line)
+			}
+			prompt = strings.TrimSpace(text.String())
+			if prompt == "" {
+				continue
+			}
+		}
+		if prompt == "/abandon" {
+			last, err := tasks.Latest(ctx, *conversationID)
+			if err == nil {
+				if controlled, checkErr := tasks.IsCollaboration(ctx, last.ID); checkErr != nil {
+					err = checkErr
+				} else if controlled {
+					err = tasks.StopCollaboration(ctx, last.ID)
+				} else {
+					err = tasks.Abandon(ctx, last.ID)
+				}
+			}
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+			} else {
+				_, _ = fmt.Fprintln(stderr, "Task ended. Unresolved attempt records, if any, were retained.")
+			}
+			continue
+		}
+		if strings.HasPrefix(prompt, "/") && prompt != "/continue" {
+			_, _ = fmt.Fprintln(stderr, "Unknown session command.")
+			continue
+		}
+		if prompt != "/continue" && len(references) > 0 {
+			prompt, err = tasks.ExpandReferences(ctx, prompt, references)
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+				continue
+			}
+			references = nil
+		}
+		requestKey := fmt.Sprintf("%x", time.Now().UTC().UnixNano())
+		streamed := false
+		tasks.SetEvents(terminalEvents(stdout, stderr, false, &streamed))
+		var result harness.RunResult
+		if prompt == "/continue" {
+			taskCtx, cancelTask := context.WithCancel(ctx)
+			controller.set(cancelTask)
+			if last, latestErr := tasks.Latest(taskCtx, *conversationID); latestErr != nil {
+				err = latestErr
+			} else {
+				result, err = tasks.ContinueWithOptions(taskCtx, last.ID, harness.RunOptions{Review: reviewChatSuggestion(reader, stderr)})
+			}
+			controller.set(nil)
+			cancelTask()
+		} else {
+			taskCtx, cancelTask := context.WithCancel(ctx)
+			controller.set(cancelTask)
+			result, err = tasks.SubmitWithOptions(taskCtx, *conversationID, requestKey, prompt,
+				harness.RunOptions{Collaboration: nextCollaboration, Review: reviewChatSuggestion(reader, stderr)})
+			nextCollaboration = nil
+			controller.set(nil)
+			cancelTask()
+		}
+		if err == nil {
+			result, err = settleLocalControlProposals(ctx, tasks, result, reader.read, stderr)
+		}
+		_ = printChatResult(stdout, stderr, result, streamed)
+		if result.Run.ID != "" {
+			if sources, sourceErr := tasks.MemorySources(ctx, result.Run.ID); sourceErr == nil && len(sources) != 0 {
+				_, _ = fmt.Fprintf(stderr, "Memory sources: %d; /memory sources\n", len(sources))
+			}
+		}
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, "error:", err)
+			continue
+		}
 	}
-	backupPath, err := filepath.Abs(*backupDestination)
-	if err != nil {
-		return fmt.Errorf("freeagent migrate: resolve backup: %w", err)
-	}
-	database, err := filepath.Abs(*databasePath)
-	if err != nil {
-		return fmt.Errorf("freeagent migrate: resolve database: %w", err)
-	}
-	return writeCommandJSON(stdout, migrateCommandResult{
-		DatabasePath:      database,
-		BackupBundle:      backupPath,
-		BackupManifest:    manifest,
-		FromVersion:       migration.FromVersion,
-		ToVersion:         migration.ToVersion,
-		AppliedVersions:   migration.AppliedVersions,
-		StoreInstanceID:   migration.Verification.StoreInstanceID,
-		SchemaFingerprint: migration.Verification.SchemaFingerprint,
-	})
 }
 
-func isReservedCoreHTTPPath(path string) bool {
-	switch path {
-	case "/healthz", "/v1/chat", "/v1/conversations":
-		return true
-	default:
-		return false
-	}
-}
-
-type tenantChatUseCase struct {
-	tenantID string
-	next     *localchat.ChatService
-}
-
-func (chat *tenantChatUseCase) Chat(
-	ctx context.Context,
-	input localchat.ChatInput,
-) (localchat.ChatResult, error) {
-	if chat == nil || chat.next == nil || input.TenantID != chat.tenantID {
-		return localchat.ChatResult{}, fmt.Errorf(
-			"%w: HTTP tenant is not the composed tenant",
-			localchat.ErrInvalidChat,
-		)
-	}
-	return chat.next.Chat(ctx, input)
-}
-
-func (chat *tenantChatUseCase) CreateConversation(
-	ctx context.Context,
-	input localchat.ConversationCreateInput,
-) (localchat.ConversationCreateResult, error) {
-	if chat == nil || chat.next == nil || input.TenantID != chat.tenantID {
-		return localchat.ConversationCreateResult{}, fmt.Errorf(
-			"%w: HTTP tenant is not the composed tenant",
-			currentstore.ErrInvalidConversation,
-		)
-	}
-	return chat.next.CreateConversation(ctx, input)
-}
-
-func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {
-	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	return flags
-}
-
-type fairSchedulerFlagValues struct {
-	enabled      *bool
-	global       *uint64
-	perWorkspace *uint64
-	perFamily    *uint64
-}
-
-func bindFairSchedulerFlags(flags *flag.FlagSet) fairSchedulerFlagValues {
-	return fairSchedulerFlagValues{
-		enabled: flags.Bool(
-			"enable-fair-scheduler",
-			false,
-			"explicitly enable the tenant-bound S3-A fair Scheduler",
-		),
-		global: flags.Uint64(
-			"scheduler-global-workers",
-			4,
-			"Store/process-wide active Run lease ceiling",
-		),
-		perWorkspace: flags.Uint64(
-			"scheduler-workspace-workers",
-			2,
-			"active Run lease ceiling per Workspace",
-		),
-		perFamily: flags.Uint64(
-			"scheduler-family-workers",
-			2,
-			"active Run lease ceiling per Composite family",
-		),
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-}
-
-func (values fairSchedulerFlagValues) config(
-	flags *flag.FlagSet,
-	tenantID string,
-) (*runscheduler.Config, error) {
-	if values.enabled == nil || values.global == nil ||
-		values.perWorkspace == nil || values.perFamily == nil {
-		return nil, errors.New("fair Scheduler flags are not initialized")
+	if flags.NArg() != 0 {
+		return usageError()
 	}
-	limitsPresent := false
-	flags.Visit(func(value *flag.Flag) {
-		switch value.Name {
-		case "scheduler-global-workers",
-			"scheduler-workspace-workers",
-			"scheduler-family-workers":
-			limitsPresent = true
+	if err := resolveDataDir(dataDir); err != nil {
+		return err
+	}
+	config, err := harness.LoadConfig(*dataDir)
+	if err != nil {
+		return err
+	}
+	if err := harness.VerifyData(ctx, *dataDir); err != nil {
+		return err
+	}
+	report := map[string]any{"ok": true, "data_dir": *dataDir, "workspace": config.Workspace, "models": config.Models,
+		"default_model": config.DefaultModel, "network_tested": false, "encrypted": harness.KeysEncrypted()}
+	// Key profiles are listed without secrets; a broken keys file is reported
+	// instead of hiding the rest of the diagnosis.
+	var keysErr error
+	store, err := keyStore()
+	if err == nil {
+		report["keys_file"] = store.Path()
+		var views []harness.KeyProfileView
+		views, keysErr = store.List()
+		keys := make([]map[string]any, 0, len(views))
+		for _, view := range views {
+			keys = append(keys, map[string]any{"name": view.Name, "source": keySourceText(view), "last_check": view.LastCheck})
 		}
-	})
-	if !*values.enabled {
-		if limitsPresent {
-			return nil, errors.New(
-				"Scheduler limit options require explicit --enable-fair-scheduler",
-			)
-		}
-		return nil, nil
+		report["keys"] = keys
+	} else {
+		keysErr = err
 	}
-	maxUint32 := uint64(^uint32(0))
-	if *values.global == 0 || *values.global > maxUint32 ||
-		*values.perWorkspace == 0 || *values.perWorkspace > maxUint32 ||
-		*values.perFamily == 0 || *values.perFamily > maxUint32 {
-		return nil, errors.New(
-			"Scheduler concurrency limits must be positive uint32 values",
-		)
+	if keysErr != nil {
+		report["ok"], report["keys_error"] = false, keysErr.Error()
 	}
-	config := runscheduler.DefaultConfig(tenantID)
-	config.Limits = currentstore.FairSchedulerLimits{
-		GlobalWorkers:         uint32(*values.global),
-		MaxActivePerWorkspace: uint32(*values.perWorkspace),
-		MaxActivePerFamily:    uint32(*values.perFamily),
+	// The sandbox only matters when command_run would use it.
+	sandbox := harness.CheckSandbox(ctx)
+	report["sandbox"] = sandbox
+	sandboxNeeded := config.Commands.Enabled && config.Commands.Execution != harness.CommandExecutionHostExplicit
+	sandboxFailed := sandboxNeeded && sandbox.Status != "ready"
+	if sandboxFailed {
+		report["ok"] = false
 	}
-	if config.Limits.MaxActivePerWorkspace > config.Limits.GlobalWorkers ||
-		config.Limits.MaxActivePerFamily > config.Limits.GlobalWorkers {
-		return nil, errors.New(
-			"Scheduler Workspace/family limits cannot exceed global workers",
-		)
+	if err := writeJSON(stdout, report); err != nil {
+		return err
 	}
-	return &config, nil
+	if keysErr != nil {
+		return &exitError{code: exitCode(keysErr)}
+	}
+	if sandboxFailed {
+		return &exitError{code: 1}
+	}
+	return nil
 }
 
-type repeatedStringFlag []string
+func openRuntime(ctx context.Context, dataDir string) (harness.Config, *harness.Store, *harness.Service, func(), error) {
+	return harness.OpenRuntime(ctx, dataDir, harness.Adapters{})
+}
 
-func (values *repeatedStringFlag) String() string {
-	if values == nil {
+// requireModels stops chat, run and continue before they take the owner lock
+// when no model is configured, and says how to add one.
+func requireModels(dataDir string, stderr io.Writer) error {
+	config, err := harness.LoadConfig(dataDir)
+	if err != nil {
+		return err
+	}
+	if len(config.Models) != 0 {
+		return nil
+	}
+	_, _ = fmt.Fprintln(stderr, `No model is configured. Add a key, then a model that uses it:
+  freeagent key add --name <name> --url <address>
+  freeagent config model --id <id> --key <name> --model <model>`)
+	return &exitError{code: exitUsage}
+}
+
+func terminalApproval(reader *terminalInput, stdout io.Writer) harness.ApprovalFunc {
+	return func(ctx context.Context, call harness.ToolCall, prepared harness.PreparedTool) (bool, error) {
+		_, _ = fmt.Fprintf(stdout, "\nApprove %s?\n%s\n[y/N] ", call.Name, prepared.Preview)
+		line, err := reader.read(ctx)
+		if err != nil {
+			return false, err
+		}
+		return strings.EqualFold(strings.TrimSpace(line), "y"), nil
+	}
+}
+
+func terminalEvents(stdout, stderr io.Writer, asJSON bool, streamed *bool) harness.EventFunc {
+	return func(event harness.Event) {
+		switch event.Kind {
+		case "model_text":
+			if !asJSON {
+				_, _ = io.WriteString(stdout, event.Message)
+				*streamed = true
+			}
+		case "tool_started", "tool_finished":
+			if event.Tool != "" {
+				_, _ = fmt.Fprintf(stderr, "[%s] %s\n", event.Kind, event.Tool)
+			}
+		case "model_selected":
+			_, _ = fmt.Fprintln(stderr, event.Message)
+		case "confirmation":
+			if asJSON {
+				_, _ = fmt.Fprintf(stderr, "[confirmation] %s\n%s\n", event.Tool, event.Preview)
+			}
+		case "unresolved":
+			_, _ = fmt.Fprintln(stderr, "[unresolved]", event.Message)
+		}
+	}
+}
+
+func writeJSON(writer io.Writer, value any) error {
+	encoder := json.NewEncoder(writer)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(value)
+}
+
+// defaultDataDir is the --data-dir default. When the location cannot be
+// determined it is empty, and dataDirOrError reports why after parsing.
+func defaultDataDir() string {
+	directory, err := apppaths.DataDir()
+	if err != nil {
 		return ""
 	}
-	return strings.Join(*values, ",")
+	return directory
 }
 
-func (values *repeatedStringFlag) Set(value string) error {
-	if values == nil {
-		return errors.New("freeagent: repeated string flag target is nil")
+// dataDirOrError rejects an empty data directory with the apppaths error, so a
+// bad portable manifest never falls back to another location.
+func dataDirOrError(value string) (string, error) {
+	if value != "" {
+		return value, nil
 	}
-	if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
-		return errors.New("value must be non-empty and trimmed")
+	_, err := apppaths.DataDir()
+	if err == nil {
+		err = errors.New("data directory is empty")
 	}
-	*values = append(*values, value)
-	return nil
+	return "", &exitError{code: exitUsage, err: fmt.Errorf("freeagent: %w; pass --data-dir <directory>", err)}
 }
 
-func parseOptionalDeadline(value string) (time.Time, error) {
-	if strings.TrimSpace(value) == "" {
-		return time.Time{}, nil
+func resolveDataDir(value *string) error {
+	resolved, err := dataDirOrError(*value)
+	*value = resolved
+	return err
+}
+
+func firstLine(value string) string {
+	value = strings.TrimSpace(value)
+	if index := strings.IndexByte(value, '\n'); index >= 0 {
+		value = value[:index]
 	}
-	deadline, err := time.Parse(time.RFC3339Nano, value)
+	if len(value) > 80 {
+		value = string([]rune(value)[:min(len([]rune(value)), 40)])
+	}
+	return value
+}
+
+type inputResult struct {
+	line string
+	err  error
+}
+
+type terminalInput struct {
+	results chan inputResult
+}
+
+func newTerminalInput(lifetime context.Context, source io.Reader) *terminalInput {
+	input := &terminalInput{results: make(chan inputResult, 1)}
+	reader := bufio.NewReaderSize(source, 4096)
+	// One reader owns the input even when a per-run approval deadline expires.
+	go func() {
+		defer close(input.results)
+		for {
+			var line strings.Builder
+			var readErr error
+			for {
+				part, err := reader.ReadSlice('\n')
+				if line.Len()+len(part) > 1<<20 {
+					readErr = errors.New("input exceeds 1 MiB")
+					break
+				}
+				line.Write(part)
+				if err == bufio.ErrBufferFull {
+					continue
+				}
+				readErr = err
+				if err == io.EOF && line.Len() > 0 {
+					readErr = nil
+				}
+				break
+			}
+			select {
+			case input.results <- inputResult{line.String(), readErr}:
+			case <-lifetime.Done():
+				return
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	}()
+	return input
+}
+
+func (input *terminalInput) read(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	select {
+	case result, ok := <-input.results:
+		if !ok {
+			return "", io.EOF
+		}
+		return result.line, result.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+func printResult(stdout, stderr io.Writer, result harness.RunResult, asJSON, streamed bool) error {
+	if asJSON {
+		return writeJSON(stdout, result)
+	}
+	return printChatResult(stdout, stderr, result, streamed)
+}
+
+func runTools(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	if len(args) == 0 || (args[0] != "list" && args[0] != "test") {
+		return usageErr("usage: freeagent tools list | tools test [--data-dir <directory>] <server>")
+	}
+	flags := flag.NewFlagSet("tools list", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	server := ""
+	arguments := args[1:]
+	if args[0] == "test" && len(arguments) > 0 && !strings.HasPrefix(arguments[0], "-") {
+		server, arguments = arguments[0], arguments[1:]
+	}
+	if err := parseFlags(flags, arguments); err != nil {
+		return err
+	}
+	if args[0] == "test" && server == "" && flags.NArg() == 1 {
+		server = flags.Arg(0)
+	} else if flags.NArg() != 0 {
+		return usageError()
+	}
+	if err := resolveDataDir(dataDir); err != nil {
+		return err
+	}
+	config, err := harness.LoadConfig(*dataDir)
 	if err != nil {
-		return time.Time{}, errors.New("--deadline must be RFC3339")
+		return err
 	}
-	return deadline, nil
-}
-
-type chatCommandResult struct {
-	RequestID            string            `json:"request_id"`
-	Deadline             string            `json:"deadline"`
-	RunID                string            `json:"run_id"`
-	ConversationID       string            `json:"conversation_id,omitempty"`
-	ConversationRevision uint64            `json:"conversation_revision,omitempty"`
-	Disposition          string            `json:"disposition"`
-	Reason               string            `json:"reason"`
-	Reply                string            `json:"reply"`
-	Failure              string            `json:"failure"`
-	Usage                *chatCommandUsage `json:"usage,omitempty"`
-}
-
-// chatCommandUsage is a read-only CLI projection of one terminal model
-// Attempt's authoritative Usage. Nil token fields encode as JSON null:
-// UNKNOWN is never rewritten to 0.
-type chatCommandUsage struct {
-	InputTokens         *uint64 `json:"input_tokens"`
-	CachedInputTokens   *uint64 `json:"cached_input_tokens"`
-	UncachedInputTokens *uint64 `json:"uncached_input_tokens"`
-	OutputTokens        *uint64 `json:"output_tokens"`
-	ReasoningTokens     *uint64 `json:"reasoning_tokens"`
-	Status              string  `json:"status"`
-}
-
-type conversationCommandResult struct {
-	ConversationID string `json:"conversation_id"`
-	TenantID       string `json:"tenant_id"`
-	PrincipalID    string `json:"principal_id"`
-	WorkspaceID    string `json:"workspace_id"`
-	AgentID        string `json:"agent_id"`
-	ProfileID      string `json:"profile_id"`
-	HeadRunID      string `json:"head_run_id,omitempty"`
-	Revision       uint64 `json:"revision"`
-	Created        bool   `json:"created"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
-}
-
-type compositeChildCommandResult struct {
-	RunID       string `json:"run_id"`
-	Disposition string `json:"disposition"`
-	Reason      string `json:"reason"`
-}
-
-type compositeReviewerCommandResult struct {
-	RunID       string `json:"run_id"`
-	Disposition string `json:"disposition"`
-	Reason      string `json:"reason"`
-}
-
-type compositeChatCommandResult struct {
-	RequestID   string                          `json:"request_id"`
-	Deadline    string                          `json:"deadline"`
-	RootRunID   string                          `json:"root_run_id"`
-	Children    []compositeChildCommandResult   `json:"children"`
-	Reviewer    *compositeReviewerCommandResult `json:"reviewer,omitempty"`
-	Disposition string                          `json:"disposition"`
-	Reason      string                          `json:"reason"`
-	Reply       string                          `json:"reply"`
-	Failure     string                          `json:"failure"`
-}
-
-type backupCommandResult struct {
-	Bundle   string                 `json:"bundle"`
-	Manifest currentbackup.Manifest `json:"manifest"`
-}
-
-type restoreCommandResult struct {
-	DatabasePath    string `json:"database_path"`
-	ArtifactRoot    string `json:"artifact_root"`
-	StoreInstanceID string `json:"store_instance_id"`
-}
-
-type migrateCommandResult struct {
-	DatabasePath      string                 `json:"database_path"`
-	BackupBundle      string                 `json:"backup_bundle"`
-	BackupManifest    currentbackup.Manifest `json:"backup_manifest"`
-	FromVersion       int                    `json:"from_version"`
-	ToVersion         int                    `json:"to_version"`
-	AppliedVersions   []int                  `json:"applied_versions"`
-	StoreInstanceID   string                 `json:"store_instance_id"`
-	SchemaFingerprint string                 `json:"schema_fingerprint"`
-}
-
-func newChatCommandResult(result localchat.ChatResult) chatCommandResult {
-	return chatCommandResult{
-		RequestID:            result.RequestID,
-		Deadline:             result.Deadline.UTC().Format(time.RFC3339Nano),
-		RunID:                result.RunID,
-		ConversationID:       result.ConversationID,
-		ConversationRevision: result.ConversationRevision,
-		Disposition:          string(result.LoopResult.Disposition),
-		Reason:               result.LoopResult.ReasonCode,
-		Reply:                result.Reply,
-		Failure:              result.FailureCode,
+	if err := harness.VerifyData(ctx, *dataDir); err != nil {
+		return err
 	}
-}
-
-func readChatCommandUsage(
-	ctx context.Context,
-	store *currentstore.Store,
-	result localchat.ChatResult,
-) (*chatCommandUsage, error) {
-	if result.TerminalResult == nil ||
-		result.TerminalResult.AttemptKind != corecontract.AttemptKindModel {
-		return nil, nil
-	}
-	if store == nil {
-		return nil, errors.New("Current Store is unavailable")
-	}
-	record, err := store.GetModelDispatchRecord(
-		ctx,
-		result.TerminalResult.AttemptID,
-	)
+	tools, err := harness.NewFileTools(config.Workspace, *dataDir)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if record.Attempt.RunID != result.RunID ||
-		record.Attempt.AttemptID != result.TerminalResult.AttemptID {
-		return nil, errors.New("terminal model Attempt identity drift")
+	defer tools.Close()
+	if args[0] == "list" {
+		definitions := tools.Definitions()
+		definitions = append(definitions, (&harness.CommandTools{Config: config.Commands}).Definitions()...)
+		definitions = append(definitions, (&harness.HTTPTools{Config: config.HTTP}).Definitions()...)
+		servers := map[string]any{}
+		for name, server := range config.MCPServers {
+			servers[name] = map[string]any{"enabled": server.Enabled, "probed": false}
+		}
+		return writeJSON(stdout, map[string]any{"builtin": definitions, "mcp": servers, "network_tested": false})
 	}
-	return &chatCommandUsage{
-		InputTokens:         record.Usage.Tokens.Input,
-		CachedInputTokens:   record.Usage.Tokens.CachedInput,
-		UncachedInputTokens: record.Usage.Tokens.UncachedInput,
-		OutputTokens:        record.Usage.Tokens.Output,
-		ReasoningTokens:     record.Usage.Tokens.Reasoning,
-		Status:              record.Usage.UsageStatus,
-	}, nil
+	if server == "" {
+		return usageErr("tools test: server name is required")
+	}
+	_, _ = fmt.Fprintln(stderr, "Starting the selected trusted MCP program for handshake and tool discovery. No tools/call will be sent.")
+	runtimeTools := harness.NewRuntimeTools(tools)
+	defer runtimeTools.Close()
+	if err := runtimeTools.Connect(ctx, config, server); err != nil {
+		return err
+	}
+	return writeJSON(stdout, map[string]any{"server": server, "tools": runtimeTools.Definitions(), "rejected": runtimeTools.Rejected, "tool_calls": 0})
 }
 
-func newConversationCommandResult(
-	record currentstore.ConversationRecord,
-	created bool,
-) conversationCommandResult {
-	return conversationCommandResult{
-		ConversationID: record.ConversationID,
-		TenantID:       record.TenantID,
-		PrincipalID:    record.PrincipalID,
-		WorkspaceID:    record.WorkspaceID,
-		AgentID:        record.AgentID,
-		ProfileID:      record.ProfileID,
-		HeadRunID:      record.HeadRunID,
-		Revision:       record.Revision,
-		Created:        created,
-		CreatedAt:      record.CreatedAt.UTC().Format(time.RFC3339Nano),
-		UpdatedAt:      record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+func runBackupCommand(ctx context.Context, command string, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet(command, flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory; restore requires a new target")
+	source := flags.String("source", "", "current-format backup directory")
+	target := flags.String("out", "", "new backup directory")
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-}
-
-func newCompositeChatCommandResult(
-	result localchat.CompositeChatResult,
-) compositeChatCommandResult {
-	children := make(
-		[]compositeChildCommandResult,
-		len(result.Children),
-	)
-	for index, child := range result.Children {
-		children[index] = compositeChildCommandResult{
-			RunID:       child.RunID,
-			Disposition: string(child.LoopResult.Disposition),
-			Reason:      child.LoopResult.ReasonCode,
+	if flags.NArg() != 0 {
+		return usageError()
+	}
+	switch command {
+	case "restore":
+		if *source == "" || *dataDir == "" || *dataDir == defaultDataDir() {
+			return usageErr("restore: --source and an explicit new --data-dir are required")
+		}
+		if err := harness.Restore(ctx, *source, *dataDir); err != nil {
+			return err
+		}
+	case "backup-verify":
+		if *source == "" {
+			return usageErr("backup-verify: --source is required")
+		}
+		if err := harness.VerifyBackup(ctx, *source); err != nil {
+			return err
+		}
+	case "backup":
+		if *target == "" {
+			return usageErr("backup: --out is required")
+		}
+		if err := resolveDataDir(dataDir); err != nil {
+			return err
+		}
+		store, err := harness.OpenStore(ctx, *dataDir)
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+		if err := store.Backup(ctx, *target); err != nil {
+			return err
 		}
 	}
-	var reviewer *compositeReviewerCommandResult
-	if result.Reviewer != nil {
-		reviewer = &compositeReviewerCommandResult{
-			RunID:       result.Reviewer.RunID,
-			Disposition: string(result.Reviewer.LoopResult.Disposition),
-			Reason:      result.Reviewer.LoopResult.ReasonCode,
-		}
-	}
-	return compositeChatCommandResult{
-		RequestID:   result.RequestID,
-		Deadline:    result.Deadline.UTC().Format(time.RFC3339Nano),
-		RootRunID:   result.RootRunID,
-		Children:    children,
-		Reviewer:    reviewer,
-		Disposition: string(result.LoopResult.Disposition),
-		Reason:      result.LoopResult.ReasonCode,
-		Reply:       result.Reply,
-		Failure:     result.FailureCode,
-	}
+	return writeJSON(stdout, map[string]any{"ok": true, "command": command, "data_dir": *dataDir, "source": *source, "out": *target})
 }
 
-func writeCommandJSON(destination io.Writer, value any) error {
-	encoder := json.NewEncoder(destination)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
-		return fmt.Errorf("freeagent: write JSON response: %w", err)
+func runInspect(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("inspect", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	runID := flags.String("run", "", "run id")
+	if err := parseFlags(flags, args); err != nil {
+		return err
 	}
-	return nil
+	if flags.NArg() != 0 || *runID == "" {
+		return usageErr("inspect: --run is required")
+	}
+	if err := resolveDataDir(dataDir); err != nil {
+		return err
+	}
+	store, err := openStoreForReading(ctx, *dataDir, stderr)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	tasks := harness.NewTaskService(&harness.Service{Store: store})
+	run, attempts, evidence, err := tasks.Inspect(ctx, *runID)
+	if err != nil {
+		return err
+	}
+	return writeJSON(stdout, map[string]any{"run": run, "attempts": attempts, "evidence": evidence})
+}
+
+func runAbandon(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("abandon", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	runID := flags.String("run", "", "run id")
+	if err := parseFlags(flags, args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || *runID == "" {
+		return usageErr("abandon: --run is required")
+	}
+	if err := resolveDataDir(dataDir); err != nil {
+		return err
+	}
+	store, err := harness.OpenStore(ctx, *dataDir)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	tasks := harness.NewTaskService(&harness.Service{Store: store})
+	if err := tasks.Abandon(ctx, *runID); err != nil {
+		return err
+	}
+	item, _, _, err := tasks.Inspect(ctx, *runID)
+	if err != nil {
+		return err
+	}
+	return writeJSON(stdout, item)
 }

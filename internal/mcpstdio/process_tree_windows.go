@@ -25,6 +25,7 @@ type windowsJobProcessTree struct {
 func configureManagedCommand(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP,
+		HideWindow:    true,
 	}
 }
 

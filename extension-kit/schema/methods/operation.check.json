@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["invocation", "kind", "target", "preview"],
+  "properties": {
+    "invocation": {"type": "string", "minLength": 1},
+    "kind": {"const": "tool_call"},
+    "target": {"type": "string", "minLength": 1, "maxLength": 256},
+    "preview": {"type": "string", "maxLength": 1048576},
+    "parameters": {},
+    "items": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {"type": "object", "additionalProperties": true}
+    }
+  }
+}

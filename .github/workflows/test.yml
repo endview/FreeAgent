@@ -1,0 +1,41 @@
+name: Harness Tests
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          package_json_file: internal/chatui/package.json
+      - run: pnpm install --frozen-lockfile
+        working-directory: internal/chatui
+      - run: pnpm test
+        working-directory: internal/chatui
+      - run: pnpm build
+        working-directory: internal/chatui
+      - run: go mod verify
+      - run: go test -count=1 -timeout=5m -skip 'Live|RealProvider' ./...
+      - run: go vet ./...
+      - run: go build ./cmd/freeagent
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/update-notices.ps1 -Check
+      - if: runner.os == 'Linux'
+        run: go test -race -count=1 -timeout=10m -skip 'Live|RealProvider' ./...

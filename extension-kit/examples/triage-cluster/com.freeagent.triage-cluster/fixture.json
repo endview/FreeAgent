@@ -1,0 +1,51 @@
+{
+  "workflow": "triage",
+  "input": {
+    "task": "Review the provider acceptance evidence"
+  },
+  "host": {
+    "model.embed": "deterministic",
+    "model.generate": [
+      {"json": {"relevant": true}},
+      {"json": {"relevant": true}},
+      {"json": {"relevant": true}},
+      {
+        "json": {
+          "objective": "Review selected evidence",
+          "budget": {
+            "max_children": 1,
+            "max_model_calls": 1,
+            "max_tool_calls": 1,
+            "max_output_bytes": 4096,
+            "max_concurrent_children": 1,
+            "max_active_seconds": 30
+          },
+          "roles": {
+            "reviewer": {
+              "instructions": "Review the selected evidence.",
+              "tools": [],
+              "paths": [],
+              "output_format": "text",
+              "budget": {},
+              "memory": {}
+            }
+          },
+          "children": [
+            {
+              "name": "review",
+              "role": "reviewer",
+              "objective": "Review the selected evidence."
+            }
+          ],
+          "parallel": false,
+          "max_replans": 0,
+          "synthesis": true
+        }
+      }
+    ],
+    "task.delegate": {"synthesis": "Evidence review completed"}
+  },
+  "expect": {
+    "output": "Evidence review completed"
+  }
+}

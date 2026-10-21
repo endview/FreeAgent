@@ -1,197 +1,162 @@
-# FreeAgent
+# FreeAgent Harness
 
-<center>
-  <strong>用 Go 构建的受治理、本地优先 Agent 运行时</strong>
-</center>
+一个精简的本地 Harness：持久对话、连续模型与工具调用、流式输出、确认修改、
+取消和中断恢复。基础文件任务不需要安装 MCP。
 
-<center>
-  FreeAgent 把身份、权限、预算、外部效果和恢复能力保留在可审计的核心中；
-  Role、Knowledge、Memory、Skill、Action、Channel 与编排能力则作为显式、可替换的装配单元存在。
-</center>
+当前是 **尚未发布的 v7.0.0-dev.1 开发候选**。采用独立的 Harness-v5 数据目录和 v7 存储格式，
+不支持旧配置、数据库、备份、命令或 SDK，不迁移、不导入，也不扫描旧安装。
+v7 控制服务、GUI/CLI attach、Windows 沙箱命令启动器和当前 Provider 适配器已实现。
+2026-10-21 已通过 v7.0 验收：DeepSeek 真实 Chat、工具、Responses 与联网搜索，
+便携包 CLI、原生 Windows race 和桌面手动检查；见 [v7.0 进度](docs/FREEAGENT_V7_0_IMPLEMENTATION_PROGRESS.md)。
 
-<center>
-  <a href="README.md">English</a>
-  ·
-  <a href="README.zh-CN.md">简体中文</a>
-  ·
-  <a href="README.zh-TW.md">繁體中文</a>
-</center>
+协作默认关闭；Chat 内 `/collaboration once` 可启动一次分工建议，无需手写 JSON。
+支持按需串行与有限只读并行、授权结果传递、有限重规划和可选综合。父任务累计
+上限与子任务上限同时约束，UNKNOWN 不自动重放。支持检查、暂停、取消、
+未派发任务修订和精确确认；见 [Collaboration](docs/COLLABORATION.md)。
 
-<center>
-  <img alt="FreeAgent preview, Go, platform, runtime, and license badges" src="docs/assets/readme-badges.svg">
-</center>
+## 开始
 
-## FreeAgent 解决什么问题？
+Windows 便携预览包解压后双击 `FreeAgent.exe`，不会出现控制台黑框；CLI 位于
+`bin\freeagent.exe`。无需安装 Go 或 Node；Key 按当前 Windows 用户加密保存，
+数据使用包内独立的 `data/Harness-v5`。便携包未签名，不导入旧安装；见
+[便携说明](docs/PORTABLE.md)。
 
-许多 Agent 框架把模型放在系统中心。FreeAgent 的出发点不同：Agent 是一个
-拥有持久状态、显式权限和可恢复效果的受治理运行时。
+v7 桌面版双击 `FreeAgent.exe` 时不会出现控制台黑框，并使用系统中的
+Microsoft WebView2 运行时。若 WebView2 不可用，会在默认浏览器中打开同一个
+本地 Chat，并显示停止提示。部分 Windows 10 安装需要另外安装 WebView2 Runtime。
 
-核心负责那些事后难以审计的部分：
-
-- Workspace、Agent 与 Profile 的身份；
-- 模块装配和权限上限；
-- 预算、Usage 与 Attempt 账本；
-- 上下文编译和会话历史；
-- 外部效果及其 `UNKNOWN` 结果；
-- 备份、恢复和精确重试语义。
-
-可选能力围绕这个核心装配。默认 Pure Chat Profile 可以在零可选模块的状态下
-运行；显式装配则可以加入本地 RAG、有界 Memory、受信任本地 Action、MCP 工具、
-loopback Channel、Model Profile，或窄范围的 Remote/WASM Action Host。
-
-```text
-Control Plane + RuntimeCatalog
-              |
-              v
-      Assembly Compiler
-              |
-              v
-MemberExecutionSnapshot + RunManifest
-              |
-              v
-          Universal Loop
-     /         |          \
-Context Port  Model Port  Action Port
-     \         |          /
-              v
-Current Store / Attempt / Usage / History
-              |
-              v
-     Gateway -> private executor
-```
-
-模块通过精确的 Port 与 Binding 贡献能力，不能绕过 Workspace 权限、预算、
-Gateway、效果账本或最终持久化。
-
-## 核心亮点
-
-| 领域 | FreeAgent 提供 |
-| --- | --- |
-| 受治理装配 | 显式 Apply、Dry-run、Disable、CAS、权限上限，以及启用模块的精确 runtime expectation。 |
-| 持久执行 | 不可变 Run 与 Attempt、精确重试、持久会话、Usage 记录，以及 `UNKNOWN` 禁止语义重放。 |
-| 上下文控制 | 上下文编译在 85% 阈值触发摘要，在 100% 阈值执行最小、有序的历史移除。 |
-| 可选能力 | 本地 RAG、有界 Memory、受信任本地 Action、MCP stdio 工具、loopback Channel、Model Profile，以及窄范围 Remote/WASM Action Host。 |
-| 恢复能力 | 覆盖 Store 状态、构件、Cursor、历史和模块事实的完整备份、验证与恢复。 |
-| 本地控制面 | 可选 loopback Control listener，提供只读 Overview 和窄范围、需确认的模块禁用流程。 |
-| 供应链 | 按目标生成归档、SPDX SBOM、未签名 provenance 和 SHA-256 checksum manifest。 |
-
-FreeAgent 仍处于早期 Developer Preview。已验收的开发切片见
-[CURRENT_CAPABILITIES](docs/CURRENT_CAPABILITIES.md)；这些状态不表示生产支持、
-可用性、兼容性或升级 SLA。
-
-## 下载
-
-当前发布版本为 **v0.1.1**，已发布到
-[GitHub Releases](https://github.com/endview/FreeAgent/releases)。它仍是用于
-本地评估的早期 Developer Preview，完整变更记录见
-[`v0.1.1` 发布说明](docs/RELEASE_NOTES_v0.1.1.md)。
-
-| 目标平台 | 归档 |
-| --- | --- |
-| Windows AMD64 | `freeagent-v0.1.1-windows-amd64.zip` |
-| Windows ARM64 | `freeagent-v0.1.1-windows-arm64.zip` |
-| Linux AMD64 | `freeagent-v0.1.1-linux-amd64.tar.gz` |
-| Linux ARM64 | `freeagent-v0.1.1-linux-arm64.tar.gz` |
-| Darwin AMD64，仅构建 | `freeagent-v0.1.1-darwin-amd64-build-only.tar.gz` |
-| Darwin ARM64，仅构建 | `freeagent-v0.1.1-darwin-arm64-build-only.tar.gz` |
-
-请从 [GitHub Releases](https://github.com/endview/FreeAgent/releases) 下载归档和
-相邻的 `SHA256SUMS`，先校验 checksum，再解压到新目录，并在使用前确认版本输出。
-Windows 与 Linux AMD64 包需要真实本地安装验证。ARM64 包为交叉构建，
-Darwin 包在本 Preview 中不声明已通过原生 macOS 安装验证。
-
-完整安装与升级说明见 [INSTALL](docs/INSTALL.md)。
-
-## 五分钟离线体验
-
-内置 quickstart 使用确定性 echo 模型，不需要 API key、网络访问或付费 Provider。
+构建需要 Go 1.26.5；构建后的可执行文件无需 Go 环境。
 
 ```powershell
-$FreeAgent = (Resolve-Path .\bin\freeagent-windows-amd64.exe).Path
-$Runtime = Join-Path $PWD 'data\quickstart'
-New-Item -ItemType Directory -Force $Runtime | Out-Null
-
-& $FreeAgent init `
-  --db (Join-Path $Runtime 'current.sqlite') `
-  --artifact-root (Join-Path $Runtime 'artifacts') `
-  --seed .\config\current-v1.bootstrap.seed.json
-
-& $FreeAgent conversation-create `
-  --db (Join-Path $Runtime 'current.sqlite') `
-  --conversation preview-conversation
-
-$Deadline = (Get-Date).ToUniversalTime().AddMinutes(10).ToString('o')
-$Turn1 = & $FreeAgent chat `
-  --db (Join-Path $Runtime 'current.sqlite') `
-  --artifact-root (Join-Path $Runtime 'artifacts') `
-  --conversation preview-conversation `
-  --conversation-revision 0 `
-  --message 'remember: the package works offline' `
-  --request-id preview-turn-1 `
-  --deadline $Deadline | ConvertFrom-Json
-
-$Turn2 = & $FreeAgent chat `
-  --db (Join-Path $Runtime 'current.sqlite') `
-  --artifact-root (Join-Path $Runtime 'artifacts') `
-  --conversation preview-conversation `
-  --conversation-revision $Turn1.conversation_revision `
-  --conversation-head-run $Turn1.run_id `
-  --message 'what did I ask you to remember?' `
-  --request-id preview-turn-2 `
-  --deadline $Deadline | ConvertFrom-Json
+go build -o ./bin/freeagent.exe ./cmd/freeagent
+$exe = (Resolve-Path ./bin/freeagent.exe).Path
+$data = Join-Path $env:LOCALAPPDATA 'FreeAgent-Harness-Preview'
+& $exe init --data-dir $data --workspace (Get-Location).Path
+& $exe key add --name main --url 'https://your-provider.example/v1'
+& $exe key test main
+& $exe config model --data-dir $data --id main --key main --model 'your-tool-capable-model'
+& $exe --data-dir $data
 ```
 
-第二回合只能从第一回合返回的精确成功 head 继续。过期的 revision 或 head
-会失败关闭，而不是分叉会话。
-
-包含备份、验证、恢复和本地服务的完整流程见
-[QUICKSTART](docs/QUICKSTART.md)。
-
-## 安全边界
-
-- HTTP chat 与可选 Control surface 只绑定字面 loopback 地址。
-- Control 默认关闭，使用进程内 session 和 owner-only bootstrap handoff。
-- Runtime 数据库、artifact root、备份和 handoff 文件均由 Operator 拥有。
-- 备份或恢复前停止所有写入进程；不要让两个 writer 同时使用一个 Store。
-- 当前模块系统不是通用不可信插件宿主。
-- 本 Developer Preview 的归档、SBOM、provenance 和 checksum manifest 均未签名。
-- 真实 DeepSeek 访问需要显式启用、单独提供 secret、可能产生费用，且不属于离线包 smoke test。
-
-启用 Control 或真实模型 Provider 前，请先阅读
-[KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md)。安全报告方式见
-[SECURITY](SECURITY.md)。
-
-## 从源码构建
-
-要求：
-
-- Go 1.26.5 或更高版本
-- PowerShell、bash，或其他能够设置环境变量并发送 HTTP 请求的 shell
+可选网页 Chat 使用同一任务服务，启动：
 
 ```powershell
-go test -count=1 -timeout=30m ./...
-go vet ./...
-go run ./cmd/freeagent --help
+& $exe web --data-dir $data
 ```
 
-仓库开发除普通 Go 工具链外，还使用本地 release gate 覆盖文档、License、
-公共树、安装 smoke、race 测试和跨平台构建。
+在浏览器打开本次启动输出的地址。服务仅绑定 `127.0.0.1`，地址包含本次启动的
+访问凭证，应保密；不是旧 Web 管理平台。关闭浏览器不会停止任务，请使用页面停止按钮。
+支持多行中文、Markdown、代码、表格、LaTeX、草稿、精确审批、证据和同会话换模型。
+协作及高级记忆管理仍通过 CLI 显式使用；Echo 不能证明真实模型能力。
+修改前端后，先用 Node 24 / pnpm 在 `internal/chatui` 安装锁定依赖，
+运行 `pnpm test`、`pnpm build`，再构建 Go。
 
-## 文档
+`init` 创建的数据目录没有模型；配置模型前，任务以退出码 2 结束。Key 档案保存
+服务地址和 key，存放在同一用户所有数据目录共用的 `keys.json`
+（`os.UserConfigDir()/FreeAgent/keys.json`，便携包为 `data/keys.json`，
+可用 `FREEAGENT_KEYS_FILE` 指定）。地址可以是服务根地址、`/v1` 地址或完整的
+`/chat/completions`、`/responses` 地址。
 
-- [快速开始](docs/QUICKSTART.md)
-- [安装指南](docs/INSTALL.md)
-- [当前能力](docs/CURRENT_CAPABILITIES.md)
-- [项目状态](docs/PROJECT_STATUS.md)
-- [核心运行时规格](docs/specs/CORE_RUNTIME_V1.md)
-- [Current Store 规格](docs/specs/CURRENT_STORE_V1.md)
-- [Control API 规格](docs/specs/CONTROL_API_V1.md)
-- [模块开发](docs/MODULE_DEVELOPMENT_V1.md)
-- [发布供应链](docs/RELEASE_SUPPLY_CHAIN.md)
-- [已知限制](docs/KNOWN_LIMITATIONS.md)
-- [贡献指南](CONTRIBUTING.md)
-- [安全策略](SECURITY.md)
+`key add` 默认隐藏输入 key；`--key-env <变量>` 改为引用进程环境变量，
+`--key-stdin` 供脚本从标准输入读取一行，`--no-key` 仅允许回环地址。
+key 从不作为命令参数传入。Windows 上保存的 key 用 DPAPI 按当前用户加密。
+`key list` 和 `doctor` 只显示来源和简短提示，不显示 key。`key test` 发送一次
+`GET <base>/models`，`key models` 列出服务返回的模型名；只有这两个命令会联网。
 
-## 许可证
+`config model --key <key 档案>` 只保存档案 id，第一个模型自动成为默认。
+`--provider echo` 是离线确定性测试模型，只检查持久化，不会推理或自行选择工具。
 
-Licensed as `AGPL-3.0-only`; see [LICENSE](LICENSE).
+适配器支持 Chat Completions 和 Responses 的 JSON/SSE、函数调用、无状态输出项续轮，
+并解析显式的 provider 侧 `web_search_call`。DeepSeek 联网搜索需要
+`deepseek-v4-pro`、Responses 协议和 `web_search=supported`，不等于开启 FreeAgent
+本地 HTTP 工具；搜索由 DeepSeek 服务端执行。
+
+每个运行命令都可指定 `--data-dir`；默认位置为
+`os.UserConfigDir()/FreeAgent/Harness-v5`，Windows 通常位于 `APPDATA`。
+配置命令不联网、不启动 MCP、不读取 key 值。`config model --id <名称>`
+注册模型，`--default` 选择默认模型；Chat 内 `/model` 选择后续任务使用的模型。
+未完成任务仍使用保存的模型；修改已绑定配置会阻止下一次派发。
+继续原会话用 `chat --resume <id>`；仅运行 `chat` 会创建新会话。
+
+## 日常使用
+
+- `config show` 查看配置摘要，不输出指令正文、MCP 参数或环境值。
+- `key list`、`key add`、`key edit <id|名称>`、`key test`、`key models` 管理 key 档案；
+  `key edit` 用 `--key-prompt` 重新隐藏输入。`key remove` 在给定数据目录仍有模型使用时拒绝，
+  `--disable-models [--new-default <id>]` 同时删除这些模型，`--force` 保留它们，派发时报缺失；
+  不检查其他数据目录。
+- `config model --id <名称> --key <key 档案> --model <模型名>` 注册模型；
+  `--provider echo` 配置离线测试模型；`--id <名称> --default` 只切换默认模型。
+- `config model --id <名称> --remove [--new-default <id>]` 删除模型及其 Auto/协作引用；
+  删除默认模型且仍有其他模型时必须指定 `--new-default`。
+- `config workspace --path <目录>` 修改工作区，仅在没有未完成任务时允许。
+- `run --model <名称>` 仅指定本次任务；`continue --model <名称>` 仅在完整工具组边界切换。
+- `/more` 或 `continue --max-steps <数值> --max-seconds <数值>` 显式增加有限执行额度，不清零历史，不重放 UNKNOWN。
+- `config commands --enabled --allow <绝对可执行路径>` 启用可选命令和白名单；
+  `--allow` 可重复，不设置白名单时仍须逐次确认，不能视为沙箱。
+- `config http --enabled --origin <scheme://host[:port]>` 启用可选 GET；
+  `--origin` 可重复，每个完整 URL 仍须确认。`--enabled=false` 关闭可选工具。
+- `config context --summary-bytes 4096` 显式开启任务内摘要；零表示关闭。
+- `/memory` 查看、保存、编辑、停用、删除或明确分享记忆；保存不会自动选择为后续输入。
+- `/memory select` 选择后续任务可使用的私有条目与知识集合；`/memory sources` 查看实际来源。
+- `/settings memory` 或 `config memory --knowledge` 显式开启默认关闭的本地知识库。
+- `sessions` 列出会话；`chat --resume <id>` 继续对话。
+- `run --session <id> --request <key> --json "<任务>"` 支持一次任务与结构化输出。
+- 文件修改、创建、具体批量变更、命令、HTTP 和所有 MCP 调用均要求确认；
+  非交互任务停在 `waiting_confirmation`，
+  用 `continue --run <id> --interactive` 继续，或先 `preview --run <id>` 查看，
+  再 `confirm --run <id> --digest <digest> --approve` 批准；不带 `--approve` 即拒绝。
+  摘要与待确认调用不一致时拒绝执行，需要重新预览。
+- `inspect --run <id>` 查看运行与调用事实；`abandon --run <id>` 结束未完成任务。
+- 数据目录被其他进程占用时，`sessions` 和 `inspect` 显示只读视图，写命令提示目录正在使用。
+- 退出码：0 完成，1 失败，2 用法或配置错误，3 等待确认，4 停止或达到上限，5 结果未知。
+- `tools list` 与 `doctor` 不联网、不启动外部程序；
+  `tools test <server>` 明确启动受信程序，只握手和发现工具。
+- `backup --out <新目录>`、`backup-verify --source <备份>`、
+  `restore --source <备份> --data-dir <新目录>` 只处理当前格式。
+
+参数须放在任务文字之前。Chat 支持 `/history`、`/sessions`、`/resume <序号>`、
+`/new`、`/model`、`/collaboration`、`/settings`、`/memory`、`/status`、`/continue`、`/abandon`、`/file <路径>`、`/begin` ... `/end`、
+`/exit`。任务中 Ctrl+C 取消当前任务，尽可能回到输入；空闲时 Ctrl+C 退出。
+`run --template <工作区文件>` 显式选取普通文件模板。去重要求同一会话和同一请求 key；
+省略 `--session` 是新会话，不是重试。
+
+## 记忆与知识
+
+保存时选择“当前 Agent（仅当前任务或跨任务保留）”“当前任务共享区”
+“个人或项目知识库”或“不保存”。普通聊天不会自动学习或保存长期记忆；
+换模型不换 Agent，临时专家不会因同名而共享私有资料。
+
+知识库首版仅支持工作区内有界 UTF-8 文本和 Markdown。启用后用 `/memory import`
+导入具体文件，再用 `/memory select` 选择集合。模型按需调用本地全文检索；
+不会每轮默认检索，也不会无条件注入整个集合。支持来源、字节范围、更新和删除。
+
+停用不向新的请求提供正文，保留供用户恢复；删除移除当前正文、正文修订和索引，
+不会撤回已发送的 Provider 请求、普通历史中的片段或旧备份。复制到共享区或
+知识库必须确认具体内容。详见 [记忆说明](docs/MEMORY.md)。
+
+## 边界
+
+内置列举、读取、搜索、受控编辑、创建和批量变更只处理选定工作目录，拒绝链接、硬链接、
+`.git` 和 Harness 数据目录。编辑检查 SHA-256 冲突，但不是事务文件系统；
+不要同时修改同一个文件。MCP 是受信本地代码，不提供恶意程序沙箱。
+批量批准绑定具体内容，每项结果独立记录；部分成功不会回滚或自动重放。
+命令记录实际退出、超时、截断和观察到的文件变化；停止不等于没有副作用。
+HTTP 仅允许显式来源，远程需 HTTPS 和公共地址；显式回环来源可用 HTTP。
+不使用代理、Cookie、凭据转发、重定向或自动重试；GET 仍可能产生外部副作用。
+
+目录列举按名称排序，支持 `offset`、`max_entries` 和 `next_offset` 分页；
+超过 10,000 条的目录需缩小范围。文件读取保持完整 UTF-8 字符，
+即使一页的字节数小于一个中文字符或 Emoji，也能继续向后读取。
+
+UNKNOWN 不会自动重放。放弃不抹掉未知事实，同工作目录的后续任务仍会收到提醒。
+上下文按完整旧 Run 裁剪，原始历史保留；继续任务不重置步数与累计时间。
+可选任务内摘要保留来源，不成为跨会话记忆。CLI 和第二本地调用方共用
+[同一任务服务](docs/COMPOSITION.md)，证据来自运行时记录而非模型声称。
+
+生产结构为 CLI、Harness、MCP 传输和可选回环 Chat；都复用同一任务服务。
+不包含模块治理、隐式学习、默认自动 RAG、Channel、Web 管理台或后台调度。
+
+详细配置、限制与验证见 [英文入口](README.md)、[配置](docs/CONFIGURATION.md)、
+[恢复](docs/RECOVERY.md) 和 [v7.0 进度](docs/FREEAGENT_V7_0_IMPLEMENTATION_PROGRESS.md)。
+本地 fixture 通过不代表真实模型验收或正式发布。

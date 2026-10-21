@@ -1,0 +1,19 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "com.freeagent.prompt-router",
+  "version": "0.1.0",
+  "name": "Prompt Router",
+  "description": "Adds a small, explicit prompt hint based on user keywords.",
+  "run": {
+    "command": "python",
+    "args": ["main.py"]
+  },
+  "needs": ["message"],
+  "context": {
+    "phases": ["turn"],
+    "purposes": ["chat"],
+    "max_chars": 1200,
+    "placement": ["system"]
+  },
+  "timeout_ms": 2000
+}

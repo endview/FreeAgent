@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["invocation", "phase", "purpose"],
+  "properties": {
+    "invocation": {"type": "string", "minLength": 1},
+    "phase": {"enum": ["turn", "step"]},
+    "purpose": {"enum": ["chat", "child", "planning", "synthesis"]},
+    "step": {"type": "integer", "minimum": 0},
+    "message": {},
+    "history": {"type": "array"},
+    "workspace": {"type": "string"},
+    "tool_results": {},
+    "settings": {"type": "object"}
+  }
+}

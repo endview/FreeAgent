@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
 	"unicode/utf8"
 
+	"github.com/endview/freeagent/internal/winlaunch"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -34,8 +34,49 @@ var (
 	errForcedProcessKill   = errors.New("mcp stdio: subprocess did not exit after stdin closed and was killed")
 	errProcessReapTimeout  = errors.New("mcp stdio: subprocess wait did not finish after force kill")
 	errStderrDrainTimeout  = errors.New("mcp stdio: stderr drain did not stop after its read pipe was closed")
+	errStdinCloseTimeout   = errors.New("mcp stdio: subprocess stdin close did not finish after the process tree stopped")
 	errInvalidTransportArg = errors.New("mcp stdio: invalid command transport configuration")
 )
+
+const processReapGrace = 2 * time.Second
+
+// NewTransport reuses the bounded stdio transport without module lifecycle facts.
+func NewTransport(command string, args []string, dir string, env []string) (*commandTransport, error) {
+	return newCommandTransport(command, args, dir, env, 4<<20, 500*time.Millisecond, false)
+}
+
+// NewTransportWithLog is the same bounded transport with a capped, redacted
+// stderr log. The callback must never return credential-bearing text.
+func NewTransportWithLog(command string, args []string, dir string, env []string, logPath string, redact func(string) string) (*commandTransport, error) {
+	transport, err := newCommandTransport(command, args, dir, env, 4<<20, 500*time.Millisecond, false)
+	if err != nil {
+		return nil, err
+	}
+	transport.stderrLogPath = logPath
+	transport.redactStderr = redact
+	return transport, nil
+}
+
+// NewBidirectionalTransport is used by extensions that may call Host APIs.
+// MCP keeps using NewTransport and remains client-initiated only.
+func NewBidirectionalTransport(command string, args []string, dir string, env []string) (*commandTransport, error) {
+	return newCommandTransport(command, args, dir, env, 4<<20, 500*time.Millisecond, true)
+}
+
+// NewBidirectionalTransportWithLog is the logged form of
+// NewBidirectionalTransport.
+func NewBidirectionalTransportWithLog(command string, args []string, dir string, env []string, logPath string, redact func(string) string) (*commandTransport, error) {
+	transport, err := newCommandTransport(command, args, dir, env, 4<<20, 500*time.Millisecond, true)
+	if err != nil {
+		return nil, err
+	}
+	transport.stderrLogPath = logPath
+	transport.redactStderr = redact
+	return transport, nil
+}
+
+// Close also cleans up a subprocess when SDK initialization did not complete.
+func (t *commandTransport) Close() error { return t.closeStartedConnection() }
 
 // commandTransport starts one exact local executable without involving a
 // shell. A transport instance is single-use, as required by mcp.Transport.
@@ -48,6 +89,9 @@ type commandTransport struct {
 	env            []string
 	maxFrameBytes  int
 	terminateAfter time.Duration
+	allowRequests  bool
+	stderrLogPath  string
+	redactStderr   func(string) string
 
 	connectMu  sync.Mutex
 	connected  bool
@@ -65,6 +109,7 @@ func newCommandTransport(
 	env []string,
 	maxFrameBytes int,
 	terminateAfter time.Duration,
+	allowRequests ...bool,
 ) (*commandTransport, error) {
 	if command == "" || !filepath.IsAbs(command) {
 		return nil, fmt.Errorf("%w: command must be an absolute path", errInvalidTransportArg)
@@ -91,6 +136,7 @@ func newCommandTransport(
 		}
 	}
 
+	allowPeerRequests := len(allowRequests) != 0 && allowRequests[0]
 	return &commandTransport{
 		command:        command,
 		args:           append([]string(nil), args...),
@@ -98,6 +144,7 @@ func newCommandTransport(
 		env:            append([]string{}, env...),
 		maxFrameBytes:  maxFrameBytes,
 		terminateAfter: terminateAfter,
+		allowRequests:  allowPeerRequests,
 	}, nil
 }
 
@@ -118,11 +165,10 @@ func (t *commandTransport) Connect(ctx context.Context) (mcp.Connection, error) 
 	// become a mutable retry boundary for the same transport value.
 	t.connected = true
 
-	cmd := exec.Command(launchPath(t.command), t.args...)
 	dir, directDir := launchDir(t.dir)
 	var cleanupDir func()
 	if directDir {
-		cmd.Dir = dir
+		_ = dir
 	} else {
 		longDirMu.Lock()
 		mappedDir, cleanup, err := mapLongDir(t.dir)
@@ -131,74 +177,38 @@ func (t *commandTransport) Connect(ctx context.Context) (mcp.Connection, error) 
 			return nil, fmt.Errorf("mcp stdio: map working directory: %w", err)
 		}
 		cleanupDir = cleanup
-		cmd.Dir = mappedDir
+		dir = mappedDir
 	}
 	// A non-nil empty slice is materially different from nil to os/exec: it
 	// means an empty environment rather than inheritance from the parent.
-	cmd.Env = append([]string{}, t.env...)
-	configureManagedCommand(cmd)
-
-	stdout, err := cmd.StdoutPipe()
+	process, err := winlaunch.Start(ctx, winlaunch.Spec{
+		Command: launchPath(t.command), Args: t.args, Dir: dir,
+		Env: append([]string{}, t.env...), Mode: winlaunch.ModeHost,
+	})
 	if err != nil {
 		if cleanupDir != nil {
 			cleanupDir()
 		}
-		return nil, fmt.Errorf("mcp stdio: create stdout pipe: %w", err)
-	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		if cleanupDir != nil {
-			cleanupDir()
-		}
-		_ = stdout.Close()
-		return nil, fmt.Errorf("mcp stdio: create stdin pipe: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		if cleanupDir != nil {
-			cleanupDir()
-		}
-		_ = stdin.Close()
-		_ = stdout.Close()
-		return nil, fmt.Errorf("mcp stdio: create stderr pipe: %w", err)
-	}
-	if err := cmd.Start(); err != nil {
-		if cleanupDir != nil {
-			cleanupDir()
-		}
-		_ = stderr.Close()
-		_ = stdin.Close()
-		_ = stdout.Close()
 		return nil, fmt.Errorf("mcp stdio: start subprocess: %w", err)
-	}
-	processTree, err := attachManagedProcessTree(cmd)
-	if err != nil {
-		if cleanupDir != nil {
-			cleanupDir()
-		}
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		_ = stderr.Close()
-		_ = stdin.Close()
-		_ = stdout.Close()
-		return nil, fmt.Errorf("mcp stdio: establish managed process tree: %w", err)
 	}
 
 	c := &commandConnection{
-		cmd:             cmd,
-		stdin:           stdin,
-		stdout:          stdout,
-		stderr:          stderr,
+		process:         process,
+		stdin:           process.Stdin(),
+		stdout:          process.Stdout(),
+		stderr:          process.Stderr(),
 		terminateAfter:  t.terminateAfter,
 		maxFrameBytes:   t.maxFrameBytes,
+		allowRequests:   t.allowRequests,
+		stderrLogPath:   t.stderrLogPath,
+		redactStderr:    t.redactStderr,
 		incoming:        make(chan readResult, 1),
 		closing:         make(chan struct{}),
 		stderrDrainDone: make(chan struct{}),
-		processTree:     processTree,
 		cleanupDir:      cleanupDir,
 	}
 	t.connection = c
-	go c.drainStderr(stderr)
+	go c.drainStderr(c.stderr)
 	go c.readLoop()
 	return c, nil
 }
@@ -225,16 +235,18 @@ type readResult struct {
 }
 
 type commandConnection struct {
-	cmd             *exec.Cmd
+	process         *winlaunch.Process
 	stdin           io.WriteCloser
 	stdout          io.ReadCloser
 	stderr          io.ReadCloser
 	terminateAfter  time.Duration
 	maxFrameBytes   int
+	allowRequests   bool
+	stderrLogPath   string
+	redactStderr    func(string) string
 	incoming        chan readResult
 	closing         chan struct{}
 	stderrDrainDone chan struct{}
-	processTree     managedProcessTree
 	cleanupDir      func()
 
 	readMu    sync.Mutex
@@ -351,13 +363,19 @@ func (c *commandConnection) Close() error {
 		close(c.closing)
 
 		var closeErrs []error
-		if err := c.stdin.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
-			closeErrs = append(closeErrs, fmt.Errorf("mcp stdio: close subprocess stdin: %w", err))
-		}
+		// Closing stdin is the graceful EOF signal, but it must not gate
+		// termination. On Windows, Close does not always cancel a WriteFile
+		// blocked on a server that stopped reading, and it waits for that
+		// writer, so a synchronous stdin Close could wait until the server
+		// exits on its own. Terminating the tree breaks the pipe and releases
+		// the writer.
+		stdinClosed := make(chan error, 1)
+		go func() { stdinClosed <- c.stdin.Close() }()
 
 		waitDone := make(chan error, 1)
 		go func() {
-			waitDone <- c.cmd.Wait()
+			_, waitErr := c.process.Wait(context.Background())
+			waitDone <- waitErr
 		}()
 
 		graceTimer := time.NewTimer(c.terminateAfter)
@@ -366,7 +384,7 @@ func (c *commandConnection) Close() error {
 			if err != nil {
 				closeErrs = append(closeErrs, fmt.Errorf("mcp stdio: wait for subprocess: %w", err))
 			}
-			if err := c.processTree.kill(); err != nil {
+			if err := c.process.Kill(); err != nil {
 				closeErrs = append(closeErrs, fmt.Errorf("mcp stdio: kill remaining process tree: %w", err))
 			}
 			graceTimer.Stop()
@@ -374,23 +392,29 @@ func (c *commandConnection) Close() error {
 			// General local processes have no MCP shutdown RPC. First request
 			// platform termination for the entire managed tree, then reserve a
 			// second bounded phase for an unconditional tree kill.
-			c.processTree.terminate()
+			c.process.Terminate()
 			terminateTimer := time.NewTimer(c.terminateAfter)
 			select {
 			case <-waitDone:
 				terminateTimer.Stop()
-				if err := c.processTree.kill(); err != nil {
+				if err := c.process.Kill(); err != nil {
 					closeErrs = append(closeErrs, fmt.Errorf("mcp stdio: kill remaining process tree: %w", err))
 				}
 			case <-terminateTimer.C:
-				killErr := c.processTree.kill()
-				if killErr != nil {
-					killErr = errors.Join(killErr, c.cmd.Process.Kill())
-				}
+				killErr := c.process.Kill()
 				// Force-kill must always be followed by a bounded Wait attempt. An
 				// operating-system/exec defect must not turn Close into a new
 				// unbounded shutdown path.
-				reapTimer := time.NewTimer(c.terminateAfter)
+				// Process termination and Go's Wait are separate OS events on
+				// Windows. Keep the close path bounded, but do not use the
+				// short per-transport termination interval as the reaping
+				// deadline; under load the process handle can take longer to
+				// publish ProcessState after the Job has been killed.
+				reapTimeout := processReapGrace
+				if candidate := c.terminateAfter * 10; candidate > reapTimeout {
+					reapTimeout = candidate
+				}
+				reapTimer := time.NewTimer(reapTimeout)
 				var waitErr error
 				select {
 				case waitErr = <-waitDone:
@@ -409,8 +433,18 @@ func (c *commandConnection) Close() error {
 				}
 			}
 		}
-		if err := c.processTree.close(); err != nil {
+		if err := c.process.Close(); err != nil {
 			closeErrs = append(closeErrs, fmt.Errorf("mcp stdio: close managed process tree: %w", err))
+		}
+		stdinTimer := time.NewTimer(max(processReapGrace, c.terminateAfter*10))
+		select {
+		case err := <-stdinClosed:
+			stdinTimer.Stop()
+			if err != nil && !errors.Is(err, os.ErrClosed) {
+				closeErrs = append(closeErrs, fmt.Errorf("mcp stdio: close subprocess stdin: %w", err))
+			}
+		case <-stdinTimer.C:
+			closeErrs = append(closeErrs, errStdinCloseTimeout)
 		}
 		if c.cleanupDir != nil {
 			c.cleanupDir()
@@ -446,10 +480,12 @@ func (c *commandConnection) readLoop() {
 				// The first MCP slice is strictly Tool-only and client-initiated.
 				// Reject both server calls and notifications before the SDK can
 				// dispatch Sampling, Elicitation, listChanged, or future methods.
-				message = nil
-				err = errors.New(
-					"mcp stdio: server-originated requests and notifications are forbidden",
-				)
+				if !c.allowRequests {
+					message = nil
+					err = errors.New(
+						"mcp stdio: server-originated requests and notifications are forbidden",
+					)
+				}
 			} else if _, response := message.(*jsonrpc.Response); !response {
 				message = nil
 				err = errors.New("mcp stdio: decoded an unsupported JSON-RPC message type")
@@ -469,8 +505,53 @@ func (c *commandConnection) readLoop() {
 func (c *commandConnection) drainStderr(stderr io.ReadCloser) {
 	defer close(c.stderrDrainDone)
 	defer stderr.Close()
+	var log *os.File
+	if c.stderrLogPath != "" {
+		_ = os.MkdirAll(filepath.Dir(c.stderrLogPath), 0o700)
+		log, _ = os.OpenFile(c.stderrLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if log != nil {
+			defer log.Close()
+		}
+	}
+	const maxLogBytes = 1 << 20
+	written := int64(0)
+	carry := ""
 	buffer := make([]byte, stderrDrainBufferSize)
-	_, _ = io.CopyBuffer(io.Discard, stderr, buffer)
+	for {
+		count, err := stderr.Read(buffer)
+		if count > 0 {
+			carry += string(buffer[:count])
+			// Keep a bounded suffix so a secret split across two reads is
+			// redacted before either half is written.
+			if len(carry) > 8192 {
+				flush := carry[:len(carry)-8192]
+				if c.redactStderr != nil {
+					flush = c.redactStderr(flush)
+				}
+				if log != nil && written < maxLogBytes {
+					if remaining := int(maxLogBytes - written); len(flush) > remaining {
+						flush = flush[:remaining]
+					}
+					if n, writeErr := log.WriteString(flush); writeErr == nil {
+						written += int64(n)
+					}
+				}
+				carry = carry[len(carry)-8192:]
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	if c.redactStderr != nil {
+		carry = c.redactStderr(carry)
+	}
+	if log != nil && written < maxLogBytes {
+		if remaining := int(maxLogBytes - written); len(carry) > remaining {
+			carry = carry[:remaining]
+		}
+		_, _ = log.WriteString(carry)
+	}
 }
 
 func readNDJSONFrame(reader *bufio.Reader, maxFrameBytes int) ([]byte, error) {

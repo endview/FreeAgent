@@ -1,0 +1,18 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "com.example.context",
+  "version": "0.1.0",
+  "name": "Context extension",
+  "description": "A bounded context.prepare extension.",
+  "run": {
+    "command": "python",
+    "args": ["main.py"]
+  },
+  "needs": ["message"],
+  "context": {
+    "phases": ["turn"],
+    "purposes": ["chat"],
+    "max_chars": 800,
+    "placement": ["tail"]
+  }
+}

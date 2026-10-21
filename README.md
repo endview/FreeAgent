@@ -1,287 +1,270 @@
-# FreeAgent
+# FreeAgent Harness
 
-<center>
-  <strong>A governed, local-first agent runtime built in Go</strong>
-</center>
+A small local harness for persistent conversations and model-driven file work.
+One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
+installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-<center>
-  FreeAgent keeps identity, authority, usage limits, external effects, and recovery
-  inside an auditable core, while Role, Knowledge, Memory, Skill, Action,
-  Channel, and orchestration capabilities remain explicit, replaceable
-  assembly units.
-</center>
+This is the **unreleased v7.0.0-dev.1 development candidate**. It uses a new
+current-only `Harness-v5` data directory and the v7 store format. Old
+configurations, databases, backups, commands, and SDKs are not supported or
+imported. Do not point it at an old data directory.
+The v7 control service, GUI/CLI attach path, sandboxed Windows command
+launcher and current provider adapters are implemented. The v7.0 acceptance
+checks passed on 2026-10-21: real DeepSeek Chat, tools, Responses and web
+search, the packaged CLI, the native Windows race suite and the manual
+desktop checks. See [v7.0 progress](docs/FREEAGENT_V7_0_IMPLEMENTATION_PROGRESS.md).
 
-<center>
-  <a href="README.md">English</a>
-  ·
-  <a href="README.zh-CN.md">简体中文</a>
-  ·
-  <a href="README.zh-TW.md">繁體中文</a>
-</center>
+## Start
 
-<center>
-  <img alt="FreeAgent preview, Go, platform, runtime, and license badges" src="docs/assets/readme-badges.svg">
-</center>
+The Windows portable preview starts by double-clicking `FreeAgent.exe`, needs no
+Go or Node installation, and stores Keys encrypted for the current Windows
+user. The CLI is `bin\freeagent.exe`. See
+[Portable Instructions](docs/PORTABLE.md). It is unsigned and uses its own
+`data/Harness-v5`; it does not import existing installations.
 
-## Why FreeAgent?
+The v7 desktop build opens `FreeAgent.exe` without a console window and uses
+the installed Microsoft WebView2 runtime. If WebView2 is unavailable, it
+opens the same local Chat in the default browser and shows a stop prompt.
+Some Windows 10 installations need the WebView2 Runtime installed separately.
 
-Most agent frameworks make the model the center of the system. FreeAgent
-starts from a different premise: an agent is a governed runtime with durable
-state, explicit authority, and recoverable effects.
+Requires Go 1.26.5 to build; the executable needs no Go installation.
+The checked-in Chat assets are embedded. After editing frontend source, use
+Node 24 and pnpm to install the locked dependencies and rebuild before Go:
 
-The core owns the parts that are difficult to audit after the fact:
+```powershell
+pnpm --dir internal/chatui install --frozen-lockfile
+pnpm --dir internal/chatui test
+pnpm --dir internal/chatui build
+```
 
-- workspace, agent, and profile identity;
-- module assembly and authority ceilings;
-- usage limits and attempt ledgers;
-- context compilation and conversation history;
-- external effects and their `UNKNOWN` outcomes;
-- backup, restore, and exact retry semantics.
+```powershell
+go build -o ./bin/freeagent.exe ./cmd/freeagent
+$exe = (Resolve-Path ./bin/freeagent.exe).Path
+$data = Join-Path $env:LOCALAPPDATA 'FreeAgent-Harness-Preview'
+$project = (Get-Location).Path
 
-Optional capabilities are assembled around that core. A default Pure Chat
-profile can run with no optional module selected, while an explicit assembly
-can add local RAG, bounded memory, trusted local actions, MCP tools, loopback
-channels, model profiles, or narrow Remote/WASM action hosts.
+& $exe init --data-dir $data --workspace $project
+& $exe key add --name main --url 'https://your-provider.example/v1'
+& $exe key test main
+& $exe config model --data-dir $data --id main --key main --model 'your-tool-capable-model'
+& $exe --data-dir $data
+```
+
+`init` creates a data directory with no models; tasks exit with code 2 until a
+model is configured. A key profile holds a provider address and its key. Key
+profiles live in one `keys.json` shared by every data directory of the same user
+(`os.UserConfigDir()/FreeAgent/keys.json`, or `data/keys.json` in a portable
+package; `FREEAGENT_KEYS_FILE` overrides it). The address may be a service root,
+a `/v1` address or a complete `/chat/completions` or `/responses` URL.
+
+`key add` reads the key with hidden input. `--key-env <variable>` references a
+process variable instead, `--key-stdin` reads one line for scripts, and
+`--no-key` is accepted only for loopback addresses. Keys are never accepted as
+command arguments. On Windows a saved key is encrypted for the current user with
+DPAPI. `key list` and `doctor` show the source and a short hint, never the key.
+`key test` sends one `GET <base>/models`; `key models` lists the reported model
+names. Both are explicit network requests; no other configuration command makes one.
+
+`config model --key <key profile>` stores only the key profile id. The first
+model becomes the default. `--provider echo` is an offline deterministic test
+model; it checks persistence, not model reasoning or tool selection.
+
+The adapter supports Chat Completions and Responses JSON/SSE responses,
+function calls, stateless output-item continuation and explicit provider-side
+`web_search_call` metadata. Each provider still needs its own real test. It does
+not redirect credentials, retry failed calls or fall back. DeepSeek search uses
+`deepseek-v4-pro` with Responses and `web_search=supported`; it is independent
+of FreeAgent's optional local HTTP tool.
+Optional explicit Auto selection belongs to TaskService, not the adapter.
+Configuration commands do not make model requests, start MCP programs or resolve
+keys. Profile edits leave existing Run bindings intact; changing a
+bound profile stops its next dispatch until explicitly reconciled at a safe
+boundary. Inside Chat, `/model <id>` selects subsequent tasks without exiting.
+Use `chat --resume <session>` to continue an existing conversation.
+
+## Local Chat
+
+```powershell
+& $exe web --data-dir $data
+```
+
+Open the launch address printed by that process. It binds only to `127.0.0.1`,
+requires that launch's key, and is a foreground single-Agent caller, not an
+HTTP control platform or hosted service. Keep the address private. Closing a
+browser does not stop its task; use the page's Stop control. Closing the server
+stops new dispatch but does not undo effects or resolve UNKNOWN calls.
+
+Chat supports multiline input, Markdown, code, tables, bounded LaTeX, drafts,
+raw-source copy, exact approvals, runtime evidence and same-Chat model changes.
+Optional collaboration and advanced memory management remain in the CLI.
+The initial Echo model verifies UI/persistence only, not real model quality.
+See [Chat Contract](docs/CHAT_CONTRACT.md).
+
+## Daily Commands
 
 ```text
-Control Plane + RuntimeCatalog
-              |
-              v
-      Assembly Compiler
-              |
-              v
-MemberExecutionSnapshot + RunManifest
-              |
-              v
-          Universal Loop
-     /         |          \
-Context Port  Model Port  Action Port
-     \         |          /
-              v
-Current Store / Attempt / Usage / History
-              |
-              v
-     Gateway -> private executor
+key add --name <name> --url <address> [--note <text>] [--preset deepseek] [--key-stdin | --key-env <variable> | --no-key]
+key list [--json]
+key edit <id|name> [--name <name>] [--url <address>] [--note <text>] [--key-prompt | --key-stdin | --key-env <variable> | --no-key]
+key remove <id|name> [--force | --disable-models [--new-default <id>]] [--data-dir <directory>]
+key test <id|name> [--json]
+key models <id|name> [--json]
+config show
+config model --id <name> [--default] --key <key profile id|name> --model <name>
+config model --id <name> [--default] --provider echo
+config model --id <name> --default
+config model --id <name> --remove [--new-default <id>]
+config workspace --path <directory>
+config commands --enabled [--allow <absolute-executable>] [--timeout 120 --output-bytes 32768]
+config http --enabled --origin <scheme://host[:port]> [--timeout 20 --output-bytes 32768]
+config context --summary-bytes <0-16384>
+config collaboration --mode off|ask|auto
+config memory [--knowledge] [--max-entries 16 --context-bytes 16384 --document-bytes 65536]
+chat [--resume <session>]
+web [--port <loopback-port>]
+run [--session <id>] [--model <id>] [--request <key>] [--template <workspace-file>] [--json] [--interactive] <task>
+continue --run <id> [--model <id>] [--max-steps <n>] [--max-seconds <n>] [--interactive] [--json]
+sessions [--show <id>]
+inspect --run <id>
+preview --run <id> [--json]
+confirm --run <id> --digest <digest> [--approve] [--json]
+abandon --run <id>
+tools list
+tools test <server>
+memory <scopes|list|read|save|save-result|update|disable|enable|delete|copy|import|search|sources|select|clear|agent> [flags]
+collab create --plan <json-file>
+collab continue --parent <id> [--interactive]
+collab inspect --parent <id>
+collab control --parent <id> [--child <name>] --action <pause|resume|cancel>
+collab adjust --parent <id> --child <name> --spec <json-file>
+collab preview --parent <id> --child <name>
+collab confirm --parent <id> --child <name> --digest <sha256> [--approve]
+collab resolve --parent <id> --digest <sha256> --decision <text>
+doctor
+backup --out <new-directory>
+backup-verify --source <backup-directory>
+restore --source <backup-directory> --data-dir <new-directory>
 ```
 
-Modules contribute capabilities through exact ports and bindings. They do not
-bypass workspace permissions, output/deadline limits, the gateway, the effect
-ledger, or final persistence. FreeAgent does not implement price, currency,
-cost-routing, or budget policy semantics.
+Use `--data-dir` on each runtime command. Otherwise the default is
+`os.UserConfigDir()/FreeAgent/Harness-v5`. On Windows this is normally under
+`APPDATA`, not the preview directory in the example above.
+Flags must precede task text. `config model` updates one named local profile;
+`--default` also changes the default used by unselected Chats. `--remove`
+deletes a profile and its Auto/collaboration references; removing the default
+requires `--new-default` while other models remain. `config workspace` changes
+the workspace only when no Run is unfinished. `key remove` refuses while models
+in the given data directory use the key; `--disable-models` removes those
+models in the same step and `--force` leaves them to fail at dispatch. Other
+data directories are not checked. `run --model`
+binds only that new Run. `continue --model` switches an unfinished Run only at
+a safe complete model/tool boundary; `--max-steps` and `--max-seconds` add
+finite capacity without resetting consumption. Chat accepts `/model` to list or
+select the model for subsequent tasks and `/more` to explicitly increase finite
+limits, in addition to `/history`, `/sessions`, `/resume
+<number>`, `/new`, `/status`, `/continue`, `/abandon`, `/file <path>`, `/begin`
+... `/end`, and `/exit`. Ctrl+C during a task cancels that task and returns to
+input when possible; Ctrl+C while idle exits chat.
 
-## Highlights
+File changes, commands, HTTP GET and **every MCP call** require explicit confirmation. Noninteractive
+tasks stop at `waiting_confirmation`; continue them with `--interactive`, or
+run `preview --run <id>` and then `confirm --run <id> --digest <digest>
+--approve`. Without `--approve`, `confirm` declines the call. A digest that no
+longer matches the pending call is refused; preview it again.
+Request deduplication is scoped to the same `--session` and `--request`.
+Omitting `--session` creates a new conversation, not a retry.
 
-| Area | What FreeAgent provides |
-| --- | --- |
-| Governed assembly | Explicit Apply, Dry-run, Disable, CAS, authority ceilings, and exact runtime expectations for enabled modules. |
-| Durable execution | Immutable runs and attempts, exact retry, persistent conversations, usage records, and no semantic replay of `UNKNOWN`. |
-| Context control | Context compilation with an 85% summarization threshold and minimal, ordered history removal at 100%. |
-| Optional capabilities | Local RAG, bounded memory, trusted local actions, MCP stdio tools, loopback channels, model profiles, and narrow Remote/WASM action hosts. |
-| Recovery | Complete Current Store backup, verification, and restore across store state, artifacts, cursors, history, and module facts. |
-| Local control | Optional loopback Control listener with a read-only Overview and a narrow, confirmed module-disable workflow. |
-| Supply chain | Per-target archives, SPDX SBOM, unsigned provenance, and SHA-256 checksum manifests. |
+Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting
+for confirmation, 4 stopped or limited, 5 unknown result.
 
-FreeAgent is an early Developer Preview. The accepted development slices are
-documented in [CURRENT_CAPABILITIES](docs/CURRENT_CAPABILITIES.md); they are
-not a production-support, availability, compatibility, or upgrade SLA.
+## Memory
 
-## Current status
+Chat `/memory` offers selected text, completed result, source inspection,
+editing and explicit sharing. Saving asks for the destination: current Agent
+(task-only or retained), current collaboration shared area, or personal/project
+knowledge. Saving does not automatically select a retained entry for future
+input; `/memory select` does. `/memory sources` expands actual used sources.
 
-The exact development-slice status is published below for compatibility with
-the repository's documentation gate. `NEXT` markers are historical boundaries,
-not an implementation claim. Full scope and evidence are maintained in
-[CURRENT_CAPABILITIES](docs/CURRENT_CAPABILITIES.md).
+Knowledge is disabled by default. Enable it in `/settings memory` or
+`config memory --knowledge`, then explicitly import a workspace text/Markdown
+file and select its collection. The Agent retrieves bounded excerpts only when
+it calls `knowledge_search`; selecting a collection does not inject all its
+documents. There is no automatic history scan, background indexing or hidden
+learning. See [Memory](docs/MEMORY.md) for commands and deletion boundaries.
+
+## Boundaries
+
+- File listing, bounded UTF-8 reading, literal search, editing, creation and
+  concrete batch changes are restricted to the selected workspace. Links, hardlinks, `.git`
+  and the harness data directory are excluded.
+- Directory listing is sorted and paginated with `next_offset`. File reading
+  returns whole UTF-8 characters, including when a requested page is smaller
+  than one character. See [file tool limits](docs/CONFIGURATION.md#file-tools).
+- Edits require the full SHA-256 returned by `file_read`, show the replacement
+  and check for conflicts before publication. Do not concurrently edit the same
+  file: this is not a transactional filesystem or hostile-local-process sandbox.
+- Batch approval binds the exact targets, original hashes and proposed changes.
+  Files are revalidated before dispatch; per-file progress is saved. Partial
+  success is not rolled back or automatically replayed.
+- Local commands are disabled by default. Optional exact executable allowlists
+  restrict which path may run, not its arguments or descendants. Each command
+  still requires exact argv/cwd/environment approval. Cleanup is best effort,
+  not undo or a sandbox.
+- HTTP GET is disabled by default, origin-allowlisted and approved per URL.
+  Remote targets require HTTPS and public addresses; explicitly configured
+  loopback origins may use HTTP. No proxy, cookies, credentials, redirects or
+  retry are used. GET and local endpoints may still have effects.
+- Step, cumulative time, context, output and result limits persist across
+  continuation. Context trimming removes complete prior runs from model input,
+  never the stored history.
+- Ordinary task templates and references are explicitly selected. Optional
+  task-local recaps retain source IDs/hashes and do not create cross-task memory.
+- Interrupted dispatched calls remain `UNKNOWN`. Ordinary continuation and
+  duplicate requests never replay them. Abandoning a task retains its unknown
+  records and warns later tasks in that workspace.
+- Only one writer owns a data directory. There is no HTTP control platform or
+  background service; `web` explicitly starts an optional loopback Chat.
+  While another process owns it, `sessions` and `inspect` show a read-only
+  view and write commands report that the directory is in use.
+- MCP is opt-in trusted local code, **not a sandbox**. It can access anything its
+  operating-system account can access. Installation and updates are the user's
+  responsibility.
+- Runtime evidence separates file changes, commands, HTTP response facts,
+  checks that passed, checks not run and uncertainty from model explanations.
+- The CLI and a second local caller share one task service. See
+  [Local Composition](docs/COMPOSITION.md).
+- Default-disabled collaboration adds bounded visible delegation, role
+  profiles, independent child budgets, cumulative parent guards, conservative
+  recovery and evidence-based merge. It has no recursive swarm or background
+  scheduler. See [Collaboration](docs/COLLABORATION.md).
+- Private, task-shared and selected knowledge memory have runtime-enforced
+  scopes, sources, finite bounds and optimistic revisions. Memory content is
+  data, not permission or proof that a check passed.
+
+## Development
 
 ```text
-W5_F1_COLLABORATION_STABILITY_ACCEPTED_DEVELOPMENT_SLICE / W5_COMPLETE_ACCEPTED_DEVELOPMENT_SLICE / W6_NEXT
-W2_D_LOCAL_ASSEMBLY_ACCEPTED_DEVELOPMENT_SLICE
-W2_E5_B_DOCUMENT_INSIGHT_DUAL_PORT_ACCEPTED_DEVELOPMENT_SLICE
-W2_R1_REMOTE_ACTION_HOST_ACCEPTED_DEVELOPMENT_SLICE
-W2_R2_WASM_HOST_ACCEPTED_DEVELOPMENT_SLICE
-W2_R3_UNTRUSTED_MODULE_ISOLATION_ACCEPTED_DEVELOPMENT_SLICE
-W2_U0_SIGNING_SOURCE_CONTRACT_ACCEPTED_DEVELOPMENT_SLICE
-W2_U1_SIGNING_SOURCE_POLICY_ACCEPTED_DEVELOPMENT_SLICE
-W2_U2_DISCOVERY_SNAPSHOT_ACCEPTED_DEVELOPMENT_SLICE
-W2_U3_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE
-W2_U3_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE / W2_U4_OPERATOR_APPLY_NEXT
-W2_U4_OPERATOR_APPLY_ACCEPTED_DEVELOPMENT_SLICE
-W6_0_CONTROL_API_CONTRACT_NEXT
-W6_0_CONTROL_API_CONTRACT_ACCEPTED_DEVELOPMENT_SLICE
-W6_1_APPLICATION_SERVICES_READ_API_NEXT
-W6_1_APPLICATION_SERVICES_READ_API_ACCEPTED_DEVELOPMENT_SLICE
-W6_2_CONTROLLED_MUTATIONS_AUDIT_NEXT
-W6_2_CONTROLLED_MUTATIONS_AUDIT_ACCEPTED_DEVELOPMENT_SLICE
-W6_2_CONFIRMATION_CONTRACT_ACCEPTED_DEVELOPMENT_SLICE
-W6_2_DURABLE_RECEIPT_SCHEMA_NEXT
-W6_2_DURABLE_RECEIPT_SCHEMA_ACCEPTED_DEVELOPMENT_SLICE
-W6_2_MODULE_DISABLE_MUTATION_WIRING_NEXT
-W6_2_MODULE_DISABLE_MUTATION_WIRING_ACCEPTED_DEVELOPMENT_SLICE
-W6_3_WEB_SHELL_READ_ONLY_OVERVIEW_NEXT
-W6_4_MODULES_CONFIGURATION_UI_NEXT
-W6_4_MODULES_CONFIGURATION_UI_ACCEPTED_DEVELOPMENT_SLICE
-W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_NEXT
-W6_5_SERVER_OWNED_MODULE_ARTIFACT_INGRESS_ACCEPTED_DEVELOPMENT_SLICE
-W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_NEXT
-W6_6_SERVER_OWNED_MODULE_UPGRADE_REVIEW_ACCEPTED_DEVELOPMENT_SLICE
-P2_CONTROL_UI_I18N_ACCEPTED_DEVELOPMENT_SLICE
-P3_SECOND_PROVIDER_ACCEPTED_DEVELOPMENT_SLICE
-P4_MODULE_MANAGEMENT_UI_READ_ONLY_SLICE_ACCEPTED_DEVELOPMENT_SLICE
-P5_BETA_GATE
-```
-
-The `v0.1.1` release is published on
-[GitHub Releases](https://github.com/endview/FreeAgent/releases). It remains an
-early Developer Preview for local evaluation; see the release notes for the
-complete change log and the documented release boundaries.
-
-## Download
-
-The current release is **v0.1.1**. It packages the completed P0-P4
-development slices; the detailed change log is maintained in the
-[`v0.1.1` Release Notes](docs/RELEASE_NOTES_v0.1.1.md).
-
-| Target | Archive |
-| --- | --- |
-| Windows AMD64 | `freeagent-v0.1.1-windows-amd64.zip` |
-| Windows ARM64 | `freeagent-v0.1.1-windows-arm64.zip` |
-| Linux AMD64 | `freeagent-v0.1.1-linux-amd64.tar.gz` |
-| Linux ARM64 | `freeagent-v0.1.1-linux-arm64.tar.gz` |
-| Darwin AMD64, build-only | `freeagent-v0.1.1-darwin-amd64-build-only.tar.gz` |
-| Darwin ARM64, build-only | `freeagent-v0.1.1-darwin-arm64-build-only.tar.gz` |
-
-Download the archive and adjacent `SHA256SUMS` from
-[GitHub Releases](https://github.com/endview/FreeAgent/releases),
-verify the checksum, extract into a new directory, and confirm the version
-output before use. Windows and Linux AMD64 packages require native install
-validation. ARM64 packages are cross-built, and Darwin packages are not
-claimed as native-validated in this preview.
-
-See [INSTALL](docs/INSTALL.md) for the full installation and upgrade guidance.
-
-## Five-minute offline preview
-
-The bundled quickstart uses a deterministic echo model. It needs no API key,
-network access, or paid provider.
-
-```powershell
-$FreeAgent = (Resolve-Path .\bin\freeagent-windows-amd64.exe).Path
-$Runtime = Join-Path $PWD 'data\quickstart'
-New-Item -ItemType Directory -Force $Runtime | Out-Null
-
-& $FreeAgent init `
-  --db (Join-Path $Runtime 'current.sqlite') `
-  --artifact-root (Join-Path $Runtime 'artifacts') `
-  --seed .\config\current-v1.bootstrap.seed.json
-
-& $FreeAgent conversation-create `
-  --db (Join-Path $Runtime 'current.sqlite') `
-  --conversation preview-conversation
-
-$Deadline = (Get-Date).ToUniversalTime().AddMinutes(10).ToString('o')
-$Turn1 = & $FreeAgent chat `
-  --db (Join-Path $Runtime 'current.sqlite') `
-  --artifact-root (Join-Path $Runtime 'artifacts') `
-  --conversation preview-conversation `
-  --conversation-revision 0 `
-  --message 'remember: the package works offline' `
-  --request-id preview-turn-1 `
-  --deadline $Deadline | ConvertFrom-Json
-
-$Turn2 = & $FreeAgent chat `
-  --db (Join-Path $Runtime 'current.sqlite') `
-  --artifact-root (Join-Path $Runtime 'artifacts') `
-  --conversation preview-conversation `
-  --conversation-revision $Turn1.conversation_revision `
-  --conversation-head-run $Turn1.run_id `
-  --message 'what did I ask you to remember?' `
-  --request-id preview-turn-2 `
-  --deadline $Deadline | ConvertFrom-Json
-```
-
-The second turn continues only from the exact successful head returned by the
-first turn. A stale revision or head fails closed instead of forking the
-conversation.
-
-The complete walkthrough, including backup, verification, restore, and the
-local-only service, is in [QUICKSTART](docs/QUICKSTART.md).
-
-## Security boundaries
-
-- HTTP chat and optional Control surfaces bind only to literal loopback addresses.
-- Control is disabled by default and uses a process-local session with an owner-only bootstrap handoff.
-- Runtime databases, artifact roots, backups, and handoff files are operator-owned.
-- Stop all writers before backup or restore; do not run two writers against one store.
-- The current module system is not a general untrusted plug-in host.
-- Archives, SBOMs, provenance, and checksum manifests are unsigned in this Developer Preview.
-- Real DeepSeek and Zhipu access are opt-in, require a separately supplied environment secret, and are not part of the offline package smoke test. The accepted Zhipu slice is limited to the exact `glm-4.5` binding documented in [P3 Provider Contract](docs/P3_PROVIDER_CONTRACT_V1.md).
-
-### Optional Zhipu GLM run
-
-The Zhipu adapter is disabled by default. Enable it explicitly and provide the
-credential through the process environment; it is never read from a seed,
-command argument, source file, or backup.
-
-```powershell
-$env:FREEAGENT_ZHIPU_API_KEY = '<YOUR_API_KEY>'
-& $FreeAgent init `
-  --db (Join-Path $Runtime 'current-zhipu.sqlite') `
-  --artifact-root (Join-Path $Runtime 'zhipu-artifacts') `
-  --seed .\examples\current-v1.zhipu.bootstrap.seed.json
-& $FreeAgent conversation-create `
-  --db (Join-Path $Runtime 'current-zhipu.sqlite') `
-  --conversation zhipu-preview-conversation
-& $FreeAgent chat `
-  --enable-zhipu `
-  --db (Join-Path $Runtime 'current-zhipu.sqlite') `
-  --artifact-root (Join-Path $Runtime 'zhipu-artifacts') `
-  --conversation zhipu-preview-conversation `
-  --conversation-revision 0 `
-  --message 'Reply with a short acknowledgement.' `
-  --request-id zhipu-preview-turn-1 `
-  --deadline $Deadline
-Remove-Item Env:FREEAGENT_ZHIPU_API_KEY
-```
-
-This example does not enable automatic model selection, cross-provider
-fallback, or any price/currency/budget policy. See the support matrix before
-using a model other than the exact accepted binding.
-
-Read [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md) before enabling Control
-or running a real model provider. Security reporting guidance is in
-[SECURITY](SECURITY.md).
-
-## Build from source
-
-Requirements:
-
-- Go 1.26.5 or later
-- PowerShell, bash, or another shell that can set environment variables and send HTTP requests
-
-```powershell
-go test -count=1 -timeout=30m ./...
+go mod verify
+go test -count=1 ./...
 go vet ./...
-go run ./cmd/freeagent --help
+go test -race -count=1 ./...
+pnpm --dir internal/chatui test
+pnpm --dir internal/chatui build
+scripts/update-notices.ps1 -Check
 ```
 
-Repository development uses ordinary Go tooling plus local release gates for
-documentation, licensing, public-tree contents, install smoke, race testing,
-and cross-platform builds.
+Race testing requires a supported C compiler. Live acceptance is opt-in and
+sends real model requests that edit only a temporary fixture workspace.
+`scripts/run-live-acceptance-secure.ps1` reads the key with hidden input,
+keeps it in the test process only and runs every `TestLiveProvider` test;
+add `-Archive <portable zip>` to check the packaged CLI with the same key.
+The tests read `FREEAGENT_LIVE_ENDPOINT`, `FREEAGENT_LIVE_MODEL`,
+`FREEAGENT_LIVE_RESPONSES_MODEL` and `FREEAGENT_LIVE_KEY_ENV`.
 
-## Documentation
+Read [Configuration](docs/CONFIGURATION.md), [Recovery](docs/RECOVERY.md),
+[Provider Contract](docs/PROVIDER_CONTRACT.md),
+[v7.0 progress](docs/FREEAGENT_V7_0_IMPLEMENTATION_PROGRESS.md), [Security](SECURITY.md) and
+[Contributing](CONTRIBUTING.md). Chinese overview: [简体中文](README.zh-CN.md).
 
-- [Quickstart](docs/QUICKSTART.md)
-- [Install guide](docs/INSTALL.md)
-- [Current capabilities](docs/CURRENT_CAPABILITIES.md)
-- [Project status](docs/PROJECT_STATUS.md)
-- [Core runtime specification](docs/specs/CORE_RUNTIME_V1.md)
-- [Current store specification](docs/specs/CURRENT_STORE_V1.md)
-- [Control API specification](docs/specs/CONTROL_API_V1.md)
-- [Module development](docs/MODULE_DEVELOPMENT_V1.md)
-- [Release supply chain](docs/RELEASE_SUPPLY_CHAIN.md)
-- [Known limitations](docs/KNOWN_LIMITATIONS.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security](SECURITY.md)
-
-## License
-
-Licensed as `AGPL-3.0-only`; see [LICENSE](LICENSE).
+Licensed under AGPL-3.0-only. See [LICENSE](LICENSE) and
+[Third-party notices](THIRD_PARTY_NOTICES.md).

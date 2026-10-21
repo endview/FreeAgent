@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freeagent.local/schemas/methods/task.delegate.json",
+  "title": "FreeAgent Host task.delegate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["invocation", "plan"],
+  "properties": {
+    "invocation": {"type": "string", "minLength": 1, "maxLength": 128},
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objective", "budget", "roles", "children"],
+      "properties": {
+        "objective": {"type": "string", "minLength": 1, "maxLength": 32768},
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_children", "max_model_calls", "max_tool_calls", "max_output_bytes", "max_concurrent_children", "max_active_seconds"],
+          "properties": {
+            "max_children": {"type": "integer", "minimum": 1, "maximum": 16},
+            "max_model_calls": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "max_tool_calls": {"type": "integer", "minimum": 1, "maximum": 1000},
+            "max_output_bytes": {"type": "integer", "minimum": 1024, "maximum": 67108864},
+            "max_concurrent_children": {"type": "integer", "minimum": 1, "maximum": 4},
+            "max_active_seconds": {"type": "integer", "minimum": 1, "maximum": 3600}
+          }
+        },
+        "roles": {
+          "type": "object",
+          "maxProperties": 16,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["instructions", "tools", "paths", "output_format", "budget", "memory"],
+            "properties": {
+              "instructions": {"type": "string", "maxLength": 32768},
+              "model_id": {"type": "string", "maxLength": 128},
+              "tools": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 128}},
+              "paths": {"type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 4096}},
+              "output_format": {"enum": ["text", "json"]},
+              "acceptance": {"enum": ["analysis", "execution"]},
+              "required_evidence": {"type": "array", "maxItems": 16},
+              "budget": {"type": "object"},
+              "memory": {"type": "object"}
+            }
+          }
+        },
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "role", "objective"],
+            "properties": {
+              "name": {"type": "string", "maxLength": 64},
+              "role": {"type": "string", "maxLength": 64},
+              "objective": {"type": "string", "maxLength": 32768},
+              "context": {"type": "string", "maxLength": 32768},
+              "depends_on": {"type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 64}},
+              "results": {"type": "array", "maxItems": 16}
+            }
+          }
+        },
+        "parallel": {"type": "boolean"},
+        "max_replans": {"type": "integer", "maximum": 0},
+        "synthesis": {"type": "boolean"}
+      }
+    }
+  }
+}

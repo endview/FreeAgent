@@ -23,9 +23,13 @@ $cover
 /.cache/
 /.construction/
 /.superpowers/
-/internal/controlweb/node_modules/
-/internal/controlweb/.npm-cache/
-/internal/controlweb/.vite/
+node_modules/
+.npm-cache/
+.vite/
+__pycache__/
+*.pyc
+/output/playwright/
+/.playwright-cli/
 
 # Secrets and local overrides
 .env

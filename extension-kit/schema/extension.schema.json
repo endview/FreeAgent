@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freeagent.local/schemas/extension.schema.json",
+  "title": "FreeAgent Extension Manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["protocol", "id", "version", "name", "description", "run"],
+  "properties": {
+    "protocol": {"const": "freeagent-ext/1"},
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+$",
+      "minLength": 3,
+      "maxLength": 128
+    },
+    "version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "name": {"type": "string", "maxLength": 256},
+    "description": {"type": "string", "maxLength": 4096},
+    "run": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["command"],
+      "properties": {
+        "command": {"type": "string", "minLength": 1},
+        "args": {"type": "array", "maxItems": 128, "items": {"type": "string", "maxLength": 8192}},
+        "cwd": {"type": "string"}
+      }
+    },
+    "env": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}
+    },
+    "settings_schema": {"type": "object", "additionalProperties": true},
+    "needs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(message|workspace|tool_results|output|status|history:[1-9][0-9]*)$"
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "phases": {"type": "array", "items": {"enum": ["turn", "step"]}},
+        "purposes": {"type": "array", "items": {"enum": ["chat", "child", "planning", "synthesis"]}},
+        "max_chars": {"type": "integer", "minimum": 0, "maximum": 1048576},
+        "placement": {"type": "array", "items": {"enum": ["tail", "system"]}}
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {"enum": ["turn.finished", "operation.check"]}
+    },
+    "workflows": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "description"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+          "description": {"type": "string", "maxLength": 4096},
+          "input_schema": {"type": "object", "additionalProperties": true},
+          "agent_callable": {"type": "boolean"}
+        }
+      }
+    },
+    "tools": {"type": "boolean"},
+    "budget": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "model_calls": {"type": "integer", "minimum": 0, "maximum": 128},
+        "output_tokens": {"type": "integer", "minimum": 0, "maximum": 1048576}
+      }
+    },
+    "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 60000},
+    "required": {"type": "boolean"}
+  }
+}

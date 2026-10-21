@@ -86,8 +86,8 @@ func TestCommandTransportStartsLongWindowsPath(t *testing.T) {
 	if err := conn.Close(); err != nil {
 		t.Fatalf("Close() on long path: %v", err)
 	}
-	if concrete.cmd.ProcessState == nil {
-		t.Fatal("long-path subprocess was not reaped")
+	if _, err := concrete.process.Wait(context.Background()); err != nil {
+		t.Fatalf("long-path subprocess was not reaped: %v", err)
 	}
 }
 
@@ -155,7 +155,7 @@ func TestCommandTransportStartsVeryLongWindowsWorkingDirectory(t *testing.T) {
 	if err := conn.Close(); err != nil {
 		t.Fatalf("Close() on very long working directory: %v", err)
 	}
-	if concrete.cmd.ProcessState == nil {
-		t.Fatal("very-long-directory subprocess was not reaped")
+	if _, err := concrete.process.Wait(context.Background()); err != nil {
+		t.Fatalf("very-long-directory subprocess was not reaped: %v", err)
 	}
 }

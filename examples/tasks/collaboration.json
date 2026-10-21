@@ -1,0 +1,40 @@
+{
+  "objective": "Inspect the explicitly selected project documentation",
+  "budget": {
+    "max_children": 2,
+    "max_model_calls": 8,
+    "max_tool_calls": 6,
+    "max_output_bytes": 262144,
+    "max_concurrent_children": 1,
+    "max_active_seconds": 300
+  },
+  "roles": {
+    "reviewer": {
+      "instructions": "Read the assigned document. Distinguish recorded facts from your interpretation. Do not write files or claim checks were run.",
+      "tools": ["file_read"],
+      "paths": ["README.md"],
+      "output_format": "json",
+      "budget": {
+        "max_steps": 6,
+        "max_seconds": 120,
+        "max_output_bytes": 65536,
+        "max_call_output_bytes": 16384
+      }
+    }
+  },
+  "children": [
+    {
+      "name": "workflow",
+      "role": "reviewer",
+      "objective": "Read README.md and summarize the task workflow.",
+      "context": "Only README.md is authorized. Return the declared JSON summary and findings."
+    },
+    {
+      "name": "boundaries",
+      "role": "reviewer",
+      "objective": "Read README.md and identify explicit limits and uncertain claims.",
+      "context": "Only README.md is authorized. Do not inherit the other child's interpretation."
+    }
+  ],
+  "parallel": false
+}

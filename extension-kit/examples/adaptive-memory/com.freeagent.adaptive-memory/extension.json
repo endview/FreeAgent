@@ -1,0 +1,20 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "com.freeagent.adaptive-memory",
+  "version": "0.1.0",
+  "name": "Adaptive Memory",
+  "description": "A small explicit memory extension stored below its private data directory.",
+  "run": {
+    "command": "python",
+    "args": ["main.py"]
+  },
+  "needs": ["message", "history:4", "output", "status"],
+  "context": {
+    "phases": ["turn"],
+    "purposes": ["chat"],
+    "max_chars": 1200,
+    "placement": ["tail"]
+  },
+  "events": ["turn.finished"],
+  "timeout_ms": 2000
+}

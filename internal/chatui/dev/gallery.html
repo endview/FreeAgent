@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>FreeAgent 状态画廊</title>
+    <!--
+      Development-only page for screenshots and visual checks. It is served by
+      the Vite dev server (`node node_modules/vite/bin/vite.js`, then open
+      /dev/gallery.html); it is not a build input and is not embedded.
+    -->
+    <style>
+      body { background: var(--bg); }
+      .gallery { max-width: calc(var(--column) + 48px); margin: 0 auto; padding: 32px 24px 64px; }
+      .gallery h2 { font-size: 14px; font-weight: 600; color: var(--text-2); margin: 32px 0 12px; }
+      .gallery h2:first-child { margin-top: 0; }
+      .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+      .swatch { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; min-width: 0; }
+      .swatch i { width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0; }
+      .swatch span { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+      .swatch code { font: 12px/1.4 var(--font-mono); color: var(--muted); }
+      .states { display: grid; gap: 8px; }
+      .state-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; }
+      .state-row svg { width: 18px; height: 18px; flex-shrink: 0; }
+      .state-row .state-label { min-width: 72px; font-weight: 600; }
+      .state-row .state-note { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
+      .state-row[data-state="unknown"] { border: 1px dashed var(--state-unknown); }
+      .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+      .side-sample { background: var(--bg-side); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px; width: var(--sidebar-width); max-width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="gallery" id="gallery"></div>
+    <script type="module">
+      import { createIcons, Copy, Check, Square, Play, X, Settings2, Hand, LoaderCircle, CircleCheck,
+        CircleX, CircleQuestionMark, TriangleAlert, MessageSquare, Plus, ChevronRight } from 'lucide';
+      import 'katex/dist/katex.min.css';
+      import '../src/style.css';
+      import { renderMarkdown, escapeHTML as esc } from '../src/render.mjs';
+      import { STATES } from '../src/state.mjs';
+
+      const icon = (name) => `<i data-lucide="${name}"></i>`;
+      const tokens = ['--bg', '--bg-side', '--border', '--text', '--text-2', '--muted', '--accent',
+        '--state-run', '--state-wait', '--state-stop', '--state-warn', '--state-done', '--state-fail', '--state-unknown'];
+      const root = getComputedStyle(document.documentElement);
+      const states = [
+        ['generating', '--state-run', 'loader-circle', '可停止'],
+        ['awaiting_approval', '--state-wait', 'hand', '可预览、批准、拒绝'],
+        ['stopped', '--state-stop', 'square', '可继续'],
+        ['needs_attention', '--state-warn', 'triangle-alert', '按原因提示'],
+        ['completed', '--state-done', 'circle-check', '无'],
+        ['failed', '--state-fail', 'circle-x', '显示原因'],
+        ['unknown', '--state-unknown', 'circle-question-mark', '不提供重试'],
+      ];
+      const answer = [
+        '## 修改摘要', '',
+        '已更新 `README.md` 的安装说明，并补充了**便携包**的启动方式。', '',
+        '1. 解压到新的文件夹', '2. 双击 `FreeAgent.exe`', '3. 在 Key 页添加服务商地址', '',
+        '> 结束不会撤销已发生的作用。', '',
+        '```powershell', 'Get-ChildItem .\\data -Recurse | Measure-Object Length -Sum', '```', '',
+        '| 文件 | 状态 | 字节 |', '| --- | --- | ---: |', '| README.md | 已应用 | 4,812 |', '| docs/PORTABLE.md | 已跳过 | 0 |', '',
+        '行内公式 $E = mc^2$，以及块公式：', '',
+        '$$\\int_0^1 x^2\\,dx = \\frac{1}{3}$$', '',
+        '参见 [配置说明](https://example.invalid/docs)。',
+      ].join('\n');
+
+      document.querySelector('#gallery').innerHTML = `
+        <h2>令牌</h2>
+        <div class="swatches">${tokens.map((name) => `<div class="swatch"><i style="background: var(${name})"></i><span>${name}<code>${esc(root.getPropertyValue(name).trim())}</code></span></div>`).join('')}</div>
+        <h2>状态</h2>
+        <div class="states">${states.map(([state, token, name, note]) => `<div class="state-row" data-state="${state}" style="color: var(${token})">${icon(name)}<span class="state-label">${STATES[state]}</span><code>${token}</code><span class="state-note">${note}</span></div>`).join('')}</div>
+        <h2>回合</h2>
+        <section class="turn">
+          <article class="message user"><div class="message-heading"><span>你</span></div><div class="markdown"><p class="user-text">整理 README 的安装说明，补上便携包的启动方式。</p></div></article>
+          <article class="message assistant"><div class="message-heading"><span>FreeAgent</span><button type="button" class="icon" title="复制原始 Markdown" aria-label="复制原始 Markdown">${icon('copy')}</button></div><div class="markdown">${renderMarkdown(answer)}</div></article>
+          <div class="turn-state" data-state="completed">${STATES.completed}<span>deepseek-flash</span></div>
+          <details open><summary>${icon('chevron-right')}运行活动 <span class="count">2</span></summary><div class="section-body"><ol class="activities"><li><div class="activity-line"><span>file_write</span><span>已完成</span></div></li><li><div class="activity-line"><span>command_run</span><span class="warning">失败</span></div></li></ol></div></details>
+        </section>
+        <section class="turn">
+          <div class="turn-state" data-state="unknown">${STATES.unknown}</div>
+          <div class="warning-strip">结果未知，可能已有作用。请核对执行记录；未自动重试。</div>
+          <div class="turn-state" data-state="stopped">${STATES.stopped}</div>
+          <div class="subtle-note">任务已停止，已有操作会保留。</div>
+        </section>
+        <h2>控件</h2>
+        <div class="controls">
+          <button class="primary">${icon('check')}批准此变更</button>
+          <button class="danger">确认结束</button>
+          <button class="text-action">拒绝此操作</button>
+          <button type="button" class="icon" title="停止任务" aria-label="停止任务">${icon('square')}</button>
+          <button type="button" class="icon" title="继续任务" aria-label="继续任务">${icon('play')}</button>
+          <button type="button" class="icon" title="调整限额" aria-label="调整限额">${icon('settings-2')}</button>
+          <button type="button" class="icon" title="结束任务" aria-label="结束任务">${icon('x')}</button>
+          <select aria-label="模型"><option>default · deepseek-flash</option></select>
+        </div>
+        <h2>侧栏</h2>
+        <div class="side-sample">
+          <button class="new-chat">${icon('plus')}<span>新建对话</span></button>
+          <div class="list-label">最近对话</div>
+          <button class="chat-item selected">${icon('message-square')}<span>整理 README 的安装说明</span></button>
+          <button class="chat-item">${icon('message-square')}<span>检查便携包的启动脚本</span></button>
+        </div>`;
+      createIcons({ icons: { Copy, Check, Square, Play, X, Settings2, Hand, LoaderCircle, CircleCheck, CircleX,
+        CircleQuestionMark, TriangleAlert, MessageSquare, Plus, ChevronRight },
+        attrs: { 'aria-hidden': 'true', 'stroke-width': 1.7 } });
+    </script>
+  </body>
+</html>

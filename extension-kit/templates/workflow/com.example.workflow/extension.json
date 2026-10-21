@@ -1,0 +1,24 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "com.example.workflow",
+  "version": "0.1.0",
+  "name": "Workflow extension",
+  "description": "A bounded user-triggered workflow.",
+  "run": {
+    "command": "python",
+    "args": ["main.py"]
+  },
+  "workflows": [
+    {
+      "name": "run",
+      "description": "Run the template workflow.",
+      "agent_callable": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+        "required": ["text"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

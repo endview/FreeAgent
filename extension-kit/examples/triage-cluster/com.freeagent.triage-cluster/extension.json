@@ -1,0 +1,32 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "com.freeagent.triage-cluster",
+  "version": "0.1.0",
+  "name": "Triage Cluster",
+  "description": "An explicit workflow that ranks candidates before bounded delegation.",
+  "run": {
+    "command": "python",
+    "args": ["main.py"]
+  },
+  "needs": ["message", "history:4"],
+  "workflows": [
+    {
+      "name": "triage",
+      "description": "Rank candidates and delegate the selected work.",
+      "agent_callable": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task": {"type": "string", "minLength": 1}
+        },
+        "required": ["task"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "budget": {
+    "model_calls": 16,
+    "output_tokens": 4096
+  },
+  "timeout_ms": 60000
+}

@@ -311,8 +311,8 @@ func TestCommandTransportCanceledBlockedWriteClosesAndReaps(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > 3*time.Second {
 		t.Fatalf("blocked Write() cancellation took %v, want bounded shutdown", elapsed)
 	}
-	if concrete.cmd.ProcessState == nil {
-		t.Fatal("blocked-write subprocess was not reaped")
+	if _, err := concrete.process.Wait(context.Background()); err != nil {
+		t.Fatalf("blocked-write subprocess was not reaped: %v", err)
 	}
 }
 
@@ -358,8 +358,8 @@ func TestCommandTransportTerminatesOrKillsAndReapsUncooperativeChild(t *testing.
 	}
 	// A non-nil ProcessState is set by Wait and proves the child was reaped.
 	// Exited reports false for a process terminated by signal on Unix.
-	if concrete.cmd.ProcessState == nil {
-		t.Fatalf("subprocess was not reaped: state=%v", concrete.cmd.ProcessState)
+	if _, err := concrete.process.Wait(context.Background()); err != nil {
+		t.Fatalf("subprocess was not reaped: %v", err)
 	}
 }
 
