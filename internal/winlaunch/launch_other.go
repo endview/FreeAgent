@@ -37,27 +37,45 @@ func Start(ctx context.Context, spec Spec) (*Process, error) {
 		command.Env = append([]string(nil), spec.Env...)
 	}
 	configureProcessCommand(command)
-	stdin, err := command.StdinPipe()
+	// Own the pipes: the StdoutPipe helpers are closed by cmd.Wait as soon as
+	// the child exits, which races with readers that have not drained the
+	// child's last output.
+	var files []*os.File
+	closeFiles := func() {
+		for _, file := range files {
+			_ = file.Close()
+		}
+	}
+	pipe := func() (*os.File, *os.File, error) {
+		read, write, err := os.Pipe()
+		if err == nil {
+			files = append(files, read, write)
+		}
+		return read, write, err
+	}
+	childStdin, stdin, err := pipe()
 	if err != nil {
 		return nil, err
 	}
-	stdout, err := command.StdoutPipe()
+	stdout, childStdout, err := pipe()
 	if err != nil {
-		_ = stdin.Close()
+		closeFiles()
 		return nil, err
 	}
-	stderr, err := command.StderrPipe()
+	stderr, childStderr, err := pipe()
 	if err != nil {
-		_ = stdin.Close()
-		_ = stdout.Close()
+		closeFiles()
 		return nil, err
 	}
+	command.Stdin, command.Stdout, command.Stderr = childStdin, childStdout, childStderr
 	if err := command.Start(); err != nil {
-		_ = stdin.Close()
-		_ = stdout.Close()
-		_ = stderr.Close()
+		closeFiles()
 		return nil, err
 	}
+	// The child holds its own copies of these ends.
+	_ = childStdin.Close()
+	_ = childStdout.Close()
+	_ = childStderr.Close()
 	process := &otherProcess{cmd: command, stdin: stdin, stdout: stdout, stderr: stderr,
 		waitDone: make(chan struct{})}
 	process.tree, err = attachProcessTree(command)
@@ -155,8 +173,6 @@ func (process *otherProcess) close() error {
 	process.closed = true
 	process.mu.Unlock()
 	result := process.kill()
-	// cmd.Wait closes the parent pipe ends once the process exits, so an
-	// already closed pipe is the normal state here, not a failure.
 	for _, pipe := range []io.Closer{process.stdin, process.stdout, process.stderr} {
 		if err := pipe.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
 			result = errors.Join(result, err)

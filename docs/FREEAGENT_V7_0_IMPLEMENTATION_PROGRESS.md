@@ -122,3 +122,6 @@ native folder picker and the control confirmation card.
 - `--version` and the extension `host_version` come from `VERSION` through
   `internal/buildinfo`; source builds report `dev`.
 - Plan section 11.3 no longer specifies per-root access records.
+- The non-Windows launcher owns its stdio pipes. It ran `cmd.Wait` in the
+  background while readers drained `StdoutPipe`, which Wait closes on exit, so the
+  last frame of an exiting MCP server could be lost ("file already closed").
