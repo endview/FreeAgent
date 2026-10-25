@@ -3,6 +3,7 @@ package chatui
 import (
 	"context"
 	"encoding/json"
+	"github.com/endview/freeagent/internal/harness"
 	"net/http"
 	"strconv"
 )
@@ -22,7 +23,16 @@ func (server *Server) commandSessionsAPI(w http.ResponseWriter, r *http.Request)
 				server.fail(w, err)
 				return true
 			}
-			record, err := server.tasks.PollCommand(r.Context(), id, cursor, 16<<10)
+			limit := 16 << 10
+			if text := r.URL.Query().Get("max_bytes"); text != "" {
+				parsed, err := strconv.Atoi(text)
+				if err != nil || parsed < 1 || parsed > 16<<10 {
+					server.writeError(w, 400, "input", "Output page must be 1..16384 bytes.")
+					return true
+				}
+				limit = parsed
+			}
+			record, err := server.tasks.PollCommand(r.Context(), id, cursor, limit)
 			if err != nil {
 				server.fail(w, err)
 			} else {
@@ -42,17 +52,27 @@ func (server *Server) commandSessionsAPI(w http.ResponseWriter, r *http.Request)
 			return true
 		}
 		var body struct {
-			Action    string          `json:"action"`
-			ID        string          `json:"id"`
-			Chat      string          `json:"conversation_id"`
-			Key       string          `json:"request_key"`
-			Arguments json.RawMessage `json:"arguments"`
+			Action    string                   `json:"action"`
+			ID        string                   `json:"id"`
+			Chat      string                   `json:"conversation_id"`
+			Key       string                   `json:"request_key"`
+			Arguments json.RawMessage          `json:"arguments"`
+			Extension harness.CommandExtension `json:"extension"`
 		}
 		if !server.readBody(w, r, &body) {
 			return true
 		}
 		if body.Action == "stop" {
 			record, err := server.tasks.StopCommand(r.Context(), body.ID)
+			if err != nil {
+				server.fail(w, err)
+			} else {
+				server.writeJSON(w, 200, record)
+			}
+			return true
+		}
+		if body.Action == "extend" {
+			record, err := server.tasks.ExtendCommand(r.Context(), body.Extension)
 			if err != nil {
 				server.fail(w, err)
 			} else {

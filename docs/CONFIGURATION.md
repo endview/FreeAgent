@@ -476,3 +476,19 @@ Optional synthesis consumes the same parent model/output/time limits, has no
 tools and preserves the deterministic expert answer and runtime evidence.
 Saved results are reused; UNKNOWN synthesis is not replayed.
 See [Collaboration](COLLABORATION.md).
+
+## Finite Service Policy
+
+`commands.services` stays inside the existing command policy. Defaults:
+
+```json
+{"enabled":true,"default_seconds":1800,"max_total_seconds":28800,"allow_local_listen":false}
+```
+
+The command tool itself remains opt-in. Local listening requires an explicit
+setting and supported backend. Change this policy in Settings or through the
+existing AI `commands.set_policy` proposal, which requires user confirmation.
+The same typed operation is available through `freeagent control`.
+Authorization-related changes while commands run return busy with their IDs;
+stop them explicitly first. Defaults affect future starts, not existing service
+deadlines. See [owner-bound commands and services](COMMAND_SESSIONS.md).

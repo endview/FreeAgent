@@ -87,6 +87,7 @@ type Service struct {
 	compactionFailed          bool
 	contextToolsDisabled      bool
 	commandManagementDisabled bool
+	serviceManagementDisabled bool
 }
 
 func (service *Service) bindCurrentToolView() {
@@ -1275,8 +1276,12 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 
 func (service *Service) unresolvedWarning(ctx context.Context) (string, error) {
 	var background int
-	if err := service.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM meta WHERE key LIKE 'command/process/%' AND json_extract(value,'$.state')='unknown'`).Scan(&background); err != nil {
-		return "", err
+	if service.commands != nil {
+		var err error
+		background, err = service.commands.unknownCount(ctx)
+		if err != nil {
+			return "", err
+		}
 	}
 	var count int
 	err := service.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM attempts a

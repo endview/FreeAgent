@@ -59,6 +59,7 @@ type AutoConfig struct {
 }
 
 type CommandConfig struct {
+	Services           ServicePolicy        `json:"services"`
 	Enabled            bool                 `json:"enabled"`
 	TimeoutSecs        int                  `json:"timeout_seconds"`
 	MaxOutput          int                  `json:"max_output_bytes"`
@@ -213,7 +214,7 @@ func DefaultConfig(workspace string) Config {
 		MaxOutputTokens: 4096,
 		MaxRunSeconds:   300,
 		MaxToolResult:   64 << 10,
-		Commands:        CommandConfig{TimeoutSecs: 120, MaxOutput: 32768, Rules: defaultCommandRules()},
+		Commands:        CommandConfig{TimeoutSecs: 120, MaxOutput: 32768, Rules: defaultCommandRules(), Services: DefaultServicePolicy()},
 		Tools:           defaultBuiltinToolSettings(),
 		Execution:       defaultExecutionSettings(workspace),
 		ToolGeneration:  "1",
@@ -592,6 +593,9 @@ func (config Config) validate(requireWorkspace bool) error {
 	if config.Commands.Enabled && (config.Commands.TimeoutSecs < 1 || config.Commands.TimeoutSecs > 600 ||
 		config.Commands.MaxOutput < 1024 || config.Commands.MaxOutput > 1<<20) {
 		return errors.New("harness: command timeout or output limit is out of range")
+	}
+	if err := config.Commands.Services.Validate(); err != nil {
+		return err
 	}
 	if err := validateCommandAllowlist(config.Commands.AllowedExecutables); err != nil {
 		return err

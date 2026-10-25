@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +47,7 @@ type securityCapabilities struct {
 }
 
 type profile struct {
+	shared  *profileLease
 	name    string
 	sid     *windows.SID
 	owned   bool
@@ -101,17 +103,9 @@ func Start(ctx context.Context, spec Spec) (*Process, error) {
 	var p *profile
 	var err error
 	if spec.Mode == ModeAppContainer {
-		p, err = newProfile(spec)
+		p, err = acquireProfile(spec)
 		if err != nil {
 			return nil, fmt.Errorf("process launcher: create profile: %w", err)
-		}
-		if err := applyGrants(p, spec.Grants); err != nil {
-			cleanupProfile(p)
-			return nil, fmt.Errorf("process launcher: apply grants: %w", err)
-		}
-		if err := applyProtectedPaths(p, spec.ProtectedPaths); err != nil {
-			cleanupProfile(p)
-			return nil, fmt.Errorf("process launcher: protect paths: %w", err)
 		}
 	}
 
@@ -285,8 +279,14 @@ func Start(ctx context.Context, spec Spec) (*Process, error) {
 	closeFiles(stdinRead, stdoutWrite, stderrWrite)
 	wp := &windowsProcess{process: processHandle, pid: info.ProcessId, job: job, profile: p, stdin: stdinWrite, stdout: stdoutRead, stderr: stderrRead, waitDone: make(chan struct{})}
 	go wp.waitBackground()
+	var creation, exitTime, kernel, user windows.Filetime
+	identity := ""
+	if windows.GetProcessTimes(processHandle, &creation, &exitTime, &kernel, &user) == nil {
+		identity = strconv.FormatUint(uint64(creation.HighDateTime)<<32|uint64(creation.LowDateTime), 10)
+	}
 	return &Process{
-		pid: int(wp.pid), treeWait: wp.waitTree,
+		identity: identity,
+		pid:      int(wp.pid), treeWait: wp.waitTree,
 		stdin: wp.stdin, stdout: wp.stdout, stderr: wp.stderr,
 		wait: wp.wait, kill: wp.kill, term: wp.terminate, close: wp.close,
 	}, nil
@@ -376,12 +376,13 @@ func newProfile(spec Spec) (*profile, error) {
 	return &profile{name: name, sid: sid, owned: owned}, nil
 }
 
-func cleanupProfile(p *profile) {
+func cleanupProfileRaw(p *profile) error {
 	if p == nil {
-		return
+		return nil
 	}
+	var errs []error
 	for i := len(p.restore) - 1; i >= 0; i-- {
-		_ = p.restore[i]()
+		errs = append(errs, p.restore[i]())
 	}
 	if p.sid != nil {
 		_ = windows.FreeSid(p.sid)
@@ -392,6 +393,7 @@ func cleanupProfile(p *profile) {
 			_, _, _ = deleteAppContainerProfile.Call(uintptr(unsafe.Pointer(name)))
 		}
 	}
+	return errors.Join(errs...)
 }
 
 func applyGrants(p *profile, grants []Grant) error {
@@ -481,7 +483,22 @@ func syncKept(p *profile, wanted []Grant) error {
 
 // ReleaseKept revokes every grant kept for the named profile and deletes the
 // profile. The owner that launched the profile calls it when it shuts down.
-func ReleaseKept(name string) error {
+func ReleaseKept(name string) (result error) {
+	profileLeases.Lock()
+	if profileLeases.items[strings.ToLower(name)] != nil {
+		profileLeases.Unlock()
+		return ErrProfileBusy
+	}
+	// Reserve the profile while slow revocation runs outside this short lock.
+	profileLeases.items[strings.ToLower(name)] = &profileLease{}
+	profileLeases.Unlock()
+	defer func() {
+		profileLeases.Lock()
+		if result == nil {
+			delete(profileLeases.items, strings.ToLower(name))
+		}
+		profileLeases.Unlock()
+	}()
 	keptGrants.Lock()
 	defer keptGrants.Unlock()
 	key := strings.ToLower(name)
@@ -906,6 +923,14 @@ func (p *windowsProcess) close() error {
 	p.closed = true
 	p.mu.Unlock()
 	var errs []error
+	// Restore ACLs only after this process tree has stopped. Other profile
+	// users retain their leases until their own cleanup is confirmed.
+	errs = append(errs, p.kill())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_, rootErr := p.wait(ctx)
+	treeErr := p.waitTree(ctx)
+	cancel()
+	errs = append(errs, rootErr, treeErr)
 	if p.stdin != nil {
 		if err := p.stdin.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
 			errs = append(errs, err)
@@ -927,7 +952,9 @@ func (p *windowsProcess) close() error {
 	if p.process != 0 {
 		errs = append(errs, windows.CloseHandle(p.process))
 	}
-	cleanupProfile(p.profile)
+	if rootErr == nil && treeErr == nil {
+		errs = append(errs, cleanupProfile(p.profile))
+	}
 	return errors.Join(errs...)
 }
 

@@ -126,7 +126,7 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runMemory(ctx, args[1:], stdin, stdout, stderr)
 	case "context":
 		return runContext(ctx, args[1:], stdout, stderr)
-	case "commands":
+	case "commands", "services":
 		return runCommands(ctx, args[1:], stdin, stdout, stderr)
 	case "sessions":
 		return runSessions(ctx, args[1:], stdout, stderr)
@@ -583,8 +583,8 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			}
 			continue
 		}
-		if prompt == "/commands" || strings.HasPrefix(prompt, "/commands ") {
-			parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(prompt, "/commands")), " ", 2)
+		if prompt == "/commands" || strings.HasPrefix(prompt, "/commands ") || prompt == "/services" || strings.HasPrefix(prompt, "/services ") {
+			parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(prompt, "/commands"), "/services")), " ", 2)
 			action, value := parts[0], ""
 			if action == "" {
 				action = "list"
@@ -592,7 +592,21 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			if len(parts) > 1 {
 				value = strings.TrimSpace(parts[1])
 			}
-			if err := executeCommandClient(ctx, tasks, action, value, *conversationID, fmt.Sprintf("command-%d", time.Now().UnixNano()), value, 0, stdout, false); err != nil {
+			if action == "start" {
+				commandCtx, cancel := context.WithCancel(ctx)
+				controller.set(cancel)
+				result, err := tasks.StartCommand(commandCtx, *conversationID, fmt.Sprintf("command-%d", time.Now().UnixNano()), json.RawMessage(value))
+				if err == nil {
+					result, err = tasks.settle(commandCtx, result, harness.RunOptions{})
+				}
+				controller.set(nil)
+				cancel()
+				if err != nil {
+					_, _ = fmt.Fprintln(stderr, err)
+				} else {
+					_ = printChatResult(stdout, stderr, result, false)
+				}
+			} else if err := executeCommandClient(ctx, tasks, action, value, *conversationID, fmt.Sprintf("command-%d", time.Now().UnixNano()), value, 0, stdout, false); err != nil {
 				_, _ = fmt.Fprintln(stderr, err)
 			}
 			continue

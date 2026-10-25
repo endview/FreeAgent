@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ type commandClient interface {
 	PollCommand(context.Context, string, int64, int) (harness.CommandRecord, error)
 	StopCommand(context.Context, string) (harness.CommandRecord, error)
 	StartCommand(context.Context, string, string, json.RawMessage) (harness.RunResult, error)
+	ExtendCommand(context.Context, harness.CommandExtension) (harness.CommandRecord, error)
 }
 
 func runCommands(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -32,6 +34,8 @@ func runCommands(ctx context.Context, args []string, stdin io.Reader, stdout, st
 	arguments := flags.String("arguments", "", "exact command_run arguments JSON")
 	key := flags.String("request", fmt.Sprintf("command-%d", time.Now().UnixNano()), "idempotency key")
 	cursor := flags.Int64("cursor", 0, "output byte cursor")
+	revision := flags.Int64("revision", 0, "exact service revision")
+	expires := flags.String("expires-at", "", "exact target deadline RFC3339")
 	asJSON := flags.Bool("json", false, "structured result")
 	interactive := flags.Bool("interactive", false, "prompt for pending tool approval")
 	if err := parseFlags(flags, args[1:]); err != nil {
@@ -82,15 +86,52 @@ func runCommands(ctx context.Context, args []string, stdin io.Reader, stdout, st
 			}
 		}
 		if *asJSON {
-			return writeJSON(stdout, result)
+			if err := writeJSON(stdout, result); err != nil {
+				return err
+			}
+			return runOutcome(stderr, result, nil)
 		}
 		_ = printChatResult(stdout, stderr, result, false)
 		return runOutcome(stderr, result, nil)
+	}
+	if args[0] == "extend" {
+		r, err := client.ExtendCommand(ctx, harness.CommandExtension{ID: *id, Revision: *revision, ExpiresAt: *expires, RequestKey: *key})
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			return writeJSON(stdout, r)
+		}
+		_, err = fmt.Fprintf(stdout, "%s revision %d; expiry %s; maximum %s\n", r.ID, r.Revision, r.ExpiresAt, r.MaxExpiresAt)
+		return err
 	}
 	return executeCommandClient(ctx, client, args[0], *id, *chat, *key, *arguments, *cursor, stdout, *asJSON)
 }
 
 func executeCommandClient(ctx context.Context, client commandClient, action, id, chat, key, arguments string, cursor int64, out io.Writer, asJSON bool) error {
+	if action == "extend" {
+		parts := strings.Fields(arguments)
+		if len(parts) != 2 {
+			return usageErr("/services extend <id> <additional-seconds>")
+		}
+		seconds, err := strconv.Atoi(parts[1])
+		if err != nil || seconds < 1 || seconds > 28800 {
+			return usageErr("finite seconds in 1..28800 required")
+		}
+		r, err := client.PollCommand(ctx, parts[0], 0, 1)
+		if err != nil {
+			return err
+		}
+		target, err := time.Parse(time.RFC3339Nano, r.ExpiresAt)
+		if err != nil {
+			return err
+		}
+		next, err := client.ExtendCommand(ctx, harness.CommandExtension{ID: r.ID, Revision: r.Revision, ExpiresAt: target.Add(time.Duration(seconds) * time.Second).UTC().Format(time.RFC3339Nano), RequestKey: key})
+		if err != nil {
+			return err
+		}
+		return writeJSON(out, next)
+	}
 	if action == "list" {
 		records, err := client.Commands(ctx)
 		if err != nil {

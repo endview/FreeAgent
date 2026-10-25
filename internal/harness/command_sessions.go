@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -28,26 +29,38 @@ type CommandOutput struct {
 	Text   string `json:"text"`
 }
 type CommandRecord struct {
-	ID             string          `json:"id"`
-	RunID          string          `json:"run_id"`
-	ConversationID string          `json:"conversation_id"`
-	Mode           string          `json:"mode"`
-	Generation     string          `json:"owner_generation"`
-	Revision       int64           `json:"revision"`
-	State          string          `json:"state"`
-	Reason         string          `json:"stop_reason,omitempty"`
-	Receipt        ToolReceipt     `json:"receipt"`
-	ProfileHash    string          `json:"profile_sha256"`
-	StartedAt      string          `json:"started_at"`
-	ExpiresAt      string          `json:"expires_at"`
-	ObservedAt     string          `json:"observed_at"`
-	Output         []CommandOutput `json:"output,omitempty"`
-	FirstCursor    int64           `json:"first_cursor"`
-	NextCursor     int64           `json:"next_cursor"`
-	TotalBytes     int64           `json:"total_bytes"`
-	OutputGap      bool            `json:"output_gap"`
-	Reviewed       bool            `json:"reviewed"`
-	PID            int             `json:"pid"`
+	ID              string             `json:"id"`
+	RunID           string             `json:"run_id"`
+	ConversationID  string             `json:"conversation_id"`
+	Mode            string             `json:"mode"`
+	Generation      string             `json:"owner_generation"`
+	Revision        int64              `json:"revision"`
+	State           string             `json:"state"`
+	Reason          string             `json:"stop_reason,omitempty"`
+	Receipt         ToolReceipt        `json:"receipt"`
+	ProfileHash     string             `json:"profile_sha256"`
+	StartedAt       string             `json:"started_at"`
+	ExpiresAt       string             `json:"expires_at"`
+	ObservedAt      string             `json:"observed_at"`
+	Output          []CommandOutput    `json:"output,omitempty"`
+	FirstCursor     int64              `json:"first_cursor"`
+	NextCursor      int64              `json:"next_cursor"`
+	TotalBytes      int64              `json:"total_bytes"`
+	OutputGap       bool               `json:"output_gap"`
+	EncodingLoss    bool               `json:"encoding_loss,omitempty"`
+	Reviewed        bool               `json:"reviewed"`
+	PID             int                `json:"pid"`
+	ProcessIdentity string             `json:"process_identity,omitempty"`
+	MaxExpiresAt    string             `json:"max_expires_at,omitempty"`
+	MaxTotalSeconds int                `json:"max_total_seconds,omitempty"`
+	ReadyText       string             `json:"ready_text,omitempty"`
+	Ready           bool               `json:"ready"`
+	ReadyAt         string             `json:"ready_at,omitempty"`
+	ReadyTimeout    int                `json:"ready_timeout_seconds,omitempty"`
+	Extension       *CommandExtension  `json:"last_extension,omitempty"`
+	Extensions      []CommandExtension `json:"extensions,omitempty"`
+	StopGraceMS     int64              `json:"stop_grace_ms,omitempty"`
+	StopMechanism   string             `json:"stop_mechanism,omitempty"`
 }
 
 func (r CommandRecord) terminal() bool { return r.State != "running" && r.State != "stopping" }
@@ -60,6 +73,12 @@ type commandTail struct {
 	cursor, total int64
 	gap           bool
 	limit         int
+	readyText     string
+	readySuffix   [2]string
+	ready         chan struct{}
+	readyMatched  bool
+	secrets       []string
+	secretPending [2]string
 }
 type commandStream struct {
 	tail   *commandTail
@@ -72,9 +91,10 @@ func (w commandStream) finish() {
 	defer t.mu.Unlock()
 	if text := t.pending[w.stream]; text != "" {
 		t.gap = true
-		t.append(w.stream, strings.ToValidUTF8(text, "\uFFFD"))
+		t.append(w.stream, t.redactChunk(w.stream, strings.ToValidUTF8(text, "\uFFFD"), false))
 		t.pending[w.stream] = ""
 	}
+	t.append(w.stream, t.redactChunk(w.stream, "", true))
 }
 
 func (w commandStream) Write(raw []byte) (int, error) {
@@ -83,6 +103,14 @@ func (w commandStream) Write(raw []byte) (int, error) {
 	defer t.mu.Unlock()
 	t.total += int64(len(raw))
 	text := t.pending[w.stream] + string(raw)
+	if t.readyText != "" && !t.readyMatched {
+		candidate := t.readySuffix[w.stream] + string(raw)
+		if strings.Contains(candidate, t.readyText) {
+			t.readyMatched = true
+			close(t.ready)
+		}
+		t.readySuffix[w.stream] = candidate[max(0, len(candidate)-len(t.readyText)+1):]
+	}
 	end := len(text)
 	for end > 0 && !utf8.ValidString(text[:end]) {
 		if len(text)-end >= 4 {
@@ -94,7 +122,7 @@ func (w commandStream) Write(raw []byte) (int, error) {
 		end--
 	}
 	t.pending[w.stream] = text[end:]
-	t.append(w.stream, text[:end])
+	t.append(w.stream, t.redactChunk(w.stream, text[:end], false))
 	return len(raw), nil
 }
 func (t *commandTail) append(stream int, text string) {
@@ -126,7 +154,6 @@ func (t *commandTail) append(stream int, text string) {
 		}
 		t.bytes -= len(t.chunks[0].Text)
 		t.chunks = t.chunks[1:]
-		t.gap = true
 	}
 }
 func (t *commandTail) snapshot(cursor int64, limit int) ([]CommandOutput, int64, int64, int64, bool) {
@@ -146,8 +173,17 @@ func (t *commandTail) snapshot(cursor int64, limit int) ([]CommandOutput, int64,
 			continue
 		}
 		offset := int(max(0, cursor-chunk.Start))
+		originalOffset := offset
 		for offset < len(chunk.Text) && !utf8.RuneStart(chunk.Text[offset]) {
 			offset++
+		}
+		if originalOffset != offset {
+			gap = true
+			next = chunk.Start + int64(offset)
+		}
+		if offset == len(chunk.Text) {
+			cursor = chunk.End
+			continue
 		}
 		text := truncateUTF8Bytes(chunk.Text[offset:], max(0, limit-size))
 		if text == "" {
@@ -166,6 +202,20 @@ func (t *commandTail) snapshot(cursor int64, limit int) ([]CommandOutput, int64,
 	}
 	return out, first, next, t.total, gap
 }
+func (t *commandTail) metrics(r CommandRecord) CommandRecord {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	r.Output = nil
+	r.TotalBytes = t.total
+	r.NextCursor = t.cursor
+	r.FirstCursor = t.cursor
+	if len(t.chunks) > 0 {
+		r.FirstCursor = t.chunks[0].Start
+	}
+	r.OutputGap = t.gap || r.FirstCursor > 0
+	r.ObservedAt = nowText()
+	return r
+}
 
 type ownedCommand struct {
 	mu          sync.Mutex
@@ -175,19 +225,23 @@ type ownedCommand struct {
 	done        chan struct{}
 	tail        *commandTail
 	deadline    time.Time
+	started     time.Time
 	drains      sync.WaitGroup
 	releaseHost func()
 	stopped     bool
+	expiry      *time.Timer
 }
+type commandReservation struct{ mode, profile string }
 type commandSupervisor struct {
-	emit       EventFunc
-	mu         sync.Mutex
-	store      *Store
-	generation string
-	ctx        context.Context
-	cancel     context.CancelFunc
-	active     map[string]*ownedCommand
-	closed     bool
+	emit         EventFunc
+	mu           sync.Mutex
+	store        *Store
+	generation   string
+	ctx          context.Context
+	cancel       context.CancelFunc
+	active       map[string]*ownedCommand
+	closed       bool
+	reservations map[string]commandReservation
 }
 
 func (s *commandSupervisor) event(r CommandRecord) {
@@ -201,7 +255,7 @@ func (s *commandSupervisor) event(r CommandRecord) {
 
 func newCommandSupervisor(ctx context.Context, store *Store) (*commandSupervisor, error) {
 	owner, cancel := context.WithCancel(ctx)
-	s := &commandSupervisor{store: store, generation: newID(), ctx: owner, cancel: cancel, active: map[string]*ownedCommand{}}
+	s := &commandSupervisor{store: store, generation: newID(), ctx: owner, cancel: cancel, active: map[string]*ownedCommand{}, reservations: map[string]commandReservation{}}
 	rows, err := store.db.QueryContext(ctx, `SELECT key,value FROM meta WHERE key LIKE 'command/process/%'`)
 	if err != nil {
 		cancel()
@@ -246,6 +300,10 @@ func newCommandSupervisor(ctx context.Context, store *Store) (*commandSupervisor
 			return nil, err
 		}
 	}
+	if err := s.recoverMissingCommands(ctx); err != nil {
+		cancel()
+		return nil, err
+	}
 	return s, nil
 }
 func (s *commandSupervisor) save(ctx context.Context, r CommandRecord) error {
@@ -256,15 +314,64 @@ func (s *commandSupervisor) save(ctx context.Context, r CommandRecord) error {
 	_, err := s.store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, commandMetaPrefix+r.ID, string(raw))
 	return err
 }
-func (s *commandSupervisor) reserve(id string) (func(), error) {
+func (s *commandSupervisor) reserve(id string, tools *CommandTools, args *commandArguments) (func(), error) {
+	profile, err := tools.executionIdentity(args)
+	if err != nil {
+		return nil, err
+	}
+	mode := "command"
+	if args.Mode == "service" {
+		mode = "service"
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed || len(s.active) != 0 {
+	if s.closed {
 		return nil, ErrCommandBusy
 	}
+	count := 0
+	for _, existing := range s.reservations {
+		if existing.profile != profile {
+			return nil, fmt.Errorf("%w; affected commands: %s", ErrCommandBusy, s.activeIDsLocked())
+		}
+		if existing.mode == mode {
+			count++
+		}
+	}
+	maximum := 1
+	if mode == "service" {
+		maximum = 2
+	}
+	if count >= maximum {
+		return nil, fmt.Errorf("%w; %s quota %d; affected commands: %s", ErrCommandBusy, mode, maximum, s.activeIDsLocked())
+	}
 	s.active[id] = nil
+	if tools.Gate != nil {
+		if err := tools.Gate.beginProcess(); err != nil {
+			delete(s.active, id)
+			return nil, err
+		}
+	}
+	s.reservations[id] = commandReservation{mode, profile}
 	var once sync.Once
-	return func() { once.Do(func() { s.mu.Lock(); delete(s.active, id); s.mu.Unlock() }) }, nil
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			delete(s.active, id)
+			delete(s.reservations, id)
+			s.mu.Unlock()
+			if tools.Gate != nil {
+				tools.Gate.endProcess()
+			}
+		})
+	}, nil
+}
+func (s *commandSupervisor) activeIDsLocked() string {
+	ids := make([]string, 0, len(s.active))
+	for id := range s.active {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, ",")
 }
 func (s *commandSupervisor) list(ctx context.Context) ([]CommandRecord, error) {
 	rows, err := s.store.db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE 'command/process/%' ORDER BY rowid DESC LIMIT 200`)
@@ -303,7 +410,7 @@ func (s *commandSupervisor) list(ctx context.Context) ([]CommandRecord, error) {
 			p.mu.Lock()
 			records[i] = p.record
 			p.mu.Unlock()
-			records[i].Output = nil
+			records[i] = p.tail.metrics(records[i])
 		}
 	}
 	for id, p := range current {
@@ -311,7 +418,7 @@ func (s *commandSupervisor) list(ctx context.Context) ([]CommandRecord, error) {
 			p.mu.Lock()
 			r := p.record
 			p.mu.Unlock()
-			r.Output = nil
+			r = p.tail.metrics(r)
 			records = append(records, r)
 		}
 	}
@@ -331,6 +438,12 @@ func (s *commandSupervisor) poll(ctx context.Context, id string, cursor int64, l
 		p.mu.Lock()
 		r := p.record
 		p.mu.Unlock()
+		p.tail.mu.Lock()
+		end := p.tail.cursor
+		p.tail.mu.Unlock()
+		if cursor > end {
+			return CommandRecord{}, errors.New("output cursor is beyond observed output")
+		}
 		r.Output, r.FirstCursor, r.NextCursor, r.TotalBytes, r.OutputGap = p.tail.snapshot(cursor, limit)
 		r.ObservedAt = nowText()
 		return r, nil
@@ -345,16 +458,32 @@ func (s *commandSupervisor) poll(ctx context.Context, id string, cursor int64, l
 	}
 	chunks := r.Output
 	r.Output = nil
+	if cursor > r.NextCursor {
+		if r.State == "unknown" {
+			cursor = 0
+		} else {
+			return CommandRecord{}, errors.New("output cursor is beyond saved output")
+		}
+	}
 	size := 0
-	r.OutputGap = r.OutputGap || cursor < r.FirstCursor
+	r.OutputGap = r.EncodingLoss || r.Reason == "owner_lost" || r.Reason == "missing_start_projection" || cursor < r.FirstCursor
 	r.NextCursor = max(cursor, r.FirstCursor)
 	for _, chunk := range chunks {
 		if chunk.End <= cursor {
 			continue
 		}
 		offset := int(max(0, cursor-chunk.Start))
+		originalOffset := offset
 		for offset < len(chunk.Text) && !utf8.RuneStart(chunk.Text[offset]) {
 			offset++
+		}
+		if originalOffset != offset {
+			r.OutputGap = true
+			r.NextCursor = chunk.Start + int64(offset)
+		}
+		if offset == len(chunk.Text) {
+			cursor = chunk.End
+			continue
 		}
 		text := truncateUTF8Bytes(chunk.Text[offset:], limit-size)
 		if text == "" {
@@ -407,11 +536,30 @@ func (s *commandSupervisor) close(reason string) error {
 	}
 	s.mu.Unlock()
 	sort.Strings(ids)
-	var failures []error
+	// Request every stop before waiting for any one child; the grace windows
+	// run together and cannot add up to an unbounded owner shutdown.
 	for _, id := range ids {
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		s.mu.Lock()
+		p := s.active[id]
+		s.mu.Unlock()
+		if p == nil {
+			continue
+		}
+		p.mu.Lock()
+		if !p.record.terminal() && !p.stopped {
+			p.stopped = true
+			p.record.State = "stopping"
+			p.record.Reason = reason
+			p.record.Revision++
+			p.cancel()
+		}
+		p.mu.Unlock()
+	}
+	var failures []error
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	for _, id := range ids {
 		r, err := s.stop(ctx, id, reason)
-		cancel()
 		if err != nil || r.State == "unknown" {
 			failures = append(failures, errors.Join(err, ErrUnknownResult))
 		}
@@ -429,7 +577,7 @@ func (s *commandSupervisor) launch(parent context.Context, tools *CommandTools, 
 	if inv.attempt == "" || inv.service.guard != nil {
 		return ToolResult{}, &CallError{Certain: true, Message: "background commands require an ordinary owner Run"}
 	}
-	release, err := s.reserve(inv.attempt)
+	release, err := s.reserve(inv.attempt, tools, &args)
 	if err != nil {
 		return ToolResult{}, &CallError{Certain: true, Message: err.Error()}
 	}
@@ -442,6 +590,12 @@ func (s *commandSupervisor) launch(parent context.Context, tools *CommandTools, 
 	if parent.Err() != nil {
 		return ToolResult{}, &CallError{Certain: true, Message: "cancelled before background start"}
 	}
+	run, err := s.store.GetRun(parent, inv.run)
+	if err != nil {
+		return ToolResult{}, &CallError{Certain: true, Message: "Run metadata unavailable before command start"}
+	}
+	secrets := knownCommandSecrets(inv.service.Keys)
+	receipt.Command = commandRedact(receipt.Command, secrets)
 	ctx, cancel := context.WithCancel(s.ctx)
 	if tools.executionMode() == CommandExecutionHostExplicit && tools.Gate != nil {
 		if err := tools.Gate.beginHost(); err != nil {
@@ -460,21 +614,34 @@ func (s *commandSupervisor) launch(parent context.Context, tools *CommandTools, 
 		releaseHost()
 		return ToolResult{}, &CallError{Certain: true, Message: safeError(err)}
 	}
-	run, err := s.store.GetRun(context.Background(), inv.run)
-	if err != nil {
-		process.Kill()
-		process.Close()
-		cancel()
-		releaseHost()
-		return ToolResult{}, &CallError{Message: "background started but Run metadata unavailable"}
-	}
 	now := time.Now()
+	duration := tools.Config.TimeoutSecs
+	mode := "background"
+	if args.Mode == "service" {
+		duration = args.DurationSeconds
+		mode = "service"
+	}
 	receipt.Status = "started"
 	receipt.CommandID = inv.attempt
 	receipt.Cleanup = "owned"
-	r := CommandRecord{ID: inv.attempt, RunID: run.ID, ConversationID: run.ConversationID, Mode: "background", Generation: s.generation, Revision: 1, State: "running", Receipt: receipt, ProfileHash: contentHash(mustJSON(tools.Profile)), StartedAt: now.UTC().Format(time.RFC3339Nano), ExpiresAt: now.Add(time.Duration(tools.Config.TimeoutSecs) * time.Second).UTC().Format(time.RFC3339Nano), ObservedAt: nowText()}
-	p := &ownedCommand{record: r, process: process, cancel: cancel, done: make(chan struct{}), tail: &commandTail{limit: min(tools.Config.MaxOutput, 256<<10)}, deadline: now.Add(time.Duration(tools.Config.TimeoutSecs) * time.Second), releaseHost: releaseHost}
+	r := CommandRecord{ID: inv.attempt, RunID: run.ID, ConversationID: run.ConversationID, Mode: mode, Generation: s.generation, Revision: 1, State: "running", Receipt: receipt, StartedAt: now.UTC().Format(time.RFC3339Nano), ExpiresAt: now.Add(time.Duration(duration) * time.Second).UTC().Format(time.RFC3339Nano), ObservedAt: nowText(), ReadyText: commandRedact(args.ReadyText, secrets), ReadyTimeout: args.ReadyTimeout}
+	s.mu.Lock()
+	r.ProfileHash = s.reservations[inv.attempt].profile
+	s.mu.Unlock()
+	if mode == "service" {
+		r.MaxTotalSeconds = tools.Config.Services.MaxTotalSeconds
+		r.MaxExpiresAt = now.Add(time.Duration(r.MaxTotalSeconds) * time.Second).UTC().Format(time.RFC3339Nano)
+	}
+	limit := min(tools.Config.MaxOutput, 256<<10)
+	if mode == "service" {
+		limit = 256 << 10
+	}
+	p := &ownedCommand{record: r, process: process, cancel: cancel, done: make(chan struct{}), tail: &commandTail{limit: limit, readyText: args.ReadyText, ready: make(chan struct{})}, deadline: now.Add(time.Duration(duration) * time.Second), releaseHost: releaseHost, expiry: time.NewTimer(time.Duration(duration) * time.Second)}
+	p.tail.secrets = secrets
+	p.started = now
+	p.expiry.Reset(max(time.Nanosecond, time.Until(p.deadline)))
 	p.record.PID = process.PID()
+	p.record.ProcessIdentity = process.Identity()
 	r = p.record
 	s.mu.Lock()
 	s.active[r.ID] = p
@@ -493,12 +660,14 @@ func (s *commandSupervisor) launch(parent context.Context, tools *CommandTools, 
 	err = s.save(persist, r)
 	done()
 	keep = true
-	go s.supervise(ctx, p, release)
 	if err != nil {
 		p.mu.Lock()
 		p.record.Reason = "startup_persistence_failed"
 		p.mu.Unlock()
 		cancel()
+	}
+	go s.supervise(ctx, p, release)
+	if err != nil {
 		return ToolResult{Receipts: []ToolReceipt{receipt}}, &CallError{Message: "background startup projection could not be persisted; cleanup requested"}
 	}
 	s.event(r)
@@ -506,9 +675,8 @@ func (s *commandSupervisor) launch(parent context.Context, tools *CommandTools, 
 }
 func (s *commandSupervisor) supervise(ctx context.Context, p *ownedCommand, release func()) {
 	defer close(p.done)
-	waitCtx, stop := context.WithDeadline(ctx, p.deadline)
-	exit, err := p.process.Wait(waitCtx)
-	stop()
+	defer p.expiry.Stop()
+	exit, err := s.waitCommand(ctx, p)
 	p.mu.Lock()
 	reason := p.record.Reason
 	if reason == "" {
@@ -522,10 +690,22 @@ func (s *commandSupervisor) supervise(ctx context.Context, p *ownedCommand, rele
 	}
 	p.record.State = "stopping"
 	p.record.Reason = reason
+	mode := p.record.Mode
 	p.mu.Unlock()
 	if err != nil {
 		p.process.Terminate()
-		grace, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		gracePeriod := 150 * time.Millisecond
+		if mode == "service" {
+			p.mu.Lock()
+			gracePeriod = min(5*time.Second, max(time.Duration(0), time.Until(p.deadline)))
+			p.record.StopGraceMS = gracePeriod.Milliseconds()
+			p.record.StopMechanism = "sigterm_requested_then_process_group_kill"
+			if runtime.GOOS == "windows" {
+				p.record.StopMechanism = "best_effort_ctrl_break_then_job_terminate"
+			}
+			p.mu.Unlock()
+		}
+		grace, cancel := context.WithTimeout(context.Background(), gracePeriod)
 		_, _ = p.process.Wait(grace)
 		cancel()
 	}
@@ -555,7 +735,7 @@ func (s *commandSupervisor) supervise(ctx context.Context, p *ownedCommand, rele
 	if reason != "process_exit" {
 		p.record.State = "stopped"
 	}
-	if reason == "deadline" {
+	if reason == "deadline" || reason == "readiness_timeout" {
 		p.record.State = "timed_out"
 	}
 	if waitErr != nil || cleanup != nil {
@@ -568,6 +748,9 @@ func (s *commandSupervisor) supervise(ctx context.Context, p *ownedCommand, rele
 	p.record.Revision++
 	p.record.ObservedAt = nowText()
 	p.record.Output, p.record.FirstCursor, p.record.NextCursor, p.record.TotalBytes, p.record.OutputGap = p.tail.snapshot(0, 256<<10)
+	p.tail.mu.Lock()
+	p.record.EncodingLoss = p.tail.gap
+	p.tail.mu.Unlock()
 	r := p.record
 	p.mu.Unlock()
 	persist, done := context.WithTimeout(context.Background(), 5*time.Second)
@@ -577,6 +760,8 @@ func (s *commandSupervisor) supervise(ctx context.Context, p *ownedCommand, rele
 		p.mu.Lock()
 		p.record.State = "unknown"
 		p.record.Reason = "terminal_persistence_failed"
+		p.record.Receipt.Status = "unknown"
+		r = p.record
 		p.mu.Unlock()
 	}
 	if r.State != "unknown" && saveErr == nil {
@@ -606,10 +791,36 @@ func (t commandInvocationTools) Definitions() []ToolDefinition {
 			}
 			defs = append(defs, ToolDefinition{Name: name, Effect: effect, Description: "Inspect or stop an owner-bound command by its original Attempt ID. Stop cannot undo effects; UNKNOWN is never replayed.", InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"cursor":{"type":"integer","minimum":0},"max_bytes":{"type":"integer","minimum":1,"maximum":16384}},"required":["id"],"additionalProperties":false}`)})
 		}
+		if !t.inv.service.serviceManagementDisabled {
+			defs = append(defs, ToolDefinition{Name: "command_extend", Effect: EffectModify, Description: "Propose a finite extension of an owned service. Always requires user confirmation, including Full. Read its current revision and expiry first. Does not restart stopped/expired services.", InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"revision":{"type":"integer","minimum":1},"expires_at":{"type":"string"},"request_key":{"type":"string","maxLength":128}},"required":["id","revision","expires_at","request_key"],"additionalProperties":false}`)})
+		}
 	}
 	return defs
 }
 func (t commandInvocationTools) Prepare(ctx context.Context, call ToolCall) (PreparedTool, error) {
+	if call.Name == "command_extend" {
+		if t.inv.service.commands == nil || t.inv.service.guard != nil || t.inv.service.commandManagementDisabled || t.inv.service.serviceManagementDisabled {
+			return PreparedTool{}, ErrToolDisabled
+		}
+		var request CommandExtension
+		if err := decodeArguments(call.Arguments, &request); err != nil {
+			return PreparedTool{}, err
+		}
+		r, err := t.inv.service.commands.poll(ctx, request.ID, 0, 1)
+		if err != nil {
+			return PreparedTool{}, err
+		}
+		if r.Revision != request.Revision || r.Mode != "service" || r.State != "running" {
+			return PreparedTool{}, errors.New("service revision/state changed; read and preview again")
+		}
+		return PreparedTool{Effect: EffectModify, userConfirmation: true, Preview: fmt.Sprintf("Extend service %s revision %d from %s to %s; original maximum %s. This does not undo effects or restart the service.", r.ID, r.Revision, r.ExpiresAt, request.ExpiresAt, r.MaxExpiresAt), Items: []ApprovalItem{{Kind: "command_extension", Target: r.ID, Hash: contentHash(mustJSON(request))}}, Execute: func(ctx context.Context) (ToolResult, error) {
+			result, err := t.inv.service.commands.extend(ctx, request)
+			if err != nil {
+				return ToolResult{}, &CallError{Certain: true, Message: safeError(err)}
+			}
+			return jsonResult(result)
+		}}, nil
+	}
 	if call.Name == "command_poll" || call.Name == "command_stop" {
 		if t.inv.service.commands == nil || t.inv.service.guard != nil || t.inv.service.commandManagementDisabled {
 			return PreparedTool{}, ErrToolDisabled

@@ -60,6 +60,7 @@ $files = [ordered]@{
     'docs/CONFIGURATION.md' = 'docs/CONFIGURATION.md'
     'docs/SETTINGS_V7.md' = 'docs/SETTINGS_V7.md'
     'docs/RECOVERY.md' = 'docs/RECOVERY.md'
+    'docs/COMMAND_SESSIONS.md' = 'docs/COMMAND_SESSIONS.md'
 }
 foreach ($entry in $files.GetEnumerator()) {
     Copy-Item -LiteralPath (Join-Path $repository $entry.Key) -Destination (Join-Path $package $entry.Value)

@@ -1023,6 +1023,8 @@ func userError(err error) (string, string) {
 		return "control_run", "这项设置变更来自等待中的任务，请在该任务的确认卡中处理。"
 	case errors.Is(err, harness.ErrControlStaleRevision):
 		return "control_stale", "控制目标已变化，请重新读取并计划。"
+	case errors.Is(err, harness.ErrCommandBusy):
+		return "execution_profile_busy", err.Error()
 	case errors.Is(err, harness.ErrControlBusy):
 		return "control_busy", "当前有主机命令正在运行，请稍后确认。"
 	case errors.Is(err, harness.ErrControlUserInteractionRequired):

@@ -356,7 +356,11 @@ func (service *Service) forRun(run Run) (*Service, error) {
 	copy.controlToolsDisabled = true
 	copy.contextToolsDisabled = true
 	copy.commandManagementDisabled = true
+	copy.serviceManagementDisabled = true
 	for _, definition := range snapshot.Tools {
+		if definition.Name == "command_extend" {
+			copy.serviceManagementDisabled = false
+		}
 		if definition.Name == "command_poll" {
 			copy.commandManagementDisabled = false
 		}

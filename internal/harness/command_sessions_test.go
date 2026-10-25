@@ -15,6 +15,9 @@ import (
 )
 
 func backgroundFixture(t *testing.T, timeout int) (*TaskService, string, string, func()) {
+	return backgroundFixtureConfig(t, timeout, nil)
+}
+func backgroundFixtureConfig(t *testing.T, timeout int, configure func(*Config)) (*TaskService, string, string, func()) {
 	t.Helper()
 	root := t.TempDir()
 	work, data := filepath.Join(root, "work"), filepath.Join(root, "data")
@@ -36,6 +39,9 @@ func backgroundFixture(t *testing.T, timeout int) (*TaskService, string, string,
 	config.Commands.TimeoutSecs = timeout
 	config.Commands.MaxOutput = 1024
 	config.Commands.Rules = []CommandRule{{Program: program, Decision: CommandRuleAllow}}
+	if configure != nil {
+		configure(&config)
+	}
 	if err := WriteConfig(data, config); err != nil {
 		t.Fatal(err)
 	}

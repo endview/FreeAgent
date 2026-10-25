@@ -607,6 +607,9 @@ func (tasks *TaskService) ConfigureRuntimePolicy(ctx context.Context, baseGenera
 }
 
 func validateCommandPolicy(config CommandConfig) error {
+	if err := config.Services.Validate(); err != nil {
+		return err
+	}
 	if err := validateCommandAllowlist(config.AllowedExecutables); err != nil {
 		return err
 	}

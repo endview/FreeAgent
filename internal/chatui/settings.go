@@ -37,6 +37,7 @@ type settingsCommandPatch struct {
 	MaxOutputBytes     int                          `json:"max_output_bytes"`
 	InheritEnvironment *bool                        `json:"inherit_environment"`
 	GitWrite           *bool                        `json:"git_write"`
+	Services           *harness.ServicePolicy       `json:"services"`
 }
 
 func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Request) bool {
@@ -89,7 +90,7 @@ func (server *Server) settingsProjection() map[string]any {
 			"status": commandStatus(command, tools.CommandRun, config.Execution.PermissionMode), "backend": command.Execution,
 			"sandbox_supported": winlaunch.SandboxSupported(),
 			"rules":             command.Rules, "allowed_executables": command.AllowedExecutables,
-			"timeout_seconds": command.TimeoutSecs, "max_output_bytes": command.MaxOutput,
+			"timeout_seconds": command.TimeoutSecs, "max_output_bytes": command.MaxOutput, "services": command.Services,
 			"inherit_environment": command.InheritEnv, "git_write": command.GitWrite,
 		},
 		"network": map[string]any{"enabled": tools.Network && config.HTTP.Enabled, "allowed_origins": config.HTTP.AllowedOrigins,
@@ -269,6 +270,9 @@ func (server *Server) patchSettingsCommand(writer http.ResponseWriter, request *
 		return
 	}
 	commands := server.tasks.Config().Commands
+	if body.Services != nil {
+		commands.Services = *body.Services
+	}
 	if body.Enabled != nil {
 		commands.Enabled = *body.Enabled
 	}

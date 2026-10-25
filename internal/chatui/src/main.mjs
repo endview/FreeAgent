@@ -20,7 +20,7 @@ import { installDesktopBridge, setDesktopBusy, notifyDesktopAttention, selectDes
 import { approvalHTML, approvalRawHTML } from './approval.mjs';
 import { bindLayoutResizers } from './layout.mjs';
 import { summaryByteLimit, contextActions, contextStatus } from './context.mjs';
-import { commandRows, commandOutput } from './command-sessions.mjs';
+import { commandRows, commandOutput, remainingSeconds, directCommandText } from './command-sessions.mjs';
 
 const icons = { Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Play, X,
   ChevronDown, ChevronRight, Copy, Eye, PencilLine, Check, Settings2, RefreshCw,
@@ -166,11 +166,18 @@ app.innerHTML = `
   <dialog id="commands-dialog" aria-labelledby="commands-title">
     <header><h2 id="commands-title">后台命令</h2>${button('refresh-cw', '刷新命令', 'commands-refresh')}${button('x', '关闭命令', 'commands-close')}</header>
     <div id="command-records"></div>
-    <pre id="command-output" tabindex="0" hidden></pre>
+    <pre id="command-output-tail" tabindex="0" hidden></pre>
+    <button class="text-action" data-action="command-output-next" hidden>读取后续输出</button>
     <details><summary>启动命令</summary>
       <label>程序<input id="command-program" type="text" autocomplete="off"></label>
       <label>参数（每行一个）<textarea id="command-args" rows="3" spellcheck="false"></textarea></label>
       <label>工作目录<input id="command-cwd" type="text" value="."></label>
+      <label>运行方式<select id="command-mode"><option value="background">后台命令</option><option value="service">有限期服务（Full）</option></select></label>
+      <div id="service-start-options" hidden>
+      <label>服务时长（秒）<input id="service-duration" type="number" min="1" max="28800" placeholder="使用全局默认"></label>
+      <label>就绪文本（可选）<input id="service-ready" type="text" maxlength="1024"></label>
+      <p class="subtle-note">Full 服务沿用宿主权限，不能保证只监听本机。停止不能撤销已有操作。</p>
+      </div>
       <footer><button class="primary" data-action="command-start">${icon('play')}启动</button></footer>
     </details>
   </dialog>
@@ -200,6 +207,7 @@ app.innerHTML = `
   </dialog>`;
 
 const layoutBinding = bindLayoutResizers({ storage });
+$('#command-mode').addEventListener('change',()=>{$('#service-start-options').hidden=$('#command-mode').value!=='service';});
 
 function reportDesktopBusy(value, authoritative = false) {
   const next = Boolean(value);
@@ -742,6 +750,9 @@ function renderPermissionsView() {
         <details><summary>高级命令规则</summary><label>可执行文件白名单（每行一个绝对路径）<textarea id="command-allowlist" rows="3" spellcheck="false"></textarea></label></details>
         <div class="permission-grid"><label>超时（秒）<input id="command-timeout" type="number" min="1" max="600" value="${Number(command.timeout_seconds) || 120}"></label><label>输出上限（字节）<input id="command-output" type="number" min="1024" max="1048576" value="${Number(command.max_output_bytes) || 32768}"></label></div>
         <label class="check-line"><input id="command-inherit" type="checkbox" ${command.inherit_environment ? 'checked' : ''}>请求继承环境变量（运行时仍使用敏感信息过滤后的最小集合）</label>
+        <label class="check-line"><input id="service-enabled" type="checkbox" ${command.services?.enabled?'checked':''}>允许有限期服务</label>
+        <label class="check-line"><input id="service-listen" type="checkbox" ${command.services?.allow_local_listen?'checked':''}>允许服务监听（Full 无法强制限制为本机；沙箱访问尚不支持）</label>
+        <div class="permission-grid"><label>默认服务秒数<input id="service-default" type="number" min="1" max="28800" value="${Number(command.services?.default_seconds)||1800}"></label><label>最长总秒数<input id="service-maximum" type="number" min="1" max="28800" value="${Number(command.services?.max_total_seconds)||28800}"></label></div>
         <label class="check-line"><input id="command-git-write" type="checkbox" ${command.git_write ? 'checked' : ''}>允许沙箱命令写入 .git（hooks 和 config 始终只读）</label>
         <div class="permission-catalog"><strong>检测到的程序</strong>${commandCatalog.length ? commandCatalog.map((entry) => `<div class="permission-catalog-row"><span>${esc(entry.program)}</span><code>${esc(entry.path || '未找到')}</code><span class="subtle-note">${esc(entry.risk)} · ${esc(catalogSandboxLabels[entry.sandbox] || entry.sandbox)}</span></div>`).join('') : '<p class="subtle-note">尚未发现可用程序。</p>'}</div>
         <p class="subtle-note">当前 generation：<code>${esc(command.generation || data.generation || '1')}</code></p>
@@ -784,6 +795,7 @@ async function saveCommandPolicy() {
     inherit_environment: Boolean($('#command-inherit')?.checked),
     git_write: Boolean($('#command-git-write')?.checked),
     execution: $('#command-execution')?.value || 'sandboxed',
+    services: {enabled:Boolean($('#service-enabled')?.checked),allow_local_listen:Boolean($('#service-listen')?.checked),default_seconds:Number($('#service-default')?.value),max_total_seconds:Number($('#service-maximum')?.value)},
     expected_revision: state.settings?.revision || command.generation || '',
   }, 'PATCH');
   state.settings = result;
@@ -1802,7 +1814,10 @@ function section(turn, name, title, content) {
   return `<details data-section="${esc(id)}" ${state.expanded.has(id) ? 'open' : ''}><summary>${icon('chevron-right')}${title}</summary><div class="section-body">${content}</div></details>`;
 }
 function turnHTML(turn) {
-  let html = turn.messages.map((message) => `<article class="message ${esc(message.role)}" data-message="${esc(message.key)}"><div class="message-heading"><span>${message.role === 'user' ? '你' : 'FreeAgent'}</span><button type="button" class="icon" data-copy-message="${esc(message.key)}" title="复制原始 Markdown" aria-label="复制原始 Markdown">${icon('copy')}</button></div><div class="markdown">${message.role === 'user' ? `<p class="user-text">${esc(message.raw)}</p>` : renderMarkdown(message.raw)}</div>${message.truncated ? `<button class="text-action" data-full-message="${esc(message.key)}">加载完整原文</button>` : ''}</article>`).join('');
+  let html = turn.messages.map((message) => {
+    const content=turn.reason==='explicit user command'?`<pre class="command-message">${esc(directCommandText(message.raw,message.role))}</pre>`:message.role==='user'?`<p class="user-text">${esc(message.raw)}</p>`:renderMarkdown(message.raw);
+    return `<article class="message ${esc(message.role)}" data-message="${esc(message.key)}"><div class="message-heading"><span>${message.role === 'user' ? '你' : 'FreeAgent'}</span><button type="button" class="icon" data-copy-message="${esc(message.key)}" title="复制原始 Markdown" aria-label="复制原始 Markdown">${icon('copy')}</button></div><div class="markdown">${content}</div>${message.truncated ? `<button class="text-action" data-full-message="${esc(message.key)}">加载完整原文</button>` : ''}</article>`;
+  }).join('');
   html += `<div class="turn-state" data-state="${esc(turn.state)}">${icon(stateMeta(turn.state).icon)}${esc(stateMeta(turn.state).label)}${turn.ended ? '<span>任务已结束</span>' : ''}${turn.model_id ? `<span>${esc(turn.model_id)}</span>` : ''}</div>`;
   if (turn.state === 'unknown') html += '<div class="warning-strip">结果未知，可能已有作用。请核对执行记录；未自动重试。</div>';
   else if (turn.state === 'stopped') html += '<div class="subtle-note">任务已停止，已有操作会保留。</div>';
@@ -1934,6 +1949,13 @@ function queueSnapshot() {
   }, 180);
 }
 let commandRefresh = 0;
+let commandClock=0, commandOutputID='', commandOutputCursor=0;
+function renderCommandOutput(record) {
+  commandOutputID=record.id;commandOutputCursor=record.next_cursor;
+  $('#command-output-tail').textContent=commandOutput(record);
+  $('#command-output-tail').hidden=false;
+  $('[data-action="command-output-next"]').hidden=false;
+}
 async function refreshCommands() {
   const ticket = ++commandRefresh;
   const records = await api('attach/commands');
@@ -2334,27 +2356,38 @@ async function act(action, node = null) {
     case 'remove-blocked-path': removeBlockedPath(node?.dataset.path || ''); break;
     case 'save-permission-page': await savePermissionPage(); break;
     case 'context-open': await openContextDialog(); break;
-    case 'commands-open': $('#commands-dialog').showModal(); await refreshCommands(); break;
-    case 'commands-close': $('#commands-dialog').close(); break;
+    case 'commands-open': $('#commands-dialog').showModal();
+      clearInterval(commandClock);commandClock=setInterval(()=>{if(!$('#commands-dialog').open){clearInterval(commandClock);return;} document.querySelectorAll('[data-service-expiry]').forEach((el)=>el.textContent=remainingSeconds(el.dataset.serviceExpiry));},1000);
+      await refreshCommands(); break;
+    case 'commands-close': clearInterval(commandClock); $('#commands-dialog').close(); break;
     case 'commands-refresh': await refreshCommands(); break;
     case 'command-poll': {
       const record = await api(`attach/commands?id=${encodeURIComponent(node.dataset.id)}&cursor=0`);
-      $('#command-output').textContent = commandOutput(record);
-      $('#command-output').hidden = false;
+      renderCommandOutput(record);
       break;
+    }
+    case 'command-output-next': {
+      const record=await api(`attach/commands?id=${encodeURIComponent(commandOutputID)}&cursor=${commandOutputCursor}`);renderCommandOutput(record);break;
+    }
+    case 'command-extend': {
+      const seconds=Number(node.closest('.command-row').querySelector('input').value);
+      if(!Number.isInteger(seconds)||seconds<1||seconds>28800) throw new Error('请输入 1–28800 之间的整数秒数。');
+      await api('attach/commands',{action:'extend',extension:{id:node.dataset.id,revision:Number(node.dataset.revision),expires_at:new Date(Date.parse(node.dataset.expires)+seconds*1000).toISOString(),request_key:crypto.randomUUID()}});
+      await refreshCommands();break;
     }
     case 'command-stop': {
       const record = await api('attach/commands', { action: 'stop', id: node.dataset.id });
-      $('#command-output').textContent = commandOutput(record);
-      $('#command-output').hidden = false;
+      renderCommandOutput(record);
       await refreshCommands(); queueSnapshot(); break;
     }
     case 'command-start': {
       if (!state.chat) throw new Error('请先选择一个会话。');
+      if($('#command-mode').value==='service'&&!$('#service-duration').reportValidity()) return;
       node.disabled = true;
       try {
         await api('attach/commands', { action: 'start', conversation_id: state.chat, request_key: crypto.randomUUID(),
-          arguments: { command: $('#command-program').value, args: $('#command-args').value.split('\n').filter((v) => v !== ''), cwd: $('#command-cwd').value || '.', background: true } });
+          arguments: { command: $('#command-program').value, args: $('#command-args').value===''?[]:$('#command-args').value.split('\n'), cwd: $('#command-cwd').value || '.', background: true,
+            ...($('#command-mode').value==='service'?{mode:'service',...($('#service-duration').value?{duration_seconds:Number($('#service-duration').value)}:{}),ready_text:$('#service-ready').value}:{}) } });
         $('#commands-dialog').close(); await snapshot();
       } finally { node.disabled = false; }
       break;

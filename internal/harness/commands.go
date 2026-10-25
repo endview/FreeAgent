@@ -29,7 +29,12 @@ type commandArguments struct {
 	Cwd              string   `json:"cwd"`
 	Check            bool     `json:"check,omitempty"`
 	Background       bool     `json:"background,omitempty"`
+	Mode             string   `json:"mode,omitempty"`
+	DurationSeconds  int      `json:"duration_seconds,omitempty"`
+	ReadyText        string   `json:"ready_text,omitempty"`
+	ReadyTimeout     int      `json:"ready_timeout_seconds,omitempty"`
 	installationRoot string
+	executionRoots   []string
 }
 
 var ErrInvalidExecutable = errors.New("harness: invalid command executable")
@@ -56,7 +61,7 @@ func (tools *CommandTools) Definitions() []ToolDefinition {
 	}
 	return []ToolDefinition{{Name: "command_run", Effect: EffectModify,
 		Description: description,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"},"args":{"type":"array","maxItems":128,"items":{"type":"string"}},"cwd":{"type":"string"},"check":{"type":"boolean"},"background":{"type":"boolean"}},"required":["command","cwd"],"additionalProperties":false}`)}}
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"},"args":{"type":"array","maxItems":128,"items":{"type":"string"}},"cwd":{"type":"string"},"check":{"type":"boolean"},"background":{"type":"boolean"},"mode":{"type":"string","enum":["background","service"]},"duration_seconds":{"type":"integer","minimum":1,"maximum":28800},"ready_text":{"type":"string","maxLength":1024},"ready_timeout_seconds":{"type":"integer","minimum":1,"maximum":300}},"required":["command","cwd"],"additionalProperties":false}`)}}
 }
 
 func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (PreparedTool, error) {
@@ -71,6 +76,9 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	}
 	var args commandArguments
 	if err := decodeArguments(call.Arguments, &args); err != nil {
+		return PreparedTool{}, err
+	}
+	if err := tools.serviceArguments(&args); err != nil {
 		return PreparedTool{}, err
 	}
 	inv, hasOwner := ctx.Value(commandInvocationKey{}).(commandInvocation)
@@ -156,6 +164,9 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	}
 	if args.Background {
 		preview += "\nBackground: owned by this owner, independent command timeout; startup is not completion. Poll/stop by Attempt ID. Owner loss becomes UNKNOWN."
+	}
+	if args.Mode == "service" {
+		preview += fmt.Sprintf("\nService: duration %ds; original total limit %ds; latest 256 KiB logs; readiness literal %q (timeout %ds). Full host may bind non-loopback interfaces. AI extension always requires confirmation.", args.DurationSeconds, tools.Config.Services.MaxTotalSeconds, args.ReadyText, args.ReadyTimeout)
 	}
 	var unknown []CommandRecord
 	if hasOwner && inv.service.commands != nil {
@@ -280,7 +291,7 @@ func (tools *CommandTools) validateExecutionBackend() error {
 func (tools *CommandTools) execute(parent context.Context, args commandArguments, receipt ToolReceipt, record func(ToolResult) error) (ToolResult, error) {
 	result := ToolResult{IsError: true, Receipts: []ToolReceipt{receipt}}
 	if inv, ok := parent.Value(commandInvocationKey{}).(commandInvocation); ok && inv.service.commands != nil {
-		release, err := inv.service.commands.reserve(inv.attempt)
+		release, err := inv.service.commands.reserve(inv.attempt, tools, &args)
 		if err != nil {
 			return result, &CallError{Certain: true, Message: err.Error()}
 		}
@@ -477,6 +488,17 @@ func (tools *CommandTools) startProcess(ctx context.Context, args commandArgumen
 		if err := tools.sandboxSpec(&spec); err != nil {
 			return nil, err
 		}
+		for _, root := range args.executionRoots {
+			if grantRootPresent(spec.Grants, root) {
+				continue
+			}
+			for _, protected := range append([]string{tools.DataDir}, tools.Profile.BlockedPaths...) {
+				if protected != "" && (within(root, protected) || within(protected, root)) {
+					return nil, errors.New("sandbox installation set overlaps protected path")
+				}
+			}
+			spec.Grants = append(spec.Grants, winlaunch.Grant{Root: root, Access: winlaunch.AccessRead})
+		}
 		if args.installationRoot != "" && !grantRootPresent(spec.Grants, args.installationRoot) {
 			protectedPaths := append([]string{tools.DataDir}, tools.Profile.BlockedPaths...)
 			for _, protected := range protectedPaths {
@@ -490,6 +512,7 @@ func (tools *CommandTools) startProcess(ctx context.Context, args commandArgumen
 			spec.Grants = append(spec.Grants, winlaunch.Grant{Root: args.installationRoot, Access: winlaunch.AccessRead})
 		}
 	}
+	sort.Slice(spec.Grants, func(i, j int) bool { return spec.Grants[i].Root < spec.Grants[j].Root })
 	return winlaunch.Start(ctx, spec)
 }
 

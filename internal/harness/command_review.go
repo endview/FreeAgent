@@ -3,9 +3,13 @@ package harness
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 )
 
 func (s *commandSupervisor) unreviewed(ctx context.Context) ([]CommandRecord, error) {
+	if active := s.liveUncertain(); len(active) > 0 {
+		return nil, fmt.Errorf("%w: owner command %s has uncertain cleanup or persistence; inspect before restarting the owner", ErrUnknownResult, active[0].ID)
+	}
 	rows, err := s.store.db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE 'command/process/%' AND json_extract(value,'$.state')='unknown' AND coalesce(json_extract(value,'$.reviewed'),0)=0 LIMIT 33`)
 	if err != nil {
 		return nil, err

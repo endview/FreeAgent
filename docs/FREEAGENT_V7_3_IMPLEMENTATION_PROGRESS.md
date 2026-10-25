@@ -27,3 +27,6 @@ That archive predates two small GUI presentation fixes, which are included in
 the next final package. Real Providers: NOT_RUN. Linux CI follows the commit.
 
 Protocol and product behavior: [command sessions](COMMAND_SESSIONS.md).
+
+Stage commit `04032f5`: Windows and Linux CI passed, including Linux race:
+https://github.com/endview/FreeAgent/actions/runs/40201317834

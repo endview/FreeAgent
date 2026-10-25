@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +32,45 @@ func TestCommandHelper(t *testing.T) {
 	}
 	args := os.Args[index+1:]
 	switch args[0] {
+	case "http-client":
+		response, err := (&http.Client{Timeout: 2 * time.Second}).Get(args[1])
+		if err != nil {
+			fmt.Print(err)
+			os.Exit(4)
+		}
+		defer response.Body.Close()
+		_, _ = io.Copy(os.Stdout, response.Body)
+		os.Exit(0)
+	case "service":
+		listener, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			fmt.Print(err)
+			os.Exit(4)
+		}
+		address := "http://" + listener.Addr().String()
+		_ = os.WriteFile(args[1], []byte(address), 0600)
+		if len(args) < 3 || args[2] != "no-ready" {
+			fmt.Print("SER")
+			time.Sleep(10 * time.Millisecond)
+			fmt.Println("VICE_READY " + address)
+		}
+		fmt.Fprintln(os.Stderr, "service stderr observed")
+		if len(args) > 2 && args[2] == "loud" {
+			for range 100 {
+				fmt.Print(strings.Repeat("abcdefgh", 8192))
+			}
+		}
+		if len(args) > 2 && args[2] == "steady" {
+			go func() {
+				for {
+					fmt.Fprint(os.Stdout, strings.Repeat("live-log ", 512))
+					fmt.Fprint(os.Stderr, "stderr checkpoint\n")
+					time.Sleep(2 * time.Millisecond)
+				}
+			}()
+		}
+		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "SERVICE_OK") }))
+		os.Exit(0)
 	case "ok":
 		fmt.Print("check really ran")
 		os.Exit(0)

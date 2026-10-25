@@ -344,13 +344,14 @@ type ControlService struct {
 type controlDecisionGate struct {
 	mu          sync.Mutex
 	controlBusy bool
-	hostBusy    bool
+	hostBusy    int
+	processBusy int
 }
 
 func (gate *controlDecisionGate) beginControl() error {
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
-	if gate.hostBusy {
+	if gate.hostBusy > 0 || gate.processBusy > 0 {
 		return ErrControlBusy
 	}
 	if gate.controlBusy {
@@ -365,6 +366,22 @@ func (gate *controlDecisionGate) endControl() {
 	gate.controlBusy = false
 	gate.mu.Unlock()
 }
+func (gate *controlDecisionGate) beginProcess() error {
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	if gate.controlBusy {
+		return ErrControlBusy
+	}
+	gate.processBusy++
+	return nil
+}
+func (gate *controlDecisionGate) endProcess() {
+	gate.mu.Lock()
+	if gate.processBusy > 0 {
+		gate.processBusy--
+	}
+	gate.mu.Unlock()
+}
 
 func (gate *controlDecisionGate) beginHost() error {
 	gate.mu.Lock()
@@ -372,13 +389,15 @@ func (gate *controlDecisionGate) beginHost() error {
 	if gate.controlBusy {
 		return ErrControlBusy
 	}
-	gate.hostBusy = true
+	gate.hostBusy++
 	return nil
 }
 
 func (gate *controlDecisionGate) endHost() {
 	gate.mu.Lock()
-	gate.hostBusy = false
+	if gate.hostBusy > 0 {
+		gate.hostBusy--
+	}
 	gate.mu.Unlock()
 }
 
@@ -1469,6 +1488,17 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 		}
 		if active != 0 {
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "busy_active_run"}, ErrControlBusy
+		}
+	}
+	if commands := service.core.commands; commands != nil {
+		switch record.Operation.Kind {
+		case ControlSetWorkspace, ControlSetPermission, ControlSetExecutionProfile, ControlSetSandbox, ControlSetNetwork, ControlSetFileScope, ControlSetTool, ControlSetCommandPolicy, ControlSetConversationPermission:
+			commands.mu.Lock()
+			ids := commands.activeIDsLocked()
+			commands.mu.Unlock()
+			if ids != "" {
+				return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "execution_profile_busy"}, fmt.Errorf("%w; affected commands: %s", ErrCommandBusy, ids)
+			}
 		}
 	}
 	if record.Operation.Risk != ControlRiskOrdinary {
@@ -3129,7 +3159,7 @@ func (service *ControlService) compactLocked() error {
 func (service *ControlService) gateState() (bool, bool) {
 	service.gate.mu.Lock()
 	defer service.gate.mu.Unlock()
-	return service.gate.controlBusy, service.gate.hostBusy
+	return service.gate.controlBusy, service.gate.hostBusy > 0
 }
 
 // ControlCodeForTests is intentionally only useful to deterministic tests
