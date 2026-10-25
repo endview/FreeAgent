@@ -24,10 +24,11 @@ import (
 )
 
 type commandArguments struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args,omitempty"`
-	Cwd     string   `json:"cwd"`
-	Check   bool     `json:"check,omitempty"`
+	Command          string   `json:"command"`
+	Args             []string `json:"args,omitempty"`
+	Cwd              string   `json:"cwd"`
+	Check            bool     `json:"check,omitempty"`
+	installationRoot string
 }
 
 var ErrInvalidExecutable = errors.New("harness: invalid command executable")
@@ -76,11 +77,20 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	var err error
 	if !filepath.IsAbs(command) {
 		command, err = exec.LookPath(command)
+		if err != nil {
+			return PreparedTool{}, errors.New("command program was not found on PATH")
+		}
 	}
 	command, err = normalizeCommandPath(command)
 	if err != nil || len(args.Args) > 128 {
 		return PreparedTool{}, errors.New("command must name an executable path or PATH program with at most 128 arguments")
 	}
+	originalPath, originalArgs := command, append([]string(nil), args.Args...)
+	target, err := resolveCommandTarget(command, args.Args)
+	if err != nil {
+		return PreparedTool{}, err
+	}
+	command, args.Args, args.installationRoot = target.program, target.args, target.root
 	args.Command = command
 	decision := commandRuleDecision(tools.Config.Rules, requested, command, args)
 	if decision == "" && tools.Profile.Generation != "" && len(tools.Config.Rules) != 0 {
@@ -114,7 +124,8 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	if tools.Config.InheritEnv {
 		environment = "minimal filtered environment (full inheritance is disabled)"
 	}
-	receipt := ToolReceipt{Kind: "command", Command: string(argv), WorkingDir: cwd, Status: "not_launched", Check: args.Check}
+	receipt := ToolReceipt{Kind: "command", Command: string(argv), WorkingDir: cwd, Status: "not_launched", Check: args.Check,
+		ResolvedFrom: target.shim, InstallationRoot: target.root}
 	if tools.executionMode() == CommandExecutionHostExplicit {
 		receipt.Backend = string(CommandExecutionHostExplicit)
 		receipt.HostEscapeHatch = true
@@ -135,7 +146,16 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	if len(tools.Config.AllowedExecutables) != 0 {
 		preview += "\nExecutable policy: exact configured path; arguments still require approval"
 	}
+	if target.shim != "" {
+		preview += "\nResolved shim: " + target.shim + "\nRead-only installation: " + target.root
+	}
 	execute := func(ctx context.Context, record func(ToolResult) error) (ToolResult, error) {
+		current, err := resolveCommandTarget(originalPath, originalArgs)
+		if err != nil || !samePath(current.program, args.Command) || !slices.Equal(current.args, args.Args) || current.root != args.installationRoot {
+			blocked := receipt
+			blocked.Status, blocked.Detail = "blocked", "executable_target_unavailable"
+			return ToolResult{IsError: true, Content: "command not launched: executable target changed; prepare again", Receipts: []ToolReceipt{blocked}}, nil
+		}
 		return tools.execute(ctx, args, receipt, record)
 	}
 	autoInSandbox := tools.Profile.Generation != "" && tools.Profile.PermissionMode == PermissionWorkspace && tools.executionMode() == CommandExecutionSandboxed
@@ -178,7 +198,8 @@ func commandRuleDecision(rules []CommandRule, requested, resolved string, args c
 func commandRuleMatches(rule CommandRule, requested, resolved string, args commandArguments) bool {
 	program := strings.TrimSpace(rule.Program)
 	if filepath.IsAbs(program) {
-		if !samePath(program, resolved) {
+		canonical, err := canonicalCommandPath(program)
+		if !samePath(program, resolved) && (err != nil || !samePath(canonical, resolved)) {
 			return false
 		}
 	} else if !strings.EqualFold(program, filepath.Base(requested)) &&
@@ -387,6 +408,18 @@ func (tools *CommandTools) startProcess(ctx context.Context, args commandArgumen
 		if err := tools.sandboxSpec(&spec); err != nil {
 			return nil, err
 		}
+		if args.installationRoot != "" && !grantRootPresent(spec.Grants, args.installationRoot) {
+			protectedPaths := append([]string{tools.DataDir}, tools.Profile.BlockedPaths...)
+			for _, protected := range protectedPaths {
+				if protected == "" {
+					continue
+				}
+				if within(args.installationRoot, protected) || within(protected, args.installationRoot) {
+					return nil, errors.New("sandbox installation root overlaps a protected path")
+				}
+			}
+			spec.Grants = append(spec.Grants, winlaunch.Grant{Root: args.installationRoot, Access: winlaunch.AccessRead})
+		}
 	}
 	return winlaunch.Start(ctx, spec)
 }
@@ -585,7 +618,8 @@ func commandAllowed(command string, allowed []string) bool {
 		return true
 	}
 	for _, path := range allowed {
-		if samePath(command, path) {
+		canonical, err := canonicalCommandPath(path)
+		if samePath(command, path) || err == nil && samePath(command, canonical) {
 			return true
 		}
 	}

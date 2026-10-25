@@ -40,6 +40,7 @@ type Server struct {
 	cancel        context.CancelFunc
 	mu            sync.Mutex
 	active        string
+	activeBinding string
 	activeCancel  context.CancelFunc
 	stopping      bool
 	closed        bool
@@ -834,6 +835,10 @@ func (server *Server) executeAttachedOperation(writer http.ResponseWriter, chat 
 }
 
 func (server *Server) start(writer http.ResponseWriter, chat string, execute func(context.Context) (harness.RunResult, error)) {
+	server.startBound(writer, chat, "", execute)
+}
+
+func (server *Server) startBound(writer http.ResponseWriter, chat, binding string, execute func(context.Context) (harness.RunResult, error)) {
 	server.mu.Lock()
 	if server.active != "" || server.closed || server.stopping {
 		server.mu.Unlock()
@@ -841,6 +846,7 @@ func (server *Server) start(writer http.ResponseWriter, chat string, execute fun
 		return
 	}
 	server.active, server.stopping = chat, false
+	server.activeBinding = binding
 	operation, cancel := context.WithCancel(server.ctx)
 	server.activeCancel = cancel
 	server.wg.Add(1)
@@ -852,6 +858,7 @@ func (server *Server) start(writer http.ResponseWriter, chat string, execute fun
 		server.mu.Lock()
 		stopping := server.stopping
 		server.active = ""
+		server.activeBinding = ""
 		server.activeCancel = nil
 		server.mu.Unlock()
 		if stopping {

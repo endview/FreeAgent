@@ -6,6 +6,23 @@ import (
 	"strings"
 )
 
+func (tasks *TaskService) ApplyUserMemorySelection(ctx context.Context, chat string, selection MemorySelection) error {
+	control, err := tasks.Control()
+	if err != nil {
+		return err
+	}
+	return control.ApplyMemorySelection(ctx, chat, selection, "cli")
+}
+
+func (tasks *TaskService) ApplyUserMemoryConfig(ctx context.Context, memory MemoryConfig) error {
+	control, err := tasks.Control()
+	if err != nil {
+		return err
+	}
+	_, err = control.ApplyDirectControlChange(ctx, ControlSetMemoryPolicy, memory, "", "cli")
+	return err
+}
+
 // MemoryScopes lists only local metadata for explicit user management. It is
 // not an Agent grant and never scans files or dispatches a model.
 func (tasks *TaskService) MemoryScopes(ctx context.Context, chat, kind string) ([]MemoryScope, error) {

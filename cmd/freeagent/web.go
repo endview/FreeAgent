@@ -2,17 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
-	"os"
 	"time"
 
-	"github.com/endview/freeagent/internal/chatui"
-	"github.com/endview/freeagent/internal/handoff"
 	"github.com/endview/freeagent/internal/harness"
 )
 
@@ -60,46 +54,12 @@ func runWebWithBrowser(ctx context.Context, args []string, stdin io.Reader, stdo
 		return err
 	}
 	defer closeAll()
-	listener, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", *port))
+	owner, err := startLocalOwner(ctx, tasks, *data, *port, exitOnStdinClose)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
-	origin := "http://" + listener.Addr().String()
-	attachSecret, err := handoff.NewSecret()
-	if err != nil {
-		return err
-	}
-	chatSecret, err := handoff.NewSecret()
-	if err != nil {
-		return err
-	}
-	token := chatSecret
-	ownerKind := "interactive"
-	if exitOnStdinClose {
-		ownerKind = "one_shot"
-	}
-	ownerInfo := handoff.EngineInfo{Product: "FreeAgent", Origin: origin,
-		Workspace: tasks.Config().Workspace, Generation: attachSecret[:16], PID: os.Getpid(), OwnerKind: ownerKind}
-	if exitOnStdinClose {
-		ownerInfo.ExpiresAt = time.Now().UTC().Add(oneShotLease).Format(time.RFC3339Nano)
-	}
-	published, err := handoff.Publish(*data, ownerInfo, attachSecret, chatSecret)
-	if err != nil {
-		return err
-	}
-	defer published.Close()
-	handler, err := chatui.NewServerWithAttach(ctx, tasks, origin, token, attachSecret)
-	if err != nil {
-		return err
-	}
-	handler.SetGeneration(published.Info.Generation)
-	handler.SetOwnerInfo(published.Info)
-	defer handler.Close()
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
-	done := make(chan error, 1)
-	go func() { done <- server.Serve(listener) }()
-	address := origin + "/#key=" + token
+	defer owner.Close()
+	address := owner.address
 	_, _ = fmt.Fprintln(stdout, address)
 	_, _ = fmt.Fprintln(stderr, "Local single-Agent Chat. Keep this launch address private. Closing the browser does not stop tasks.")
 	if *open {
@@ -108,27 +68,11 @@ func runWebWithBrowser(ctx context.Context, args []string, stdin io.Reader, stdo
 		}
 	}
 	select {
-	case err := <-done:
-		return err
+	case <-owner.done:
+		return owner.Close()
 	case <-ctx.Done():
-		handler.Close()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdown)
-		err := <-done
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-handler.StopRequested():
-		handler.Close()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdown)
-		err := <-done
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
+		return owner.Close()
+	case <-owner.handler.StopRequested():
+		return owner.Close()
 	}
 }

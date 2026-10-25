@@ -41,6 +41,8 @@ func (config MemoryConfig) validate() error {
 	return nil
 }
 
+func (config MemoryConfig) Validate() error { return config.validate() }
+
 // Owner is an Agent identity, parent Run, or knowledge collection, respectively.
 // A private TaskID confines the item to one Run; empty means explicitly retained.
 type MemoryScope struct {

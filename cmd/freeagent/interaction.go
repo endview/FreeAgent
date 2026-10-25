@@ -12,7 +12,7 @@ import (
 	"github.com/endview/freeagent/internal/harness"
 )
 
-func chatModelSelection(ctx context.Context, tasks *harness.TaskService, conversationID, choice string, stdout, stderr io.Writer) error {
+func chatModelSelection(ctx context.Context, tasks chatTasks, conversationID, choice string, stdout, stderr io.Writer) error {
 	config := tasks.Config()
 	ids := make([]string, 0, len(config.Models))
 	for id := range config.Models {
@@ -53,7 +53,7 @@ func chatModelSelection(ctx context.Context, tasks *harness.TaskService, convers
 	return err
 }
 
-func chatIncreaseLimits(ctx context.Context, tasks *harness.TaskService, conversationID string, reader *terminalInput, writer io.Writer) error {
+func chatIncreaseLimits(ctx context.Context, tasks chatTasks, conversationID string, reader *terminalInput, writer io.Writer) error {
 	run, err := tasks.Latest(ctx, conversationID)
 	if err != nil {
 		return err

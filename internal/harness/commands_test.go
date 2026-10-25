@@ -41,6 +41,15 @@ func TestCommandHelper(t *testing.T) {
 	case "loud":
 		fmt.Print(strings.Repeat("output", 10000))
 		os.Exit(0)
+	case "read-resource":
+		program, _ := os.Executable()
+		raw, err := os.ReadFile(filepath.Join(filepath.Dir(program), "..", "share", "resource.txt"))
+		if err != nil {
+			fmt.Print(err)
+			os.Exit(3)
+		}
+		fmt.Print(string(raw))
+		os.Exit(0)
 	case "mkdir":
 		if err := os.Mkdir(args[1], 0o700); err != nil {
 			fmt.Print(err)

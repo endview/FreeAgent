@@ -14,12 +14,8 @@ import (
 	"github.com/endview/freeagent/internal/harness"
 )
 
-func applyChatMemorySelection(ctx context.Context, tasks *harness.TaskService, chat string, selection harness.MemorySelection) error {
-	control, err := tasks.Control()
-	if err != nil {
-		return err
-	}
-	return control.ApplyMemorySelection(ctx, chat, selection, "cli")
+func applyChatMemorySelection(ctx context.Context, tasks chatTasks, chat string, selection harness.MemorySelection) error {
+	return tasks.ApplyUserMemorySelection(ctx, chat, selection)
 }
 
 func memoryLine(ctx context.Context, reader *terminalInput, writer io.Writer, label string) (string, error) {
@@ -59,7 +55,7 @@ func memoryText(ctx context.Context, reader *terminalInput, writer io.Writer, ma
 	return strings.TrimRight(body.String(), "\r\n"), nil
 }
 
-func memoryScopeLabel(ctx context.Context, tasks *harness.TaskService, scope harness.MemoryScope) string {
+func memoryScopeLabel(ctx context.Context, tasks chatTasks, scope harness.MemoryScope) string {
 	project := "project"
 	if scope.Project == "" {
 		project = "personal"
@@ -85,7 +81,7 @@ func memoryScopeLabel(ctx context.Context, tasks *harness.TaskService, scope har
 	}
 }
 
-func chatMemoryScope(ctx context.Context, tasks *harness.TaskService, chat, kind string, create bool, reader *terminalInput, writer io.Writer) (harness.MemoryScope, error) {
+func chatMemoryScope(ctx context.Context, tasks chatTasks, chat, kind string, create bool, reader *terminalInput, writer io.Writer) (harness.MemoryScope, error) {
 	scopes, err := tasks.MemoryScopes(ctx, chat, kind)
 	if err != nil {
 		return harness.MemoryScope{}, err
@@ -137,7 +133,7 @@ func boolInt(value bool) int {
 	return 0
 }
 
-func chatMemoryDestination(ctx context.Context, tasks *harness.TaskService, chat string, reader *terminalInput, writer io.Writer) (harness.MemoryScope, bool, error) {
+func chatMemoryDestination(ctx context.Context, tasks chatTasks, chat string, reader *terminalInput, writer io.Writer) (harness.MemoryScope, bool, error) {
 	_, _ = fmt.Fprintln(writer, "Save to:\n1. Current Agent\n2. Current task shared area\n3. Personal or project knowledge\n4. Do not save")
 	number, err := memoryNumber(ctx, reader, writer, 4)
 	if err != nil {
@@ -185,7 +181,7 @@ func chatMemoryDestination(ctx context.Context, tasks *harness.TaskService, chat
 	return scope, err == nil, err
 }
 
-func chatMemoryCommit(ctx context.Context, tasks *harness.TaskService, chat string, mutation harness.MemoryMutation, reader *terminalInput, writer io.Writer) error {
+func chatMemoryCommit(ctx context.Context, tasks chatTasks, chat string, mutation harness.MemoryMutation, reader *terminalInput, writer io.Writer) error {
 	_, _ = fmt.Fprintf(writer, "\n%s: %s\nDestination: %s\n", mutation.Action, mutation.Title, memoryScopeLabel(ctx, tasks, mutation.Scope))
 	for _, source := range mutation.Sources {
 		label := source.Kind
@@ -239,7 +235,7 @@ func chatMemoryKind(ctx context.Context, reader *terminalInput, writer io.Writer
 	return kinds[number], nil
 }
 
-func chatMemorySave(ctx context.Context, tasks *harness.TaskService, chat string, fromResult bool, reader *terminalInput, writer io.Writer) error {
+func chatMemorySave(ctx context.Context, tasks chatTasks, chat string, fromResult bool, reader *terminalInput, writer io.Writer) error {
 	scope, save, err := chatMemoryDestination(ctx, tasks, chat, reader, writer)
 	if err != nil || !save {
 		return err
@@ -274,7 +270,7 @@ func chatMemorySave(ctx context.Context, tasks *harness.TaskService, chat string
 	return chatMemoryCommit(ctx, tasks, chat, mutation, reader, writer)
 }
 
-func chatMemoryManage(ctx context.Context, tasks *harness.TaskService, chat string, reader *terminalInput, stdout, writer io.Writer) error {
+func chatMemoryManage(ctx context.Context, tasks chatTasks, chat string, reader *terminalInput, stdout, writer io.Writer) error {
 	_, _ = fmt.Fprintln(writer, "1. Current Agent\n2. Task shared areas\n3. Knowledge")
 	number, err := memoryNumber(ctx, reader, writer, 3)
 	if err != nil {
@@ -391,7 +387,7 @@ func selectedNumbers(text string, count int) ([]int, error) {
 	return numbers, nil
 }
 
-func chatMemorySelection(ctx context.Context, tasks *harness.TaskService, chat string, reader *terminalInput, writer io.Writer) error {
+func chatMemorySelection(ctx context.Context, tasks chatTasks, chat string, reader *terminalInput, writer io.Writer) error {
 	agent, err := tasks.AgentIdentity(ctx, chat)
 	if err != nil {
 		return err
@@ -477,7 +473,7 @@ func chatMemorySelection(ctx context.Context, tasks *harness.TaskService, chat s
 	return nil
 }
 
-func chatMemorySources(ctx context.Context, tasks *harness.TaskService, chat string, writer io.Writer) error {
+func chatMemorySources(ctx context.Context, tasks chatTasks, chat string, writer io.Writer) error {
 	run, err := tasks.Latest(ctx, chat)
 	if err != nil {
 		return err
@@ -507,7 +503,7 @@ func chatMemorySources(ctx context.Context, tasks *harness.TaskService, chat str
 	return nil
 }
 
-func chatMemoryAgent(ctx context.Context, tasks *harness.TaskService, chat string, reader *terminalInput, writer io.Writer) error {
+func chatMemoryAgent(ctx context.Context, tasks chatTasks, chat string, reader *terminalInput, writer io.Writer) error {
 	conversations, err := tasks.Conversations(ctx)
 	if err != nil {
 		return err
@@ -541,7 +537,7 @@ func chatMemoryAgent(ctx context.Context, tasks *harness.TaskService, chat strin
 	return nil
 }
 
-func chatMemory(ctx context.Context, tasks *harness.TaskService, chat, choice string, reader *terminalInput, stdout, writer io.Writer) error {
+func chatMemory(ctx context.Context, tasks chatTasks, chat, choice string, reader *terminalInput, stdout, writer io.Writer) error {
 	if choice == "" {
 		_, _ = fmt.Fprintln(writer, "Memory\n1. View/edit entries\n2. Save selected text\n3. Save current completed result\n4. Select future Chat inputs\n5. Import knowledge file\n6. Sources\n7. Clear future selection\n8. Reuse an Agent\n9. Do not save")
 		number, err := memoryNumber(ctx, reader, writer, 9)
@@ -595,7 +591,7 @@ func chatMemory(ctx context.Context, tasks *harness.TaskService, chat, choice st
 	}
 }
 
-func chatMemorySettings(ctx context.Context, tasks *harness.TaskService, reader *terminalInput, writer io.Writer) error {
+func chatMemorySettings(ctx context.Context, tasks chatTasks, reader *terminalInput, writer io.Writer) error {
 	memory := tasks.Config().Memory
 	line, err := memoryLine(ctx, reader, writer, fmt.Sprintf("Knowledge enabled [%t]; y/n, blank keeps current: ", memory.KnowledgeEnabled))
 	if err != nil {
@@ -626,11 +622,7 @@ func chatMemorySettings(ctx context.Context, tasks *harness.TaskService, reader 
 			*limit.value = number
 		}
 	}
-	control, err := tasks.Control()
-	if err != nil {
-		return err
-	}
-	if _, err := control.ApplyDirectControlChange(ctx, harness.ControlSetMemoryPolicy, memory, "", "cli"); err != nil {
+	if err := tasks.ApplyUserMemoryConfig(ctx, memory); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintln(writer, "Memory settings saved. No background work was started.")

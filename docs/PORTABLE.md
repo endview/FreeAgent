@@ -1,6 +1,6 @@
 # FreeAgent Windows Portable Preview
 
-Current candidate: `v7.0.1-dev.1`, Windows amd64. This is an unsigned
+Current candidate: `v7.0.2-dev.1`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are embedded in the
 desktop executable.
@@ -53,6 +53,17 @@ Examples:
 .\bin\freeagent.exe key models main
 .\bin\freeagent.exe web --open-browser
 ```
+
+With the desktop app running, `chat --resume <session>` attaches to its owner.
+Use `sessions --json` to find the session ID, or `/sessions` and `/resume` inside
+Chat. With no owner, `chat` publishes the same API in the terminal process so
+the desktop app can attach. Closing an attached client leaves the owner running;
+exiting the owning terminal drains and stops it. Drafts are not shared.
+
+Windows command execution resolves native Scoop `.exe` + `.shim` pairs to a
+concrete application version and grants that installation read-only access.
+The final executable and complete arguments still pass command policy and
+approval. Unknown metadata and script shims are rejected without host fallback.
 
 Double-clicking `bin\freeagent.exe` only displays a message pointing to
 `FreeAgent.exe`. Run it from a terminal for CLI commands. Detailed options are

@@ -25,6 +25,9 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/attach/")
 	switch {
+	case path == "chat-command" && request.Method == http.MethodPost:
+		server.chatCommand(writer, request)
+		return true
 	case path == "collaboration" && request.Method == http.MethodPost:
 		if !server.isInteractiveAttachRequest(request) {
 			server.writeError(writer, http.StatusForbidden, "user_interaction_required", "协作控制需要当前用户界面的交互确认。")
@@ -75,7 +78,7 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			return true
 		}
 		server.mu.Lock()
-		active, generation, seq, stopping, owner := server.active, server.generation, server.eventSeq, server.stopping, server.ownerInfo
+		active, binding, generation, seq, stopping, owner := server.active, server.activeBinding, server.generation, server.eventSeq, server.stopping, server.ownerInfo
 		server.mu.Unlock()
 		conversations, err := server.tasks.Conversations(request.Context())
 		if err != nil {
@@ -84,7 +87,7 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 		}
 		server.writeJSON(writer, http.StatusOK, map[string]any{"protocol": "freeagent-attach-v1", "data_format": "freeagent-harness-v7",
 			"generation": generation, "owner_kind": owner.OwnerKind, "pid": owner.PID, "expires_at": owner.ExpiresAt,
-			"stopping": stopping, "last_seq": seq, "active_chat": active, "control": state, "conversations": conversations})
+			"stopping": stopping, "last_seq": seq, "active_chat": active, "active_binding": binding, "control": state, "conversations": conversations})
 		return true
 	case path == "events" && request.Method == http.MethodGet:
 		return server.attachEvents(writer, request)
@@ -171,7 +174,7 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			server.writeError(writer, http.StatusBadRequest, "input", "conversation_id、prompt 和 request_key 均不能为空。")
 			return true
 		}
-		server.start(writer, body.ConversationID, func(ctx context.Context) (harness.RunResult, error) {
+		server.startBound(writer, body.ConversationID, body.RequestKey, func(ctx context.Context) (harness.RunResult, error) {
 			options := body.Options
 			if options.Collaboration == nil {
 				off := harness.DefaultCollaborationSettings()
@@ -213,7 +216,7 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			server.fail(writer, err)
 			return true
 		}
-		server.start(writer, run.ConversationID, func(ctx context.Context) (harness.RunResult, error) {
+		server.startBound(writer, run.ConversationID, run.ID, func(ctx context.Context) (harness.RunResult, error) {
 			if body.Confirmation.ControlOperationID != "" {
 				return server.confirmControlProposal(ctx, run.ConversationID, run.ID, body.Confirmation, body.Code, body.Approved)
 			}
@@ -223,25 +226,26 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 	case path == "cancel" && request.Method == http.MethodPost:
 		var body struct {
 			ConversationID string `json:"conversation_id"`
+			Binding        string `json:"binding,omitempty"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
 		server.mu.Lock()
-		requested := body.ConversationID != "" && server.active == body.ConversationID && server.activeCancel != nil
+		requested := body.ConversationID != "" && server.active == body.ConversationID && server.activeCancel != nil &&
+			(body.Binding == "" || body.Binding == server.activeBinding)
 		if requested {
 			server.activeCancel()
 		}
 		server.mu.Unlock()
-		if requested {
-			server.tasks.Cancel()
-		}
 		server.writeJSON(writer, http.StatusOK, map[string]bool{"requested": requested})
 		return true
 	case path == "continue" && request.Method == http.MethodPost:
 		var body struct {
-			ConversationID string `json:"conversation_id"`
-			RunID          string `json:"run_id"`
+			ConversationID string                           `json:"conversation_id"`
+			RunID          string                           `json:"run_id"`
+			Suggestion     *harness.CollaborationSuggestion `json:"suggestion,omitempty"`
+			Approved       bool                             `json:"approved"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return true
@@ -257,8 +261,18 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			server.writeError(writer, http.StatusConflict, "conversation_mismatch", "run 不属于请求的会话。")
 			return true
 		}
-		server.start(writer, body.ConversationID, func(ctx context.Context) (harness.RunResult, error) {
-			return server.tasks.Continue(ctx, body.RunID)
+		if body.Suggestion != nil && !server.isInteractiveAttachRequest(request) {
+			server.writeError(writer, http.StatusForbidden, "user_interaction_required", "Review requires the interactive owner credential.")
+			return true
+		}
+		server.startBound(writer, body.ConversationID, body.RunID, func(ctx context.Context) (harness.RunResult, error) {
+			options := harness.RunOptions{}
+			if body.Suggestion != nil {
+				options.Review = func(context.Context, harness.CollaborationSuggestion) (harness.CollaborationSuggestion, bool, error) {
+					return *body.Suggestion, body.Approved, nil
+				}
+			}
+			return server.tasks.ContinueWithOptions(ctx, body.RunID, options)
 		})
 		return true
 	case path == "handoff" && request.Method == http.MethodPost:
@@ -332,7 +346,9 @@ func (server *Server) attachEvents(writer http.ResponseWriter, request *http.Req
 			events = append(events, event)
 		}
 	}
+	active, binding := server.active, server.activeBinding
 	server.mu.Unlock()
-	server.writeJSON(writer, http.StatusOK, map[string]any{"generation": generation, "next_seq": next, "events": events})
+	server.writeJSON(writer, http.StatusOK, map[string]any{"generation": generation, "next_seq": next, "events": events,
+		"active_chat": active, "active_binding": binding})
 	return true
 }

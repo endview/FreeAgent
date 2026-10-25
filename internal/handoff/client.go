@@ -22,6 +22,15 @@ type Client struct {
 	HTTP       *http.Client
 }
 
+type APIError struct {
+	Status int
+	Code   string
+}
+
+func (failure *APIError) Error() string {
+	return fmt.Sprintf("handoff: attach request failed with HTTP %d: %s", failure.Status, failure.Code)
+}
+
 type AttachState struct {
 	Protocol      string                 `json:"protocol"`
 	DataFormat    string                 `json:"data_format"`
@@ -32,14 +41,17 @@ type AttachState struct {
 	Stopping      bool                   `json:"stopping"`
 	LastSeq       uint64                 `json:"last_seq"`
 	ActiveChat    string                 `json:"active_chat"`
+	ActiveBinding string                 `json:"active_binding,omitempty"`
 	Control       harness.ControlState   `json:"control"`
 	Conversations []harness.Conversation `json:"conversations"`
 }
 
 type AttachEvents struct {
-	Generation string          `json:"generation"`
-	NextSeq    uint64          `json:"next_seq"`
-	Events     []harness.Event `json:"events"`
+	Generation    string          `json:"generation"`
+	NextSeq       uint64          `json:"next_seq"`
+	Events        []harness.Event `json:"events"`
+	ActiveChat    string          `json:"active_chat"`
+	ActiveBinding string          `json:"active_binding"`
 }
 
 type AttachRunStatus struct {
@@ -112,7 +124,8 @@ func (client *Client) request(ctx context.Context, method, path string, input, o
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		var detail map[string]any
 		_ = json.NewDecoder(response.Body).Decode(&detail)
-		return fmt.Errorf("handoff: attach request failed with HTTP %d: %v", response.StatusCode, detail["code"])
+		code, _ := detail["code"].(string)
+		return &APIError{Status: response.StatusCode, Code: code}
 	}
 	if output == nil {
 		return nil

@@ -4,7 +4,9 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **unreleased v7.0.1-dev.1 development candidate**. It uses a new
+This is the **v7.0.2-dev.1 development preview**. Download the Windows portable
+build from the [v7.0.2 Release](https://github.com/endview/FreeAgent/releases/tag/v7.0.2-dev.1).
+It uses a new
 current-only `Harness-v5` data directory and the v7 store format. Old
 configurations, databases, backups, commands, and SDKs are not supported or
 imported. Do not point it at an old data directory.
@@ -13,6 +15,11 @@ launcher and current provider adapters are implemented. The v7.0 acceptance
 checks passed on 2026-10-21: real DeepSeek Chat, tools, Responses and web
 search, the packaged CLI, the native Windows race suite and the manual
 desktop checks. See [v7.0 progress](docs/FREEAGENT_V7_0_IMPLEMENTATION_PROGRESS.md).
+
+v7.0.2 adds interactive GUI/CLI attach and resolves native Scoop shims inside the
+Windows command sandbox. Its local, native race and clean portable startup
+checks passed; real Provider tests were not rerun for this release. See
+[v7.0.2 acceptance](docs/FREEAGENT_V7_0_2_IMPLEMENTATION_PROGRESS.md).
 
 ## Start
 
@@ -233,12 +240,13 @@ learning. See [Memory](docs/MEMORY.md) for commands and deletion boundaries.
 - Interrupted dispatched calls remain `UNKNOWN`. Ordinary continuation and
   duplicate requests never replay them. Abandoning a task retains its unknown
   records and warns later tasks in that workspace.
-- Only one owner process writes a data directory. There is no HTTP control
-  platform or background service; `web` explicitly starts an optional loopback
-  Chat. While the desktop app or `web` owns it, `run`, `continue`, `preview`,
-  `confirm`, `control`, `config`, `key` and `memory` attach to that owner and
-  `sessions` and `inspect` show a read-only view. Interactive `chat` needs
-  the directory to itself.
+- Only one owner process writes a data directory. Desktop, `web` and interactive
+  `chat` publish the same authenticated loopback API. Interactive `chat`, `run`,
+  `continue`, `preview`, `confirm`, `control`, `config`, `key` and `memory` attach
+  to an existing owner; `sessions` and `inspect` also work while it is running.
+  Use `chat --resume <session>` for shared history. Multiple viewers are allowed;
+  conflicting execution is rejected by the owner. Drafts stay in each surface.
+  A CLI owner remains in its terminal process; exiting it drains that owner.
 - MCP is opt-in trusted local code, **not a sandbox**. It can access anything its
   operating-system account can access. Installation and updates are the user's
   responsibility.

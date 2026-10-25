@@ -11,7 +11,7 @@ import (
 	"github.com/endview/freeagent/internal/harness"
 )
 
-func chatCollaboration(ctx context.Context, tasks *harness.TaskService, chat, choice string, reader *terminalInput, writer io.Writer) (*harness.CollaborationSettings, error) {
+func chatCollaboration(ctx context.Context, tasks chatTasks, chat, choice string, reader *terminalInput, writer io.Writer) (*harness.CollaborationSettings, error) {
 	settings, err := tasks.CollaborationSettings(ctx, chat)
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func reviewChatSuggestion(reader *terminalInput, writer io.Writer) harness.Sugge
 	}
 }
 
-func chatSettings(ctx context.Context, tasks *harness.TaskService, chat, section string, reader *terminalInput, stdout, stderr io.Writer) error {
+func chatSettings(ctx context.Context, tasks chatTasks, chat, section string, reader *terminalInput, stdout, stderr io.Writer) error {
 	if section == "" {
 		_, _ = fmt.Fprint(stderr, "Settings\n1. Model\n2. Collaboration\n3. Advanced\nSelection: ")
 		line, err := reader.read(ctx)

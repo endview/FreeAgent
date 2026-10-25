@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/endview/freeagent/internal/apppaths"
+	"github.com/endview/freeagent/internal/handoff"
 	"github.com/endview/freeagent/internal/harness"
 )
 
@@ -451,12 +452,35 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	if err := requireModels(*dataDir, stderr); err != nil {
 		return err
 	}
-	config, store, service, closeAll, err := openRuntime(ctx, *dataDir)
+	local, closeAll, err := harness.OpenTasks(ctx, *dataDir, harness.Adapters{})
+	var client *handoff.Client
+	if errors.Is(err, harness.ErrOwnerActive) {
+		client, err = interactiveOwner(ctx, *dataDir)
+	} else if err == nil {
+		defer closeAll()
+		var owner *localOwner
+		owner, err = startLocalOwner(ctx, local, *dataDir, 0, false)
+		if err == nil {
+			defer owner.Close()
+			client = owner.client
+			go func() {
+				select {
+				case <-owner.handler.StopRequested():
+					stopChat()
+				case <-ctx.Done():
+				}
+			}()
+		}
+	}
 	if err != nil {
 		return err
 	}
-	defer closeAll()
-	tasks := harness.NewTaskService(service)
+	reader := newTerminalInput(ctx, stdin)
+	tasks := &remoteChat{Client: client, data: *dataDir, reader: reader, stderr: stderr}
+	if err := tasks.refresh(ctx); err != nil {
+		return err
+	}
+	config := tasks.Config()
 	if *conversationID == "" {
 		conversation, err := tasks.NewConversation(ctx, "Interactive chat")
 		if err != nil {
@@ -465,19 +489,21 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		*conversationID = conversation.ID
 		_, _ = fmt.Fprintln(stderr, "New conversation")
 	} else {
-		if _, err := store.GetConversation(ctx, *conversationID); err != nil {
+		if _, err := tasks.Chat(ctx, *conversationID); err != nil {
 			return err
 		}
 	}
 	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /status /continue /more /abandon /file <path> /begin ... /end /exit\n", config.Workspace)
-	reader := newTerminalInput(ctx, stdin)
-	tasks.SetApproval(terminalApproval(reader, stderr))
 	var references []string
 	var nextCollaboration *harness.CollaborationSettings
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if err := tasks.refresh(ctx); err != nil {
+			return err
+		}
+		config = tasks.Config()
 		_, _ = io.WriteString(stdout, "> ")
 		line, readErr := reader.read(ctx)
 		if readErr != nil {
@@ -619,13 +645,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		if prompt == "/abandon" {
 			last, err := tasks.Latest(ctx, *conversationID)
 			if err == nil {
-				if controlled, checkErr := tasks.IsCollaboration(ctx, last.ID); checkErr != nil {
-					err = checkErr
-				} else if controlled {
-					err = tasks.StopCollaboration(ctx, last.ID)
-				} else {
-					err = tasks.Abandon(ctx, last.ID)
-				}
+				err = tasks.Abandon(ctx, last.ID)
 			}
 			if err != nil {
 				_, _ = fmt.Fprintln(stderr, err)
@@ -648,29 +668,51 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		}
 		requestKey := fmt.Sprintf("%x", time.Now().UTC().UnixNano())
 		streamed := false
-		tasks.SetEvents(terminalEvents(stdout, stderr, false, &streamed))
+		tasks.emit = terminalEvents(stdout, stderr, false, &streamed)
+		state, stateErr := tasks.State(ctx)
+		if stateErr != nil {
+			return stateErr
+		}
+		tasks.cursor = state.LastSeq
+		tasks.requestError = ""
+		options := harness.RunOptions{Collaboration: nextCollaboration, Review: reviewChatSuggestion(reader, stderr)}
 		var result harness.RunResult
+		binding := requestKey
 		if prompt == "/continue" {
-			taskCtx, cancelTask := context.WithCancel(ctx)
-			controller.set(cancelTask)
-			if last, latestErr := tasks.Latest(taskCtx, *conversationID); latestErr != nil {
+			if last, latestErr := tasks.Latest(ctx, *conversationID); latestErr != nil {
 				err = latestErr
 			} else {
-				result, err = tasks.ContinueWithOptions(taskCtx, last.ID, harness.RunOptions{Review: reviewChatSuggestion(reader, stderr)})
+				binding = last.ID
+				err = tasks.Continue(ctx, *conversationID, last.ID)
+				result.Run = last
+			}
+		} else {
+			if options.Collaboration == nil {
+				settings, settingsErr := tasks.CollaborationSettings(ctx, *conversationID)
+				err = settingsErr
+				options.Collaboration = &settings
+			}
+			if err == nil {
+				err = tasks.SubmitWithOptions(ctx, *conversationID, requestKey, prompt, options)
+			}
+			nextCollaboration = nil
+		}
+		if err == nil {
+			tasks.bind(binding)
+			taskCtx, cancelTask := context.WithCancel(ctx)
+			controller.set(func() {
+				tasks.interrupt(*conversationID)
+				cancelTask()
+			})
+			result, err = tasks.wait(taskCtx, *conversationID, requestKey, result.Run.ID)
+			if err == nil {
+				result, err = tasks.settle(taskCtx, result, options)
 			}
 			controller.set(nil)
 			cancelTask()
-		} else {
-			taskCtx, cancelTask := context.WithCancel(ctx)
-			controller.set(cancelTask)
-			result, err = tasks.SubmitWithOptions(taskCtx, *conversationID, requestKey, prompt,
-				harness.RunOptions{Collaboration: nextCollaboration, Review: reviewChatSuggestion(reader, stderr)})
-			nextCollaboration = nil
-			controller.set(nil)
-			cancelTask()
 		}
-		if err == nil {
-			result, err = settleLocalControlProposals(ctx, tasks, result, reader.read, stderr)
+		if tasks.emit == nil {
+			streamed = false
 		}
 		_ = printChatResult(stdout, stderr, result, streamed)
 		if result.Run.ID != "" {

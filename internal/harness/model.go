@@ -151,6 +151,8 @@ type ToolReceipt struct {
 	BeforeHash       string `json:"before_hash,omitempty"`
 	AfterHash        string `json:"after_hash,omitempty"`
 	Command          string `json:"command,omitempty"`
+	ResolvedFrom     string `json:"resolved_from,omitempty"`
+	InstallationRoot string `json:"installation_root,omitempty"`
 	WorkingDir       string `json:"working_dir,omitempty"`
 	ExitCode         *int   `json:"exit_code,omitempty"`
 	Check            bool   `json:"check,omitempty"`
