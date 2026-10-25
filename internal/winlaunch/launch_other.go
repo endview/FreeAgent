@@ -88,6 +88,7 @@ func Start(ctx context.Context, spec Spec) (*Process, error) {
 	}
 	go process.waitBackground()
 	return &Process{stdin: stdin, stdout: stdout, stderr: stderr,
+		pid: command.Process.Pid, treeWait: process.tree.wait,
 		wait: process.wait, kill: process.kill, term: process.terminate, close: process.close}, nil
 }
 
@@ -107,6 +108,7 @@ type otherProcess struct {
 type processTree interface {
 	terminate()
 	kill() error
+	wait(context.Context) error
 }
 
 func (process *otherProcess) waitBackground() {

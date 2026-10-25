@@ -40,6 +40,7 @@ func (service *Service) runtimeTools(runID, attemptID string) ToolRunner {
 			base = runtime.Acquire().ForCapabilities(*service.capabilities)
 		}
 	}
+	base = commandInvocationTools{base: base, inv: commandInvocation{service, runID, attemptID}}
 	base = service.extensionToolRunner(base, runID)
 	base = service.skillToolRunner(base)
 	if service.controlToolsEnabled() {

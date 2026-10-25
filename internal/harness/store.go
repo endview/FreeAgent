@@ -438,6 +438,10 @@ func (store *Store) CreateRun(ctx context.Context, conversationID, requestKey, p
 }
 
 func (store *Store) createRun(ctx context.Context, conversationID, requestKey, prompt, configJSON string, maintenance bool) (Run, bool, error) {
+	return store.createRunWithTool(ctx, conversationID, requestKey, prompt, configJSON, maintenance, nil)
+}
+
+func (store *Store) createRunWithTool(ctx context.Context, conversationID, requestKey, prompt, configJSON string, maintenance bool, call *ToolCall) (Run, bool, error) {
 	if requestKey == "" || prompt == "" {
 		return Run{}, false, errors.New("harness: request key and prompt are required")
 	}
@@ -474,6 +478,17 @@ func (store *Store) createRun(ctx context.Context, conversationID, requestKey, p
 		}
 	} else {
 		if err := insertMessage(ctx, tx, result, ModelMessage{Role: "user", Content: prompt}); err != nil {
+			return Run{}, false, err
+		}
+	}
+	if call != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, directCommandPrefix+result.ID, "explicit_user_command"); err != nil {
+			return Run{}, false, err
+		}
+		if err := insertMessage(ctx, tx, result, ModelMessage{Role: "assistant", ToolCalls: []ToolCall{*call}}); err != nil {
+			return Run{}, false, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO attempts VALUES(?,?,'tool',?,'pending',?,'')`, newID(), result.ID, call.ID, string(mustJSON(call))); err != nil {
 			return Run{}, false, err
 		}
 	}

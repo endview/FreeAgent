@@ -39,3 +39,6 @@ NOT_RUN: real Provider endpoints. No endpoint compatibility is inferred from
 fixtures. UNKNOWN remains the expected result for unproven dispatched effects.
 
 Contract: [Tool outcomes](TOOL_OUTCOMES.md). v7.3/v7.4 retain independent gates.
+
+Stage commit `aa5259d`: Windows and Linux CI, including Linux race, passed:
+https://github.com/endview/FreeAgent/actions/runs/40197417592

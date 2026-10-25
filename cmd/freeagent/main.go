@@ -101,6 +101,8 @@ control <state|catalog|list|plan|confirm|reject|revert-plan|review> [--kind <kin
 context <inspect|compact|refresh|clear> --session <id> [--summary-bytes <n>] [--json]
   Manual context selection retains original history; model-proposed changes require tool approval even in Full.
 tools list
+commands <list|poll|stop|start> [--id <attempt>] [--session <id> --arguments <JSON>] [--cursor <n>] [--interactive] [--json]
+  Start requires a running GUI/web/chat owner. /commands [list|poll <id>|stop <id>|start <JSON>] uses that same owner.
 tools test <server>
 doctor
 backup --out <new-directory>
@@ -124,6 +126,8 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runMemory(ctx, args[1:], stdin, stdout, stderr)
 	case "context":
 		return runContext(ctx, args[1:], stdout, stderr)
+	case "commands":
+		return runCommands(ctx, args[1:], stdin, stdout, stderr)
 	case "sessions":
 		return runSessions(ctx, args[1:], stdout, stderr)
 	case "inspect":
@@ -576,6 +580,20 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 					return err
 				}
 				_ = printChatResult(stdout, stderr, harness.RunResult{Run: last, Answer: last.Output, Evidence: evidence}, false)
+			}
+			continue
+		}
+		if prompt == "/commands" || strings.HasPrefix(prompt, "/commands ") {
+			parts := strings.SplitN(strings.TrimSpace(strings.TrimPrefix(prompt, "/commands")), " ", 2)
+			action, value := parts[0], ""
+			if action == "" {
+				action = "list"
+			}
+			if len(parts) > 1 {
+				value = strings.TrimSpace(parts[1])
+			}
+			if err := executeCommandClient(ctx, tasks, action, value, *conversationID, fmt.Sprintf("command-%d", time.Now().UnixNano()), value, 0, stdout, false); err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
 			}
 			continue
 		}

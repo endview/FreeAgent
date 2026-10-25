@@ -69,7 +69,13 @@ func OpenRuntime(ctx context.Context, dataDir string, adapters Adapters) (Config
 	service := NewService(store, config, adapters)
 	service.controlToolsActive = true
 	service.toolManager = manager
+	service.commands, err = newCommandSupervisor(ctx, store)
+	if err != nil {
+		closeAll()
+		return Config{}, nil, nil, none, err
+	}
 	closeAll = func() {
+		_ = service.commands.close("owner_shutdown")
 		if service != nil && service.extensions != nil {
 			_ = service.extensions.close()
 		}

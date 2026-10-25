@@ -4,7 +4,7 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v7.2.0-dev.1 development preview**. Download published Windows portable
+This is the **v7.3.0-dev.1 development preview**. Download published Windows portable
 builds from [Releases](https://github.com/endview/FreeAgent/releases).
 It uses a new
 current-only `Harness-v5` data directory and the v7 store format. Old

@@ -32,18 +32,19 @@ func (failure *APIError) Error() string {
 }
 
 type AttachState struct {
-	Protocol      string                 `json:"protocol"`
-	DataFormat    string                 `json:"data_format"`
-	Generation    string                 `json:"generation"`
-	OwnerKind     string                 `json:"owner_kind,omitempty"`
-	PID           int                    `json:"pid,omitempty"`
-	ExpiresAt     string                 `json:"expires_at,omitempty"`
-	Stopping      bool                   `json:"stopping"`
-	LastSeq       uint64                 `json:"last_seq"`
-	ActiveChat    string                 `json:"active_chat"`
-	ActiveBinding string                 `json:"active_binding,omitempty"`
-	Control       harness.ControlState   `json:"control"`
-	Conversations []harness.Conversation `json:"conversations"`
+	Protocol       string                 `json:"protocol"`
+	DataFormat     string                 `json:"data_format"`
+	Generation     string                 `json:"generation"`
+	OwnerKind      string                 `json:"owner_kind,omitempty"`
+	PID            int                    `json:"pid,omitempty"`
+	ExpiresAt      string                 `json:"expires_at,omitempty"`
+	Stopping       bool                   `json:"stopping"`
+	LastSeq        uint64                 `json:"last_seq"`
+	ActiveChat     string                 `json:"active_chat"`
+	ActiveBinding  string                 `json:"active_binding,omitempty"`
+	ActiveCommands bool                   `json:"active_commands"`
+	Control        harness.ControlState   `json:"control"`
+	Conversations  []harness.Conversation `json:"conversations"`
 }
 
 type AttachEvents struct {

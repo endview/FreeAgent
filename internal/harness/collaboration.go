@@ -76,6 +76,7 @@ func (collab *Collaboration) childService(core *Service, record collaborationRec
 	service.permission = core.permission
 	service.ownsLease = true
 	service.controlToolsDisabled = true
+	service.commandManagementDisabled = true
 	service.activity = core.activity
 	service.guard = collaborationGuard{parentID: record.ParentID, childName: child.Spec.Name}
 	service.Emit = func(event Event) {
@@ -176,6 +177,7 @@ func (collab *Collaboration) Create(ctx context.Context, conversationID, request
 		}
 	}
 	core.controlToolsDisabled = true
+	core.commandManagementDisabled = true
 	snapshot, err := core.snapshot()
 	if err != nil {
 		return "", err

@@ -631,6 +631,11 @@ func (tasks *TaskService) SetEvents(emit EventFunc) {
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
 	tasks.emit = emit
+	if tasks.core != nil && tasks.core.commands != nil {
+		tasks.core.commands.mu.Lock()
+		tasks.core.commands.emit = emit
+		tasks.core.commands.mu.Unlock()
+	}
 }
 
 func (tasks *TaskService) execute(ctx context.Context, call func(context.Context, *Service) (RunResult, error)) (RunResult, error) {

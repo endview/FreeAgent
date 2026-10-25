@@ -28,6 +28,7 @@ type commandArguments struct {
 	Args             []string `json:"args,omitempty"`
 	Cwd              string   `json:"cwd"`
 	Check            bool     `json:"check,omitempty"`
+	Background       bool     `json:"background,omitempty"`
 	installationRoot string
 }
 
@@ -55,7 +56,7 @@ func (tools *CommandTools) Definitions() []ToolDefinition {
 	}
 	return []ToolDefinition{{Name: "command_run", Effect: EffectModify,
 		Description: description,
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"},"args":{"type":"array","maxItems":128,"items":{"type":"string"}},"cwd":{"type":"string"},"check":{"type":"boolean"}},"required":["command","cwd"],"additionalProperties":false}`)}}
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"},"args":{"type":"array","maxItems":128,"items":{"type":"string"}},"cwd":{"type":"string"},"check":{"type":"boolean"},"background":{"type":"boolean"}},"required":["command","cwd"],"additionalProperties":false}`)}}
 }
 
 func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (PreparedTool, error) {
@@ -71,6 +72,10 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	var args commandArguments
 	if err := decodeArguments(call.Arguments, &args); err != nil {
 		return PreparedTool{}, err
+	}
+	inv, hasOwner := ctx.Value(commandInvocationKey{}).(commandInvocation)
+	if args.Background && (!hasOwner || inv.service.commands == nil || inv.service.guard != nil || args.Check) {
+		return PreparedTool{}, errors.New("background commands require an ordinary owner Run and cannot claim a completed check")
 	}
 	requested := strings.TrimSpace(args.Command)
 	command := requested
@@ -149,6 +154,19 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	if target.shim != "" {
 		preview += "\nResolved shim: " + target.shim + "\nRead-only installation: " + target.root
 	}
+	if args.Background {
+		preview += "\nBackground: owned by this owner, independent command timeout; startup is not completion. Poll/stop by Attempt ID. Owner loss becomes UNKNOWN."
+	}
+	var unknown []CommandRecord
+	if hasOwner && inv.service.commands != nil {
+		unknown, err = inv.service.commands.unreviewed(ctx)
+		if err != nil {
+			return PreparedTool{}, err
+		}
+	}
+	for _, record := range unknown {
+		preview += "\nPrevious UNKNOWN " + record.ID + ": inspect possible effects. Approval acknowledges this exact record and authorizes a new request; it does not replay it."
+	}
 	execute := func(ctx context.Context, record func(ToolResult) error) (ToolResult, error) {
 		current, err := resolveCommandTarget(originalPath, originalArgs)
 		if err != nil || !samePath(current.program, args.Command) || !slices.Equal(current.args, args.Args) || current.root != args.installationRoot {
@@ -156,17 +174,32 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 			blocked.Status, blocked.Detail = "blocked", "executable_target_unavailable"
 			return ToolResult{IsError: true, Content: "command not launched: executable target changed; prepare again", Receipts: []ToolReceipt{blocked}}, nil
 		}
+		if len(unknown) > 0 {
+			if err := inv.service.commands.review(ctx, unknown); err != nil {
+				return ToolResult{}, &CallError{Certain: true, Message: safeError(err)}
+			}
+		}
+		if args.Background {
+			return inv.service.commands.launch(ctx, tools, args, receipt, inv)
+		}
+		if hasOwner {
+			ctx = context.WithValue(ctx, commandInvocationKey{}, inv)
+		}
 		return tools.execute(ctx, args, receipt, record)
 	}
 	autoInSandbox := tools.Profile.Generation != "" && tools.Profile.PermissionMode == PermissionWorkspace && tools.executionMode() == CommandExecutionSandboxed
-	return PreparedTool{Effect: EffectModify, Preview: preview, workspaceFile: autoInSandbox, ruleAllowed: decision == CommandRuleAllow, commandDecision: decision, Items: []ApprovalItem{{
+	items := []ApprovalItem{{
 		Kind: "command", Target: args.Command,
 		Fields: map[string]string{
 			"command": string(argv), "working_dir": cwd, "environment": environment,
 			"timeout_s":    strconv.Itoa(tools.Config.TimeoutSecs),
 			"output_bytes": strconv.Itoa(tools.Config.MaxOutput),
 		},
-	}}, ExecuteRecorded: execute,
+	}}
+	for _, record := range unknown {
+		items = append(items, ApprovalItem{Kind: "command_unknown", Target: record.ID, Hash: commandReviewHash(record)})
+	}
+	return PreparedTool{Effect: EffectModify, Preview: preview, userConfirmation: len(unknown) > 0, workspaceFile: autoInSandbox, ruleAllowed: decision == CommandRuleAllow, commandDecision: decision, Items: items, ExecuteRecorded: execute,
 		Execute: func(ctx context.Context) (ToolResult, error) {
 			return execute(ctx, func(ToolResult) error { return nil })
 		},
@@ -246,6 +279,17 @@ func (tools *CommandTools) validateExecutionBackend() error {
 
 func (tools *CommandTools) execute(parent context.Context, args commandArguments, receipt ToolReceipt, record func(ToolResult) error) (ToolResult, error) {
 	result := ToolResult{IsError: true, Receipts: []ToolReceipt{receipt}}
+	if inv, ok := parent.Value(commandInvocationKey{}).(commandInvocation); ok && inv.service.commands != nil {
+		release, err := inv.service.commands.reserve(inv.attempt)
+		if err != nil {
+			return result, &CallError{Certain: true, Message: err.Error()}
+		}
+		defer func() {
+			if result.Receipts[0].Status != "unknown" {
+				release()
+			}
+		}()
+	}
 	if parent.Err() != nil {
 		result.Content = "command not launched: cancelled"
 		return result, nil

@@ -291,6 +291,7 @@ func runActiveDelegation(ctx context.Context, invocation *extensionInvocation,
 	core.Config = delegationConfig(core.Config)
 	core.Tools = tools
 	core.controlToolsDisabled = true
+	core.commandManagementDisabled = true
 	core.extensions = nil
 	core.skills = nil
 	if core.capabilities != nil {

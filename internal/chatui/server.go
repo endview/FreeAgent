@@ -86,6 +86,7 @@ func newServer(ctx context.Context, tasks *harness.TaskService, origin, token, a
 		ctx: lifetime, cancel: cancel, streams: map[string]Stream{}, listeners: map[chan []byte]bool{},
 		stopRequested: make(chan struct{})}
 	server.generation = NewToken()
+	tasks.SetCommandGeneration(server.generation)
 	tasks.SetApproval(nil)
 	tasks.SetEvents(server.onEvent)
 	return server, nil
@@ -97,6 +98,7 @@ func (server *Server) SetGeneration(generation string) {
 	}
 	server.mu.Lock()
 	server.generation = generation
+	server.tasks.SetCommandGeneration(generation)
 	server.eventSeq = 0
 	server.eventLog = nil
 	server.mu.Unlock()
@@ -130,6 +132,7 @@ func (server *Server) Close() {
 	server.cancel()
 	server.tasks.Cancel()
 	server.wg.Wait()
+	_ = server.tasks.CloseCommands("owner_shutdown")
 }
 
 func (server *Server) onEvent(event harness.Event) {
@@ -425,7 +428,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		busy, stopping, elsewhere := activeChat == chat, server.stopping && activeChat == chat, activeChat != "" && activeChat != chat
 		server.mu.Unlock()
 		server.writeJSON(writer, http.StatusOK, map[string]any{"view": view, "streams": streams, "busy": busy,
-			"stopping": stopping, "running_elsewhere": elsewhere, "active_chat": activeChat})
+			"stopping": stopping, "running_elsewhere": elsewhere, "active_chat": activeChat, "background_active": server.tasks.HasCommands()})
 		return
 	}
 	if request.Method != http.MethodPost || len(parts) != 2 {

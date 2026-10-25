@@ -331,6 +331,7 @@ func (collab *Collaboration) startGoal(ctx context.Context, conversationID, requ
 		return RunResult{}, err
 	}
 	bound.controlToolsDisabled = true
+	bound.commandManagementDisabled = true
 	snapshot, err := bound.snapshot()
 	if err != nil {
 		return RunResult{}, err

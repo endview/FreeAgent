@@ -3,10 +3,13 @@
 package winlaunch
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 )
+
+func (*directProcessTree) wait(context.Context) error { return ErrUnsupported }
 
 type directProcessTree struct{ process *exec.Cmd }
 

@@ -87,14 +87,32 @@ type Exit struct {
 }
 
 type Process struct {
+	pid    int
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 	stderr io.ReadCloser
 
-	wait  func(context.Context) (Exit, error)
-	kill  func() error
-	term  func()
-	close func() error
+	wait     func(context.Context) (Exit, error)
+	kill     func() error
+	term     func()
+	close    func() error
+	treeWait func(context.Context) error
+}
+
+func (p *Process) PID() int {
+	if p == nil {
+		return 0
+	}
+	return p.pid
+}
+
+// WaitTree verifies the owned containment boundary after termination. A root
+// exit alone is insufficient evidence that descendants have stopped.
+func (p *Process) WaitTree(ctx context.Context) error {
+	if p == nil || p.treeWait == nil {
+		return ErrUnsupported
+	}
+	return p.treeWait(ctx)
 }
 
 func (p *Process) Stdin() io.WriteCloser {

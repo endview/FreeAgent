@@ -300,6 +300,7 @@ func assignmentSnapshot(core *Service, spec ChildSpec, role RoleProfile, parentI
 	}
 	service := NewService(core.Store, config, Adapters{Model: core.Model, Tools: tools, Keys: core.Keys})
 	service.controlToolsDisabled = true
+	service.commandManagementDisabled = true
 	if agentID == "" {
 		agentID = collaborationAgentID(parentID, spec.Name)
 	}

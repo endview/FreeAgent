@@ -3,7 +3,8 @@
 Date: 2026-10-23
 Baseline: v7.0.1-dev.1, commit `daa82a070fc5570526657151cc6974456abfe5ae`
 Status: v7.0.2 accepted on 2026-10-25; reviewed corrections incorporated;
-v7.1 accepted on 2026-10-25; later gates open
+v7.1/v7.2/v7.3 native gates accepted on 2026-10-25. v7.2 Linux CI passed;
+v7.3 cross-platform CI follows its stage commit. See implementation records.
 
 ## 1. Purpose
 

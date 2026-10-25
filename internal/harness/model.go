@@ -168,6 +168,7 @@ type ToolReceipt struct {
 	HostEscapeHatch  bool   `json:"host_escape_hatch,omitempty"`
 	EnforcementState string `json:"enforcement_state,omitempty"`
 	Cleanup          string `json:"cleanup,omitempty"`
+	CommandID        string `json:"command_id,omitempty"`
 	// GitMetadataCreated marks a sandboxed command that created .git in a
 	// root that had none. Later host git runs may load what it wrote.
 	GitMetadataCreated bool `json:"git_metadata_created,omitempty"`

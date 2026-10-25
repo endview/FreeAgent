@@ -286,6 +286,7 @@ func Start(ctx context.Context, spec Spec) (*Process, error) {
 	wp := &windowsProcess{process: processHandle, pid: info.ProcessId, job: job, profile: p, stdin: stdinWrite, stdout: stdoutRead, stderr: stderrRead, waitDone: make(chan struct{})}
 	go wp.waitBackground()
 	return &Process{
+		pid: int(wp.pid), treeWait: wp.waitTree,
 		stdin: wp.stdin, stdout: wp.stdout, stderr: wp.stderr,
 		wait: wp.wait, kill: wp.kill, term: wp.terminate, close: wp.close,
 	}, nil
@@ -928,4 +929,30 @@ func (p *windowsProcess) close() error {
 	}
 	cleanupProfile(p.profile)
 	return errors.Join(errs...)
+}
+
+func (p *windowsProcess) waitTree(ctx context.Context) error {
+	if p.job == 0 {
+		return ErrUnsupported
+	}
+	// JOBOBJECT_BASIC_ACCOUNTING_INFORMATION is a fixed Windows ABI layout.
+	var accounting struct {
+		User, Kernel, PeriodUser, PeriodKernel int64
+		Faults, Total, Active, Terminated      uint32
+	}
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := windows.QueryInformationJobObject(p.job, windows.JobObjectBasicAccountingInformation, uintptr(unsafe.Pointer(&accounting)), uint32(unsafe.Sizeof(accounting)), nil); err != nil {
+			return err
+		}
+		if accounting.Active == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }

@@ -20,6 +20,7 @@ import { installDesktopBridge, setDesktopBusy, notifyDesktopAttention, selectDes
 import { approvalHTML, approvalRawHTML } from './approval.mjs';
 import { bindLayoutResizers } from './layout.mjs';
 import { summaryByteLimit, contextActions, contextStatus } from './context.mjs';
+import { commandRows, commandOutput } from './command-sessions.mjs';
 
 const icons = { Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Play, X,
   ChevronDown, ChevronRight, Copy, Eye, PencilLine, Check, Settings2, RefreshCw,
@@ -102,6 +103,7 @@ app.innerHTML = `
         <div class="permission-label"><button id="permission-trigger" type="button" class="model-trigger" aria-haspopup="menu" aria-expanded="false">${icon('shield-check')}<span>Ask</span></button><div id="permission-menu" class="model-menu" role="menu" hidden></div></div>
         ${button('refresh-cw', '刷新记录', 'refresh')}
         <button id="context-trigger" type="button" class="icon" data-action="context-open" title="上下文" aria-label="上下文" aria-haspopup="dialog">${icon('shrink')}</button>
+        <button id="commands-trigger" type="button" class="icon" data-action="commands-open" title="后台命令" aria-label="后台命令" aria-haspopup="dialog">${icon('terminal')}</button>
       </header>
       <div id="error" role="alert" hidden><span></span>${button('x', '关闭提示', 'dismiss')}</div>
       <div id="connection-notice" role="status" aria-live="polite" hidden></div>
@@ -160,6 +162,17 @@ app.innerHTML = `
     <label>会话名称<input id="rename-input" type="text" maxlength="80" autocomplete="off"></label>
     <p id="rename-error" class="warning" hidden></p>
     <footer><button class="text-action" data-action="close-rename">取消</button><button class="primary" data-action="save-rename">${icon('check')}保存</button></footer>
+  </dialog>
+  <dialog id="commands-dialog" aria-labelledby="commands-title">
+    <header><h2 id="commands-title">后台命令</h2>${button('refresh-cw', '刷新命令', 'commands-refresh')}${button('x', '关闭命令', 'commands-close')}</header>
+    <div id="command-records"></div>
+    <pre id="command-output" tabindex="0" hidden></pre>
+    <details><summary>启动命令</summary>
+      <label>程序<input id="command-program" type="text" autocomplete="off"></label>
+      <label>参数（每行一个）<textarea id="command-args" rows="3" spellcheck="false"></textarea></label>
+      <label>工作目录<input id="command-cwd" type="text" value="."></label>
+      <footer><button class="primary" data-action="command-start">${icon('play')}启动</button></footer>
+    </details>
   </dialog>
   <dialog id="context-dialog" aria-labelledby="context-title">
     <header><h2 id="context-title">上下文</h2>${button('x', '关闭上下文', 'context-close')}</header>
@@ -1734,7 +1747,7 @@ async function snapshot(before = '') {
       runTimer = 0;
     }
     if (previousActiveChat !== state.activeChat) listChats().catch(() => {});
-    reportDesktopBusy(state.busy || state.elsewhere, true);
+    reportDesktopBusy(state.busy || state.elsewhere || result.background_active, true);
     if (streamRevision === state.streamRevision) {
       state.streams = new Map(result.streams.map((stream) => [stream.attempt, stream]));
     }
@@ -1920,6 +1933,14 @@ function queueSnapshot() {
     snapshot().catch((failure) => error(failure.message));
   }, 180);
 }
+let commandRefresh = 0;
+async function refreshCommands() {
+  const ticket = ++commandRefresh;
+  const records = await api('attach/commands');
+  if (ticket !== commandRefresh) return;
+  $('#command-records').innerHTML = commandRows(records, icon);
+  decorate($('#command-records'));
+}
 function connectEvents() {
   sse?.close();
   sse = new EventSource('/api/events');
@@ -1929,6 +1950,7 @@ function connectEvents() {
     let event;
     try { event = JSON.parse(message.data); } catch { error('事件格式无效，请刷新记录。'); return; }
     if (event.kind === 'heartbeat') return;
+    if (event.kind === 'command_changed' && $('#commands-dialog').open) refreshCommands().catch((failure) => error(failure.message));
     if (event.kind === 'reconnect') { queueSnapshot(); return; }
     if (event.kind === 'confirmation' || event.kind === 'control_confirmation') {
       if (!document.hasFocus()) setTitleAttention(true);
@@ -2312,6 +2334,31 @@ async function act(action, node = null) {
     case 'remove-blocked-path': removeBlockedPath(node?.dataset.path || ''); break;
     case 'save-permission-page': await savePermissionPage(); break;
     case 'context-open': await openContextDialog(); break;
+    case 'commands-open': $('#commands-dialog').showModal(); await refreshCommands(); break;
+    case 'commands-close': $('#commands-dialog').close(); break;
+    case 'commands-refresh': await refreshCommands(); break;
+    case 'command-poll': {
+      const record = await api(`attach/commands?id=${encodeURIComponent(node.dataset.id)}&cursor=0`);
+      $('#command-output').textContent = commandOutput(record);
+      $('#command-output').hidden = false;
+      break;
+    }
+    case 'command-stop': {
+      const record = await api('attach/commands', { action: 'stop', id: node.dataset.id });
+      $('#command-output').textContent = commandOutput(record);
+      $('#command-output').hidden = false;
+      await refreshCommands(); queueSnapshot(); break;
+    }
+    case 'command-start': {
+      if (!state.chat) throw new Error('请先选择一个会话。');
+      node.disabled = true;
+      try {
+        await api('attach/commands', { action: 'start', conversation_id: state.chat, request_key: crypto.randomUUID(),
+          arguments: { command: $('#command-program').value, args: $('#command-args').value.split('\n').filter((v) => v !== ''), cwd: $('#command-cwd').value || '.', background: true } });
+        $('#commands-dialog').close(); await snapshot();
+      } finally { node.disabled = false; }
+      break;
+    }
     case 'context-close': $('#context-dialog').close(); break;
     case 'context-compact': await runContextAction('compact'); break;
     case 'context-refresh': await runContextAction('refresh'); break;

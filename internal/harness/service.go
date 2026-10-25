@@ -39,6 +39,7 @@ type Event struct {
 }
 
 type Service struct {
+	commands    *commandSupervisor
 	Store       *Store
 	Model       ModelClient
 	ModelFor    ModelFactory
@@ -75,16 +76,17 @@ type Service struct {
 	controlMu         *sync.Mutex
 	// configMu guards Config replacement on a core shared by several
 	// TaskService values; copies taken for a Run keep their own Config.
-	configMu                *sync.RWMutex
-	control                 *ControlService
-	controlErr              error
-	controlToolsDisabled    bool
-	controlToolsActive      bool
-	controlDecision         *ControlAuthorization
-	controlApproved         bool
-	allowFrozenContinuation bool
-	compactionFailed        bool
-	contextToolsDisabled    bool
+	configMu                  *sync.RWMutex
+	control                   *ControlService
+	controlErr                error
+	controlToolsDisabled      bool
+	controlToolsActive        bool
+	controlDecision           *ControlAuthorization
+	controlApproved           bool
+	allowFrozenContinuation   bool
+	compactionFailed          bool
+	contextToolsDisabled      bool
+	commandManagementDisabled bool
 }
 
 func (service *Service) bindCurrentToolView() {
@@ -269,7 +271,7 @@ func (service *Service) snapshotToolDefinitions() []ToolDefinition {
 	if base == nil {
 		return nil
 	}
-	definitions := base.Definitions()
+	definitions := (commandInvocationTools{base: base, inv: commandInvocation{service: service}}).Definitions()
 	if service.controlToolsEnabled() {
 		definitions = append(definitions, (&controlTools{service: service, base: base}).controlDefinitions()...)
 		if !service.contextToolsDisabled {
@@ -531,6 +533,10 @@ func (service *Service) Continue(ctx context.Context, runID string) (RunResult, 
 }
 
 func (service *Service) process(parent context.Context, run Run) (result RunResult, returnErr error) {
+	var directCommand bool
+	if err := service.Store.db.QueryRowContext(parent, `SELECT EXISTS(SELECT 1 FROM meta WHERE key=?)`, directCommandPrefix+run.ID).Scan(&directCommand); err != nil {
+		return result, err
+	}
 	clock := &runClock{parent: parent, store: service.Store, runID: run.ID,
 		limit: time.Duration(service.limits().MaxRunSeconds) * time.Second, activity: service.activity}
 	defer func() {
@@ -596,6 +602,20 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 		}
 		if pending {
 			continue
+		}
+		if directCommand {
+			if len(attempts) != 1 || attempts[0].Kind != "tool" || attempts[0].Status != "finished" {
+				return result, ErrUnknownResult
+			}
+			var observed ToolResult
+			if json.Unmarshal([]byte(attempts[0].ResponseJSON), &observed) != nil {
+				return result, ErrStoreFormat
+			}
+			status := "completed"
+			if observed.IsError {
+				status = "failed"
+			}
+			return result, service.Store.FinishRunOutput(ctx, run, status, "explicit user command", observed.Content)
 		}
 		if err := service.checkConfig(run); err != nil {
 			return result, err
@@ -1254,14 +1274,18 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 }
 
 func (service *Service) unresolvedWarning(ctx context.Context) (string, error) {
+	var background int
+	if err := service.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM meta WHERE key LIKE 'command/process/%' AND json_extract(value,'$.state')='unknown'`).Scan(&background); err != nil {
+		return "", err
+	}
 	var count int
 	err := service.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM attempts a
 		JOIN runs r ON r.id=a.run_id JOIN conversations c ON c.id=r.conversation_id
 		WHERE a.status='unknown' AND r.status='abandoned' AND c.workspace=?`, service.Config.Workspace).Scan(&count)
-	if err != nil || count == 0 {
+	if err != nil || count == 0 && background == 0 {
 		return "", err
 	}
-	return fmt.Sprintf("%d previous operation(s) in this workspace remain UNKNOWN after their tasks were abandoned. Effects may already have happened. Check inspect before repeating related work; do not repeat them implicitly.", count), nil
+	return fmt.Sprintf("%d previous operation(s) in this workspace and %d owner command(s) remain UNKNOWN. Effects may already have happened. Check inspect/command_poll before new related work; never repeat them implicitly. Starting after a background UNKNOWN requires exact user review.", count, background), nil
 }
 
 func validateResponse(response ModelResponse) error {

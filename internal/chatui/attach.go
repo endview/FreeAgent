@@ -25,6 +25,9 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 		return false
 	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/attach/")
+	if server.commandSessionsAPI(writer, request) {
+		return true
+	}
 	switch {
 	case path == "context" && request.Method == http.MethodGet:
 		state, err := server.tasks.ContextState(request.Context(), request.URL.Query().Get("conversation_id"))
@@ -117,7 +120,7 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 		}
 		server.writeJSON(writer, http.StatusOK, map[string]any{"protocol": "freeagent-attach-v1", "data_format": "freeagent-harness-v7",
 			"generation": generation, "owner_kind": owner.OwnerKind, "pid": owner.PID, "expires_at": owner.ExpiresAt,
-			"stopping": stopping, "last_seq": seq, "active_chat": active, "active_binding": binding, "control": state, "conversations": conversations})
+			"stopping": stopping, "last_seq": seq, "active_chat": active, "active_binding": binding, "active_commands": server.tasks.HasCommands(), "control": state, "conversations": conversations})
 		return true
 	case path == "events" && request.Method == http.MethodGet:
 		return server.attachEvents(writer, request)
@@ -335,17 +338,26 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			return true
 		}
 		active := server.active
-		if active != "" && !body.CancelActive {
+		if (active != "" || server.tasks.HasCommands()) && !body.CancelActive {
 			server.mu.Unlock()
 			server.writeError(writer, http.StatusConflict, "active_run", "存在运行中的任务；请明确请求取消后再交接。")
 			return true
 		}
 		cancel := server.activeCancel
 		server.stopping = true
-		if active == "" {
-			server.requestStopLocked()
-		}
 		server.mu.Unlock()
+		if err := server.tasks.CloseCommands("owner_handoff"); err != nil {
+			server.mu.Lock()
+			server.stopping = false
+			server.mu.Unlock()
+			server.fail(writer, err)
+			return true
+		}
+		if active == "" {
+			server.mu.Lock()
+			server.requestStopLocked()
+			server.mu.Unlock()
+		}
 		if cancel != nil {
 			cancel()
 			server.tasks.Cancel()
