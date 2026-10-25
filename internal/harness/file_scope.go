@@ -147,6 +147,9 @@ func (tools *FileTools) prepareWithPolicy(ctx context.Context, call ToolCall, po
 }
 
 func fileCallPaths(call ToolCall) ([]string, error) {
+	if call.Name == "apply_patch" {
+		return nil, nil
+	}
 	if !isFileToolName(call.Name) {
 		return nil, nil
 	}
@@ -182,7 +185,7 @@ func fileCallPaths(call ToolCall) ([]string, error) {
 
 func isFileToolName(name string) bool {
 	switch name {
-	case "file_list", "file_read", "file_search", "file_edit", "file_create", "file_delete", "file_batch_edit":
+	case "file_list", "file_read", "file_search", "file_edit", "file_create", "file_delete", "file_batch_edit", "apply_patch":
 		return true
 	default:
 		return false

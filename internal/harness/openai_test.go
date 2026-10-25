@@ -29,7 +29,7 @@ func TestHTTPProviderMultiRoundToolsAndSecrets(t *testing.T) {
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		if !body.Stream || len(body.Tools) != 7 || body.MaxTokens == 0 {
+		if !body.Stream || len(body.Tools) != 8 || body.MaxTokens == 0 {
 			t.Errorf("request lost tools or limits: %+v", body)
 		}
 		writer.Header().Set("Content-Type", "text/event-stream")

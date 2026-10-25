@@ -267,15 +267,17 @@ func decodeAnthropicJSON(reader io.Reader, key string) (ModelResponse, error) {
 }
 
 type anthropicStreamBlock struct {
-	index int
-	block anthropicResponseBlock
-	input strings.Builder
+	index  int
+	block  anthropicResponseBlock
+	input  strings.Builder
+	closed bool
 }
 
 func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (ModelResponse, error) {
 	blocks := map[int]*anthropicStreamBlock{}
 	envelope := anthropicEnvelope{}
 	finished := false
+	started, deltaSeen := false, false
 	stopReason := ""
 	var streamBuffer string
 	emitSafe := func(text string, flush bool) {
@@ -311,30 +313,43 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 		if json.Unmarshal([]byte(data), &item) != nil {
 			return &CallError{Category: "protocol", Message: "invalid model stream event"}
 		}
+		if event != "" && event != item.Type || finished && item.Type != "ping" {
+			return &CallError{Category: "protocol", Message: "out-of-order model stream event"}
+		}
 		switch item.Type {
 		case "message_start":
+			if started || item.Message == nil {
+				return &CallError{Category: "protocol", Message: "duplicate or invalid message start"}
+			}
+			started = true
 			if item.Message != nil {
 				envelope.ID, envelope.Model = item.Message.ID, item.Message.Model
 				envelope.Usage = item.Message.Usage
 			}
 		case "content_block_start":
-			if item.ContentBlock == nil || item.Index < 0 || item.Index >= 32 || blocks[item.Index] != nil {
+			if !started || deltaSeen || item.ContentBlock == nil || item.Index != len(blocks) || item.Index >= 32 {
 				return &CallError{Category: "protocol", Message: "invalid content block start"}
 			}
 			blocks[item.Index] = &anthropicStreamBlock{index: item.Index, block: *item.ContentBlock}
 		case "content_block_delta":
 			block := blocks[item.Index]
-			if block == nil || item.Delta == nil {
+			if block == nil || block.closed || deltaSeen || item.Delta == nil {
 				return &CallError{Category: "protocol", Message: "content block delta has no block"}
 			}
 			switch item.Delta.Type {
 			case "text_delta":
+				if block.block.Type != "text" {
+					return &CallError{Category: "protocol", Message: "text delta for non-text block"}
+				}
 				block.block.Text += item.Delta.Text
 				if len(block.block.Text) > 1<<20 {
 					return &CallError{Category: "protocol", Message: "model stream text exceeded limits"}
 				}
 				emitSafe(item.Delta.Text, false)
 			case "input_json_delta":
+				if block.block.Type != "tool_use" {
+					return &CallError{Category: "protocol", Message: "tool delta for non-tool block"}
+				}
 				block.input.WriteString(item.Delta.PartialJSON)
 				if block.input.Len() > 2*maxFileBytes {
 					return &CallError{Category: "protocol", Message: "tool input exceeded limits"}
@@ -344,6 +359,15 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 				return &CallError{Category: "protocol", Message: "unsupported model stream delta"}
 			}
 		case "message_delta":
+			if !started || deltaSeen || item.Delta == nil || item.Delta.StopReason == "" {
+				return &CallError{Category: "protocol", Message: "invalid message delta"}
+			}
+			for _, block := range blocks {
+				if !block.closed {
+					return &CallError{Category: "protocol", Message: "unclosed stream block"}
+				}
+			}
+			deltaSeen = true
 			if item.Delta != nil && item.Delta.StopReason != "" {
 				stopReason = item.Delta.StopReason
 			}
@@ -354,8 +378,19 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 				envelope.Usage.OutputTokens = item.Usage.OutputTokens
 			}
 		case "message_stop":
+			if !started || !deltaSeen {
+				return &CallError{Category: "protocol", Message: "message stopped before final delta"}
+			}
 			finished = true
-		case "ping", "content_block_stop":
+		case "content_block_stop":
+			block := blocks[item.Index]
+			if block == nil || block.closed {
+				return &CallError{Category: "protocol", Message: "invalid block stop"}
+			}
+			block.closed = true
+		case "ping":
+		case "error":
+			return normalizeAnthropicError(0, []byte(data), key)
 		default:
 			return &CallError{Category: "protocol", Message: "unsupported model stream event"}
 		}
@@ -380,7 +415,9 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 			return ModelResponse{}, &CallError{Category: "protocol", Message: "non-contiguous content blocks"}
 		}
 		if block.block.Type == "tool_use" {
-			block.block.Input = json.RawMessage(block.input.String())
+			if block.input.Len() != 0 {
+				block.block.Input = json.RawMessage(block.input.String())
+			}
 			if !json.Valid(block.block.Input) {
 				block.block.Input = json.RawMessage(`null`)
 			}

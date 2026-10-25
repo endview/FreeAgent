@@ -86,6 +86,7 @@ const ACTIVITY_META = {
   file_create: ['创建文件', 'file-plus'],
   file_delete: ['删除文件', 'trash-2'],
   file_batch_edit: ['批量修改文件', 'files'],
+  apply_patch: ['应用补丁', 'files'],
   memory_list: ['列出记忆', 'brain'],
   memory_read: ['读取记忆', 'book-open'],
   memory_write: ['写入记忆', 'brain'],

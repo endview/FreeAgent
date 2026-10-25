@@ -2132,7 +2132,7 @@ async function previewApproval() {
 }
 function ensureApprovalPreview() {
   const turn = latest();
-  if (!state.online || state.approvalLoading || state.approvalNotice ||
+  if (!state.online || state.mutation || state.approvalLoading || state.approvalNotice ||
     turn?.state !== 'awaiting_approval') {
     if (turn?.state !== 'awaiting_approval') state.approvalLoading = false;
     return;

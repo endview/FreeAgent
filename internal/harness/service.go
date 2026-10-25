@@ -769,6 +769,7 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 	streamBytes := 0
 	callCtx, cancelCall := context.WithCancel(ctx)
 	var streamErr error
+	providerStarted := time.Now()
 	response, callErr := client.Generate(callCtx, request, func(text string) {
 		streamBytes += len(text)
 		if service.guard != nil {
@@ -783,6 +784,7 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 			modelEvent("model_text", text)
 		}
 	})
+	response.LatencyMS = max(0, time.Since(providerStarted).Milliseconds())
 	cancelCall()
 	persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
 	defer done()
@@ -1034,6 +1036,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	}
 	var result ToolResult
 	var callErr error
+	toolStarted := time.Now()
 	if prepared.ExecuteRecorded != nil {
 		result, callErr = prepared.ExecuteRecorded(ctx, func(progress ToolResult) error {
 			persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1051,6 +1054,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	} else {
 		result, callErr = prepared.Execute(ctx)
 	}
+	result = normalizeToolOutcome(ctx, result, callErr, toolStarted, service.limits().MaxToolResult)
 	persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
 	defer done()
 	rawOutput, _ := json.Marshal(result)

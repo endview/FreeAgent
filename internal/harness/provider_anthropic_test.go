@@ -127,3 +127,20 @@ func TestAnthropicErrorsAndIncompleteStreamsAreSafe(t *testing.T) {
 		t.Fatalf("partial error=%v", err)
 	}
 }
+
+func TestAnthropicRejectsDuplicateAndOutOfOrderSSE(t *testing.T) {
+	start := `data: {"type":"message_start","message":{"id":"x","model":"fixture"}}` + "\n\n"
+	block := `data: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}` + "\n\n"
+	stop := `data: {"type":"content_block_stop","index":0}` + "\n\n"
+	delta := `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}` + "\n\n"
+	end := `data: {"type":"message_stop"}` + "\n\n"
+	for name, stream := range map[string]string{"duplicate-start": start + start + delta + end, "delta-before-start": delta + end, "unclosed": start + block + delta + end, "after-stop": start + block + stop + `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"bad"}}` + "\n\n" + delta + end, "duplicate-end": start + delta + end + end, "wrong-envelope": start + "event: message_stop\n" + `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}` + "\n\n" + end} {
+		t.Run(name, func(t *testing.T) {
+			result, err := decodeAnthropicStream(strings.NewReader(stream), "", nil)
+			var failure *CallError
+			if !errors.As(err, &failure) || failure.Certain || len(result.ToolCalls) != 0 {
+				t.Fatalf("unsafe stream accepted %+v %v", result, err)
+			}
+		})
+	}
+}

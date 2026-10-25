@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+test('patch approval retains both exact hashes and line counts', () => {
+  const html=approvalHTML({tool:'apply_patch',items:[{kind:'file_edit',target:'exact.txt',old:'before',new:'after',fields:{before_sha256:'a'.repeat(64),after_sha256:'b'.repeat(64),old_lines:'1',new_lines:'1'}}]});
+  assert.ok(html.includes('a'.repeat(64))&&html.includes('b'.repeat(64))&&html.includes('new_lines'));
+});
 import { diffLines, approvalItemsHTML, approvalHTML, formatControlCode } from '../src/approval.mjs';
 
 test('line diff marks removals, additions and unchanged lines', () => {

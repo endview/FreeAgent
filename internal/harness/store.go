@@ -740,6 +740,17 @@ func (store *Store) saveGuardedToolNoMessage(ctx context.Context, run Run, attem
 
 func saveToolTxMode(ctx context.Context, tx *sql.Tx, run Run, attempt Attempt, call ToolCall, result ToolResult,
 	guard callGuard, outputBytes int, definitive, addMessage bool) (error, error) {
+	if result.Outcome == nil {
+		var status string
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM attempts WHERE id=? AND run_id=?`, attempt.ID, run.ID).Scan(&status); err != nil {
+			return nil, err
+		}
+		kind := "completed"
+		if result.IsError {
+			kind = "failed"
+		}
+		result.Outcome = &ToolOutcome{Status: kind, Dispatched: status == "dispatched", CompletionKnown: true, Truncated: result.Truncated}
+	}
 	raw, err := json.Marshal(result)
 	if err != nil {
 		return nil, err

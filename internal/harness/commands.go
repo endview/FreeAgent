@@ -296,8 +296,10 @@ func (tools *CommandTools) execute(parent context.Context, args commandArguments
 		return result, nil
 	}
 	defer process.Close()
-	go func() { _, _ = io.Copy(output, process.Stdout()) }()
-	go func() { _, _ = io.Copy(output, process.Stderr()) }()
+	var drains sync.WaitGroup
+	drains.Add(2)
+	go func() { defer drains.Done(); _, _ = io.Copy(output, process.Stdout()) }()
+	go func() { defer drains.Done(); _, _ = io.Copy(output, process.Stderr()) }()
 	_ = process.Stdin().Close()
 	result.Receipts[0].Status = "unknown"
 	if err := record(result); err != nil {
@@ -348,7 +350,30 @@ func (tools *CommandTools) execute(parent context.Context, args commandArguments
 		cleanupErr = waitErr
 	}
 	if result.Receipts[0].Status != "unknown" {
-		result.Receipts[0].ExitCode = &exit.Code
+		settled, done := context.WithTimeout(context.Background(), 2*time.Second)
+		observed, err := process.Wait(settled)
+		done()
+		if err == nil {
+			exit = observed
+			result.Receipts[0].ExitCode = &exit.Code
+		} else {
+			result.Receipts[0].Status = "unknown"
+			cleanupErr = errors.Join(cleanupErr, err)
+		}
+	}
+	cleanupErr = errors.Join(cleanupErr, process.Kill())
+	drained := make(chan struct{})
+	go func() { drains.Wait(); close(drained) }()
+	select {
+	case <-drained:
+	case <-time.After(2 * time.Second):
+		cleanupErr = errors.Join(cleanupErr, errors.New("output drain not confirmed"))
+		_ = process.Close()
+	}
+	result.Receipts[0].Cleanup = "confirmed"
+	if cleanupErr != nil {
+		result.Receipts[0].Cleanup = "unknown"
+		result.Receipts[0].Status = "unknown"
 	}
 	text, truncated := output.snapshot()
 	result.Receipts[0].Truncated = truncated

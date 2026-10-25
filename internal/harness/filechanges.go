@@ -149,6 +149,10 @@ func (tools *FileTools) prepareChanges(ctx context.Context, call ToolCall) (Prep
 		seen[key] = true
 		changes = append(changes, change)
 	}
+	return tools.prepareChangeExecution(changes, items, preview.String()), nil
+}
+
+func (tools *FileTools) prepareChangeExecution(changes []preparedChange, items []ApprovalItem, preview string) PreparedTool {
 	initial := func(status string) ToolResult {
 		result := ToolResult{IsError: status != "applied"}
 		for _, change := range changes {
@@ -177,7 +181,14 @@ func (tools *FileTools) prepareChanges(ctx context.Context, call ToolCall) (Prep
 			}
 			var item ToolResult
 			var err error
-			if change.args.Operation == "create" {
+			if change.args.Operation == "delete" {
+				item, err = tools.delete(ctx, change.args.Path, change.args.Expected, func(progress ToolResult) error {
+					if len(progress.Receipts) != 0 {
+						result.Receipts[index] = progress.Receipts[0]
+					}
+					return record(changesResult(result))
+				})
+			} else if change.args.Operation == "create" {
 				item, err = tools.create(ctx, change.args.Path, change.updated)
 			} else {
 				item, err = tools.edit(ctx, change.args.Path, change.args.Expected, change.updated, change.mode)
@@ -212,11 +223,11 @@ func (tools *FileTools) prepareChanges(ctx context.Context, call ToolCall) (Prep
 			workspaceFile = false
 		}
 	}
-	return PreparedTool{Effect: EffectModify, workspaceFile: workspaceFile, Preview: preview.String(), Items: items, ExecuteRecorded: execute,
+	return PreparedTool{Effect: EffectModify, workspaceFile: workspaceFile, Preview: preview, Items: items, ExecuteRecorded: execute,
 		Execute: func(ctx context.Context) (ToolResult, error) {
 			return execute(ctx, func(ToolResult) error { return nil })
 		},
-		Reject: func() ToolResult { return initial("rejected") }}, nil
+		Reject: func() ToolResult { return initial("rejected") }}
 }
 
 func changesResult(result ToolResult) ToolResult {

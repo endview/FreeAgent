@@ -235,7 +235,7 @@ func TestProviderAcceptanceHTTPFixtures(t *testing.T) {
 				calls++
 				var body openAIRequest
 				if json.NewDecoder(request.Body).Decode(&body) != nil || !body.Stream || body.Model != "fixture" ||
-					body.MaxTokens == 0 || len(body.Tools) != 7 || request.Header.Get("Authorization") != "Bearer "+credential {
+					body.MaxTokens == 0 || len(body.Tools) != 8 || request.Header.Get("Authorization") != "Bearer "+credential {
 					t.Error("provider request lost model, tools, output limit or credential")
 				}
 				var response ModelResponse

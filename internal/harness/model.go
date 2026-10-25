@@ -44,6 +44,7 @@ type ExtensionUse struct {
 }
 
 type ModelResponse struct {
+	LatencyMS int64 `json:",omitempty"`
 	Content   string
 	ToolCalls []ToolCall
 	// ProviderItems is the bounded output-item sequence returned by a
@@ -131,6 +132,8 @@ type ProviderToolItem struct {
 }
 
 type ToolResult struct {
+	Outcome    *ToolOutcome `json:",omitempty"`
+	Truncated  bool         `json:",omitempty"`
 	Content    string
 	IsError    bool
 	Receipts   []ToolReceipt  `json:",omitempty"`
@@ -164,6 +167,7 @@ type ToolReceipt struct {
 	NetworkMode      string `json:"network_mode,omitempty"`
 	HostEscapeHatch  bool   `json:"host_escape_hatch,omitempty"`
 	EnforcementState string `json:"enforcement_state,omitempty"`
+	Cleanup          string `json:"cleanup,omitempty"`
 	// GitMetadataCreated marks a sandboxed command that created .git in a
 	// root that had none. Later host git runs may load what it wrote.
 	GitMetadataCreated bool `json:"git_metadata_created,omitempty"`

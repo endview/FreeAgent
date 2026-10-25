@@ -1,6 +1,6 @@
 # FreeAgent Windows Portable Preview
 
-Current candidate: `v7.1.0-dev.1`, Windows amd64. This is an unsigned
+Current candidate: `v7.2.0-dev.1`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are embedded in the
 desktop executable.

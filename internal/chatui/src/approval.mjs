@@ -57,10 +57,10 @@ export function approvalItemsHTML(items = []) {
   return items.map((item) => {
     const kind = item.kind || 'operation';
     const target = item.target || '';
-    if (kind === 'file_edit' || kind === 'file_create') {
+    if (kind === 'file_edit' || kind === 'file_create' || kind === 'file_delete') {
       const oldText = kind === 'file_create' ? '' : item.old;
-      const newText = kind === 'file_create' ? item.new : item.new;
-      return `<article class="approval-item file-approval"><header><strong>${esc(target)}</strong>${item.sha256 ? `<code>${esc(item.sha256.slice(0, 8))}</code>` : ''}</header>${diffHTML(oldText, newText)}</article>`;
+      const newText = kind === 'file_delete' ? '' : item.new;
+      return `<article class="approval-item file-approval"><header><strong>${esc(target)}</strong>${item.sha256 ? `<code>${esc(item.sha256.slice(0, 8))}</code>` : ''}</header>${item.fields ? `<ul class="approval-fields">${fieldsHTML(item.fields)}</ul>` : ''}${diffHTML(oldText, newText)}</article>`;
     }
     const warning = ['command', 'http', 'mcp'].includes(kind)
       ? '<p class="warning">非沙箱：此操作可能产生外部作用，清理不会撤销已发生的作用。</p>' : '';

@@ -64,7 +64,7 @@ func (tools *FileTools) withBlockedPaths(paths []string) *FileTools {
 }
 
 func (tools *FileTools) Definitions() []ToolDefinition {
-	return []ToolDefinition{
+	return append([]ToolDefinition{
 		{Name: "file_list", Description: "List a workspace directory in sorted pages (at most 10,000 entries). Use next_offset when truncated. Restart from offset 0 if the directory changes. Links and .git are excluded.", Effect: EffectRead,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer","minimum":0,"maximum":10000},"max_entries":{"type":"integer","minimum":1,"maximum":200}},"required":["path"],"additionalProperties":false}`)},
 		{Name: "file_read", Description: "Read a UTF-8 workspace file (up to 256 KiB), optionally in byte-offset pages; returns the full file SHA-256 for edits. A page returns at least one whole character, even if max_bytes is smaller.", Effect: EffectRead,
@@ -79,7 +79,7 @@ func (tools *FileTools) Definitions() []ToolDefinition {
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"expected_sha256":{"type":"string"}},"required":["path","expected_sha256"],"additionalProperties":false}`)},
 		{Name: "file_batch_edit", Description: "Preview and confirm 1-32 exact file edits or creations together. Edits require hashes; creations require absent targets. Partial results are recorded individually, never rolled back or replayed.", Effect: EffectModify,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"changes":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","properties":{"operation":{"type":"string","enum":["edit","create"]},"path":{"type":"string"},"expected_sha256":{"type":"string"},"old_text":{"type":"string"},"new_text":{"type":"string"},"content":{"type":"string"}},"required":["operation","path"],"additionalProperties":false}}},"required":["changes"],"additionalProperties":false}`)},
-	}
+	}, patchDefinition())
 }
 
 type fileArguments struct {
@@ -96,6 +96,9 @@ type fileArguments struct {
 func (tools *FileTools) Prepare(ctx context.Context, call ToolCall) (PreparedTool, error) {
 	if err := ctx.Err(); err != nil {
 		return PreparedTool{}, err
+	}
+	if call.Name == "apply_patch" {
+		return tools.preparePatch(ctx, call)
 	}
 	if call.Name == "file_create" || call.Name == "file_batch_edit" {
 		return tools.prepareChanges(ctx, call)
@@ -591,5 +594,9 @@ func (tools *FileTools) edit(ctx context.Context, name, expected string, updated
 
 func jsonResult(value any) (ToolResult, error) {
 	raw, err := json.Marshal(value)
-	return ToolResult{Content: string(raw)}, err
+	result := ToolResult{Content: string(raw)}
+	if object, ok := value.(map[string]any); ok {
+		result.Truncated, _ = object["truncated"].(bool)
+	}
+	return result, err
 }
