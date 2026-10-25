@@ -36,12 +36,13 @@ const (
 )
 
 type Store struct {
-	dataDir string
-	db      *sql.DB
-	owner   processFileLock
-	mu      sync.Mutex
-	runMu   sync.Mutex
-	closed  bool
+	dataDir         string
+	db              *sql.DB
+	owner           processFileLock
+	mu              sync.Mutex
+	runMu           sync.Mutex
+	closed          bool
+	summaryVerified map[string]string
 }
 
 type Conversation struct {
@@ -433,6 +434,10 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 }
 
 func (store *Store) CreateRun(ctx context.Context, conversationID, requestKey, prompt, configJSON string) (Run, bool, error) {
+	return store.createRun(ctx, conversationID, requestKey, prompt, configJSON, false)
+}
+
+func (store *Store) createRun(ctx context.Context, conversationID, requestKey, prompt, configJSON string, maintenance bool) (Run, bool, error) {
 	if requestKey == "" || prompt == "" {
 		return Run{}, false, errors.New("harness: request key and prompt are required")
 	}
@@ -463,8 +468,14 @@ func (store *Store) CreateRun(ctx context.Context, conversationID, requestKey, p
 		result.ID, conversationID, requestKey, prompt, configJSON, result.CreatedAt, result.UpdatedAt); err != nil {
 		return Run{}, false, err
 	}
-	if err := insertMessage(ctx, tx, result, ModelMessage{Role: "user", Content: prompt}); err != nil {
-		return Run{}, false, err
+	if maintenance {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, maintenanceMetaPrefix+result.ID, "compaction"); err != nil {
+			return Run{}, false, err
+		}
+	} else {
+		if err := insertMessage(ctx, tx, result, ModelMessage{Role: "user", Content: prompt}); err != nil {
+			return Run{}, false, err
+		}
 	}
 	return withModelFacts(result), true, tx.Commit()
 }
@@ -489,7 +500,9 @@ func (store *Store) GetRun(ctx context.Context, id string) (Run, error) {
 }
 
 func (store *Store) GetLatestRun(ctx context.Context, conversationID string) (Run, error) {
-	return scanRun(store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE conversation_id=? ORDER BY created_at DESC LIMIT 1`, conversationID))
+	return scanRun(store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE conversation_id=?
+		AND NOT (status='completed' AND EXISTS(SELECT 1 FROM meta WHERE key=?||runs.id))
+		ORDER BY rowid DESC LIMIT 1`, conversationID, maintenanceMetaPrefix))
 }
 
 func (store *Store) GetRunByRequest(ctx context.Context, conversationID, requestKey string) (Run, error) {

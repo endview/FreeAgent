@@ -43,6 +43,9 @@ func (service *Service) runtimeTools(runID, attemptID string) ToolRunner {
 	base = service.extensionToolRunner(base, runID)
 	base = service.skillToolRunner(base)
 	if service.controlToolsEnabled() {
+		if !service.contextToolsDisabled {
+			base = &contextTools{base: base, service: service, runID: runID, attemptID: attemptID}
+		}
 		control, err := service.controlService()
 		if err == nil {
 			base = &controlTools{base: base, service: service, control: control, runID: runID, attemptID: attemptID}

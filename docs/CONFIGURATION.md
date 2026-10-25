@@ -38,7 +38,7 @@ The initial config is the complete editable example. Important fields:
 | `commands.allowed_executables` | absent | Optional exact absolute-path policy |
 | `http.enabled` | false | Explicit approved HTTP GET |
 | `http.allowed_origins` | absent | Exact origins; required when HTTP is enabled |
-| `task_summary_bytes` | 0 | Optional task-local recap; 0 disables |
+| `task_summary_bytes` | 0 | Automatic durable compaction byte bound; 0 disables automatic changes, retains manual operations |
 | `collaboration.mode` | `off` | `off`, `ask` or `auto`; optional foreground collaboration |
 | `collaboration.limits` | finite | Parent cumulative children/calls/output/concurrency/active seconds |
 | `collaboration.child_limits` | finite | Per-expert steps, active seconds and output bounds |
@@ -341,10 +341,31 @@ URLs and bodies are stored in history: do not put secrets in URL queries.
 UTF-8 template. Chat's `/file <path>` selects source-visible references for
 the next task, not background retrieval.
 
-`config context --summary-bytes <0-16384>` explicitly selects a bounded,
-in-memory task-local recap. Zero disables it. Original history and complete
-tool groups are preserved; source IDs/hashes identify omitted messages.
-It is not cross-session memory. See [Local Composition](COMPOSITION.md).
+`config context --summary-bytes <0-16384>` sets the automatic summary bound.
+Zero disables automatic creation/extension, while existing valid summaries and
+manual operations remain usable. Summaries select context for one conversation;
+they are untrusted source data, not execution evidence or cross-session memory.
+
+```text
+freeagent context inspect --session <id> --json
+freeagent context compact --session <id> --summary-bytes 4096
+freeagent context refresh --session <id>
+freeagent context clear --session <id>
+```
+
+These commands attach to the current owner. GUI offers the same operations;
+`/compact` is local in GUI and interactive CLI. Compact extends the covered
+prefix, Refresh rebuilds it and Clear removes only the summary. A tool-less
+auxiliary model request produces each bounded chunk; actual dispatches consume
+existing Run steps, output and active-time limits. With automatic changes off,
+manual Compact defaults to 4096 bytes; Refresh defaults to the saved bound.
+`--summary-bytes` never changes global settings. Original messages and complete
+tool groups remain intact; a digest verifies the source prefix after restart.
+An oversized newest group stops with a context limit rather than silently
+discarding history. In-flight work, unrelated approvals and UNKNOWN block
+mutations. Stopped/limited Runs retain consumed budgets and require explicit
+continuation. AI-proposed changes require approval even in Full access.
+See [Local Composition](COMPOSITION.md).
 
 ## Explicit Memory And Knowledge
 

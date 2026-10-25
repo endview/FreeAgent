@@ -4,8 +4,8 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v7.0.2-dev.1 development preview**. Download the Windows portable
-build from the [v7.0.2 Release](https://github.com/endview/FreeAgent/releases/tag/v7.0.2-dev.1).
+This is the **v7.1.0-dev.1 development preview**. Download published Windows portable
+builds from [Releases](https://github.com/endview/FreeAgent/releases).
 It uses a new
 current-only `Harness-v5` data directory and the v7 store format. Old
 configurations, databases, backups, commands, and SDKs are not supported or
@@ -20,6 +20,11 @@ v7.0.2 adds interactive GUI/CLI attach and resolves native Scoop shims inside th
 Windows command sandbox. Its local, native race and clean portable startup
 checks passed; real Provider tests were not rerun for this release. See
 [v7.0.2 acceptance](docs/FREEAGENT_V7_0_2_IMPLEMENTATION_PROGRESS.md).
+
+v7.1 adds durable conversation summaries, manual GUI/CLI `/compact` and optional
+automatic compaction at the input limit. Original history remains intact.
+Auxiliary model calls use the existing Run budgets and Attempts. See
+[v7.1 acceptance](docs/FREEAGENT_V7_1_IMPLEMENTATION_PROGRESS.md).
 
 ## Start
 

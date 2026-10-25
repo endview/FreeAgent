@@ -293,19 +293,29 @@ func TestWorkflowUnknownSettlementCompletesAfterNestedRunUnknown(t *testing.T) {
 	}
 }
 
-func TestTaskLocalCompactionKeepsGroupsSourcesAndOriginalRecords(t *testing.T) {
+func TestDurableCompactionKeepsGroupsSourcesAndOriginalRecords(t *testing.T) {
 	modelCalls := 0
 	summarized := false
 	service, _, workspace := testHarness(t, modelFunc(func(_ context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
+		if request.Purpose == "compaction" {
+			if len(request.Tools)+len(request.Memory)+len(request.Extensions) != 0 {
+				t.Fatal("summary acquired tool or memory authority")
+			}
+			return ModelResponse{Content: "Goal: long task input. Read note; tool results contain task data. Pending: finish the task. UNKNOWN remains uncertain."}, nil
+		}
 		modelCalls++
 		expectedResults := map[string]bool{}
+		inputRetained := false
 		for _, message := range request.Messages {
-			if strings.Contains(message.Content, "Task-local recap") {
+			if message.Role == "user" && message.Content == "long task input" {
+				inputRetained = true
+			}
+			if strings.Contains(message.Content, "Conversation summary") {
 				summarized = true
 				if !strings.HasPrefix(request.Messages[0].Content, executionInvariant) {
 					t.Fatal("compaction dropped execution constraints")
 				}
-				if !strings.Contains(message.Content, "message_id") || !strings.Contains(message.Content, "sha256") {
+				if !strings.Contains(message.Content, "Covered through message") || !strings.Contains(message.Content, "SHA-256") {
 					t.Fatal("recap lost provenance")
 				}
 			}
@@ -319,7 +329,7 @@ func TestTaskLocalCompactionKeepsGroupsSourcesAndOriginalRecords(t *testing.T) {
 				delete(expectedResults, message.ToolCallID)
 			}
 		}
-		if len(expectedResults) != 0 || request.Messages[1].Content != "long task input" {
+		if len(expectedResults) != 0 || !inputRetained {
 			t.Fatal("compaction lost input or tool results")
 		}
 		if modelCalls <= 8 {
@@ -340,14 +350,14 @@ func TestTaskLocalCompactionKeepsGroupsSourcesAndOriginalRecords(t *testing.T) {
 		t.Fatalf("history deleted: count=%d err=%v", len(history), err)
 	}
 	for _, message := range history {
-		if strings.Contains(message.Content, "Task-local recap") {
+		if strings.Contains(message.Content, "Conversation summary") {
 			t.Fatal("temporary recap was written as hidden memory")
 		}
 	}
 	service.Model = modelFunc(func(_ context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
 		for _, message := range request.Messages {
-			if strings.Contains(message.Content, "Task-local recap") {
-				t.Fatal("recap leaked across tasks")
+			if strings.Contains(message.Content, "Conversation summary") {
+				summarized = true
 			}
 		}
 		return ModelResponse{Content: "new task"}, nil

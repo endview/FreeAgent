@@ -11,6 +11,19 @@ User and assistant text are answers, not proof of effects. Tool activity and
 receipts come only from runtime records. Memory citations describe sources,
 not independently verified facts.
 
+## Conversation Context
+
+The header context button and local `/compact` use the same owner TaskService
+as CLI `context inspect|compact|refresh|clear`. Compact and Refresh make bounded
+tool-less model calls and show actual usage; Clear/inspection do not need a
+Provider request. Automatic compaction is off by default. All original messages
+remain inspectable, and summary text is untrusted data rather than instructions.
+Completed maintenance Runs disappear from the Chat projection; failed/UNKNOWN
+ones retain Attempts and can be inspected or explicitly ended. GUI snapshot
+merging must remove disappeared maintenance entries while preserving earlier
+loaded ordinary turns and returned UNKNOWN records. An AI-proposed mutation
+uses the normal exact approval card even in Full access.
+
 ## Keys And Models
 
 The browser can manage local Key profiles and the model configurations that

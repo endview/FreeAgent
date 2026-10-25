@@ -197,6 +197,7 @@ type PreparedTool struct {
 	preauthorized      bool
 	workspaceFile      bool
 	approvalRequired   bool
+	userConfirmation   bool
 	ruleAllowed        bool
 	commandDecision    CommandRuleDecision
 	controlProposal    bool

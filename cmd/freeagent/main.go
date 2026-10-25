@@ -98,6 +98,8 @@ confirm --run <id> --digest <digest> [--approve] [--json]
 abandon --run <id>
 control <state|catalog|list|plan|confirm|reject|revert-plan|review> [--kind <kind> --arguments <json>] [--operation <id>] [--code <code>]
   Changes the same settings as the GUI and the AI conversation; a model proposal needs its confirmation code.
+context <inspect|compact|refresh|clear> --session <id> [--summary-bytes <n>] [--json]
+  Manual context selection retains original history; model-proposed changes require tool approval even in Full.
 tools list
 tools test <server>
 doctor
@@ -106,7 +108,7 @@ backup-verify --source <backup-directory>
 restore --source <backup-directory> --data-dir <new-directory>
 --version
 
-Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /more /history /sessions /resume <number> /new /status /continue /abandon /file <path> /begin ... /end /exit
+Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /more /history /sessions /resume <number> /new /status /continue /abandon /file <path> /begin ... /end /exit
 Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes and sandboxed commands, and Full access auto-runs enabled modifying tools. On Windows commands run in an AppContainer sandbox; Full access runs them on the host. MCP and loopback HTTP are not sandboxed.
 Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
 		return err
@@ -120,6 +122,8 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runControl(ctx, args[1:], stdin, stdout, stderr)
 	case "memory":
 		return runMemory(ctx, args[1:], stdin, stdout, stderr)
+	case "context":
+		return runContext(ctx, args[1:], stdout, stderr)
 	case "sessions":
 		return runSessions(ctx, args[1:], stdout, stderr)
 	case "inspect":
@@ -493,7 +497,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			return err
 		}
 	}
-	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /status /continue /more /abandon /file <path> /begin ... /end /exit\n", config.Workspace)
+	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /compact /context [inspect|refresh|clear] /status /continue /more /abandon /file <path> /begin ... /end /exit\n", config.Workspace)
 	var references []string
 	var nextCollaboration *harness.CollaborationSettings
 	for {
@@ -572,6 +576,26 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 					return err
 				}
 				_ = printChatResult(stdout, stderr, harness.RunResult{Run: last, Answer: last.Output, Evidence: evidence}, false)
+			}
+			continue
+		}
+		if prompt == "/compact" || prompt == "/context" || strings.HasPrefix(prompt, "/context ") {
+			action := "compact"
+			if prompt != "/compact" {
+				action = strings.TrimSpace(strings.TrimPrefix(prompt, "/context"))
+				if action == "" {
+					action = "inspect"
+				}
+			}
+			taskCtx, cancel := context.WithCancel(ctx)
+			controller.set(cancel)
+			contextResult, contextErr := tasks.ManageContext(taskCtx, *conversationID, harness.ContextCommand{Action: action})
+			controller.set(nil)
+			cancel()
+			if contextErr != nil {
+				_, _ = fmt.Fprintln(stderr, contextErr)
+			} else {
+				_ = printContextResult(stdout, contextResult, false)
 			}
 			continue
 		}

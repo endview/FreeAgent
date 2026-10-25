@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 // ChatView is a read-only projection, not another persisted execution model.
@@ -39,6 +40,7 @@ type ChatTurn struct {
 	CanEnd          bool                 `json:"can_end"`
 	Ended           bool                 `json:"ended"`
 	Confirmation    *Confirmation        `json:"confirmation,omitempty"`
+	Maintenance     bool                 `json:"maintenance,omitempty"`
 }
 
 type ChatMessage struct {
@@ -164,7 +166,8 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		condition = " AND rowid<?"
 		args = append(args, rowID)
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT `+runColumns+` FROM runs WHERE conversation_id=?`+condition+` ORDER BY rowid DESC LIMIT 33`, args...)
+	rows, err := tx.QueryContext(ctx, `SELECT `+runColumns+` FROM runs WHERE conversation_id=?
+		AND NOT(status='completed' AND EXISTS(SELECT 1 FROM meta WHERE key='`+maintenanceMetaPrefix+`'||runs.id))`+condition+` ORDER BY rowid DESC LIMIT 33`, args...)
 	if err != nil {
 		return ChatView{}, err
 	}
@@ -195,6 +198,11 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 			Steps: run.Steps, ElapsedMS: activeElapsed(run),
 			ModelID: run.ModelID, Permission: run.Permission, Messages: make([]ChatMessage, 0), Activity: make([]ChatActivity, 0),
 			Sources: make([]MemoryUse, 0), Evidence: attemptEvidence(attempts), Ended: run.Status == "abandoned"}
+		if strings.HasPrefix(run.RequestKey, "compact-") {
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM meta WHERE key=?)`, maintenanceMetaPrefix+run.ID).Scan(&turn.Maintenance); err != nil {
+				return ChatView{}, err
+			}
+		}
 		if snapshot, snapshotErr := decodeRunSnapshot(run.ConfigJSON); snapshotErr == nil {
 			turn.RuntimeRevision = snapshot.ToolGeneration
 			if snapshot.EnabledTools.File {

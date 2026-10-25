@@ -93,6 +93,8 @@ const ACTIVITY_META = {
   model: ['模型生成', 'bot'],
   assessment: ['模型生成', 'bot'],
   planning: ['模型生成', 'bot'],
+  compaction: ['压缩上下文', 'shrink'],
+  context_manage: ['管理上下文', 'shrink'],
 };
 
 export function activityLabel(name) {
@@ -228,6 +230,11 @@ export function isCurrentSnapshot(ticket, state) {
 }
 
 // Explicitly loaded immutable bodies survive bounded presentation snapshots.
+export function mergeCurrentTurns(previous, current) {
+  const keys = new Set(current.map((turn) => turn.key));
+  return [...previous.filter((turn) => !turn.maintenance && !keys.has(turn.key)), ...current];
+}
+
 export function restoreRawBodies(turns, raw) {
   return turns.map((turn) => ({
     ...turn,

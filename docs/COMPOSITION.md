@@ -57,17 +57,22 @@ Templates are ordinary UTF-8 workspace files, selected explicitly:
 freeagent run --template examples/tasks/review.md "review the current change"
 ```
 
-Long tasks may explicitly enable an in-memory bounded recap:
+Conversations may explicitly enable bounded automatic compaction:
 
 ```text
 freeagent config context --summary-bytes 4096
 ```
 
-Only complete older groups within the current run are compacted. Source message
-IDs and hashes identify omitted records. Original history remains intact.
-Recaps are untrusted excerpts, not execution evidence or cross-session memory.
-Oversized original input or a newest tool group that cannot fit still stops
-before model dispatch. Setting the bound to zero disables compaction.
+Complete older groups across Runs become one durable summary in existing meta.
+Manual `TaskService.ManageContext` Compact/Refresh/Clear and `ContextState`
+inspection use the same core as GUI and CLI. Tool-less auxiliary dispatches have
+`Purpose: compaction` and are charged to existing Run Attempts and budgets.
+An idle manual operation uses an ordinary maintenance Run without a fabricated
+user message; a stopped/limited Run retains its snapshot and consumed budget.
+Source prefix and body hashes verify the saved record. Original history remains
+intact; summaries are untrusted context, not execution evidence or memory.
+Oversized indivisible groups stop with a context limit. Zero disables automatic
+changes but retains manual compaction and reuse of a valid saved summary.
 Templates and explicit references require a read-only adapter; substituting a
 consequential adapter cannot bypass the core approval contract.
 

@@ -83,6 +83,8 @@ type Service struct {
 	controlDecision         *ControlAuthorization
 	controlApproved         bool
 	allowFrozenContinuation bool
+	compactionFailed        bool
+	contextToolsDisabled    bool
 }
 
 func (service *Service) bindCurrentToolView() {
@@ -270,6 +272,9 @@ func (service *Service) snapshotToolDefinitions() []ToolDefinition {
 	definitions := base.Definitions()
 	if service.controlToolsEnabled() {
 		definitions = append(definitions, (&controlTools{service: service, base: base}).controlDefinitions()...)
+		if !service.contextToolsDisabled {
+			definitions = append(definitions, contextToolDefinition())
+		}
 	}
 	return definitions
 }
@@ -539,6 +544,9 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 					errors.Is(returnErr, ErrParentBudget) || errors.Is(returnErr, ErrChildBudget) {
 					status = "limited"
 				}
+				if errors.Is(returnErr, ErrUnknownResult) {
+					status = "unknown"
+				}
 				_ = service.Store.FinishRun(persistCtx, run.ID, status, safeError(returnErr))
 				current, _ = service.Store.GetRun(persistCtx, run.ID)
 			}
@@ -701,7 +709,7 @@ func (service *Service) embed(ctx context.Context, run Run, purpose string, inpu
 // All model work, including bounded routing/planning/synthesis, uses this
 // dispatch and persistence boundary. Auxiliary responses stay in Attempts.
 func (service *Service) generate(ctx context.Context, run Run, request ModelRequest) (Attempt, ModelResponse, error) {
-	if request.Purpose != "" {
+	if request.Purpose != "" && request.Purpose != "compaction" {
 		messages, uses, err := service.memoryContext(ctx, run)
 		if err != nil {
 			return Attempt{}, ModelResponse{}, err
@@ -709,9 +717,14 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 		request.Messages = append(request.Messages, messages...)
 		request.Memory = uses
 	}
-	request, err := service.prepareExtensionStep(ctx, run, request)
-	if err != nil {
-		return Attempt{}, ModelResponse{}, err
+	if request.Purpose != "compaction" {
+		var err error
+		request, err = service.prepareExtensionStep(ctx, run, request)
+		if err != nil {
+			return Attempt{}, ModelResponse{}, err
+		}
+	} else if len(request.Tools)+len(request.Memory)+len(request.Extensions) != 0 {
+		return Attempt{}, ModelResponse{}, ErrModelCapability
 	}
 	limits, binding, err := service.requestLimits()
 	if err != nil {
@@ -1136,6 +1149,38 @@ func (service *Service) checkOperation(ctx context.Context, run Run, call ToolCa
 }
 
 func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest, error) {
+	summary, _, err := service.Store.contextSummary(ctx, run.ConversationID, false)
+	if err == nil {
+		request, buildErr := service.buildContextWithSummary(ctx, run, summary)
+		if buildErr == nil {
+			return request, nil
+		}
+		err = buildErr
+	}
+	if (errors.Is(err, ErrContextLimit) || errors.Is(err, ErrSummaryStale)) && service.Config.TaskSummaryBytes > 0 && !service.compactionFailed && run.ID != "" {
+		plan, planErr := service.planCompactionFor(ctx, run, ContextCommand{Action: "compact"}, true)
+		if planErr != nil {
+			service.compactionFailed = true
+			return ModelRequest{}, planErr
+		}
+		result, compactErr := service.applyCompaction(ctx, run, plan, true)
+		if compactErr != nil {
+			service.compactionFailed = true
+			return ModelRequest{}, compactErr
+		}
+		if !result.Changed {
+			return ModelRequest{}, ErrContextLimit
+		}
+		summary, _, loadErr := service.Store.contextSummary(ctx, run.ConversationID, false)
+		if loadErr != nil {
+			return ModelRequest{}, loadErr
+		}
+		return service.buildContextWithSummary(ctx, run, summary)
+	}
+	return ModelRequest{}, err
+}
+
+func (service *Service) buildContextWithSummary(ctx context.Context, run Run, summary *ConversationSummary) (ModelRequest, error) {
 	if err := service.loadSkills(ctx, run.Prompt); err != nil {
 		return ModelRequest{}, err
 	}
@@ -1143,11 +1188,12 @@ func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest
 	if err != nil {
 		return ModelRequest{}, err
 	}
-	history, err := service.Store.contextMessages(ctx, run, limits.MaxMessages, limits.MaxContextBytes)
+	through := int64(0)
+	if summary != nil {
+		through = summary.CoveredThrough
+	}
+	history, err := service.Store.contextTail(ctx, run, through, limits.MaxMessages, limits.MaxContextBytes)
 	if err != nil {
-		if errors.Is(err, ErrContextLimit) && service.Config.TaskSummaryBytes > 0 {
-			return service.compactContext(ctx, run)
-		}
 		return ModelRequest{}, err
 	}
 	if run.ID == "" {
@@ -1171,46 +1217,36 @@ func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest
 		return ModelRequest{}, err
 	}
 	request.Memory = memoryUses
-	// Remove complete previous runs only; tool calls and results stay paired.
-	start := 0
-	for {
-		request.Messages = []ModelMessage{system}
-		request.Messages = append(request.Messages, memoryMessages...)
-		for _, item := range history[start:] {
-			request.Messages = append(request.Messages, item.ModelMessage)
-		}
-		request, err = service.prepareCapabilityRequest(ctx, run, request)
-		if err != nil {
-			return ModelRequest{}, err
-		}
-		raw, err := json.Marshal(request)
-		if err != nil {
-			return ModelRequest{}, err
-		}
-		if len(request.Messages)-1 <= limits.MaxMessages && len(raw)+limits.MaxOutputTokens*4 <= limits.MaxContextBytes {
-			if err := completeMessageGroups(request.Messages); err != nil {
-				return ModelRequest{}, err
+	request.Messages = []ModelMessage{system}
+	if summary != nil {
+		request.Messages = append(request.Messages, summaryInput(summary))
+	}
+	request.Messages = append(request.Messages, memoryMessages...)
+	for _, item := range history {
+		request.Messages = append(request.Messages, item.ModelMessage)
+	}
+	request, err = service.prepareCapabilityRequest(ctx, run, request)
+	if err != nil {
+		return ModelRequest{}, err
+	}
+	raw, err := json.Marshal(request)
+	if err != nil {
+		return ModelRequest{}, err
+	}
+	if len(request.Messages)-1 > limits.MaxMessages || len(raw)+limits.MaxOutputTokens*4 > limits.MaxContextBytes {
+		return ModelRequest{}, ErrContextLimit
+	}
+	if err := completeMessageGroups(request.Messages); err != nil {
+		return ModelRequest{}, err
+	}
+	if binding.Config.Capabilities.Tools == "none" {
+		for _, message := range request.Messages {
+			if message.Role == "tool" || len(message.ToolCalls) != 0 {
+				return ModelRequest{}, ErrModelCapability
 			}
-			if binding.Config.Capabilities.Tools == "none" {
-				for _, message := range request.Messages {
-					if message.Role == "tool" || len(message.ToolCalls) != 0 {
-						return ModelRequest{}, ErrModelCapability
-					}
-				}
-			}
-			return request, nil
-		}
-		if start >= len(history) || history[start].RunID == run.ID {
-			if service.Config.TaskSummaryBytes > 0 {
-				return service.compactContext(ctx, run)
-			}
-			return ModelRequest{}, ErrContextLimit
-		}
-		group := history[start].RunID
-		for start < len(history) && history[start].RunID == group {
-			start++
 		}
 	}
+	return request, nil
 }
 
 func (service *Service) unresolvedWarning(ctx context.Context) (string, error) {

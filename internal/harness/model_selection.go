@@ -354,10 +354,13 @@ func (service *Service) forRun(run Run) (*Service, error) {
 		}
 	}
 	copy.controlToolsDisabled = true
+	copy.contextToolsDisabled = true
 	for _, definition := range snapshot.Tools {
+		if definition.Name == "context_manage" {
+			copy.contextToolsDisabled = false
+		}
 		if isControlToolName(definition.Name) {
 			copy.controlToolsDisabled = false
-			break
 		}
 	}
 	copy.bindings, copy.runLimits, copy.autoPolicy, copy.routing =

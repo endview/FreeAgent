@@ -3,7 +3,7 @@
 Date: 2026-10-23
 Baseline: v7.0.1-dev.1, commit `daa82a070fc5570526657151cc6974456abfe5ae`
 Status: v7.0.2 accepted on 2026-10-25; reviewed corrections incorporated;
-v7.1 implementation next; later gates open
+v7.1 accepted on 2026-10-25; later gates open
 
 ## 1. Purpose
 
@@ -220,7 +220,9 @@ versioned conversation summary key. The JSON value contains only:
 - conversation ID and summary revision;
 - covered-through message ID, covered count and ordered prefix digest;
 - summary text, body hash and byte limit;
-- creation/update time and the owner generation that wrote it.
+- update time and the existing Run ID that wrote it. Owner generation is
+  checked by the attach envelope and events; do not duplicate it as a new
+  core identity.
 
 The summary is an untrusted context excerpt. It is never execution evidence,
 never a memory entry, and never a replacement for original history.
@@ -302,6 +304,12 @@ by the model through the same control catalog. All model-proposed Compact,
 Refresh and Clear operations use Preview / Confirm through the existing GUI
 card or CLI prompt. A direct user click or explicit CLI/slash command is
 already a user decision and needs no additional model-proposal confirmation.
+
+Implementation clarification: expose one `context_manage` core tool and reuse
+the ordinary saved tool Attempt, exact Preview/Confirm and GUI/CLI approval.
+Its mutation preparation requires user confirmation before permission-mode
+auto-approval, including Full. Keep model I/O outside the control mutex and
+SQLite transaction; this is not a new control journal or proposal lifecycle.
 
 Manual operations acquire the existing execution lock and never change an
 in-flight model request. Running model/tool calls, unrelated pending approvals

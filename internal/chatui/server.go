@@ -626,7 +626,6 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.mu.Lock()
 		active := server.active == chat
 		if active {
-			server.stopping = true
 			server.activeCancel()
 			server.tasks.Cancel()
 		}
@@ -804,6 +803,10 @@ func (server *Server) conversationsAPI(writer http.ResponseWriter, request *http
 // response remains synchronous so the attached CLI receives the existing
 // typed result instead of inventing a second polling protocol.
 func (server *Server) executeAttachedOperation(writer http.ResponseWriter, chat string, execute func(context.Context) (any, error)) {
+	server.executeAttachedOperationBound(writer, chat, "", execute)
+}
+
+func (server *Server) executeAttachedOperationBound(writer http.ResponseWriter, chat, binding string, execute func(context.Context) (any, error)) {
 	server.mu.Lock()
 	if server.active != "" || server.closed || server.stopping {
 		server.mu.Unlock()
@@ -812,19 +815,21 @@ func (server *Server) executeAttachedOperation(writer http.ResponseWriter, chat 
 	}
 	operation, cancel := context.WithCancel(server.ctx)
 	server.active, server.activeCancel = chat, cancel
+	server.activeBinding = binding
 	server.wg.Add(1)
 	server.mu.Unlock()
 	defer func() {
-		server.wg.Done()
 		cancel()
 		server.mu.Lock()
 		stopping := server.stopping
 		server.active = ""
 		server.activeCancel = nil
+		server.activeBinding = ""
 		if stopping {
 			server.requestStopLocked()
 		}
 		server.mu.Unlock()
+		server.wg.Done()
 	}()
 	result, err := execute(operation)
 	if err != nil {
@@ -944,6 +949,8 @@ func (server *Server) readBody(writer http.ResponseWriter, request *http.Request
 func userError(err error) (string, string) {
 	var failure *harness.CallError
 	switch {
+	case errors.Is(err, harness.ErrSummaryStale):
+		return "context_stale", "摘要来源已变化。请检查后重新生成或清除摘要；原始记录保留。"
 	case errors.Is(err, harness.ErrUnknownResult):
 		return "unknown", "结果未知。可能已有作用；请核对记录，不要直接重试。"
 	case errors.Is(err, harness.ErrApprovalChanged):

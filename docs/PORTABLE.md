@@ -1,6 +1,6 @@
 # FreeAgent Windows Portable Preview
 
-Current candidate: `v7.0.2-dev.1`, Windows amd64. This is an unsigned
+Current candidate: `v7.1.0-dev.1`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are embedded in the
 desktop executable.
@@ -23,6 +23,13 @@ Another Windows user or another computer must enter the Key again.
 
 Stop does not undo completed side effects. An interrupted request can remain
 UNKNOWN and is never automatically replayed.
+
+The conversation header's context button provides manual Compact, Refresh and
+Clear. `/compact` works in both Chat surfaces; the one-shot CLI is
+`bin\freeagent.exe context compact --session <id>`. Compact and Refresh call
+the selected model and consume its quota. Clear removes only the saved summary.
+All original messages remain inspectable. Automatic compaction stays off by
+default, independently of these manual operations.
 
 ## Data And Workspace
 

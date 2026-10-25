@@ -21,6 +21,16 @@ Use a different key for a genuinely new request, not to bypass recovery.
 
 ## Cancellation And UNKNOWN
 
+For a context-limited conversation, `context inspect --session <id>` shows the
+summary revision, source digest and any blocked work. `context compact --session
+<id>` can reduce completed older groups even when automatic compaction is off.
+Stopped/limited Runs keep their consumed budgets and must then be explicitly
+continued. Refresh rebuilds a stale summary; Clear removes only that selection.
+Running calls, unrelated pending approvals and UNKNOWN block these mutations.
+Failed/cancelled compaction retains the previous summary and original history;
+inspect its maintenance Run and model Attempts before deciding the next action.
+Ordinary Stop leaves the owner available to other GUI/CLI requests.
+
 Ctrl+C stops new steps and cancels current work. During chat tasks it returns
 to input when possible; while idle it exits chat. One-shot commands exit.
 Determinate

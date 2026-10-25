@@ -119,7 +119,7 @@ func TestAbandonRetainsUnknownAndWarnsAcrossSessions(t *testing.T) {
 	}
 }
 
-func TestContextTrimsWholeRunsWithoutDeletingHistory(t *testing.T) {
+func TestContextLimitDoesNotSilentlyDropWholeRuns(t *testing.T) {
 	service, _, _ := testHarness(t, EchoModel{})
 	ctx := context.Background()
 	id := conversation(t, service)
@@ -146,8 +146,8 @@ func TestContextTrimsWholeRunsWithoutDeletingHistory(t *testing.T) {
 	service.Config.MaxMessages = 3
 	current, _, _ := service.Store.CreateRun(ctx, id, "new", "next task", snapshot)
 	request, err := service.buildContext(ctx, current)
-	if err != nil || len(request.Messages) != 2 || request.Messages[1].Content != "next task" {
-		t.Fatalf("trimmed context=%+v error=%v", request, err)
+	if !errors.Is(err, ErrContextLimit) || len(request.Messages) != 0 {
+		t.Fatalf("old Run silently dropped: context=%+v error=%v", request, err)
 	}
 	all, _ := service.Store.ListMessages(ctx, id)
 	if len(all) != 6 {
@@ -178,7 +178,7 @@ func TestContextByteTailNeverSplitsPriorToolRun(t *testing.T) {
 	service.Config.MaxOutputTokens = 32
 	current, _, _ := service.Store.CreateRun(ctx, id, "new-small", "next task", snapshot)
 	request, err := service.buildContext(ctx, current)
-	if err != nil || len(request.Messages) != 2 || request.Messages[1].Content != "next task" {
+	if !errors.Is(err, ErrContextLimit) || len(request.Messages) != 0 {
 		t.Fatalf("partial tool group leaked into byte tail: %+v error=%v", request, err)
 	}
 }

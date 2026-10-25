@@ -8,8 +8,9 @@ function workflowInputSummary(schema) {
   return properties.map((name) => `${name}${required.has(name) ? ' *' : ''}`).join(', ');
 }
 
-export function commandEntries({ skills = [], extensions = [] } = {}) {
+export function commandEntries({ skills = [], extensions = [], builtins = false } = {}) {
   const entries = [];
+  if (builtins) entries.push({ kind: 'builtin', id: 'builtin:compact', name: 'compact', source: '会话', description: '压缩上下文', icon: 'shrink' });
   for (const skill of skills) {
     if (!skill?.enabled || !skill.available || !skill.name) continue;
     entries.push({

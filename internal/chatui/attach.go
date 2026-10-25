@@ -3,6 +3,7 @@ package chatui
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +26,35 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/attach/")
 	switch {
+	case path == "context" && request.Method == http.MethodGet:
+		state, err := server.tasks.ContextState(request.Context(), request.URL.Query().Get("conversation_id"))
+		if err != nil {
+			server.fail(writer, err)
+		} else {
+			server.writeJSON(writer, http.StatusOK, state)
+		}
+		return true
+	case path == "context" && request.Method == http.MethodPost:
+		if !server.isInteractiveAttachRequest(request) {
+			server.writeError(writer, http.StatusForbidden, "user_interaction_required", "Context changes require the interactive owner credential.")
+			return true
+		}
+		var body struct {
+			Chat    string                 `json:"conversation_id"`
+			Command harness.ContextCommand `json:"command"`
+			Key     string                 `json:"request_key"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		if body.Chat == "" || body.Key == "" || len(body.Key) > 128 {
+			server.writeError(writer, http.StatusBadRequest, "input", "Conversation and request key are required.")
+			return true
+		}
+		server.executeAttachedOperationBound(writer, body.Chat, body.Key, func(ctx context.Context) (any, error) {
+			return server.tasks.ManageContext(ctx, body.Chat, body.Command)
+		})
+		return true
 	case path == "chat-command" && request.Method == http.MethodPost:
 		server.chatCommand(writer, request)
 		return true
@@ -211,10 +241,21 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			server.writeError(writer, http.StatusForbidden, "user_interaction_required", "控制面提案必须在当前用户界面中确认。")
 			return true
 		}
-		run, _, _, err := server.tasks.Inspect(request.Context(), body.Confirmation.RunID)
+		run, attempts, _, err := server.tasks.Inspect(request.Context(), body.Confirmation.RunID)
 		if err != nil {
 			server.fail(writer, err)
 			return true
+		}
+		if !server.isInteractiveAttachRequest(request) {
+			for _, attempt := range attempts {
+				if attempt.Kind == "tool" && attempt.Status == "pending" {
+					var call harness.ToolCall
+					if json.Unmarshal([]byte(attempt.RequestJSON), &call) == nil && call.Name == "context_manage" {
+						server.writeError(writer, http.StatusForbidden, "user_interaction_required", "Context changes require the interactive owner credential.")
+						return true
+					}
+				}
+			}
 		}
 		server.startBound(writer, run.ConversationID, run.ID, func(ctx context.Context) (harness.RunResult, error) {
 			if body.Confirmation.ControlOperationID != "" {

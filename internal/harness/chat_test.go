@@ -239,6 +239,7 @@ func TestChatProjectionUnknownDiagnosticsAndDispatchRecovery(t *testing.T) {
 
 func TestChatProjectionPagesWholeTurns(t *testing.T) {
 	service, _, _ := testHarness(t, EchoModel{})
+	service.Config.MaxMessages = 80
 	tasks := NewTaskService(service)
 	chat := conversation(t, service)
 	for n := range 34 {

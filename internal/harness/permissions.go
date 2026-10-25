@@ -328,6 +328,9 @@ func containsPath(paths []string, target string) bool {
 }
 
 func (service *Service) needsApproval(prepared PreparedTool) bool {
+	if prepared.userConfirmation {
+		return true
+	}
 	if prepared.controlProposal || prepared.preauthorized || prepared.Effect != EffectModify && !prepared.approvalRequired {
 		return false
 	}

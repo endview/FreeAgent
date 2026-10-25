@@ -21,6 +21,13 @@ const catalog = {
   ],
 };
 
+test('compact is an explicit local command in the built-in catalog', () => {
+  const entries = commandEntries({ ...catalog, builtins: true });
+  assert.equal(entries.find((entry) => entry.name === 'compact')?.kind, 'builtin');
+  assert.equal(commandNeedsInput(entries.find((entry) => entry.name === 'compact')), false);
+  assert.equal(filterCommands(entries, 'compact').length, 1);
+});
+
 test('command catalog includes only callable enabled capabilities and preserves same-name sources', () => {
   const entries = commandEntries(catalog);
   assert.deepEqual(entries.map((entry) => `${entry.kind}:${entry.name}`), [

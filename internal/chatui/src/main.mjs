@@ -5,12 +5,12 @@ import { createIcons, Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Pla
   CircleQuestionMark, TriangleAlert, Search, FolderOpen, ExternalLink, Scissors,
   ClipboardPaste, TextSelect, History, Globe, FileText, FolderTree, FileSearch,
   FilePen, FilePlus, Files, Brain, BookOpen, Bot, WifiOff, ShieldCheck, Database,
-  EyeOff, Blocks, ScrollText, Puzzle, FolderPlus, ToggleLeft, ToggleRight, Pin } from 'lucide';
+  EyeOff, Blocks, ScrollText, Puzzle, FolderPlus, ToggleLeft, ToggleRight, Pin, Shrink } from 'lucide';
 import 'katex/dist/katex.min.css';
 import './style.css';
 import { renderMarkdown, escapeHTML as esc, splitStable } from './render.mjs';
 import { STATES, shouldSend, followsLatest, canSubmit, reduceStream, safeStorage,
-  isCurrentSnapshot, restoreRawBodies, providerFailureText, chatTitle, stateMeta,
+  isCurrentSnapshot, restoreRawBodies, mergeCurrentTurns, providerFailureText, chatTitle, stateMeta,
   reasonText, activityLabel, submitMode, endRisk, evidenceGroups, shortHash, turnSignature,
   groupChats, prioritizePinned, matchChat, DRAWER_QUERY, attentionTitle, permissionMode } from './state.mjs';
 import { hasModels, keyDraftChanged, keyFormValue, keyHost, keyStatus, modelDisplay, modelsForKey } from './keys.mjs';
@@ -19,6 +19,7 @@ import { commandEntries, commandQuery, filterCommands, commandNeedsInput, comman
 import { installDesktopBridge, setDesktopBusy, notifyDesktopAttention, selectDesktopFolder, selectDesktopFile } from './desktop.mjs';
 import { approvalHTML, approvalRawHTML } from './approval.mjs';
 import { bindLayoutResizers } from './layout.mjs';
+import { summaryByteLimit, contextActions, contextStatus } from './context.mjs';
 
 const icons = { Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Play, X,
   ChevronDown, ChevronRight, Copy, Eye, PencilLine, Check, Settings2, RefreshCw,
@@ -26,7 +27,7 @@ const icons = { Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Play, X,
   Trash2, Hand, LoaderCircle, CircleCheck, CircleX, CircleQuestionMark, TriangleAlert,
   Search, FolderOpen, ExternalLink, Scissors, ClipboardPaste, TextSelect, History, Globe,
   FileText, FolderTree, FileSearch, FilePen, FilePlus, Files, Brain, BookOpen, Bot, WifiOff,
-  ShieldCheck, Database, EyeOff, Blocks, ScrollText, Puzzle, FolderPlus, ToggleLeft, ToggleRight, Pin };
+  ShieldCheck, Database, EyeOff, Blocks, ScrollText, Puzzle, FolderPlus, ToggleLeft, ToggleRight, Pin, Shrink };
 const icon = (name) => `<i data-lucide="${name}"></i>`;
 const button = (name, label, action, extra = '') =>
   `<button type="button" class="icon" data-action="${action}" title="${label}" aria-label="${label}" ${extra}>${icon(name)}</button>`;
@@ -57,7 +58,8 @@ const state = { env: null, chats: [], chat: '', drafting: false, creating: false
   mcp: null, mcpServer: '', skills: null, skillName: '', skillDetail: null,
   extensions: null, extensionId: '', capabilityTab: 'mcp',
   commandMenuOpen: false, commandIndex: -1, pendingCommand: null, commandCatalog: [],
-  permissions: null, settings: null, permissionPageLoading: false, permissionRootDraft: null, permissionBlockedDraft: null };
+  permissions: null, settings: null, permissionPageLoading: false, permissionRootDraft: null, permissionBlockedDraft: null,
+  context: null, contextBusy: false, contextChat: '', contextNotice: '' };
 let sse, snapshotTimer, streamTimer, runTimer, refreshListTimer, offlineTimer, errorTimer = 0, errorRevision = 0, scrollProgram = false;
 let earlierObserver;
 let earlierVisible = false;
@@ -99,6 +101,7 @@ app.innerHTML = `
         <div class="model-label"><button id="model-trigger" type="button" class="model-trigger" aria-haspopup="menu" aria-expanded="false"></button><div id="model-menu" class="model-menu" role="menu" hidden></div></div>
         <div class="permission-label"><button id="permission-trigger" type="button" class="model-trigger" aria-haspopup="menu" aria-expanded="false">${icon('shield-check')}<span>Ask</span></button><div id="permission-menu" class="model-menu" role="menu" hidden></div></div>
         ${button('refresh-cw', '刷新记录', 'refresh')}
+        <button id="context-trigger" type="button" class="icon" data-action="context-open" title="上下文" aria-label="上下文" aria-haspopup="dialog">${icon('shrink')}</button>
       </header>
       <div id="error" role="alert" hidden><span></span>${button('x', '关闭提示', 'dismiss')}</div>
       <div id="connection-notice" role="status" aria-live="polite" hidden></div>
@@ -157,6 +160,21 @@ app.innerHTML = `
     <label>会话名称<input id="rename-input" type="text" maxlength="80" autocomplete="off"></label>
     <p id="rename-error" class="warning" hidden></p>
     <footer><button class="text-action" data-action="close-rename">取消</button><button class="primary" data-action="save-rename">${icon('check')}保存</button></footer>
+  </dialog>
+  <dialog id="context-dialog" aria-labelledby="context-title">
+    <header><h2 id="context-title">上下文</h2>${button('x', '关闭上下文', 'context-close')}</header>
+    <p id="context-status" role="status" aria-live="polite"></p>
+    <p id="context-auto" class="subtle-note"></p>
+    <label>本次摘要上限（字节）<input id="context-bytes" type="number" min="1" max="16384" step="256" value="4096"></label>
+    <label id="context-body-label" hidden>当前摘要<textarea id="context-body" rows="7" readonly></textarea></label>
+    <p class="subtle-note">压缩和重新生成会调用当前模型，使用模型额度。原始记录保留。</p>
+    <p id="context-notice" role="status" aria-live="polite" hidden></p>
+    <footer>
+      <button class="text-action" data-action="context-clear">${icon('trash-2')}清除摘要</button>
+      <button class="text-action" data-action="context-refresh">${icon('refresh-cw')}重新生成</button>
+      <button class="primary" data-action="context-compact">${icon('shrink')}压缩上下文</button>
+      <button class="text-action" data-action="context-stop" hidden>${icon('square')}停止</button>
+    </footer>
   </dialog>
   <dialog id="workflow-input-dialog" aria-labelledby="workflow-input-title">
     <header><h2 id="workflow-input-title">运行 Workflow</h2>${button('x', '取消', 'close-workflow-input')}</header>
@@ -366,6 +384,7 @@ function selectedCommand() {
 }
 function rebuildCommandCatalog() {
   state.commandCatalog = commandEntries({
+    builtins: true,
     skills: state.skills?.skills || [],
     extensions: state.extensions?.extensions || [],
   });
@@ -404,6 +423,13 @@ async function runWorkflowInput() {
 async function chooseCommand(entry = selectedCommand()) {
   if (!entry) return;
   closeCommandMenu();
+  if (entry.kind === 'builtin' && entry.name === 'compact') {
+    $('#prompt').value = '';
+    draft();
+    await openContextDialog();
+    await runContextAction('compact');
+    return;
+  }
   if (entry.kind === 'skill') {
     $('#prompt').value = `/${entry.name} `;
     draft();
@@ -604,6 +630,7 @@ function syncPage() {
   $('.model-label').hidden = keys || capabilities || permissions;
   $('.permission-label').hidden = keys || capabilities || permissions;
   $('#rename-chat').hidden = !state.chat || keys || capabilities || permissions;
+  $('#context-trigger').hidden = !state.chat || keys || capabilities || permissions;
   $('#title').textContent = keys ? 'Key 管理' : capabilities ? '能力管理' : permissions ? '设置' : state.view?.conversation?.title || (state.drafting ? '新对话' : 'FreeAgent');
   if (!keys && !capabilities && !permissions) {
     renderModelMenu();
@@ -840,6 +867,85 @@ async function savePermissionPage() {
   await snapshot();
   await loadPermissions();
   renderPermissionsView();
+}
+function renderContextDialog() {
+  const current = state.context;
+  $('#context-status').textContent = state.contextBusy ? '正在压缩上下文…' : contextStatus(current);
+  $('#context-auto').textContent = current?.automatic ? '自动压缩已开启' : '自动压缩已关闭';
+  $('#context-bytes').disabled = state.contextBusy;
+  $('#context-body-label').hidden = !current?.summary;
+  $('#context-body').value = current?.summary?.text || '';
+  const allowed = contextActions(current, state.contextBusy || state.mutation || state.contextChat !== state.chat);
+  for (const action of ['compact', 'refresh', 'clear']) {
+    $(`[data-action="context-${action}"]`).disabled = !allowed[action];
+  }
+  $('[data-action="context-stop"]').hidden = !state.contextBusy;
+  const blocked = current?.blocked ? '存在运行中请求、待确认操作或未知结果，请先处理该任务。' : '';
+  $('#context-notice').textContent = state.contextNotice || blocked;
+  $('#context-notice').hidden = !state.contextNotice && !blocked;
+}
+async function openContextDialog() {
+  if (!state.chat || !state.online) return false;
+  if (state.contextBusy) {
+    if (!$('#context-dialog').open) $('#context-dialog').showModal();
+    return false;
+  }
+  const chat = state.chat;
+  state.contextChat = chat;
+  state.context = null;
+  state.contextNotice = '';
+  renderContextDialog();
+  if (!$('#context-dialog').open) $('#context-dialog').showModal();
+  try {
+    const current = await api(`attach/context?conversation_id=${encodeURIComponent(chat)}`);
+    if (state.chat !== chat || state.contextChat !== chat) return false;
+    state.context = current;
+    $('#context-bytes').value = current.byte_limit || 4096;
+    renderContextDialog();
+    return true;
+  } catch (failure) {
+    if (state.contextChat === chat) {
+      state.contextNotice = failure.message;
+      renderContextDialog();
+    }
+    return false;
+  }
+}
+async function runContextAction(action) {
+  if (state.contextChat !== state.chat || state.mutation || !contextActions(state.context, state.contextBusy)[action]) return;
+  const command = { action, expected_revision: state.context.revision };
+  try {
+    if (action !== 'clear') command.summary_bytes = summaryByteLimit($('#context-bytes').value);
+  } catch (failure) {
+    state.contextNotice = failure.message;
+    renderContextDialog();
+    return;
+  }
+  const chat = state.contextChat;
+  state.contextRequest = crypto.randomUUID();
+  state.contextBusy = true;
+  state.mutation = true;
+  state.contextNotice = '';
+  reportDesktopBusy(true);
+  controls();
+  renderContextDialog();
+  try {
+    const result = await api('attach/context', { conversation_id: chat, request_key: state.contextRequest, command });
+    state.context = result.state;
+    const bytes = result.changed && action !== 'clear' ? ` · 压缩范围 ${result.before_bytes} → ${result.after_bytes} 字节` : '';
+    state.contextNotice = `${result.changed ? '已更新' : '无需更新'} · 模型调用 ${result.model_calls || 0} 次${bytes} · 原始记录保留`;
+  } catch (failure) {
+    state.contextNotice = failure.message;
+    // Read persisted state after uncertainty; never repeat the mutation.
+    try { state.context = await api(`attach/context?conversation_id=${encodeURIComponent(chat)}`); } catch { /* Keep the last visible state. */ }
+  } finally {
+    state.contextBusy = false;
+    state.contextRequest = '';
+    state.mutation = false;
+    try { await snapshot(); } catch { /* Snapshot failure cannot repeat compaction. */ }
+    controls();
+    renderContextDialog();
+  }
 }
 function openRenameDialog() {
   if (!state.chat || !state.view?.conversation) return;
@@ -1318,6 +1424,7 @@ function controls() {
   $('#send-label').textContent = mode === 'end_and_send' ? '结束并发送' : '发送';
   $('#model-trigger').disabled = !state.env || noModels || state.creating;
   $('#permission-trigger').disabled = !state.env || state.creating;
+  $('#context-trigger').disabled = !state.chat || !state.online || state.creating;
   $('#workspace-change').disabled = state.mutation || desktopBusy;
   $('#prompt').disabled = state.workspaceChanging;
   $('#input-state').innerHTML = noModels ? '请先添加 Key 和模型' :
@@ -1606,8 +1713,7 @@ async function snapshot(before = '') {
     state.view.has_earlier = view.has_earlier;
     state.view.before = view.before;
   } else {
-    const currentKeys = new Set(view.turns.map((turn) => turn.key));
-    state.turns = [...state.turns.filter((turn) => !currentKeys.has(turn.key)), ...view.turns];
+    state.turns = mergeCurrentTurns(state.turns, view.turns);
     const prior = state.view;
     state.view = view;
     if (prior && state.turns.length > view.turns.length) {
@@ -1835,6 +1941,9 @@ function connectEvents() {
       return;
     }
     if (event.kind === 'request_error') error(event.message.slice(event.message.indexOf(': ') + 2));
+    if (event.kind === 'context_compacting' && state.contextBusy) {
+      $('#context-status').textContent = '正在生成摘要';
+    }
     if (event.kind.startsWith('model_') && event.attempt_id) {
       state.streamRevision++;
       const reduced = reduceStream(state.streams.get(event.attempt_id), event);
@@ -1975,6 +2084,13 @@ async function finishEnd() {
 async function send() {
   if ($('#send').disabled) return;
   const prompt = $('#prompt').value;
+  if (prompt.trim() === '/compact') {
+    $('#prompt').value = '';
+    draft();
+    await openContextDialog();
+    await runContextAction('compact');
+    return;
+  }
   if (new TextEncoder().encode(prompt).length > state.env.max_prompt_bytes) {
     error('任务超过当前输入限额，草稿已保留。');
     return;
@@ -2195,6 +2311,12 @@ async function act(action, node = null) {
     case 'add-blocked-file': await addBlockedPath('file'); break;
     case 'remove-blocked-path': removeBlockedPath(node?.dataset.path || ''); break;
     case 'save-permission-page': await savePermissionPage(); break;
+    case 'context-open': await openContextDialog(); break;
+    case 'context-close': $('#context-dialog').close(); break;
+    case 'context-compact': await runContextAction('compact'); break;
+    case 'context-refresh': await runContextAction('refresh'); break;
+    case 'context-clear': await runContextAction('clear'); break;
+    case 'context-stop': await api('attach/cancel', { conversation_id: state.contextChat, binding: state.contextRequest }); break;
     case 'rename': openRenameDialog(); break;
     case 'close-rename': closeRenameDialog(); break;
     case 'save-rename': await saveRename(); break;
