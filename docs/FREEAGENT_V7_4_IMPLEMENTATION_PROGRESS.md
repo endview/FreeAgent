@@ -73,6 +73,13 @@ archive SHA256 was
 The release's final documentation commit and package are separately identified
 by its manifest and release checksums.
 
+Release review also made startup cleanup idempotent and propagated cleanup
+errors into the launch failure. Complete native launcher race tests passed
+after this correction (32.929s). A later Windows CI run exposed the existing
+replanning fixture's five-second setup wait under load; that wait now permits
+15 seconds and reports an early collaboration exit immediately. Production
+budgets and cancellation assertions were not changed.
+
 ## Limits and Pending Evidence
 
 | Scope | Result |

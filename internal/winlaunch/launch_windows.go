@@ -47,11 +47,13 @@ type securityCapabilities struct {
 }
 
 type profile struct {
-	shared  *profileLease
-	name    string
-	sid     *windows.SID
-	owned   bool
-	restore []func() error
+	cleanupOnce sync.Once
+	cleanupErr  error
+	shared      *profileLease
+	name        string
+	sid         *windows.SID
+	owned       bool
+	restore     []func() error
 }
 
 var (
@@ -89,7 +91,7 @@ type windowsProcess struct {
 	closed   bool
 }
 
-func Start(ctx context.Context, spec Spec) (*Process, error) {
+func Start(ctx context.Context, spec Spec) (started *Process, failure error) {
 	if ctx == nil {
 		return nil, errors.New("process launcher: nil context")
 	}
@@ -101,6 +103,11 @@ func Start(ctx context.Context, spec Spec) (*Process, error) {
 	}
 
 	var p *profile
+	defer func() {
+		if started == nil {
+			failure = errors.Join(failure, cleanupProfile(p))
+		}
+	}()
 	var err error
 	if spec.Mode == ModeAppContainer {
 		p, err = acquireProfile(spec)

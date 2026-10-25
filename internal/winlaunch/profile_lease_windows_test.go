@@ -98,3 +98,17 @@ func TestProfileLeaseOverlapKeepsGrantsAndProtection(t *testing.T) {
 	}
 	t.Log("interleaved close, failed start and incompatible network retained exact shared grants/protection")
 }
+
+func TestProfileCleanupFailureIsReportedAndIdempotent(t *testing.T) {
+	want := errors.New("fixture ACL restoration failed")
+	calls := 0
+	p := &profile{restore: []func() error{func() error { calls++; return want }}}
+	for range 2 {
+		if err := cleanupProfile(p); !errors.Is(err, want) {
+			t.Fatalf("cleanup failure hidden: %v", err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("profile reference released %d times", calls)
+	}
+}

@@ -80,6 +80,11 @@ func cleanupProfile(p *profile) error {
 	if p == nil {
 		return nil
 	}
+	p.cleanupOnce.Do(func() { p.cleanupErr = releaseProfile(p) })
+	return p.cleanupErr
+}
+
+func releaseProfile(p *profile) error {
 	if p.shared == nil {
 		return cleanupProfileRaw(p)
 	}

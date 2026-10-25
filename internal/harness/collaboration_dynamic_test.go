@@ -102,7 +102,9 @@ func TestCollaborationCancelDuringReplanningKeepsSavedOutcomeAndStopsNewWork(t *
 			go func() { _, err := collab.Continue(t.Context(), id); done <- err }()
 			select {
 			case <-entered:
-			case <-time.After(5 * time.Second):
+			case err := <-done:
+				t.Fatalf("collaboration ended before replanning: %v", err)
+			case <-time.After(15 * time.Second):
 				t.Fatal("replanning did not start")
 			}
 			if err := collab.Control(t.Context(), id, "", "cancel"); err != nil {
