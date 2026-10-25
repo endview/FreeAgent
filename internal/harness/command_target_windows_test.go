@@ -14,6 +14,11 @@ import (
 func scoopFixture(t *testing.T) (string, string, string) {
 	t.Helper()
 	root := t.TempDir()
+	var err error
+	root, err = canonicalCommandPath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	shim := filepath.Join(root, "shims", "tool.exe")
 	target := filepath.Join(root, "apps", "tool", "1.0", "bin", "tool.exe")
 	for _, path := range []string{shim, target} {
