@@ -114,6 +114,13 @@ See [Chat Contract](docs/CHAT_CONTRACT.md).
 
 ## Daily Commands
 
+Background commands and finite services share the same GUI/CLI owner. The
+command panel and `commands`/`services` CLI support logs, Stop and exact finite
+extensions. Services default to 30 minutes, cap at 8 hours, and allow two
+services plus one ordinary command. Explicit Full/host and local-listen consent
+are required; sandbox host-loopback service access is currently NOT_SUPPORTED.
+See [commands and services](docs/COMMAND_SESSIONS.md).
+
 ```text
 key add --name <name> --url <address> [--note <text>] [--preset deepseek] [--key-stdin | --key-env <variable> | --no-key]
 key list [--json]

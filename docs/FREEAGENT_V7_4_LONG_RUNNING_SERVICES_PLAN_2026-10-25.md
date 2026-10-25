@@ -3,7 +3,8 @@
 日期：2026-10-25
 代码核查基线：v7.0.1-dev.1，`daa82a070fc5570526657151cc6974456abfe5ae`
 实施前置：v7.3 后台命令完成，并落实该版本的状态、恢复和预算修正。
-状态：v7.4 实现已落地，正在完成最终跨平台与便携包门禁。
+状态：v7.4 已按公布的后端支持范围完成实现和验收；Windows/Linux CI、原生
+WebView2 和便携包门禁已通过。沙箱服务网络明确为 NOT_SUPPORTED。
 实际证据见 [v7.4 实施记录](FREEAGENT_V7_4_IMPLEMENTATION_PROGRESS.md)，接口见
 [命令与服务](COMMAND_SESSIONS.md)。下文保留规划约束，不能替代实际验收结果。
 

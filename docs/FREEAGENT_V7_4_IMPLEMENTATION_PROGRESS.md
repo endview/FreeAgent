@@ -1,7 +1,8 @@
 # FreeAgent v7.4 Implementation Record
 
 Date: 2026-10-25. Baseline: v7.3 `04032f5`.
-Status: implementation complete; final platform/package gates in progress.
+Status: implementation and declared platform gates accepted. Exact published
+source revision and archive checksums are recorded in the GitHub release.
 
 ## Implemented
 
@@ -41,22 +42,36 @@ The separate 3002-entry kept-grant fixture measured 334.7ms first launch,
 32.0ms reuse and 326.2ms release. These are measurements, not latency promises.
 
 PASS: burst output produced about 6.55 MB with exactly 262144 bytes retained and
-a 16384-byte page. Sustained-output verification is included in final tests.
+a 16384-byte page. A continuous stdout/stderr producer also retained bounded
+output; no polling or output volume extended its lifetime.
 
 PASS: native WebView2 (Edg 155.0.4283.62, Windows 11 Pro 10.0.26300) start,
 readiness/list/logs, extension, page reload to the same service ID, confirmed
 Stop and clean window close. A real portable CLI inspected the same command
 and executed a parallel HTTP check; an Edge browser displayed its actual body.
 These checks used an isolated Echo configuration and no real Provider credentials.
-Later display-only polishing is checked again with the final package.
+The clean build of `3252d10` repeated these actual WebView2 controls after the
+display polishing, including a 390x844 viewport without horizontal overflow,
+host curl access, and the same portable CLI's concurrent HTTP check receipt.
 
-PASS: 74 ChatUI JS tests, production build, vet and notices. Full ordinary
-Windows tests passed before final fault-path additions; their focused repeats
-passed. A full Windows race run had intermittent existing loopback TCP timeouts
-in the CLI package, without race reports; its complete package repeat passed
-(55.523s). Other packages passed, including Harness (212.753s). Final recovery
-and cursor changes are receiving another complete Harness race and ordinary run.
-No failed attempt is counted as a pass.
+PASS: 74 ChatUI JS tests, production build, vet and notices. The final complete
+ordinary Windows suite passed (Harness 116.075s). Final recovery, cursor and
+sustained-output code passed the complete native Windows Harness race suite
+(233.685s). All other native packages passed race; the CLI package passed a
+complete repeat (55.523s) after intermittent existing loopback TCP timeouts in
+the earlier aggregate attempt. No race was reported, and no failed attempt is
+counted as a pass.
+
+PASS: Windows and Linux CI on runtime commit `3252d10`, including Linux race:
+https://github.com/endview/FreeAgent/actions/runs/40206794929
+
+PASS: a clean `3252d10` portable build (source_dirty=false), integrity and no
+bundled state, real fresh desktop launch/reopen, engine path/HTTP/close, CLI,
+init refusal, invalid-manifest refusal and stdin-close owner shutdown. Its gate
+archive SHA256 was
+`640365f9cda6e46a310820732b796d6c0a14dc876c58b5e58eceec6e8282375d`.
+The release's final documentation commit and package are separately identified
+by its manifest and release checksums.
 
 ## Limits and Pending Evidence
 
@@ -67,12 +82,13 @@ No failed attempt is counted as a pass.
 | AppContainer off/internet, host to server | NOT_SUPPORTED: actual host HTTP timeout; no exemptions added |
 | Product sandbox service start | Rejected as NOT_SUPPORTED; never falls back to Full |
 | IPv6 service network matrix | NOT_RUN |
-| Linux Full/group cleanup and race | Awaiting v7.4 commit CI |
+| Linux Full/group cleanup and race | PASS: v7.4 Windows/Linux CI |
 | Linux crash cleanup/host escape containment | Not guaranteed by this backend |
 | Actual eight-hour endurance/soak | NOT_RUN; simulated limits are labeled separately |
 | Real Providers/Responses/search reacceptance | NOT_RUN; unrelated endpoints were not called |
 | Production signing | Unsigned development preview |
 
-Final portable integrity/clean-start evidence, clean source commit and CI links
-will be recorded at the release gate. The intermediate native UI archive is
-dirty by design and is not the published release artifact.
+The earlier dirty native UI fixture archive is not a published artifact.
+No outstanding user permission or external credential is required for this
+declared support scope. Unsupported sandbox networking, unrun endurance/IPv6
+cases and real Provider acceptance remain explicit above.
