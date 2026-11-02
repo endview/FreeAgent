@@ -57,3 +57,30 @@ These are process-level tests; service-unit and full Harness checks remain gates
 The two builders now share deterministic archive generation with commit time,
 fixed ordering/modes, a pinned Go version and complete source inventory including
 dist, lockfiles and workflows. Clean rebuild equality remains a release gate.
+
+## v7.8 functional gate and v7.9 implementation
+
+Installed clean Linux v7.8 source ecb751c on the isolated Debian 12 systemd
+service. Actual unit sandbox, setsid stop cleanup, crash/on-failure restart,
+UNKNOWN model/Attempt retention without replay, finite service expiry, online
+backup/verify/restore and journal credential absence PASS. Acceptance also found
+and fixed a one-shot CLI approval race: it now waits for the accepted Owner
+execution, using all active conversation bindings rather than only the first.
+The real eight-hour soak started 2026-11-02T19:30:05Z and remains RUNNING until
+28800 actual monotonic seconds have elapsed. No shortened soak is accepted.
+
+v7.9 selects unused Harness-v8, config/schema 10, Store format
+freeagent-harness-v10, backup-v4; launchers, manifest builders and current docs
+are updated together. git_write is removed, with no migration layer.
+
+Attachment input/storage/context/immutable export/reply-save/backup/GUI/CLI and
+Telegram/Lark thin media adapters are implemented. Core focused tests PASS,
+including None input, client/conversation binding, upload and Run idempotency,
+changed export approval, immutable result, hardlink refusal, backup corruption,
+three vision encoders and no persisted Base64, history image budget/omission,
+background-without-download, None channel reply export and UNKNOWN file sends.
+81 JS tests and production build PASS. Full initial Go run found four stale
+format/catalog/tool-count expectations; these were corrected and targeted
+regression PASS. Final full/race and actual package checks are still gates.
+Real vision Provider and real channel file accounts remain NOT_RUN. QQ generic
+file upload is explicitly NOT_SUPPORTED; no anonymous public file hosting added.

@@ -68,7 +68,7 @@ def build(target, go, output):
         readme = 'LINUX_PORTABLE.md'
     files = {'docs/' + readme: 'README.md', **{p:p for p in ('VERSION','LICENSE','THIRD_PARTY_NOTICES.md')}}
     files.update({f'docs/{p}': f'docs/{p}' for p in (
-        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','COMMAND_SESSIONS.md','CHANNELS.md')})
+        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md')})
     if goos=='linux':
         files.update({'deploy/freeagent.service':'deploy/freeagent.service',
                       'scripts/install-server.py':'deploy/install-server.py',
@@ -88,7 +88,7 @@ def build(target, go, output):
         'source_base_commit':commit, 'source_dirty':dirty,
         'source_digest_sha256':hashlib.sha256(source_text.encode()).hexdigest(),
         'source_file_count':len(records), 'built_at_utc':datetime.fromtimestamp(epoch,timezone.utc).isoformat(),
-        'signed':False,'installer':False,'data_format':'Harness-v7',
+        'signed':False,'installer':False,'data_format':'Harness-v8',
         'entry':'FreeAgent.exe' if goos=='windows' else 'FreeAgent',
         'native_desktop':goos=='windows', 'interfaces':['cli','loopback_web'],
         'bundled_credentials':False,'bundled_user_data':False,

@@ -118,7 +118,7 @@ backup-verify --source <backup-directory>
 restore --source <backup-directory> --data-dir <new-directory>
 --version
 
-Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /more /history /sessions /resume <number> /new /status /continue /abandon /file <path> /begin ... /end /exit
+Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /more /history /sessions /resume <number> /new /status /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
 Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes and sandboxed commands, and Full access auto-runs enabled modifying tools. On Windows commands run in an AppContainer sandbox; Full access runs them on the host. MCP and loopback HTTP are not sandboxed.
 Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
 		return err
@@ -134,6 +134,8 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runMemory(ctx, args[1:], stdin, stdout, stderr)
 	case "context":
 		return runContext(ctx, args[1:], stdout, stderr)
+	case "attachments":
+		return runAttachments(ctx, args[1:], stdout, stderr)
 	case "commands", "services":
 		return runCommands(ctx, args[1:], stdin, stdout, stderr)
 	case "sessions":
@@ -271,7 +273,10 @@ func openStoreForReading(ctx context.Context, dataDir string, stderr io.Writer) 
 }
 
 func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	var attachmentPaths, attachmentIDs repeatedStrings
 	flags := flag.NewFlagSet("run", flag.ContinueOnError)
+	flags.Var(&attachmentPaths, "attachment", "explicit local attachment file (repeatable)")
+	flags.Var(&attachmentIDs, "attachment-id", "existing uploaded reference in this conversation (repeatable)")
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
 	conversationID := flags.String("session", "", "session id; created when omitted")
@@ -297,7 +302,7 @@ func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	if err := requireModels(*dataDir, stderr); err != nil {
 		return err
 	}
-	options := harness.RunOptions{SpaceID: *spaceID, ModelID: *modelID, Permission: harness.PermissionMode(*permission), ConfirmFullAccess: *confirmFullAccess}
+	options := harness.RunOptions{SpaceID: *spaceID, ModelID: *modelID, Permission: harness.PermissionMode(*permission), ConfirmFullAccess: *confirmFullAccess, Attachments: attachmentIDs}
 	if *permission != "" {
 		if err := options.Permission.Validate(); err != nil {
 			return usageErr(err.Error())
@@ -320,6 +325,24 @@ func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		if attachErr != nil {
 			return fmt.Errorf("%w: %v", harness.ErrOwnerActive, attachErr)
 		}
+		if len(attachmentPaths) > 0 {
+			client, attachErr = interactiveOwner(ctx, *dataDir)
+			if attachErr != nil {
+				return attachErr
+			}
+			if *conversationID == "" {
+				chat, err := client.NewConversationInSpace(ctx, *spaceID, firstLine(task))
+				if err != nil {
+					return err
+				}
+				*conversationID = chat.ID
+			}
+			ids, err := uploadSelectedFiles(ctx, client, *conversationID, *requestKey, attachmentPaths)
+			if err != nil {
+				return err
+			}
+			options.Attachments = append(options.Attachments, ids...)
+		}
 		return runAttachedSubmit(ctx, client, *dataDir, *conversationID, *requestKey, task, options, *interactive, stdin, stdout, stderr, *asJSON)
 	}
 	if err != nil {
@@ -327,6 +350,20 @@ func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	}
 	defer closeAll()
 	tasks := harness.NewTaskService(service)
+	if len(attachmentPaths) > 0 {
+		if *conversationID == "" {
+			chat, err := tasks.NewConversationInSpace(ctx, *spaceID, firstLine(task))
+			if err != nil {
+				return err
+			}
+			*conversationID = chat.ID
+		}
+		ids, err := uploadSelectedFiles(ctx, tasks, *conversationID, *requestKey, attachmentPaths)
+		if err != nil {
+			return err
+		}
+		options.Attachments = append(options.Attachments, ids...)
+	}
 	if *collaborationMode != "" {
 		settings, err := tasks.CollaborationSettings(ctx, *conversationID)
 		if err != nil {
@@ -520,8 +557,9 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		}
 		tasks.space = view.Conversation.SpaceID
 	}
-	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /compact /context [inspect|refresh|clear] /status /continue /more /abandon /file <path> /begin ... /end /exit\n", config.Workspace)
+	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /compact /context [inspect|refresh|clear] /status /continue /more /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit\n", config.Workspace)
 	var references []string
+	var inputAttachments []string
 	var nextCollaboration *harness.CollaborationSettings
 	for {
 		if err := ctx.Err(); err != nil {
@@ -546,7 +584,11 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		if prompt == "/exit" || prompt == "/quit" {
 			return nil
 		}
+		previousChat := *conversationID
 		if handled, err := handleChatSpaces(ctx, tasks, prompt, conversationID, reader, stdout, stderr); handled {
+			if previousChat != *conversationID {
+				inputAttachments, references, nextCollaboration = nil, nil, nil
+			}
 			if err != nil {
 				_, _ = fmt.Fprintln(stderr, err)
 			}
@@ -579,6 +621,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 					*conversationID = sessions[number-1].ID
 					_, _ = fmt.Fprintln(stderr, "Conversation:", sessions[number-1].Title)
 					references = nil
+					inputAttachments = nil
 					nextCollaboration = nil
 				}
 			}
@@ -591,6 +634,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			}
 			*conversationID = conversation.ID
 			references = nil
+			inputAttachments = nil
 			nextCollaboration = nil
 			_, _ = fmt.Fprintln(stderr, "New conversation")
 			continue
@@ -693,6 +737,44 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			}
 			prompt = "/continue"
 		}
+		if strings.HasPrefix(prompt, "/attach ") {
+			path := strings.TrimSpace(strings.TrimPrefix(prompt, "/attach "))
+			if len(inputAttachments) >= 8 {
+				fmt.Fprintln(stderr, "At most eight attachments per input.")
+				continue
+			}
+			ids, err := uploadSelectedFiles(ctx, tasks.Client, *conversationID, fmt.Sprintf("chat-file-%d", time.Now().UnixNano()), []string{path})
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+			} else {
+				inputAttachments = append(inputAttachments, ids...)
+				fmt.Fprintln(stderr, "Attachment selected:", filepath.Base(path))
+			}
+			continue
+		}
+		if prompt == "/attachments" {
+			refs, err := tasks.Attachments(ctx, *conversationID)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+			} else {
+				writeJSON(stdout, refs)
+			}
+			continue
+		}
+		if prompt == "/save-reply" {
+			last, err := tasks.Latest(ctx, *conversationID)
+			if err == nil {
+				var ref harness.AttachmentRef
+				ref, err = tasks.SaveReplyAttachment(ctx, *conversationID, last.ID, fmt.Sprintf("save-%d", time.Now().UnixNano()))
+				if err == nil {
+					writeJSON(stdout, ref)
+				}
+			}
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+			}
+			continue
+		}
 		if strings.HasPrefix(prompt, "/file ") {
 			name := strings.TrimSpace(strings.TrimPrefix(prompt, "/file "))
 			if len(references) >= 16 {
@@ -756,7 +838,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		}
 		tasks.cursor = state.LastSeq
 		tasks.requestError = ""
-		options := harness.RunOptions{Collaboration: nextCollaboration, Review: reviewChatSuggestion(reader, stderr)}
+		options := harness.RunOptions{Collaboration: nextCollaboration, Review: reviewChatSuggestion(reader, stderr), Attachments: append([]string(nil), inputAttachments...)}
 		var result harness.RunResult
 		binding := requestKey
 		if prompt == "/continue" {
@@ -777,6 +859,9 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 				err = tasks.SubmitWithOptions(ctx, *conversationID, requestKey, prompt, options)
 			}
 			nextCollaboration = nil
+			if err == nil {
+				inputAttachments = nil
+			}
 		}
 		if err == nil {
 			tasks.bind(binding)

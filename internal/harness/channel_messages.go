@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/endview/freeagent/internal/channels"
 	"strings"
 )
 
@@ -41,6 +42,7 @@ func channelTarget(space Space) (ChannelTarget, bool) {
 }
 
 type ChannelMessageSource struct {
+	Media []channels.MediaRef `json:"media,omitempty"`
 	ChannelTarget
 	PersonID    string `json:"person_id,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
@@ -49,6 +51,14 @@ type ChannelMessageSource struct {
 }
 
 func (source ChannelMessageSource) validate() error {
+	if len(source.Media) > 8 {
+		return ErrInvalidSpace
+	}
+	for _, m := range source.Media {
+		if !validChannelPart(m.ID) || len(m.Name) > 512 || m.Bytes < 0 || m.Bytes > 64<<20 {
+			return ErrAttachment
+		}
+	}
 	if source.ChannelTarget.validate() != nil || !validChannelPart(source.MessageID) ||
 		len([]rune(source.DisplayName)) > 128 || hasControl(source.DisplayName) {
 		return ErrInvalidSpace
@@ -106,6 +116,7 @@ type ChannelReceived struct {
 	origin         *ChannelRunOrigin
 	source         ChannelMessageSource
 	text           string
+	attachments    []string
 }
 
 // PairChannel is called only after a local, one-use pairing capability has
@@ -235,7 +246,7 @@ func (tasks *TaskService) SubmitChannel(ctx context.Context, input ChannelReceiv
 		return RunResult{}, errors.New("harness: channel input is background, duplicate or no longer executable")
 	}
 	return tasks.submitWithOptions(ctx, input.ConversationID, input.origin.RequestKey, input.text,
-		RunOptions{channel: input.origin, personID: input.source.PersonID})
+		RunOptions{channel: input.origin, personID: input.source.PersonID, Attachments: input.attachments})
 }
 
 func (service *Service) bindChannel(ctx context.Context, chat string, origin *ChannelRunOrigin) error {

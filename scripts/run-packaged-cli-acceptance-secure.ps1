@@ -124,7 +124,7 @@ try {
     }
     $package = $directories[0].FullName
     $cli = Join-Path $package 'bin/freeagent.exe'
-    $data = Join-Path $package 'data/Harness-v7'
+    $data = Join-Path $package 'data/Harness-v8'
     $workspace = Join-Path $package 'workspace'
     $keysPath = Join-Path $package 'data/keys.json'
     if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) {

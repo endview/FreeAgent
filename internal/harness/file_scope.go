@@ -185,7 +185,7 @@ func fileCallPaths(call ToolCall) ([]string, error) {
 
 func isFileToolName(name string) bool {
 	switch name {
-	case "file_list", "file_read", "file_search", "file_edit", "file_create", "file_delete", "file_batch_edit", "apply_patch":
+	case "file_list", "file_read", "file_search", "file_edit", "file_create", "file_delete", "file_batch_edit", "apply_patch", "file_export":
 		return true
 	default:
 		return false

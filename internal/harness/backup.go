@@ -14,9 +14,10 @@ import (
 	"sort"
 )
 
-const BackupFormat = "freeagent-harness-backup-v3"
+const BackupFormat = "freeagent-harness-backup-v4"
 
 type backupManifest struct {
+	Attachments  map[string]string `json:"attachments,omitempty"`
 	Format       string            `json:"format"`
 	StateHash    string            `json:"state_sha256"`
 	ConfigHash   string            `json:"config_sha256"`
@@ -28,6 +29,8 @@ func (store *Store) Backup(ctx context.Context, target string) (returnErr error)
 		return ErrActiveRun
 	}
 	defer store.runMu.Unlock()
+	store.attachmentMu.Lock()
+	defer store.attachmentMu.Unlock()
 	target, err := canonicalDir(target)
 	if err != nil {
 		return err
@@ -62,6 +65,9 @@ func (store *Store) Backup(ctx context.Context, target string) (returnErr error)
 		return err
 	}
 	if err := copyInstructions(store.dataDir, stage, config.Instructions); err != nil {
+		return err
+	}
+	if err := copyAttachmentSnapshot(ctx, store.dataDir, stage); err != nil {
 		return err
 	}
 	manifest, err := manifestFor(stage)
@@ -114,6 +120,9 @@ func Restore(ctx context.Context, source, target string) error {
 	if err := copyInstructions(source, stage, config.Instructions); err != nil {
 		return err
 	}
+	if err := copyAttachmentSnapshot(ctx, source, stage); err != nil {
+		return err
+	}
 	if err := VerifyBackup(ctx, stage); err != nil {
 		return err
 	}
@@ -139,7 +148,7 @@ func VerifyBackup(ctx context.Context, source string) error {
 		}
 	}
 	raw, err := os.ReadFile(filepath.Join(source, "backup.json"))
-	if err != nil || len(raw) > 4096 {
+	if err != nil || len(raw) > 4<<20 {
 		return errors.New("harness: invalid backup manifest")
 	}
 	var expected backupManifest
@@ -162,7 +171,7 @@ func VerifyBackup(ctx context.Context, source string) error {
 	}
 	for _, entry := range entries {
 		switch entry.Name() {
-		case "state.sqlite", "config.json", "backup.json", "instructions":
+		case "state.sqlite", "config.json", "backup.json", "instructions", "attachments":
 		default:
 			return errors.New("harness: unexpected backup file")
 		}
@@ -225,7 +234,11 @@ func manifestFor(directory string) (backupManifest, error) {
 		}
 		instructions[name] = hash
 	}
-	return backupManifest{Format: BackupFormat, StateHash: stateHash, ConfigHash: configHash, Instructions: instructions}, nil
+	attachments, err := attachmentManifest(context.Background(), directory)
+	if err != nil {
+		return backupManifest{}, err
+	}
+	return backupManifest{Format: BackupFormat, StateHash: stateHash, ConfigHash: configHash, Instructions: instructions, Attachments: attachments}, nil
 }
 
 func copyInstructions(source, target string, names []string) error {
@@ -322,6 +335,13 @@ func publishDirectory(stage, target string) error {
 }
 
 func removeStaging(directory string) {
+	attachmentEntries, _ := os.ReadDir(filepath.Join(directory, "attachments"))
+	for _, entry := range attachmentEntries {
+		if attachmentID(entry.Name()) {
+			_ = os.Remove(filepath.Join(directory, "attachments", entry.Name()))
+		}
+	}
+	_ = os.Remove(filepath.Join(directory, "attachments"))
 	entries, _ := os.ReadDir(filepath.Join(directory, "instructions"))
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	for _, entry := range entries {

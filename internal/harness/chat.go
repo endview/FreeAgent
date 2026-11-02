@@ -23,6 +23,7 @@ type ChatView struct {
 }
 
 type ChatTurn struct {
+	Attachments     []AttachmentRef      `json:"attachments,omitempty"`
 	Key             string               `json:"key"`
 	State           string               `json:"state"`
 	Reason          string               `json:"reason,omitempty"`
@@ -45,10 +46,11 @@ type ChatTurn struct {
 }
 
 type ChatMessage struct {
-	Key       string `json:"key"`
-	Role      string `json:"role"`
-	Raw       string `json:"raw"`
-	Truncated bool   `json:"truncated,omitempty"`
+	Attachments []AttachmentRef `json:"attachments,omitempty"`
+	Key         string          `json:"key"`
+	Role        string          `json:"role"`
+	Raw         string          `json:"raw"`
+	Truncated   bool            `json:"truncated,omitempty"`
 }
 
 type ChatActivity struct {
@@ -244,12 +246,25 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 			}
 			if message.Role == "user" || message.Role == "assistant" && message.Content != "" {
 				text, truncated := chatText(message.Content)
-				turn.Messages = append(turn.Messages, ChatMessage{Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated})
+				turn.Messages = append(turn.Messages, ChatMessage{Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated, Attachments: message.Attachments})
+			}
+			if message.Role == "tool" {
+				turn.Attachments = append(turn.Attachments, message.Attachments...)
 			}
 		}
 		if err := errors.Join(messages.Err(), messages.Close()); err != nil {
 			return ChatView{}, err
 		}
+		projectRefs := func(refs []AttachmentRef) {
+			for i := range refs {
+				record, err := loadAttachment(ctx, tx, refs[i].ID)
+				refs[i].Unavailable = err != nil || record.Deleted || record.Space != conversation.SpaceID
+			}
+		}
+		for i := range turn.Messages {
+			projectRefs(turn.Messages[i].Attachments)
+		}
+		projectRefs(turn.Attachments)
 		seen := map[string]bool{}
 		addSources := func(sources []MemoryUse) {
 			for _, source := range sources {
@@ -338,7 +353,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 				text = message.Channel.DisplayName + " [" + message.Channel.PersonID + "] " + text
 			}
 			text, truncated := chatText(text)
-			view.Background = append(view.Background, ChatMessage{Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated})
+			view.Background = append(view.Background, ChatMessage{Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated, Attachments: message.Attachments})
 		}
 		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 			return ChatView{}, err

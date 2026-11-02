@@ -8,6 +8,8 @@ import (
 )
 
 type ModelMessage struct {
+	Attachments []AttachmentRef `json:",omitempty"`
+	Images      []ModelImage    `json:"-"`
 	// Channel records verified transport provenance. It is source data, never
 	// execution authority. Only received text and confirmed deliveries are Public.
 	Channel    *ChannelMessageSource `json:",omitempty"`
@@ -137,13 +139,14 @@ type ProviderToolItem struct {
 }
 
 type ToolResult struct {
-	Outcome    *ToolOutcome `json:",omitempty"`
-	Truncated  bool         `json:",omitempty"`
-	Content    string
-	IsError    bool
-	Receipts   []ToolReceipt  `json:",omitempty"`
-	Memory     []MemoryUse    `json:",omitempty"`
-	Extensions []ExtensionUse `json:",omitempty"`
+	Attachments []AttachmentRef `json:",omitempty"`
+	Outcome     *ToolOutcome    `json:",omitempty"`
+	Truncated   bool            `json:",omitempty"`
+	Content     string
+	IsError     bool
+	Receipts    []ToolReceipt  `json:",omitempty"`
+	Memory      []MemoryUse    `json:",omitempty"`
+	Extensions  []ExtensionUse `json:",omitempty"`
 }
 
 func mustJSON(value any) []byte {
@@ -194,10 +197,13 @@ type ApprovalItem struct {
 }
 
 type PreparedTool struct {
-	Effect  ToolEffect
-	Preview string
-	Items   []ApprovalItem
-	Execute func(context.Context) (ToolResult, error)
+	exportName string
+	exportSize int64
+	exportRead func(context.Context) ([]byte, error)
+	Effect     ToolEffect
+	Preview    string
+	Items      []ApprovalItem
+	Execute    func(context.Context) (ToolResult, error)
 	// Compound operations persist progress before dispatching the next effect.
 	ExecuteRecorded func(context.Context, func(ToolResult) error) (ToolResult, error)
 	Reject          func() ToolResult

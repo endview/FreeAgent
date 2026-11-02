@@ -54,6 +54,8 @@ func newAppChannelRuntime(tasks *TaskService, source string) *AppChannelRuntime 
 	r := &AppChannelRuntime{tasks: tasks, source: source, replies: map[string]*qqReply{}}
 	r.session = newChannelSession(tasks, source, r.send)
 	r.session.buttons = source == SpaceSourceLark
+	r.session.download = r.downloadMedia
+	r.session.sendFile = r.sendMedia
 	return r
 }
 func (r *AppChannelRuntime) config() AppChannelConfig {
@@ -80,8 +82,8 @@ func (r *AppChannelRuntime) Status() AppChannelStatus {
 	r.session.mu.Unlock()
 	out.Capabilities = []string{"private_text", "group_received_text", "scoped_people", "local_handoff", "bounded_final_reply"}
 	if r.source == SpaceSourceLark {
-		out.Capabilities = append(out.Capabilities, "app_websocket", "approval_cards")
-		out.Limitations = []string{"仅使用实际收到的文字；群背景取决于应用事件权限", "附件未支持；真实应用验收未运行"}
+		out.Capabilities = append(out.Capabilities, "app_websocket", "approval_cards", "bounded_attachments")
+		out.Limitations = []string{"仅使用实际收到的文字；群背景取决于应用事件权限", "支持有界文本/PNG/JPEG输入与文件回传；真实应用验收未运行"}
 	} else {
 		out.Capabilities = append(out.Capabilities, "signed_webhook", "group_mentions")
 		out.Limitations = []string{"仅官方 C2C 和群 @；频道、普通群消息、编辑与审批按钮未支持", "需要用户提供公网 HTTPS 反向代理到本机回调；不提供托管", "仅保守的 120 秒、最多 5 次被动回复；超出限制保留结果并用 /status 查询", "真实应用权限、回复窗口与额度未验收"}
@@ -234,7 +236,7 @@ func (r *AppChannelRuntime) HandleLark(ctx context.Context, e channels.LarkEvent
 	if app != "" && app != e.App {
 		return ErrPermissionDenied
 	}
-	return r.session.handle(ctx, channelEvent{Target: target, Person: e.Person, Message: e.Message, Kind: e.Kind, Text: e.Text, Trigger: e.Trigger, Callback: e.Callback, CallbackMessage: e.CallbackMessage})
+	return r.session.handle(ctx, channelEvent{Target: target, Person: e.Person, Message: e.Message, Kind: e.Kind, Text: e.Text, Trigger: e.Trigger, Callback: e.Callback, CallbackMessage: e.CallbackMessage, Media: e.Media, ReplyTo: e.ReplyTo})
 }
 func (r *AppChannelRuntime) qqLoop(ctx context.Context, done chan struct{}, listener net.Listener, api *channels.QQAPI, app, secret string) {
 	defer close(done)

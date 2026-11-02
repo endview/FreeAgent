@@ -24,6 +24,7 @@ import { channelSections } from './channels.mjs';
 import { spaceChatGroups, spaceSelection, publicationMessage } from './spaces.mjs';
 import { commandRows, commandOutput, remainingSeconds, directCommandText } from './command-sessions.mjs';
 import { eventStream } from './events.mjs';
+import { inputAccept, attachmentDraft, uploadProblem, attachmentCards } from './attachments.mjs';
 
 const icons = { Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Play, X,
   ChevronDown, ChevronRight, Copy, Eye, PencilLine, Check, Settings2, RefreshCw,
@@ -64,6 +65,7 @@ const state = { env: null, chats: [], spaces: [], space: 'local', chat: '', draf
   commandMenuOpen: false, commandIndex: -1, pendingCommand: null, commandCatalog: [],
   permissions: null, settings: null, channels: null, permissionPageLoading: false, permissionRootDraft: null, permissionBlockedDraft: null,
   context: null, contextBusy: false, contextChat: '', contextNotice: '' };
+let attachmentUploading = false;
 let sse, snapshotTimer, streamTimer, runTimer, refreshListTimer, offlineTimer, errorTimer = 0, errorRevision = 0, scrollProgram = false;
 let earlierObserver;
 let earlierVisible = false;
@@ -129,7 +131,7 @@ app.innerHTML = `
       <div class="latest-wrap"><button id="latest" data-action="latest" hidden>${icon('arrow-down')}最新消息</button></div>
       <footer class="composer">
         <div class="layout-resizer composer-resizer" data-layout-resizer="composer" role="separator" aria-orientation="horizontal" aria-label="调整输入框高度" tabindex="0"></div>
-        <div id="memory-panel"></div>
+        <div id="memory-panel"></div><div id="attachment-drafts" aria-live="polite"></div>
         <div class="input-surface">
           <textarea id="prompt" aria-label="输入任务" placeholder="输入任务..." rows="3"></textarea>
           <div id="command-menu" class="model-menu command-menu" role="listbox" hidden></div>
@@ -137,11 +139,15 @@ app.innerHTML = `
           <div class="input-toolbar"><div class="segmented" role="group" aria-label="输入模式">
             ${button('pencil-line', '编辑草稿', 'edit', 'aria-pressed="true"')}
             ${button('eye', '预览草稿', 'preview', 'aria-pressed="false"')}
+            <button type="button" class="icon" data-action="attachment-pick" aria-label="添加文本或图片" title="添加文本或图片">${icon('file-plus')}</button><input id="attachment-input" type="file" multiple accept="${inputAccept}" hidden>
           </div><button id="capability-trigger" type="button" class="icon capability-trigger" title="本对话能力" aria-label="本对话能力" aria-haspopup="menu" aria-expanded="false">${icon('blocks')}<span id="capability-count"></span></button><div id="capability-menu" class="model-menu capability-menu" role="menu" hidden></div><span id="input-state"></span><button id="send" class="send" data-action="send" title="发送" aria-label="发送">${icon('arrow-up')}<span id="send-label" class="send-label">发送</span></button></div>
         </div>
       </footer>
     </main>
   </div>
+  <dialog id="vision-dialog" aria-label="模型图片能力"><h2>图片能力</h2><p>仅在服务商明确支持时启用。以下为本地限制，不代表服务商验收。</p><form id="vision-form"><label><input type="checkbox" name="enabled">启用图片输入</label><label><input type="checkbox" name="png">PNG</label><label><input type="checkbox" name="jpeg">JPEG</label><div id="vision-fields"></div><button type="button" data-action="vision-save">保存</button><button type="button" data-action="vision-close">取消</button></form></dialog>
+  <dialog id="attachment-preview-dialog" aria-label="附件图片"><button type="button" class="text-action" data-action="attachment-preview-close">关闭</button><img id="attachment-preview-image" alt="用户提供的附件图片"></dialog>
+  <dialog id="attachment-settings-dialog" aria-label="附件设置"><h2>附件</h2><form id="attachment-settings-form"><div id="attachment-settings-fields"></div><p>仅影响新上传；不自动删除已有附件。输入支持 UTF-8 文本、PNG 与 JPEG。</p><button type="button" data-action="attachment-settings-save">保存</button><button type="button" data-action="attachment-settings-close">取消</button></form><h3>当前对话的附件</h3><div id="attachment-catalog"></div></dialog>
   <dialog id="spaces-dialog" aria-labelledby="spaces-title">
     <header><h2 id="spaces-title">空间管理</h2>${button('x', '关闭空间管理', 'spaces-close')}</header>
     <div id="spaces-content"></div>
@@ -731,7 +737,7 @@ function renderPermissionsView() {
   const sandboxLabel = command.sandbox_supported === false ? '安全沙箱（当前系统不可用）' : '安全沙箱';
   const catalogSandboxLabels = { sandboxed: '沙箱', host_explicit: '宿主机', unsupported: '沙箱不可用', unavailable: '未找到' };
   const commandEnabledLabel = commandEnabled ? '已开启' : '已关闭';
-  root.innerHTML = `<div class="keys-header"><div><h2 id="permissions-title">设置</h2><p>全局权限、文件范围和内置工具设置。能力管理保持独立；修改只影响新 Run。</p></div><button class="icon" data-action="close-permissions" title="返回对话" aria-label="返回对话">${icon('arrow-left')}</button></div>
+  root.innerHTML = `<div class="keys-header"><div><button type="button" class="text-action" data-action="attachment-settings">附件设置与文件</button><h2 id="permissions-title">设置</h2><p>全局权限、文件范围和内置工具设置。能力管理保持独立；修改只影响新 Run。</p></div><button class="icon" data-action="close-permissions" title="返回对话" aria-label="返回对话">${icon('arrow-left')}</button></div>
     ${activeNotice}
     <div class="permission-layout">
       <section class="permission-section"><header><div><h3>权限模式</h3><p>权限属于空间，影响该空间内所有对话。新空间默认 None；下降会限制旧 Run 并请求停止相关命令。</p></div><span class="permission-badge permission-${esc(currentMode)}">${esc(PERMISSION_LABELS[currentMode] || 'Ask')}</span></header>
@@ -1499,12 +1505,13 @@ function renderRunBar() {
   decorate(bar);
 }
 function controls() {
+  renderAttachmentDrafts();
   setDesktopBusy(desktopBusy);
   const turn = latest(), pending = state.pending;
   const noModels = !hasModels(state.env);
   const mode = submitMode(turn, state.busy || state.elsewhere);
   $('#send').disabled = !state.online || noModels || !hasView() || state.mutation || state.creating || !!pending ||
-    mode === 'blocked' || !$('#prompt').value.trim();
+    mode === 'blocked' || attachmentUploading || !$('#prompt').value.trim();
   $('#send').classList.toggle('end-send', mode === 'end_and_send');
   $('#send').title = mode === 'end_and_send' ? '结束并发送' : '发送';
   $('#send').setAttribute('aria-label', mode === 'end_and_send' ? '结束并发送' : '发送');
@@ -1512,7 +1519,7 @@ function controls() {
   $('#model-trigger').disabled = !state.env || noModels || state.creating;
   $('#permission-trigger').disabled = !state.env || state.creating;
   $('#context-trigger').disabled = !state.chat || !state.online || state.creating;
-  $('#workspace-change').disabled = state.mutation || desktopBusy;
+  $('#workspace-change').disabled = state.mutation || desktopBusy || attachmentUploading;
   $('#prompt').disabled = state.workspaceChanging;
   $('#input-state').innerHTML = noModels ? '请先添加 Key 和模型' :
     state.elsewhere && state.activeChat && state.activeChat !== state.chat
@@ -1834,6 +1841,7 @@ async function snapshot(before = '') {
         $('#prompt').value = '';
         safeStorage(storage, draftKey(), '');
       }
+      setAttachmentDrafts([]);
       savePending(null);
     }
     $('#title').textContent = view.conversation.title;
@@ -1882,8 +1890,9 @@ function section(turn, name, title, content) {
 function turnHTML(turn) {
   let html = turn.messages.map((message) => {
     const content=turn.reason==='explicit user command'?`<pre class="command-message">${esc(directCommandText(message.raw,message.role))}</pre>`:message.role==='user'?`<p class="user-text">${esc(message.raw)}</p>`:renderMarkdown(message.raw);
-    return `<article class="message ${esc(message.role)}" data-message="${esc(message.key)}"><div class="message-heading"><span>${message.role === 'user' ? '你' : 'FreeAgent'}</span><button type="button" class="icon" data-copy-message="${esc(message.key)}" title="复制原始 Markdown" aria-label="复制原始 Markdown">${icon('copy')}</button></div><div class="markdown">${content}</div>${message.truncated ? `<button class="text-action" data-full-message="${esc(message.key)}">加载完整原文</button>` : ''}</article>`;
+    return `<article class="message ${esc(message.role)}" data-message="${esc(message.key)}"><div class="message-heading"><span>${message.role === 'user' ? '你' : 'FreeAgent'}</span><button type="button" class="icon" data-copy-message="${esc(message.key)}" title="复制原始 Markdown" aria-label="复制原始 Markdown">${icon('copy')}</button></div><div class="markdown">${content}</div>${attachmentCards(message.attachments, state.chat)}${message.role === 'assistant' ? `<button type="button" class="text-action" data-reply-save="${esc(turn.key)}" data-attachment-chat="${esc(state.chat)}">另存为 Markdown</button>` : ''}${message.truncated ? `<button class="text-action" data-full-message="${esc(message.key)}">加载完整原文</button>` : ''}</article>`;
   }).join('');
+  html += attachmentCards(turn.attachments,state.chat);
   html += `<div class="turn-state" data-state="${esc(turn.state)}">${icon(stateMeta(turn.state).icon)}${esc(stateMeta(turn.state).label)}${turn.ended ? '<span>任务已结束</span>' : ''}${turn.model_id ? `<span>${esc(turn.model_id)}</span>` : ''}</div>`;
   if (turn.state === 'unknown') html += '<div class="warning-strip">结果未知，可能已有作用。请核对执行记录；未自动重试。</div>';
   else if (turn.state === 'stopped') html += '<div class="subtle-note">任务已停止，已有操作会保留。</div>';
@@ -2061,6 +2070,7 @@ function connectEvents() {
       if (event.kind !== 'model_text') queueSnapshot();
       return;
     }
+    if (event.kind === 'attachment_omitted') error(`本轮未发送历史图片：${event.message}。可重新选择原图。`);
     if (event.kind === 'request_error') error(event.message.slice(event.message.indexOf(': ') + 2));
     if (event.kind === 'context_compacting' && state.contextBusy) {
       $('#context-status').textContent = '正在生成摘要';
@@ -2103,10 +2113,11 @@ async function submitPrompt(prompt, retainDraftOnFailure = false) {
     if (!await createChat(prompt)) return false;
     if (!canSubmit(latest(), state.busy || state.elsewhere)) return false;
   }
-  savePending({ requestKey: crypto.randomUUID(), prompt });
+  const attachments = currentAttachments().map(ref => ref.id);
+  savePending({ requestKey: crypto.randomUUID(), prompt, attachments });
   draft();
   try {
-    await mutate('submit', { prompt, request_key: state.pending.requestKey,
+    await mutate('submit', { prompt, request_key: state.pending.requestKey, attachments,
       ...(permission ? { permission, confirm_full_access: confirmFullAccess } : {}),
       ...(state.pendingCapabilities ? { capabilities: state.pendingCapabilities } : {}) });
     state.runNotice = '';
@@ -2440,6 +2451,13 @@ async function act(action, node = null) {
     case 'space-person': await spaceChange('person.set_permission', { person_id: $('#space-person').value.trim(), mode: $('#person-mode').value }, '确认更改此人的全局权限？每个空间仍有独立权限上限。'); break;
     case 'new': await newChat(); break;
     case 'keys': await openKeys(); break;
+    case 'vision-save': await saveVision(); break;
+    case 'vision-close': $('#vision-dialog').close(); break;
+    case 'attachment-pick': $('#attachment-input').click(); break;
+    case 'attachment-preview-close': $('#attachment-preview-dialog').close(); URL.revokeObjectURL($('#attachment-preview-image').src); $('#attachment-preview-image').removeAttribute('src'); break;
+    case 'attachment-settings': await openAttachmentSettings(); break;
+    case 'attachment-settings-close': $('#attachment-settings-dialog').close(); break;
+    case 'attachment-settings-save': await saveAttachmentSettings(); break;
     case 'capabilities': await openCapabilities(); break;
     case 'settings': await openSettings(); break;
     case 'permissions': await openPermissions(); break;
@@ -2611,7 +2629,14 @@ document.addEventListener('click', async (event) => {
   const node = event.target.closest('button, [data-action]');
   if (!node || node.disabled) return;
   try {
-    if (node.dataset.action === 'chat-pin') {
+    if (node.dataset.modelVision) { openVision(node.dataset.modelVision); }
+    else if (node.dataset.attachmentDownload || node.dataset.attachmentPreview) {
+      const id=node.dataset.attachmentDownload || node.dataset.attachmentPreview;
+      await downloadAttachment(node.dataset.attachmentChat,id,node.dataset.attachmentName,!!node.dataset.attachmentPreview);
+    } else if (node.dataset.attachmentRemove) { if (!state.pending && !attachmentUploading) setAttachmentDrafts(currentAttachments().filter(ref=>ref.id!==node.dataset.attachmentRemove)); }
+    else if (node.dataset.replySave) { const chat=node.dataset.attachmentChat;const ref=await api('attachments/reply',{conversation_id:chat,run_id:node.dataset.replySave,request_key:crypto.randomUUID()});await downloadAttachment(chat,ref.id,ref.name); }
+    else if (node.dataset.attachmentDelete) { const id=node.dataset.attachmentDelete;const refs=await api(`attachments?conversation_id=${encodeURIComponent(state.chat)}`);const item=refs.find(item=>item.ref.id===id);if(item && confirm(`永久删除 ${item.ref.name}？历史引用将不可用，只能从备份恢复。`)){await api('attachments/delete',{conversation_id:state.chat,id,sha256:item.ref.sha256});await openAttachmentSettings();await snapshot();} }
+    else if (node.dataset.action === 'chat-pin') {
       await togglePin(node.dataset.chat, node.dataset.pinned !== 'true');
     } else if (node.dataset.chat) {
       await selectChat(node.dataset.chat);
@@ -2979,3 +3004,77 @@ $('#chats').addEventListener('drop', async event => {
   try { await spaceChange('space.move_conversation', { space_id: target.dataset.dropSpace, conversation_id: chat }, publicationMessage(spaceSelection(state.spaces, target.dataset.dropSpace))); }
   catch (failure) { error(failure.message); }
 });
+function attachmentStorageKey(chat = state.chat) { return `freeagent:${state.env?.environment}:${chat}:attachments`; }
+function currentAttachments(chat = state.chat) { return chat ? attachmentDraft(safeStorage(storage, attachmentStorageKey(chat))) : []; }
+function setAttachmentDrafts(refs, chat = state.chat) {
+  if (chat) safeStorage(storage, attachmentStorageKey(chat), JSON.stringify(refs));
+  if (chat === state.chat) renderAttachmentDrafts();
+}
+function renderAttachmentDrafts() {
+  const root = $('#attachment-drafts'); if (!root) return;
+  const html = attachmentCards(currentAttachments(), state.chat, { draft: true }) + (attachmentUploading ? '<span role="status">正在上传附件…</span>' : '');
+  if (root.innerHTML !== html) root.innerHTML = html;
+}
+async function uploadAttachmentFiles(files) {
+  files = [...files]; if (!files.length || attachmentUploading || state.pending || !state.online) return;
+  if (!state.chat && !await createChat($('#prompt').value || '附件')) return;
+  const chat = state.chat, refs = currentAttachments(chat);
+  const problem = uploadProblem(files, refs, state.env?.attachments); if (problem) { error(problem); return; }
+  attachmentUploading = true; controls();
+  try {
+    for (const file of files) {
+      const query = new URLSearchParams({ conversation_id: chat, name: file.name, request_key: crypto.randomUUID() });
+      const response = await fetch(`/api/attachments?${query}`, { method: 'POST', headers: { 'X-FreeAgent-Key': key, 'Content-Type': 'application/octet-stream' }, body: file });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || '附件上传未完成。');
+      refs.push(data); setAttachmentDrafts(refs, chat);
+    }
+  } catch (failure) { error(failure.message); }
+  finally { attachmentUploading = false; $('#attachment-input').value = ''; controls(); }
+}
+async function downloadAttachment(chat, id, name = 'attachment', inline = false) {
+  const response = await fetch(`/api/attachments/${encodeURIComponent(id)}?${new URLSearchParams({ conversation_id: chat, ...(inline ? { inline: '1' } : {}) })}`, { headers: { 'X-FreeAgent-Key': key }, cache: 'no-store' });
+  if (!response.ok) throw new Error('附件已删除、不可用或不属于此对话。');
+  if (inline && !['image/png', 'image/jpeg'].includes(response.headers.get('Content-Type'))) throw new Error('此附件仅支持下载。');
+  const blob = await response.blob(), url = URL.createObjectURL(blob);
+  if (inline) { const image=$('#attachment-preview-image'); if(image.src)URL.revokeObjectURL(image.src);image.src=url;$('#attachment-preview-dialog').showModal(); }
+  else { const link=document.createElement('a'); link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
+}
+const attachmentSettingFields = [
+  ['max_files', '每次最多文件数', 1, 8], ['max_batch_bytes', '每次总大小（字节）', 1, 64 * 1024 ** 2],
+  ['max_input_bytes', '单个输入大小（字节）', 1, 16 * 1024 ** 2], ['max_export_bytes', '单个导出大小（字节）', 1, 64 * 1024 ** 2],
+  ['max_pixels', '单图最多像素', 1, 32000000], ['quota_bytes', '总存储空间（字节）', 1, 16 * 1024 ** 3], ['staging_hours', '未提交文件保留小时', 1, 168],
+];
+async function openAttachmentSettings() {
+  const policy = await api('attachment-policy');
+  $('#attachment-settings-fields').innerHTML=['text','png','jpeg'].map(name=>`<label><input type="checkbox" data-attachment-format="${name}" ${policy[name]?'checked':''}>${name==='text'?'UTF-8 文本':name.toUpperCase()}</label>`).join('')+attachmentSettingFields.map(([key,label,min,max])=>`<label>${esc(label)}<input type="number" name="${key}" min="${min}" max="${max}" required value="${policy[key]}"></label>`).join('');
+  const refs=state.chat ? await api(`attachments?conversation_id=${encodeURIComponent(state.chat)}`) : [];
+  $('#attachment-catalog').innerHTML=refs.map(item=>`<div class="attachment-card"><span>${esc(item.ref.name)} · ${item.deleted?'已删除':item.committed?'已提交':'未提交'}</span>${!item.deleted?`<button type="button" class="text-action" data-attachment-delete="${esc(item.ref.id)}">永久删除</button>`:''}</div>`).join('') || '<p>没有附件。</p>';
+  if (!$('#attachment-settings-dialog').open) $('#attachment-settings-dialog').showModal();
+}
+async function saveAttachmentSettings() {
+  if (!$('#attachment-settings-form').reportValidity()) return;
+  const policy=Object.fromEntries(attachmentSettingFields.map(([key])=>[key,Number($(`#attachment-settings-fields [name="${key}"]`).value)]));
+  for(const name of ['text','png','jpeg'])policy[name]=$(`[data-attachment-format="${name}"]`).checked;
+  await api('attachment-policy', policy, 'PUT');state.env.attachments=policy;$('#attachment-settings-dialog').close();
+}
+$('#attachment-input').addEventListener('change', event => uploadAttachmentFiles(event.target.files));
+$('.composer').addEventListener('dragover', event => { if(event.dataTransfer.types.includes('Files'))event.preventDefault(); });
+$('.composer').addEventListener('drop', event => { if(event.dataTransfer.files.length){event.preventDefault();uploadAttachmentFiles(event.dataTransfer.files);} });
+$('#attachment-preview-dialog').addEventListener('close',()=>{const image=$('#attachment-preview-image');if(image.src)URL.revokeObjectURL(image.src);image.removeAttribute('src');});
+
+const visionFields=[['max_image_encoded_bytes','单图 Base64 编码后最多字节',32*1024**2],['max_side','最长边像素',16384],['max_images','单次请求最多图片',32],['max_request_bytes','整个请求最多字节',64*1024**2]];
+function openVision(id){
+  const vision=state.env.models[id]?.capabilities?.vision || {};
+  $('#vision-form').dataset.model=id;
+  for(const name of ['enabled','png','jpeg']) $(`#vision-form [name="${name}"]`).checked=!!vision[name];
+  const defaults={max_image_encoded_bytes:8*1024**2,max_side:4096,max_images:8,max_request_bytes:32*1024**2};
+  $('#vision-fields').innerHTML=visionFields.map(([name,label,max])=>`<label>${esc(label)}<input type="number" name="${name}" min="1" max="${max}" required value="${vision[name] || defaults[name]}"></label>`).join('');
+  $('#vision-dialog').showModal();
+}
+async function saveVision(){
+  const enabled=$('#vision-form [name="enabled"]').checked;
+  if(enabled && !$('#vision-form').reportValidity())return;
+  const vision=enabled?Object.fromEntries([...['enabled','png','jpeg'].map(name=>[name,$(`#vision-form [name="${name}"]`).checked]),...visionFields.map(([name])=>[name,Number($(`#vision-fields [name="${name}"]`).value)])]):{};
+  await api('models/vision',{id:$('#vision-form').dataset.model,vision});$('#vision-dialog').close();state.env=await api("environment");await loadKeys();
+}
+

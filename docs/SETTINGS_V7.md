@@ -26,7 +26,7 @@ editing local files.
 
 ## Data Boundary
 
-The package data directory is `Harness-v7`, with store format
+The package data directory is `Harness-v8`, with store format
 `freeagent-harness-v9`. Older stores are rejected and are never migrated or
 imported. Keys remain outside model-visible data and are resolved only for one
 provider dispatch or probe.

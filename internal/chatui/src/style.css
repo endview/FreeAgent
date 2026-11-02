@@ -602,3 +602,9 @@ dialog > label input:focus { border-color: var(--focus-border); box-shadow: 0 0 
 .channel-background { margin: 0 0 1rem; padding: .75rem 1rem; border: 1px solid var(--border); border-radius: .6rem; }
 .channel-background summary { cursor: pointer; min-height: 2rem; }
 .channel-background p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.attachment-card{display:flex;align-items:center;gap:12px;max-width:100%;padding:10px 12px;margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow-wrap:anywhere}
+.attachment-card>span{flex:1;min-width:0}.attachment-card strong,.attachment-card small{display:block}.attachment-card small{opacity:.72;font-size:12px;margin-top:3px}
+#attachment-drafts{grid-column:1 / -1;max-height:160px;overflow:auto}.attachment-card button{min-height:36px;flex-shrink:0}
+#attachment-preview-image{display:block;max-width:min(82vw,1100px);max-height:78vh;object-fit:contain}
+#attachment-settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#attachment-settings-fields label{display:flex;flex-direction:column;gap:6px}#attachment-catalog{max-height:260px;overflow:auto}
+@media(max-width:600px){#attachment-settings-fields{grid-template-columns:1fr}.attachment-card{flex-wrap:wrap}}

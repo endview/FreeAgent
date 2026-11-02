@@ -172,7 +172,6 @@ func (inv configInvocation) controlPlan(ctx context.Context, dataDir string) (st
 			commands.InheritEnv = inv.Commands.InheritEnv
 		}
 		if visited("git-write") {
-			commands.GitWrite = inv.Commands.GitWrite
 		}
 		if visited("timeout") {
 			commands.TimeoutSecs = inv.Commands.TimeoutSecs

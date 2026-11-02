@@ -81,6 +81,8 @@ func NewTelegramRuntime(tasks *TaskService) *TelegramRuntime {
 		}
 		return strconv.FormatInt(id, 10), err
 	})
+	r.session.download = r.downloadMedia
+	r.session.sendFile = r.sendMedia
 	return r
 }
 func (r *TelegramRuntime) SetDispatch(d ChannelDispatch) { r.session.setDispatch(d) }
@@ -252,7 +254,7 @@ func (r *TelegramRuntime) HandleUpdate(ctx context.Context, u channels.TelegramU
 	if !ok {
 		return nil
 	}
-	event := channelEvent{Target: ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10)}, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: e.ChatKind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10)}
+	event := channelEvent{Target: ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10)}, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: e.ChatKind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo}
 	err := r.session.handle(ctx, event)
 	if e.CallbackID != "" && api != nil {
 		message := "已收到。"

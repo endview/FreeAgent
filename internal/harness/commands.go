@@ -560,7 +560,7 @@ func (tools *CommandTools) sandboxSpec(spec *winlaunch.Spec) error {
 	if access == winlaunch.AccessWrite {
 		for _, root := range roots {
 			spec.ProtectedPaths = append(spec.ProtectedPaths, winlaunch.ProtectedPath{Path: filepath.Join(root, ".freeagent"), Mode: winlaunch.ProtectReadOnly, Create: true, Dir: true})
-			spec.ProtectedPaths = append(spec.ProtectedPaths, gitProtection(root, tools.Config.GitWrite)...)
+			spec.ProtectedPaths = append(spec.ProtectedPaths, gitProtection(root)...)
 		}
 	}
 	return nil
@@ -594,7 +594,7 @@ func (tools *CommandTools) sandboxRoots() []string {
 
 // Git metadata must remain entirely read-only: Git also executes metadata
 // outside hooks/config, including commondir and sequencer instructions.
-func gitProtection(root string, gitWrite bool) []winlaunch.ProtectedPath {
+func gitProtection(root string) []winlaunch.ProtectedPath {
 	gitDir := filepath.Join(root, ".git")
 	_, err := os.Lstat(gitDir)
 	if errors.Is(err, os.ErrNotExist) {

@@ -39,19 +39,20 @@ type Event struct {
 }
 
 type Service struct {
-	commands    *commandSupervisor
-	Store       *Store
-	Model       ModelClient
-	ModelFor    ModelFactory
-	Tools       ToolRunner
-	toolManager *ToolRuntimeManager
-	toolView    *RuntimeToolView
-	toolPolicy  ToolPolicy
-	Config      Config
-	Approve     ApprovalFunc
-	Emit        EventFunc
-	Refresh     func() (Config, error)
-	liveConfig  func() Config
+	inputAttachments []AttachmentRef
+	commands         *commandSupervisor
+	Store            *Store
+	Model            ModelClient
+	ModelFor         ModelFactory
+	Tools            ToolRunner
+	toolManager      *ToolRuntimeManager
+	toolView         *RuntimeToolView
+	toolPolicy       ToolPolicy
+	Config           Config
+	Approve          ApprovalFunc
+	Emit             EventFunc
+	Refresh          func() (Config, error)
+	liveConfig       func() Config
 	// Keys supplies the base URL recorded in each keyed model binding.
 	Keys *KeyStore
 	// A composition may hold the store's exclusive execution lease while
@@ -242,7 +243,7 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 		return "", err
 	}
 	raw, err := json.Marshal(runSnapshot{
-		Config: safetyConfig(config), Tools: service.snapshotToolDefinitions(),
+		Config: safetyConfig(config), Tools: service.snapshotToolDefinitions(), InputAttachments: service.inputAttachments,
 		InstructionsHash: contentHash([]byte(config.instructionText)),
 		Bindings:         bindings, Limits: service.runLimits,
 		Auto: service.autoPolicy, Routing: service.routing,
@@ -397,6 +398,9 @@ func (service *Service) Run(ctx context.Context, conversationID, requestKey, pro
 	if repeated, exists, err := service.Store.repeatedRun(ctx, conversationID, requestKey, prompt); err != nil {
 		return RunResult{}, err
 	} else if exists {
+		if !sameInputAttachments(repeated.ConfigJSON, service.inputAttachments) {
+			return RunResult{}, ErrRequestKey
+		}
 		evidence, err := service.Store.Evidence(ctx, repeated.ID)
 		return RunResult{Run: repeated, Answer: repeated.Output, Duplicate: true, Evidence: evidence}, err
 	}
@@ -800,6 +804,10 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 		request.Purpose != "" && len(request.Tools) != 0 ||
 		binding.Config.Capabilities.Tools == "none" && len(request.Tools) != 0 {
 		return Attempt{}, ModelResponse{}, ErrModelCapability
+	}
+	request, err = service.prepareAttachmentRequest(ctx, run, binding.Config, request)
+	if err != nil {
+		return Attempt{}, ModelResponse{}, err
 	}
 	if err := validateModelRequest(binding.Config, request); err != nil {
 		return Attempt{}, ModelResponse{}, err
@@ -1417,6 +1425,14 @@ func validateResponse(response ModelResponse) error {
 }
 
 func validateModelRequest(config ModelConfig, request ModelRequest) error {
+	if config.Provider == "anthropic" {
+		if err := validateAnthropicImages(request); err != nil {
+			return err
+		}
+	}
+	if err := validateVisionRequest(config.EffectiveCapabilities(), request); err != nil {
+		return err
+	}
 	if request.DenyOperations {
 		if len(request.Tools)+len(request.Memory)+len(request.Extensions) != 0 {
 			return ErrModelCapability

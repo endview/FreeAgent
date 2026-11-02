@@ -19,7 +19,7 @@ while permission reductions still take effect immediately.
 
 Extract the entire ZIP to a writable directory, then double-click
 `FreeAgent.exe`. No console window is opened. The package creates its own
-`data\Harness-v7` store and `workspace\` directory on first start.
+`data\Harness-v8` store and `workspace\` directory on first start.
 
 The desktop app uses Microsoft WebView2 when it is installed. If WebView2 is
 unavailable, it opens the same local Chat in the default browser and shows a
@@ -43,7 +43,7 @@ default, independently of these manual operations.
 
 ## Data And Workspace
 
-The package uses the independent `data\Harness-v7` directory. Old stores,
+The package uses the independent `data\Harness-v8` directory. Old stores,
 backups and configurations are not imported, upgraded or removed. The default
 workspace is `workspace\` beside the desktop executable.
 

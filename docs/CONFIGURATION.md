@@ -380,7 +380,7 @@ memory settings requires no unfinished Run. Chat `/settings memory` offers the
 same finite bounds and enable switch. No scanning or background model work is
 started. The current format is `freeagent-harness-v9`, configuration version
 `9`, backup format `freeagent-harness-backup-v3`, with default data directory
-`os.UserConfigDir()/FreeAgent/Harness-v7`; older formats are rejected. The
+`os.UserConfigDir()/FreeAgent/Harness-v8`; older formats are rejected. The
 current SQLite store format is `freeagent-harness-v9`.
 
 Private entries are explicitly selected per Chat, or supplied as a task override

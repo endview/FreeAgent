@@ -38,7 +38,7 @@ $manifest = Get-Content -LiteralPath (Join-Path $package 'manifest.json') -Raw |
 if ($manifest.signed -or $manifest.installer -or $manifest.bundled_credentials -or $manifest.bundled_user_data) {
     throw 'Unexpected portable release claim or bundled state.'
 }
-if ($manifest.data_format -ne 'Harness-v7') { throw 'Portable manifest has the wrong data format.' }
+if ($manifest.data_format -ne 'Harness-v8') { throw 'Portable manifest has the wrong data format.' }
 $expected = @('SHA256SUMS.txt', 'manifest.json') + @($manifest.files.path)
 $actual = @(Get-ChildItem -LiteralPath $package -File -Recurse | ForEach-Object {
     $_.FullName.Substring($package.Length + 1).Replace('\', '/')
@@ -164,7 +164,7 @@ try {
     $desktopCheck = & (Join-Path $PSScriptRoot 'test-desktop-startup.ps1') -Package $package
     if (-not $desktopCheck.ok) { throw 'Fresh desktop startup regression failed.' }
     $workspace = Join-Path $package 'workspace'
-    $data = [IO.Path]::GetFullPath((Join-Path $package 'data/Harness-v7'))
+    $data = [IO.Path]::GetFullPath((Join-Path $package 'data/Harness-v8'))
     $shown = Invoke-CliJson -Executable $cli -Arguments @('config', 'show', '--data-dir', $data)
     if ($shown.workspace -ne $workspace) { throw 'Desktop init did not select the portable workspace.' }
     if (@($shown.models.PSObject.Properties).Count -ne 0) { throw 'Portable init unexpectedly created a model.' }

@@ -8,6 +8,7 @@ import (
 
 // Evidence projects existing Attempts and delivery receipts, not a new entity.
 type Evidence struct {
+	Attachments  []ToolReceipt `json:"attachments,omitempty"`
 	Files        []ToolReceipt `json:"files,omitempty"`
 	Commands     []ToolReceipt `json:"commands_run,omitempty"`
 	HTTP         []ToolReceipt `json:"http_requests,omitempty"`
@@ -31,7 +32,7 @@ func (store *Store) Evidence(ctx context.Context, runID string) (Evidence, error
 // model Run stays completed even when its channel reply could not be delivered.
 func channelDeliveryNotes(ctx context.Context, reader attemptReader, runID string) ([]string, error) {
 	prefix := "channel/send/" + runID + "/"
-	rows, err := reader.QueryContext(ctx, `SELECT json_extract(value,'$.state'),count(*) FROM meta WHERE key>=? AND key<? GROUP BY json_extract(value,'$.state') LIMIT 16`, prefix, prefix+"\uffff")
+	rows, err := reader.QueryContext(ctx, `SELECT json_extract(value,'$.state'),count(*) FROM meta WHERE (key>=? AND key<?) OR (key>=? AND key<?) GROUP BY json_extract(value,'$.state') LIMIT 16`, prefix, prefix+"\uffff", "channel/file-send/"+runID+"/", "channel/file-send/"+runID+"/\uffff")
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +62,8 @@ func attemptEvidence(attempts []Attempt) Evidence {
 			_ = json.Unmarshal([]byte(attempt.ResponseJSON), &result)
 			for _, receipt := range result.Receipts {
 				switch receipt.Kind {
+				case "attachment":
+					evidence.Attachments = append(evidence.Attachments, receipt)
 				case "file":
 					evidence.Files = append(evidence.Files, receipt)
 					if receipt.Status == "unknown" || receipt.Truncated || receipt.Detail != "" {

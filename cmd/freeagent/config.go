@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,6 +25,7 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
 	var model harness.ModelConfig
+	var visionJSON string
 	modelID := "default"
 	makeDefault := false
 	var keyRef, newDefault, workspace string
@@ -82,6 +84,7 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		flags.StringVar(&model.Model, "model", "", "model name")
 		flags.BoolVar(&removeModel, "remove", false, "remove this model and every reference to it")
 		flags.StringVar(&newDefault, "new-default", "", "new default model when --remove takes the default away")
+		flags.StringVar(&visionJSON, "vision-config", "", "explicit vision limits as JSON; disabled when omitted")
 		flags.StringVar(&model.Capabilities.Protocol, "protocol", "", "chat, responses or local")
 		flags.StringVar(&model.Capabilities.Streaming, "streaming", "", "supported or none; none requests JSON")
 		flags.StringVar(&model.Capabilities.Tools, "tools", "", "supported or none; empty uses the Harness tool contract")
@@ -124,6 +127,11 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	}
 	if flags.NArg() != 0 {
 		return usageErr("config: unexpected arguments")
+	}
+	if visionJSON != "" {
+		if err := json.Unmarshal([]byte(visionJSON), &model.Capabilities.Vision); err != nil {
+			return usageErr("invalid --vision-config JSON")
+		}
 	}
 	resolved, err := dataDirOrError(*dataDir)
 	if err != nil {

@@ -32,10 +32,12 @@ var (
 
 const (
 	applicationID      = 0x46414833
-	storeSchemaVersion = 9
+	storeSchemaVersion = 10
 )
 
 type Store struct {
+	attachmentMu    sync.Mutex
+	replyMu         sync.Mutex
 	dataDir         string
 	db              *sql.DB
 	owner           processFileLock
@@ -508,6 +510,12 @@ func (store *Store) createRun(ctx context.Context, conversationID, requestKey, p
 }
 
 func (store *Store) createRunWithTool(ctx context.Context, conversationID, requestKey, prompt, configJSON string, maintenance bool, call *ToolCall) (Run, bool, error) {
+	store.attachmentMu.Lock()
+	defer store.attachmentMu.Unlock()
+	var input struct{ InputAttachments []AttachmentRef }
+	if json.Unmarshal([]byte(configJSON), &input) != nil {
+		return Run{}, false, ErrStoreFormat
+	}
 	if requestKey == "" || prompt == "" {
 		return Run{}, false, errors.New("harness: request key and prompt are required")
 	}
@@ -518,7 +526,7 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 	defer tx.Rollback()
 	existing, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE conversation_id=? AND request_key=?`, conversationID, requestKey))
 	if err == nil {
-		if existing.Prompt != prompt {
+		if existing.Prompt != prompt || !sameInputAttachments(existing.ConfigJSON, input.InputAttachments) {
 			return Run{}, false, ErrRequestKey
 		}
 		return existing, false, nil
@@ -538,11 +546,22 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 		result.ID, conversationID, requestKey, prompt, configJSON, result.CreatedAt, result.UpdatedAt); err != nil {
 		return Run{}, false, err
 	}
+	if err := bindAttachments(ctx, tx, conversationID, result.ID, input.InputAttachments); err != nil {
+		return Run{}, false, err
+	}
 	if maintenance {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, maintenanceMetaPrefix+result.ID, "compaction"); err != nil {
 			return Run{}, false, err
 		}
 	} else if origin := channelOriginFromJSON(configJSON); origin != nil && origin.InputMessageID > 0 {
+		var original string
+		if err := tx.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE id=? AND conversation_id=?`, origin.InputMessageID, conversationID).Scan(&original); err != nil {
+			return Run{}, false, err
+		}
+		var message ModelMessage
+		if json.Unmarshal([]byte(original), &message) != nil || !slices.Equal(message.Attachments, input.InputAttachments) {
+			return Run{}, false, ErrRequestKey
+		}
 		// Receipt and Run association commit atomically. The received message
 		// already exists; never append a second trigger or execute a duplicate.
 		updated, err := tx.ExecContext(ctx, `UPDATE messages SET run_id=? WHERE id=? AND conversation_id=? AND request_key=? AND run_id IS NULL`,
@@ -554,7 +573,7 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 			return Run{}, false, ErrRequestKey
 		}
 	} else {
-		if err := insertMessage(ctx, tx, result, ModelMessage{Role: "user", Content: prompt, Public: channelOriginFromJSON(configJSON) != nil}); err != nil {
+		if err := insertMessage(ctx, tx, result, ModelMessage{Role: "user", Content: prompt, Attachments: input.InputAttachments, Public: channelOriginFromJSON(configJSON) != nil}); err != nil {
 			return Run{}, false, err
 		}
 	}
@@ -856,7 +875,7 @@ func saveToolTxMode(ctx context.Context, tx *sql.Tx, run Run, attempt Attempt, c
 		return nil, errors.Join(ErrModelBoundary, err)
 	}
 	if addMessage {
-		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "tool", ToolCallID: call.ID, Content: result.Content}); err != nil {
+		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "tool", ToolCallID: call.ID, Content: result.Content, Attachments: result.Attachments}); err != nil {
 			return nil, err
 		}
 	}
@@ -1340,7 +1359,7 @@ func (store *Store) settleControlProposal(ctx context.Context, run Run, attempt 
 	if err := json.Unmarshal([]byte(attempt.RequestJSON), &call); err != nil {
 		return err
 	}
-	if err := insertMessage(ctx, tx, run, ModelMessage{Role: "tool", ToolCallID: call.ID, Content: result.Content}); err != nil {
+	if err := insertMessage(ctx, tx, run, ModelMessage{Role: "tool", ToolCallID: call.ID, Content: result.Content, Attachments: result.Attachments}); err != nil {
 		return err
 	}
 	nextStatus, stopReason := "running", ""
@@ -1390,6 +1409,7 @@ func (store *Store) recover(ctx context.Context) error {
 		}
 	}
 	statements := []string{
+		`UPDATE meta SET value=json_set(value,'$.state','unknown') WHERE (key LIKE 'channel/send/%' OR key LIKE 'channel/file-send/%' OR key LIKE 'channel/reply-file/%') AND json_extract(value,'$.state') IN ('dispatching','creating')`,
 		`UPDATE attempts SET status='unknown', response_json=CASE WHEN response_json='' THEN 'process interrupted after dispatch marker' ELSE response_json END WHERE status='dispatched'`,
 		`UPDATE runs SET status='unknown', stop_reason='unresolved call after restart' WHERE status NOT IN ('abandoned','unknown') AND id IN (SELECT run_id FROM attempts WHERE status='unknown')`,
 		`UPDATE runs SET status='stopped', stop_reason='process interrupted; continue explicitly' WHERE status='running'`,

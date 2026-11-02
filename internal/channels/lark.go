@@ -123,6 +123,7 @@ func (a *LarkAPI) Send(ctx context.Context, chat, reply, text string, buttons []
 // Event is decoded only from the authenticated app websocket; user text never
 // supplies its own principal. Tenant/app scope remains in all external IDs.
 type LarkEvent struct {
+	Media                                                                              []MediaRef
 	App, Tenant, Chat, Person, Message, Kind, Text, Callback, CallbackMessage, ReplyTo string
 	Trigger                                                                            bool
 	CreatedAt                                                                          time.Time
@@ -180,13 +181,32 @@ func DecodeLarkEvent(raw []byte, app, bot string) (LarkEvent, bool) {
 	switch wire.Header.Type {
 	case "im.message.receive_v1":
 		m := wire.Event.Message
-		if m.Type != "text" || wire.Event.Sender.Type != "user" || !validID(wire.Event.Sender.ID.Open) {
+		if (m.Type != "text" && m.Type != "file" && m.Type != "image") || wire.Event.Sender.Type != "user" || !validID(wire.Event.Sender.ID.Open) {
 			return e, false
 		}
 		var content struct {
-			Text string `json:"text"`
+			Text  string `json:"text"`
+			File  string `json:"file_key"`
+			Image string `json:"image_key"`
+			Name  string `json:"file_name"`
 		}
-		if json.Unmarshal([]byte(m.Content), &content) != nil || content.Text == "" || len(content.Text) > 32<<10 {
+		if json.Unmarshal([]byte(m.Content), &content) != nil || len(content.Text) > 32<<10 {
+			return e, false
+		}
+		if m.Type == "file" {
+			if !validID(content.File) {
+				return e, false
+			}
+			e.Media = []MediaRef{{ID: content.File, Name: content.Name}}
+			content.Text = "[附件]"
+		} else if m.Type == "image" {
+			if !validID(content.Image) {
+				return e, false
+			}
+			e.Media = []MediaRef{{ID: content.Image, Name: "image.png", Image: true}}
+			content.Text = "[图片附件]"
+		}
+		if content.Text == "" {
 			return e, false
 		}
 		e.Chat, e.Message, e.Text, e.ReplyTo = m.Chat, m.ID, content.Text, m.Parent

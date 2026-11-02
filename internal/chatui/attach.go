@@ -127,7 +127,7 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			server.fail(writer, err)
 			return true
 		}
-		server.writeJSON(writer, http.StatusOK, map[string]any{"protocol": "freeagent-attach-v1", "data_format": "freeagent-harness-v9",
+		server.writeJSON(writer, http.StatusOK, map[string]any{"protocol": "freeagent-attach-v1", "data_format": "freeagent-harness-v10",
 			"generation": generation, "owner_kind": owner.OwnerKind, "pid": owner.PID, "expires_at": owner.ExpiresAt,
 			"stopping": stopping, "last_seq": seq, "active_chat": active, "active_binding": binding, "active_chats": activeChats, "active_bindings": activeBindings, "foreground_capacity": harness.MaxForegroundRuns, "active_commands": server.tasks.HasCommands(), "control": state, "conversations": conversations})
 		return true

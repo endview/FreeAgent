@@ -114,13 +114,13 @@ func makeCall(id, name string, args any) ToolCall {
 	return ToolCall{ID: id, Name: name, Arguments: raw}
 }
 
-func TestOpenStoreRejectsV4(t *testing.T) {
-	if !strings.HasSuffix(StoreFormat, "-v9") {
+func TestOpenStoreRejectsPreviousFormats(t *testing.T) {
+	if !strings.HasSuffix(StoreFormat, "-v10") {
 		t.Fatalf("store format %q", StoreFormat)
 	}
 	for name, statement := range map[string]string{
 		"user_version": `PRAGMA user_version=4`,
-		"format":       `UPDATE meta SET value='` + strings.Replace(StoreFormat, "v9", "v8", 1) + `' WHERE key='format'`,
+		"format":       `UPDATE meta SET value='` + strings.Replace(StoreFormat, "v10", "v9", 1) + `' WHERE key='format'`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			service, _, _ := testHarness(t, EchoModel{})

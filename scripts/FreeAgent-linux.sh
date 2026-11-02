@@ -11,7 +11,7 @@ fi
 
 case "$1" in
     web|chat)
-        freeagent_data=${FREEAGENT_DATA_DIR-"$freeagent_package/data/Harness-v7"}
+        freeagent_data=${FREEAGENT_DATA_DIR-"$freeagent_package/data/Harness-v8"}
         freeagent_next_data=false
         for freeagent_argument in "$@"; do
             if [ "$freeagent_next_data" = true ]; then

@@ -14,11 +14,12 @@ import (
 )
 
 const (
-	ConfigVersion = 9
-	StoreFormat   = "freeagent-harness-v9"
+	ConfigVersion = 10
+	StoreFormat   = "freeagent-harness-v10"
 )
 
 type Config struct {
+	Attachments      AttachmentPolicy           `json:"attachments"`
 	Server           ServerConfig               `json:"server,omitempty"`
 	Providers        map[string]bool            `json:"providers,omitempty"`
 	Channels         ChannelsConfig             `json:"channels,omitempty"`
@@ -74,8 +75,6 @@ type CommandConfig struct {
 	AllowedExecutables []string             `json:"allowed_executables,omitempty"`
 	Execution          CommandExecutionMode `json:"execution,omitempty"`
 	Rules              []CommandRule        `json:"rules,omitempty"`
-	// Deprecated current-format field. Loading forces false; enabling is rejected.
-	GitWrite bool `json:"git_write"`
 }
 
 type FileAccessPolicy struct {
@@ -151,19 +150,20 @@ type ModelConfig struct {
 // These are local capability declarations, not claims of provider certification.
 // Zero context/output bounds inherit the finite Harness limits.
 type ModelCapabilities struct {
-	Protocol      string `json:"protocol,omitempty"`
-	Streaming     string `json:"streaming,omitempty"`
-	Tools         string `json:"tools,omitempty"`
-	WebSearch     string `json:"web_search,omitempty"`
-	Embeddings    string `json:"embeddings,omitempty"`
-	ParallelTools string `json:"parallel_tools,omitempty"`
-	ContextBytes  int    `json:"context_bytes,omitempty"`
-	OutputTokens  int    `json:"output_tokens,omitempty"`
-	Strength      string `json:"strength,omitempty"`
-	FinishReason  string `json:"finish_reason,omitempty"`
-	Usage         string `json:"usage,omitempty"`
-	ErrorPolicy   string `json:"error_policy,omitempty"`
-	TokenLimit    string `json:"token_limit,omitempty"`
+	Vision        VisionCapabilities `json:"vision,omitempty"`
+	Protocol      string             `json:"protocol,omitempty"`
+	Streaming     string             `json:"streaming,omitempty"`
+	Tools         string             `json:"tools,omitempty"`
+	WebSearch     string             `json:"web_search,omitempty"`
+	Embeddings    string             `json:"embeddings,omitempty"`
+	ParallelTools string             `json:"parallel_tools,omitempty"`
+	ContextBytes  int                `json:"context_bytes,omitempty"`
+	OutputTokens  int                `json:"output_tokens,omitempty"`
+	Strength      string             `json:"strength,omitempty"`
+	FinishReason  string             `json:"finish_reason,omitempty"`
+	Usage         string             `json:"usage,omitempty"`
+	ErrorPolicy   string             `json:"error_policy,omitempty"`
+	TokenLimit    string             `json:"token_limit,omitempty"`
 }
 
 // EffectiveCapabilities makes omitted declarations visible without discovering
@@ -209,6 +209,7 @@ func (model ModelConfig) EffectiveCapabilities() ModelCapabilities {
 func DefaultConfig(workspace string) Config {
 	return Config{
 		Version:         ConfigVersion,
+		Attachments:     DefaultAttachmentPolicy(),
 		Models:          map[string]ModelConfig{},
 		Auto:            AutoConfig{MaxCandidates: 8, MaxAssessments: 1, MaxUpgrades: 1},
 		Collaboration:   DefaultCollaborationSettings(),
@@ -276,7 +277,6 @@ func LoadConfig(dataDir string) (Config, error) {
 	if err := config.Validate(); err != nil {
 		return Config{}, err
 	}
-	config.Commands.GitWrite = false
 	if err := validateComputerRoots(context.Background(), dataDir, config.ComputerRoots); err != nil {
 		return Config{}, err
 	}
@@ -561,6 +561,9 @@ func (config Config) validate(requireWorkspace bool) error {
 		}
 	}
 	if err := config.Channels.validate(); err != nil {
+		return err
+	}
+	if err := config.Attachments.validate(); err != nil {
 		return err
 	}
 	if config.Version != ConfigVersion {
@@ -887,6 +890,9 @@ func SuggestModelID(name string, config Config) string {
 func (config Config) DefaultModelConfig() ModelConfig { return config.Models[config.DefaultModel] }
 
 func (caps ModelCapabilities) validate() error {
+	if err := caps.Vision.validate(); err != nil {
+		return err
+	}
 	if (caps.Protocol != "" && caps.Protocol != "chat" && caps.Protocol != "responses" && caps.Protocol != "local") ||
 		(caps.Streaming != "" && caps.Streaming != "supported" && caps.Streaming != "none") ||
 		(caps.Tools != "" && caps.Tools != "supported" && caps.Tools != "none") ||
@@ -956,6 +962,7 @@ func safetyConfig(config Config) Config {
 	config.Channels = ChannelsConfig{}
 	config.Providers = nil
 	config.Server = ServerConfig{}
+	config.Attachments = AttachmentPolicy{}
 	config.Models, config.DefaultModel, config.DefaultSelection = nil, "", ""
 	config.Auto = AutoConfig{}
 	config.Collaboration = CollaborationSettings{}

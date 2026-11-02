@@ -29,6 +29,7 @@ type ModelBinding struct {
 // Model and limit changes remain bounded data in the existing run snapshot.
 // The first binding is immutable; attempts record the actual dispatched binding.
 type runSnapshot struct {
+	InputAttachments []AttachmentRef   `json:",omitempty"`
 	Channel          *ChannelRunOrigin `json:",omitempty"`
 	Config           Config
 	Tools            []ToolDefinition
@@ -388,6 +389,7 @@ func (service *Service) forRun(run Run) (*Service, error) {
 	copy.bindings, copy.runLimits, copy.autoPolicy, copy.routing =
 		snapshot.Bindings, snapshot.Limits, snapshot.Auto, snapshot.Routing
 	copy.memory = snapshot.Memory
+	copy.inputAttachments = snapshot.InputAttachments
 	copy.permission = snapshot.Permission
 	copy.channel = snapshot.Channel
 	copy.capabilities = snapshot.Capabilities

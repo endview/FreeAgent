@@ -128,8 +128,12 @@ func DecodeQQEvent(raw []byte, app string) (QQEvent, bool) {
 		if !validID(w.D.Group) || !validID(w.D.Author.Member) {
 			return e, false
 		}
-		if strings.HasPrefix(e.Text,"<@!"){if end:=strings.IndexByte(e.Text,'>');end>3&&end<96{e.Text=strings.TrimSpace(e.Text[end+1:])}}
- e.Kind = "group"
+		if strings.HasPrefix(e.Text, "<@!") {
+			if end := strings.IndexByte(e.Text, '>'); end > 3 && end < 96 {
+				e.Text = strings.TrimSpace(e.Text[end+1:])
+			}
+		}
+		e.Kind = "group"
 		e.Chat = "group:" + w.D.Group
 		e.Person = "qq:" + app + ":group:" + w.D.Group + ":" + w.D.Author.Member
 	default:

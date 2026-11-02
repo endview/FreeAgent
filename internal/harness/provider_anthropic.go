@@ -75,6 +75,9 @@ func (client *AnthropicClient) Generate(ctx context.Context, request ModelReques
 	if err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: "cannot encode model request"}
 	}
+	if err := checkVisionWire(body, client.caps); err != nil {
+		return ModelResponse{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "cancelled", Message: "cancelled before model dispatch"}
 	}
@@ -147,13 +150,14 @@ type anthropicMessage struct {
 }
 
 type anthropicBlock struct {
-	Type      string          `json:"type"`
-	Text      string          `json:"text,omitempty"`
-	ID        string          `json:"id,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
-	ToolUseID string          `json:"tool_use_id,omitempty"`
-	Content   string          `json:"content,omitempty"`
+	Source    *anthropicImageSource `json:"source,omitempty"`
+	Type      string                `json:"type"`
+	Text      string                `json:"text,omitempty"`
+	ID        string                `json:"id,omitempty"`
+	Name      string                `json:"name,omitempty"`
+	Input     json.RawMessage       `json:"input,omitempty"`
+	ToolUseID string                `json:"tool_use_id,omitempty"`
+	Content   string                `json:"content,omitempty"`
 }
 
 type anthropicTool struct {
@@ -187,9 +191,14 @@ func anthropicRequestFrom(request ModelRequest, model string, caps ModelCapabili
 				system = append(system, message.Content)
 			}
 		case "user":
+			var blocks []anthropicBlock
 			if message.Content != "" {
-				appendMessage("user", []anthropicBlock{{Type: "text", Text: message.Content}})
+				blocks = append(blocks, anthropicBlock{Type: "text", Text: message.Content})
 			}
+			for _, im := range message.Images {
+				blocks = append(blocks, anthropicBlock{Type: "image", Source: &anthropicImageSource{"base64", im.MIME, im.Base64}})
+			}
+			appendMessage("user", blocks)
 		case "assistant":
 			blocks := make([]anthropicBlock, 0, 1+len(message.ToolCalls))
 			if message.Content != "" {

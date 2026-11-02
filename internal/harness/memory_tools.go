@@ -43,6 +43,7 @@ func (service *Service) runtimeTools(runID, attemptID string) ToolRunner {
 			base = runtime.Acquire().ForCapabilities(*service.capabilities)
 		}
 	}
+	base = attachmentExportTools{base: base, service: service, runID: runID}
 	base = commandInvocationTools{base: base, inv: commandInvocation{service, runID, attemptID}}
 	base = service.extensionToolRunner(base, runID)
 	base = service.skillToolRunner(base)

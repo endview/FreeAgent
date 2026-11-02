@@ -134,14 +134,18 @@ type TelegramEntity struct {
 	Length int    `json:"length"`
 }
 type TelegramMessage struct {
-	ID         int64            `json:"message_id"`
-	Date       int64            `json:"date"`
-	Chat       TelegramChat     `json:"chat"`
-	From       *TelegramUser    `json:"from"`
-	SenderChat *TelegramChat    `json:"sender_chat"`
-	Text       string           `json:"text"`
-	Entities   []TelegramEntity `json:"entities"`
-	ReplyTo    *TelegramMessage `json:"reply_to_message"`
+	Document        *TelegramDocument `json:"document"`
+	Photo           []TelegramPhoto   `json:"photo"`
+	Caption         string            `json:"caption"`
+	CaptionEntities []TelegramEntity  `json:"caption_entities"`
+	ID              int64             `json:"message_id"`
+	Date            int64             `json:"date"`
+	Chat            TelegramChat      `json:"chat"`
+	From            *TelegramUser     `json:"from"`
+	SenderChat      *TelegramChat     `json:"sender_chat"`
+	Text            string            `json:"text"`
+	Entities        []TelegramEntity  `json:"entities"`
+	ReplyTo         *TelegramMessage  `json:"reply_to_message"`
 }
 type TelegramCallback struct {
 	ID      string           `json:"id"`
@@ -276,7 +280,19 @@ func SplitTelegramText(text string) []string {
 	return append(result, text[start:])
 }
 
+type TelegramDocument struct {
+	ID    string `json:"file_id"`
+	Name  string `json:"file_name"`
+	Bytes int64  `json:"file_size"`
+}
+type TelegramPhoto struct {
+	ID    string `json:"file_id"`
+	Bytes int64  `json:"file_size"`
+}
+
 type TelegramEvent struct {
+	Media         []MediaRef
+	ReplyTo       string
 	UpdateID      int64
 	ApplicationID string
 	ChatID        int64
@@ -310,6 +326,23 @@ func TelegramEventFromUpdate(update TelegramUpdate, bot TelegramUser) (TelegramE
 		return event, true
 	}
 	m := update.Message
+	if m != nil && (m.Document != nil || len(m.Photo) > 0) {
+		copy := *m
+		if copy.Text == "" {
+			copy.Text = copy.Caption
+			copy.Entities = copy.CaptionEntities
+		}
+		if copy.Text == "" {
+			copy.Text = "[附件]"
+		}
+		m = &copy
+		if m.Document != nil {
+			event.Media = []MediaRef{{ID: m.Document.ID, Name: m.Document.Name, Bytes: m.Document.Bytes}}
+		} else {
+			photo := m.Photo[len(m.Photo)-1]
+			event.Media = []MediaRef{{ID: photo.ID, Name: "photo.jpg", Bytes: photo.Bytes, Image: true}}
+		}
+	}
 	if m == nil || m.Chat.ID == 0 || m.ID <= 0 || m.Text == "" || len(m.Text) > 32<<10 {
 		return event, false
 	}
@@ -323,6 +356,9 @@ func TelegramEventFromUpdate(update TelegramUpdate, bot TelegramUser) (TelegramE
 	if m.From != nil && m.From.ID > 0 && m.SenderChat == nil {
 		event.PersonID = "telegram:user:" + strconv.FormatInt(m.From.ID, 10)
 		event.DisplayName = strings.TrimSpace(m.From.FirstName + " " + m.From.LastName)
+	}
+	if m.ReplyTo != nil {
+		event.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
 	}
 	event.Triggered = m.Chat.Type == "private"
 	if m.ReplyTo != nil && m.ReplyTo.From != nil && m.ReplyTo.From.ID == bot.ID {

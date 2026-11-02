@@ -89,6 +89,9 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 	if err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: "cannot encode Responses request"}
 	}
+	if err := checkVisionWire(body, client.caps); err != nil {
+		return ModelResponse{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "cancelled", Message: "cancelled before model dispatch"}
 	}
@@ -210,6 +213,13 @@ func responsesInputFromMessages(messages []ModelMessage) (string, []json.RawMess
 		switch message.Role {
 		case "system", "user", "assistant":
 			item := map[string]any{"type": "message", "role": message.Role, "content": message.Content}
+			if len(message.Images) != 0 {
+				blocks := []map[string]any{{"type": "input_text", "text": message.Content}}
+				for _, im := range message.Images {
+					blocks = append(blocks, map[string]any{"type": "input_image", "image_url": imageDataURL(im)})
+				}
+				item["content"] = blocks
+			}
 			if message.Content == "" && len(message.ToolCalls) != 0 {
 				delete(item, "content")
 			}

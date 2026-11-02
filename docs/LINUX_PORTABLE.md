@@ -15,7 +15,7 @@ cd FreeAgent-v7.7.0-dev.1-linux-amd64-portable
 ./FreeAgent
 ```
 
-The first start creates `data/Harness-v7` and `workspace`. Open the printed
+The first start creates `data/Harness-v8` and `workspace`. Open the printed
 `http://127.0.0.1:PORT/#key=...` address in a browser on the same computer.
 Keep that address private. Ctrl+C or SIGTERM stops the Owner and its owned
 commands/services. Closing a browser tab does not stop execution.

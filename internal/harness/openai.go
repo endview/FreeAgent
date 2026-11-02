@@ -90,7 +90,7 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 	}
 	for _, message := range request.Messages {
 		wire.Messages = append(wire.Messages, openAIMessage{
-			Role: message.Role, Content: message.Content, Name: message.Name,
+			Role: message.Role, Content: message.Content, Name: message.Name, Images: message.Images,
 			ToolCallID: message.ToolCallID, ToolCalls: toOpenAIToolCalls(message.ToolCalls),
 		})
 	}
@@ -104,6 +104,9 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: "cannot encode model request"}
 	}
 	key := client.key.secret
+	if err := checkVisionWire(body, client.caps); err != nil {
+		return ModelResponse{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "cancelled", Message: "cancelled before model dispatch"}
 	}
@@ -627,6 +630,7 @@ type openAIUsage struct {
 }
 
 type openAIMessage struct {
+	Images     []ModelImage     `json:"-"`
 	Role       string           `json:"role,omitempty"`
 	Content    string           `json:"content,omitempty"`
 	Name       string           `json:"name,omitempty"`

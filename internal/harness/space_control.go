@@ -2,6 +2,8 @@ package harness
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -75,12 +77,30 @@ func (service *ControlService) spaceControlState(ctx context.Context, personID s
 		}
 		person = &p
 	}
+	attachmentHash := sha256.New()
+	rows, err := service.core.Store.db.QueryContext(ctx, `SELECT key,value FROM meta WHERE key LIKE 'attachment/%' ORDER BY key`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		attachmentHash.Write([]byte(k))
+		attachmentHash.Write([]byte(v))
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
 	return json.Marshal(struct {
 		Spaces        []Space                        `json:"spaces"`
 		Conversations []Conversation                 `json:"conversations"`
 		Permissions   map[string]PermissionSelection `json:"permissions"`
 		Person        *PersonPermission              `json:"person,omitempty"`
-	}{spaces, chats, permissions, person})
+		Attachments   string                         `json:"attachments_revision"`
+	}{spaces, chats, permissions, person, hex.EncodeToString(attachmentHash.Sum(nil))})
 }
 
 func (service *ControlService) buildSpaceControl(ctx context.Context, record *controlRecord) error {
@@ -126,6 +146,20 @@ func (service *ControlService) buildSpaceControl(ctx context.Context, record *co
 			return err
 		}
 		record.Operation.Preview = fmt.Sprintf("Move %q to space %q (%s). Workspace stays the same; future requests use the target permission. External destinations expose the conversation's public text to that chat.", chat.Title, space.Title, space.Source)
+		refs, err := tasks.Attachments(ctx, chat.ID)
+		if err != nil {
+			return err
+		}
+		if len(refs) > 0 {
+			record.Operation.Preview += fmt.Sprintf("\nThis also moves %d attachment references; attachments in published messages become visible to the external destination.", len(refs))
+			for i, info := range refs {
+				if i >= 16 {
+					record.Operation.Preview += "\nAdditional references are bound by the attachment revision."
+					break
+				}
+				record.Operation.Preview += fmt.Sprintf("\n%s %s %s", info.Ref.ID, info.Ref.Name, info.Ref.SHA256)
+			}
+		}
 	case ControlSetSpacePermission:
 		previous, err := tasks.SpacePermission(ctx, args.SpaceID)
 		if err != nil {

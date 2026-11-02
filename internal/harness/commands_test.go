@@ -401,14 +401,13 @@ func TestSandboxSpecScopesRootsAndProtectsGit(t *testing.T) {
 		t.Fatalf("default git protection = %v", modes)
 	}
 
-	commands.Config.GitWrite = true
 	commands.Profile.FileScope = FileScopeWorkspacePlusAllowedRoots
 	_, modes, otherGranted = build()
 	if !otherGranted {
 		t.Fatal("selected roots were not granted to commands")
 	}
 	if modes[".git"] != winlaunch.ProtectReadOnly || modes["hooks"] != "" || modes["config"] != "" {
-		t.Fatalf("deprecated git_write widened protection = %v", modes)
+		t.Fatalf("selected-root policy widened protection = %v", modes)
 	}
 
 	commands.Profile.SandboxMode = SandboxReadOnly

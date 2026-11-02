@@ -17,7 +17,6 @@ type commandPolicyRequest struct {
 	InheritEnvironment bool                         `json:"inherit_environment"`
 	Execution          harness.CommandExecutionMode `json:"execution"`
 	Rules              []harness.CommandRule        `json:"rules"`
-	GitWrite           bool                         `json:"git_write"`
 	Services           *harness.ServicePolicy       `json:"services"`
 	BaseGeneration     string                       `json:"base_generation"`
 }
@@ -77,7 +76,7 @@ func (server *Server) commandPolicyJSON() map[string]any {
 		"enabled": policy.Commands.Enabled, "allowed_executables": policy.Commands.AllowedExecutables,
 		"timeout_seconds": policy.Commands.TimeoutSecs, "max_output_bytes": policy.Commands.MaxOutput, "services": policy.Commands.Services,
 		"inherit_environment": policy.Commands.InheritEnv, "execution": policy.Commands.Execution,
-		"rules": policy.Commands.Rules, "git_write": policy.Commands.GitWrite, "generation": policy.Generation,
+		"rules": policy.Commands.Rules, "generation": policy.Generation,
 	}
 }
 
@@ -101,7 +100,7 @@ func (server *Server) updateCommandPolicy(writer http.ResponseWriter, request *h
 	_, err := server.applyDirectControl(request.Context(), body.BaseGeneration, "", harness.ControlSetCommandPolicy, harness.CommandConfig{
 		Enabled: body.Enabled, AllowedExecutables: body.AllowedExecutables,
 		TimeoutSecs: body.TimeoutSeconds, MaxOutput: body.MaxOutputBytes, InheritEnv: body.InheritEnvironment,
-		Execution: body.Execution, Rules: body.Rules, GitWrite: body.GitWrite,
+		Execution: body.Execution, Rules: body.Rules,
 		Services: services,
 	})
 	if err != nil {
@@ -113,7 +112,7 @@ func (server *Server) updateCommandPolicy(writer http.ResponseWriter, request *h
 		"enabled": policy.Commands.Enabled, "allowed_executables": policy.Commands.AllowedExecutables,
 		"timeout_seconds": policy.Commands.TimeoutSecs, "max_output_bytes": policy.Commands.MaxOutput,
 		"inherit_environment": policy.Commands.InheritEnv, "execution": policy.Commands.Execution,
-		"rules": policy.Commands.Rules, "git_write": policy.Commands.GitWrite, "generation": policy.Generation,
+		"rules": policy.Commands.Rules, "generation": policy.Generation,
 	})
 }
 

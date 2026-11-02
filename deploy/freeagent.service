@@ -14,7 +14,7 @@ StateDirectoryMode=0700
 RuntimeDirectory=freeagent
 RuntimeDirectoryMode=0700
 UMask=0077
-Environment=FREEAGENT_DATA_DIR=/var/lib/freeagent/data/Harness-v7
+Environment=FREEAGENT_DATA_DIR=/var/lib/freeagent/data/Harness-v8
 Environment=FREEAGENT_KEYS_FILE=/var/lib/freeagent/keys.json
 WorkingDirectory=/var/lib/freeagent
 ExecStart=/opt/freeagent/current/bin/freeagent web --service

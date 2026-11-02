@@ -84,7 +84,7 @@ func (tools *FileTools) Definitions() []ToolDefinition {
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"expected_sha256":{"type":"string"}},"required":["path","expected_sha256"],"additionalProperties":false}`)},
 		{Name: "file_batch_edit", Description: "Preview and confirm 1-32 exact file edits or creations together. Edits require hashes; creations require absent targets. Partial results are recorded individually, never rolled back or replayed.", Effect: EffectModify,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"changes":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"object","properties":{"operation":{"type":"string","enum":["edit","create"]},"path":{"type":"string"},"expected_sha256":{"type":"string"},"old_text":{"type":"string"},"new_text":{"type":"string"},"content":{"type":"string"}},"required":["operation","path"],"additionalProperties":false}}},"required":["changes"],"additionalProperties":false}`)},
-	}, patchDefinition())
+	}, patchDefinition(), attachmentExportDefinition())
 }
 
 type fileArguments struct {
@@ -101,6 +101,9 @@ type fileArguments struct {
 func (tools *FileTools) Prepare(ctx context.Context, call ToolCall) (PreparedTool, error) {
 	if err := ctx.Err(); err != nil {
 		return PreparedTool{}, err
+	}
+	if call.Name == "file_export" {
+		return tools.prepareExport(ctx, call)
 	}
 	if call.Name == "apply_patch" {
 		return tools.preparePatch(ctx, call)

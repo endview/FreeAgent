@@ -210,6 +210,8 @@ func (store *Store) SetSpaceMultiConversation(ctx context.Context, spaceID strin
 }
 
 func (store *Store) MoveConversation(ctx context.Context, conversationID, targetSpaceID string) error {
+	store.attachmentMu.Lock()
+	defer store.attachmentMu.Unlock()
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -256,6 +258,9 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 				return err
 			}
 		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=json_set(value,'$.space',?) WHERE key LIKE 'attachment/%' AND json_extract(value,'$.conversation')=?`, targetSpaceID, conversationID); err != nil {
+		return err
 	}
 	if err := refreshSpacePointersTx(ctx, tx, sourceSpace); err != nil {
 		return err
@@ -308,6 +313,8 @@ func refreshSpacePointersTx(ctx context.Context, tx *sql.Tx, spaceID string) err
 }
 
 func (store *Store) DeleteSpace(ctx context.Context, id string) error {
+	store.attachmentMu.Lock()
+	defer store.attachmentMu.Unlock()
 	if id == LocalSpaceID {
 		return ErrLocalSpace
 	}
@@ -336,6 +343,9 @@ func (store *Store) DeleteSpace(ctx context.Context, id string) error {
 	}
 	if activeCommands != 0 {
 		return ErrCommandBusy
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=json_set(value,'$.space',?) WHERE key LIKE 'attachment/%' AND json_extract(value,'$.space')=?`, LocalSpaceID, id); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE conversations SET space_id=?,updated_at=? WHERE space_id=?`, LocalSpaceID, nowText(), id); err != nil {
 		return err
@@ -412,7 +422,19 @@ func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) err
 		for _, entry := range text {
 			key := "channel/publication/" + chat + "/" + strconv.FormatInt(entry.id, 10)
 			source := &ChannelMessageSource{ChannelTarget: target, MessageID: "published-" + strconv.FormatInt(entry.id, 10), Purpose: "published"}
-			public := ModelMessage{Role: entry.message.Role, Content: entry.message.Content, Public: true, Channel: source}
+			refs := append([]AttachmentRef(nil), entry.message.Attachments...)
+			for i := range refs {
+				r, err := loadAttachment(ctx, tx, refs[i].ID)
+				if err != nil || r.Deleted {
+					continue
+				}
+				refs[i].Public = true
+				r.Ref.Public = true
+				if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(r)), attachmentPrefix+refs[i].ID); err != nil {
+					return err
+				}
+			}
+			public := ModelMessage{Role: entry.message.Role, Content: entry.message.Content, Public: true, Channel: source, Attachments: refs}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO messages(conversation_id,run_id,request_key,body_json) VALUES(?,NULL,?,?) ON CONFLICT(request_key) WHERE request_key!='' DO NOTHING`, chat, key, string(mustJSON(public))); err != nil {
 				return err
 			}

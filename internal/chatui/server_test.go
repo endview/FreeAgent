@@ -803,7 +803,7 @@ func TestChatServerStopUnknownAndAbandonDoNotReplay(t *testing.T) {
 	code, _ = ui.request(t, "POST", "/api/chats/"+chat+"/end", map[string]bool{"acknowledge": true})
 	view = ui.settled(t, chat)
 	if code != 200 || !view.Turns[0].Ended || view.Turns[0].State != "unknown" || calls.Load() != 1 {
-		t.Fatal("ending erased uncertainty")
+		t.Fatalf("ending erased uncertainty: HTTP %d turn=%+v model_calls=%d",code,view.Turns[0],calls.Load())
 	}
 }
 

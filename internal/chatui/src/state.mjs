@@ -181,13 +181,13 @@ export function turnSignature(turn = {}) {
     model: turn.model_id || '',
     confirmation: turn.confirmation?.call_id || '',
     messages: (turn.messages || []).map((message) => [
-      message.key || '', String(message.raw ?? '').length, Boolean(message.truncated),
+      message.key || '', String(message.raw ?? '').length, Boolean(message.truncated), message.attachments || [],
     ]),
     activity: (turn.activity || []).map((activity) => [
       activity.key || '', activity.status || '', String(activity.text ?? '').length,
       Boolean(activity.truncated), Boolean(activity.is_error),
     ]),
-    evidence: evidenceCounts,
+    evidence: evidenceCounts, attachments: turn.attachments || [],
     sources: Array.isArray(turn.sources) ? turn.sources.length : 0,
   });
 }

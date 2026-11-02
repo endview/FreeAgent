@@ -598,6 +598,8 @@ func (tasks *TaskService) Control() (*ControlService, error) {
 
 func ControlOperationCatalog() []ControlCatalogEntry {
 	entries := []ControlCatalogEntry{
+		{Kind: ControlSetAttachmentPolicy, ResourceFamily: "config.attachments", Risk: ControlRiskAuthority, Description: "Change bounded attachment input/export/storage limits for future uploads.", ModelProposable: true, Reversible: true},
+		{Kind: ControlDeleteAttachment, ResourceFamily: "attachment", Risk: ControlRiskDestructive, Description: "Permanently remove one exact attachment with its visible-reference impact. Requires its conversation, id and sha256.", ModelProposable: true, Reversible: false},
 		{Kind: ControlSetServerPolicy, ResourceFamily: "config.server", Risk: ControlRiskAuthority, Description: "Set the numeric-loopback listener port (0 chooses an available port). Takes effect after an explicit Owner restart; does not change the OS service user or install a service.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetPermission, ResourceFamily: "config.execution", Risk: ControlRiskAuthority, Description: "Change the default permission mode for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetExecutionProfile, ResourceFamily: "config.execution", Risk: ControlRiskAuthority, Description: "Change the complete bounded execution profile for future Runs.", ModelProposable: true, Reversible: true},
@@ -1701,6 +1703,9 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 		record.Operation.Kind == ControlRestartExtension || record.Operation.Kind == ControlClearExtensionData {
 		return service.applyCapabilityLifecycleLocked(ctx, record)
 	}
+	if record.Operation.Kind == ControlDeleteAttachment {
+		return service.applyAttachmentDelete(ctx, record)
+	}
 	if isSpaceControl(record.Operation.Kind) {
 		return service.applySpaceControl(ctx, record)
 	}
@@ -2023,7 +2028,11 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		record.Arguments = json.RawMessage(`{}`)
 	}
 	config := cloneConfig(service.core.currentConfig())
-	if isSpaceControl(request.Kind) {
+	if request.Kind == ControlDeleteAttachment {
+		if err := service.buildAttachmentDelete(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if isSpaceControl(request.Kind) {
 		if err := service.buildSpaceControl(ctx, &record); err != nil {
 			return controlRecord{}, err
 		}
@@ -2180,6 +2189,8 @@ func buildConfigRecord(record *controlRecord, config *Config, ctx context.Contex
 
 func configControlResource(kind string, raw json.RawMessage) (string, error) {
 	switch kind {
+	case ControlSetAttachmentPolicy:
+		return "config.attachments", nil
 	case ControlSetServerPolicy:
 		return "config.server", nil
 	case ControlSetProviderEnabled:
@@ -2320,6 +2331,10 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		return errors.New("harness: configuration is required")
 	}
 	switch kind {
+	case ControlSetAttachmentPolicy:
+		if err := decodeControlJSON(raw, &config.Attachments); err != nil {
+			return err
+		}
 	case ControlSetServerPolicy:
 		if err := decodeControlJSON(raw, &config.Server); err != nil {
 			return err
@@ -2456,9 +2471,6 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		var args CommandConfig
 		if err := decodeControlJSON(raw, &args); err != nil {
 			return err
-		}
-		if args.GitWrite {
-			return errors.New("harness: git_write was disabled; Git metadata is read-only in a sandbox")
 		}
 		config.Commands = args
 		tools := effectiveBuiltinToolSettings(*config)
@@ -2765,6 +2777,8 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 
 func configResourceValue(config Config, resource string) any {
 	switch resource {
+	case "config.attachments":
+		return config.Attachments.effective()
 	case "config.server":
 		return config.Server
 	case "config.providers":
@@ -2837,6 +2851,10 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 	switch resource {
 	case "config.providers":
 		if err := json.Unmarshal(raw, &config.Providers); err != nil {
+			return err
+		}
+	case "config.attachments":
+		if err := json.Unmarshal(raw, &config.Attachments); err != nil {
 			return err
 		}
 	case "config.server":

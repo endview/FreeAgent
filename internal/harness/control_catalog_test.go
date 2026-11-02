@@ -47,7 +47,7 @@ func TestControlCatalogCoversPersistentConfigFields(t *testing.T) {
 		"tools": "config.tools", "commands": "config.commands", "execution": "config.execution",
 		"computer_files": "config.execution", "computer_roots": "config.execution", "http": "config.http",
 		"collaboration": "config.collaboration", "memory": "config.memory",
-		"channels": "config.channels", "providers": "config.providers", "server": "config.server",
+		"channels": "config.channels", "providers": "config.providers", "server": "config.server", "attachments": "config.attachments",
 	}
 	typ := reflect.TypeOf(Config{})
 	for index := 0; index < typ.NumField(); index++ {

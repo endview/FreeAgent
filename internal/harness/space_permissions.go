@@ -262,7 +262,7 @@ func publicMessages(messages []Message) []Message {
 		if item.Content == "" {
 			continue
 		}
-		item.ModelMessage = ModelMessage{Role: item.Role, Content: item.Content, Channel: item.Channel, Public: item.Public}
+		item.ModelMessage = ModelMessage{Role: item.Role, Content: item.Content, Channel: item.Channel, Public: item.Public, Attachments: item.Attachments}
 		result = append(result, item)
 	}
 	return result

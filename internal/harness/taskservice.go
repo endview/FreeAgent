@@ -757,6 +757,7 @@ func (tasks *TaskService) Cancel() bool {
 }
 
 type RunOptions struct {
+	Attachments       []string `json:"attachments,omitempty"`
 	channel           *ChannelRunOrigin
 	personID          string
 	SpaceID           string                 `json:"space_id,omitempty"`
@@ -798,6 +799,11 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 		conversationID = chat.ID
 	}
 	return tasks.execute(ctx, conversationID, func(ctx context.Context, core *Service) (RunResult, error) {
+		refs, err := tasks.resolveAttachments(ctx, conversationID, options.Attachments)
+		if err != nil {
+			return RunResult{}, err
+		}
+		core.inputAttachments = refs
 		core.selection = options.ModelID
 		if err := core.validate(ctx); err != nil {
 			return RunResult{}, err
@@ -842,6 +848,9 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 			if err := settings.validate(core.Config, core.Tools); err != nil {
 				return RunResult{}, err
 			}
+		}
+		if len(core.inputAttachments) != 0 && settings.Mode != "off" {
+			return RunResult{}, errors.New("harness: attachments currently require single-agent execution; select collaboration off before submitting")
 		}
 		if settings.Mode == "ask" || settings.Mode == "auto" {
 			modelID := options.ModelID

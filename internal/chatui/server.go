@@ -31,30 +31,31 @@ type Stream struct {
 
 // Server owns only transport state; TaskService owns execution and persistence.
 type Server struct {
-	tasks         *harness.TaskService
-	origin        string
-	host          string
-	token         string
-	attachToken   string
-	ctx           context.Context
-	cancel        context.CancelFunc
-	mu            sync.Mutex
-	running       map[string]*ownerExecution
-	deliveries    []func(context.Context, harness.RunResult) error
-	stopping      bool
-	closed        bool
-	streams       map[string]Stream
-	listeners     map[chan []byte]bool
-	generation    string
-	eventSeq      uint64
-	eventLog      []harness.Event
-	wg            sync.WaitGroup
-	stopRequested chan struct{}
-	stopOnce      sync.Once
-	ownerInfo     handoff.EngineInfo
-	telegram      *harness.TelegramRuntime
-	lark, qq      *harness.AppChannelRuntime
-	channelConfig harness.ChannelsConfig
+	attachmentSlots chan struct{}
+	tasks           *harness.TaskService
+	origin          string
+	host            string
+	token           string
+	attachToken     string
+	ctx             context.Context
+	cancel          context.CancelFunc
+	mu              sync.Mutex
+	running         map[string]*ownerExecution
+	deliveries      []func(context.Context, harness.RunResult) error
+	stopping        bool
+	closed          bool
+	streams         map[string]Stream
+	listeners       map[chan []byte]bool
+	generation      string
+	eventSeq        uint64
+	eventLog        []harness.Event
+	wg              sync.WaitGroup
+	stopRequested   chan struct{}
+	stopOnce        sync.Once
+	ownerInfo       handoff.EngineInfo
+	telegram        *harness.TelegramRuntime
+	lark, qq        *harness.AppChannelRuntime
+	channelConfig   harness.ChannelsConfig
 }
 
 func NewToken() string {
@@ -84,7 +85,7 @@ func newServer(ctx context.Context, tasks *harness.TaskService, origin, token, a
 		return nil, errors.New("chat: only numeric loopback listeners are supported")
 	}
 	lifetime, cancel := context.WithCancel(ctx)
-	server := &Server{tasks: tasks, origin: origin, host: address.Host, token: token, attachToken: attachToken,
+	server := &Server{attachmentSlots: make(chan struct{}, 4), tasks: tasks, origin: origin, host: address.Host, token: token, attachToken: attachToken,
 		ctx: lifetime, cancel: cancel, streams: map[string]Stream{}, listeners: map[chan []byte]bool{},
 		stopRequested: make(chan struct{}), running: make(map[string]*ownerExecution)}
 	server.generation = NewToken()
@@ -223,7 +224,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("Cache-Control", "no-store")
-	header.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+	header.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 	if !validLocalHost(request.Host) || request.Header.Get("Origin") != "" && request.Header.Get("Origin") != "http://"+request.Host ||
 		request.Header.Get("Sec-Fetch-Site") == "cross-site" {
 		server.writeError(writer, http.StatusForbidden, "origin", "请从本地 Chat 地址打开页面。")
@@ -317,8 +318,11 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			"providers":        config.Providers,
 			"permission_modes": []harness.PermissionMode{harness.PermissionNone, harness.PermissionAsk, harness.PermissionWorkspace, harness.PermissionFull},
 			"capabilities":     server.tasks.CapabilityCatalog(),
-			"max_prompt_bytes": config.MaxContextBytes,
+			"max_prompt_bytes": config.MaxContextBytes, "attachments": config.Attachments,
 		})
+		return
+	}
+	if server.attachmentsAPI(writer, request) {
 		return
 	}
 	if server.mcpAPI(writer, request) {
@@ -617,6 +621,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			Permission        harness.PermissionMode       `json:"permission"`
 			ConfirmFullAccess bool                         `json:"confirm_full_access"`
 			Capabilities      *harness.CapabilitySelection `json:"capabilities,omitempty"`
+			Attachments       []string                     `json:"attachments,omitempty"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return
@@ -650,7 +655,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			off.Mode = "off"
 			return server.tasks.SubmitWithOptions(ctx, chat, body.RequestKey, body.Prompt, harness.RunOptions{
 				Collaboration: &off, Permission: body.Permission, ConfirmFullAccess: body.ConfirmFullAccess,
-				Capabilities: body.Capabilities,
+				Capabilities: body.Capabilities, Attachments: body.Attachments,
 			})
 		})
 	case "stop":

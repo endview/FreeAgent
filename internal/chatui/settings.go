@@ -36,7 +36,6 @@ type settingsCommandPatch struct {
 	TimeoutSeconds     int                          `json:"timeout_seconds"`
 	MaxOutputBytes     int                          `json:"max_output_bytes"`
 	InheritEnvironment *bool                        `json:"inherit_environment"`
-	GitWrite           *bool                        `json:"git_write"`
 	Services           *harness.ServicePolicy       `json:"services"`
 }
 
@@ -92,7 +91,7 @@ func (server *Server) settingsProjection() map[string]any {
 			"sandbox_backend":   winlaunch.SandboxBackend(),
 			"rules":             command.Rules, "allowed_executables": command.AllowedExecutables,
 			"timeout_seconds": command.TimeoutSecs, "max_output_bytes": command.MaxOutput, "services": command.Services,
-			"inherit_environment": command.InheritEnv, "git_write": command.GitWrite,
+			"inherit_environment": command.InheritEnv,
 		},
 		"network": map[string]any{"enabled": tools.Network && config.HTTP.Enabled, "allowed_origins": config.HTTP.AllowedOrigins,
 			"mode": config.Execution.NetworkPolicy.Mode, "allowed_domains": config.Execution.NetworkPolicy.AllowedDomains},
@@ -294,9 +293,6 @@ func (server *Server) patchSettingsCommand(writer http.ResponseWriter, request *
 	}
 	if body.InheritEnvironment != nil {
 		commands.InheritEnv = *body.InheritEnvironment
-	}
-	if body.GitWrite != nil {
-		commands.GitWrite = *body.GitWrite
 	}
 	_, err := server.applyDirectControl(request.Context(), body.ExpectedRevision, "", harness.ControlSetCommandPolicy, commands)
 	if err != nil {

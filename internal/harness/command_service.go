@@ -130,10 +130,9 @@ func (tools *CommandTools) executionIdentity(args *commandArguments) (string, er
 	profile := tools.Profile
 	profile.Generation = ""
 	return contentHash(mustJSON(struct {
-		Profile  ExecutionProfile
-		GitWrite bool
-		Roots    []string
-	}{profile, tools.Config.GitWrite, roots})), nil
+		Profile ExecutionProfile
+		Roots   []string
+	}{profile, roots})), nil
 }
 
 type CommandExtension struct {

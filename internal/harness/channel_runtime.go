@@ -19,6 +19,8 @@ type ChannelDispatch func(string, func(context.Context) (RunResult, error)) erro
 type channelButton struct{ Text, Token string }
 type channelSend func(context.Context, ChannelTarget, string, string, []channelButton) (string, error)
 type channelEvent struct {
+	Media                             []channels.MediaRef
+	ReplyTo                           string
 	Target                            ChannelTarget
 	Person, Name, Message, Kind, Text string
 	Trigger                           bool
@@ -35,6 +37,8 @@ type channelApproval struct {
 // channelSession contains only volatile transport capabilities. All durable
 // authority, messages and execution receipts live in the existing Harness.
 type channelSession struct {
+	download            func(context.Context, channelEvent, channels.MediaRef, int64) ([]byte, error)
+	sendFile            func(context.Context, ChannelTarget, string, AttachmentRef, []byte) (string, error)
 	tasks               *TaskService
 	mu                  sync.Mutex
 	pair                telegramPair
@@ -197,14 +201,21 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 	if strings.HasPrefix(cmd, "/") && e.Trigger {
 		purpose = "command"
 	}
-	received, err := s.tasks.ReceiveChannelText(ctx, ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: purpose}, e.Text)
+	received, err := s.tasks.ReceiveChannelText(ctx, ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: purpose, Media: e.Media}, e.Text)
 	if err != nil || received.Duplicate || !e.Trigger {
 		return err
 	}
 	if purpose == "command" {
 		return s.command(ctx, e, space, received.ConversationID, cmd, words[1:])
 	}
-	return s.launch(ctx, e, received.ConversationID, func(ctx context.Context) (RunResult, error) { return s.tasks.SubmitChannel(ctx, received) })
+	if len(e.Media) > 0 {
+		if err := s.receiveFiles(ctx, e, &received); err != nil {
+			return s.plain(ctx, e, "附件未交给模型："+safeError(err)+"。未自动重试。")
+		}
+	}
+	return s.launch(ctx, e, received.ConversationID, func(ctx context.Context) (RunResult, error) {
+		return s.tasks.SubmitChannel(WithAttachmentIdentity(ctx, "channel:"+e.Person), received)
+	})
 }
 func (s *channelSession) launch(ctx context.Context, e channelEvent, chat string, call func(context.Context) (RunResult, error)) error {
 	call = s.withFeedback(e, call)
@@ -250,10 +261,12 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 	}
 	effective := lowerPermission(sp.Mode, person.Mode)
 	switch cmd {
+	case "/save-reply":
+		return s.saveReplyFile(ctx, e, chat)
 	case "/mode":
 		return s.plain(ctx, e, fmt.Sprintf("空间=%s，人员=%s，有效权限=%s（只读；请在本机调整）。", sp.Mode, person.Mode, effective))
 	case "/help", "/start":
-		return s.plain(ctx, e, "/mode /status /stop /continue /abandon /compact；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
+		return s.plain(ctx, e, "/mode /status /stop /continue /abandon /compact /save-reply；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
 	case "/status":
 		run, err := s.tasks.Latest(ctx, chat)
 		if err != nil {
@@ -442,7 +455,7 @@ func (s *channelSession) button(item channelApproval) (string, error) {
 	s.callbacks[token] = item
 	return token, nil
 }
-func (s *channelSession) Deliver(ctx context.Context, result RunResult) error {
+func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnErr error) {
 	defer s.notifyBusy(ctx)
 	run, origin, err := s.tasks.ChannelRun(ctx, result.Run.ID)
 	if err != nil {
@@ -456,6 +469,9 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) error {
 	s.mu.Unlock()
 	if !s.matchesApp(application, origin.ApplicationID) {
 		return nil
+	}
+	if run.Status != "waiting_confirmation" {
+		defer func() { returnErr = errors.Join(returnErr, s.deliverFiles(ctx, run, *origin)) }()
 	}
 	text := strings.TrimSpace(result.Answer)
 	var buttons []channelButton
