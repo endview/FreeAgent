@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ func TestCollaborationCrashHelper(t *testing.T) {
 	}
 	tasks, closeAll, err := OpenTasks(context.Background(), os.Getenv("DATA"), Adapters{Model: modelFunc(readingChild)})
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "collaboration crash fixture:", err)
 		os.Exit(2)
 	}
 	defer closeAll()
@@ -48,7 +50,10 @@ func TestCollaborationActualKillKeepsParentBudgetAndKnownResults(t *testing.T) {
 				t.Fatal(err)
 			}
 			command := exec.Command(executable, "-test.run=^TestCollaborationCrashHelper$")
-			command.Env, _, err = mcpEnvironment(MCPServerConfig{Env: map[string]string{"HARNESS_COLLAB_CRASH": "1", "DATA": data, "PARENT": id, "PHASE": phase}}, nil)
+			command.Env, _, err = mcpEnvironment(MCPServerConfig{Env: map[string]string{
+				"HARNESS_COLLAB_CRASH": "1", "DATA": data, "PARENT": id, "PHASE": phase,
+				"APPDATA": filepath.Join(data, "user-config"), "LOCALAPPDATA": filepath.Join(data, "user-cache"), "HOME": data,
+			}}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
