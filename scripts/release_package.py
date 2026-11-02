@@ -27,7 +27,7 @@ def git(*args):
     return subprocess.check_output(['git', *args], cwd=ROOT).decode().strip()
 
 
-def build(target, go, output):
+def build(target, go, output, allow_dirty=False):
     version = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
     if not re.fullmatch(r'v\d+\.\d+\.\d+[A-Za-z0-9.+-]*', version):
         raise SystemExit('Invalid VERSION')
@@ -44,6 +44,8 @@ def build(target, go, output):
     commit = git('rev-parse', 'HEAD')
     epoch = int(git('show', '-s', '--format=%ct', 'HEAD'))
     dirty = bool(git('status', '--porcelain=v1'))
+    if dirty and not allow_dirty:
+        raise SystemExit('Release builds require a clean checkout; --allow-dirty is for marked development packages only')
     build_version = version + ('+dirty' if dirty else '')
     name = f'FreeAgent-{version}-{target}-portable'
     package = output / 'staging' / name
@@ -88,7 +90,7 @@ def build(target, go, output):
         'go_version':go_version, 'build_info': f'freeagent version={build_version} commit={commit} target={goos}/{arch}',
         'source_base_commit':commit, 'source_dirty':dirty,
         'source_digest_sha256':hashlib.sha256(source_text.encode()).hexdigest(),
-        'source_file_count':len(records), 'built_at_utc':datetime.fromtimestamp(epoch,timezone.utc).isoformat(),
+        'source_file_count':len(records), 'archive_reference_utc':datetime.fromtimestamp(epoch,timezone.utc).isoformat(),
         'signed':False,'installer':False,'data_format':'Harness-v8',
         'entry':'FreeAgent.exe' if goos=='windows' else 'FreeAgent',
         'native_desktop':goos=='windows', 'interfaces':['cli','loopback_web'],
@@ -124,15 +126,17 @@ def build(target, go, output):
                     else:item.size=path.stat().st_size;tar.addfile(item,io.BytesIO(path.read_bytes()))
     checksum=digest(archive)
     (output / 'SHA256SUMS.txt').write_bytes(f'{checksum}  {archive.name}\n'.encode())
-    print(json.dumps({'archive':str(archive),'sha256':checksum,'source_dirty':dirty,'signed':False,'target':target},indent=2))
+    print(json.dumps({'archive':str(archive),'sha256':checksum,'source_dirty':dirty,'signed':False,'target':target,
+        'built_at_utc':datetime.now(timezone.utc).isoformat()},indent=2))
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--target',required=True,choices=['windows-amd64','linux-amd64'])
     parser.add_argument('--go',default='go'); parser.add_argument('--output-directory',required=True)
+    parser.add_argument('--allow-dirty',action='store_true',help='Build a marked development package from an uncommitted checkout')
     args=parser.parse_args()
-    build(args.target,args.go,args.output_directory)
+    build(args.target,args.go,args.output_directory,args.allow_dirty)
 
 
 if __name__=='__main__':main()

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import signal
 import sqlite3
 import subprocess
 import threading
@@ -35,16 +36,41 @@ def main():
     parser.add_argument('--state',required=True)
     parser.add_argument('--output',required=True)
     parser.add_argument('--soak-seconds',type=int,default=0)
+    parser.add_argument('--functional-evidence',type=Path,
+        help='Reuse a successful functional report for this exact service and run only a new complete soak')
     args=parser.parse_args()
     require(os.geteuid()==0,'Use the administrator for this isolated service acceptance')
     require(re.fullmatch(r'freeagent[a-z0-9_-]*',args.unit),'Invalid validation unit')
     require(args.soak_seconds==0 or args.soak_seconds>=28800,'An eight-hour soak requires at least 28800 actual seconds')
+    require(not args.functional_evidence or args.soak_seconds,'Functional evidence requires a new soak')
     state=Path(args.state).resolve();require(state==Path('/var/lib')/args.unit,'State must belong to this validation unit')
     config=json.loads(next((state/'data').glob('*/config.json')).read_text())
     data=next((state/'data').glob('*/config.json')).parent
-    workspace=Path(config['workspace'])
     output=Path(args.output);output.parent.mkdir(parents=True,exist_ok=True)
-    result={'unit':args.unit,'data_dir':str(data),'checks':{},'real_provider':'NOT_RUN','real_channels':'NOT_RUN'}
+    result={'unit':args.unit,'data_dir':str(data),'checks':{},'real_provider':'NOT_RUN','real_channels':'NOT_RUN',
+        'functional':'RUNNING','soak':'NOT_RUN','samples':[]}
+    def save():
+        temp=output.with_suffix('.tmp');temp.write_text(json.dumps({k:v for k,v in result.items() if not k.startswith('_')},indent=2)+'\n');temp.replace(output)
+    def interrupted(signum,unused):
+        raise RuntimeError('Acceptance interrupted by signal '+str(signum))
+    signal.signal(signal.SIGTERM,interrupted)
+    save()
+    try:
+        run_acceptance(args,state,data,config,result,save)
+    except BaseException as error:
+        if result['functional']=='RUNNING':result['functional']='FAIL'
+        if result['soak']=='RUNNING':
+            result['soak']='FAIL'
+            result['actual_seconds']=round(time.monotonic()-result['_soak_monotonic'],3)
+        result['failure']=type(error).__name__+': '+str(error)
+        result['completed_utc']=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+        save()
+        raise
+    print(json.dumps({k:v for k,v in result.items() if k!='samples' and not k.startswith('_')}))
+
+
+def run_acceptance(args,state,data,config,result,save):
+    workspace=Path(config['workspace'])
     def cli(*arguments,input_text='y\n',accepted=(0,),timeout=40):
         p=subprocess.run([args.manager,*arguments],input=input_text,capture_output=True,text=True,timeout=timeout)
         if p.returncode not in accepted:
@@ -68,6 +94,50 @@ def main():
         request=urllib.request.Request(info['origin']+path,data=raw,headers=headers,method=method)
         with urllib.request.urlopen(request,timeout=10) as response:return json.load(response)
     def policy(kind,arguments):return cli('control','plan','--kind',kind,'--arguments',json.dumps(arguments),'--json')
+    def soak():
+        if not args.soak_seconds:return
+        result.update(soak='RUNNING',_soak_monotonic=time.monotonic())
+        save()
+        # Dedicated conversations and a finite, explicit context limit keep this
+        # lifecycle check independent of the functional fixture's tool history.
+        prior=json.loads((data/'config.json').read_text())['max_messages']
+        policy('runtime.set_limits',{'max_messages':256})
+        try:
+            cli('config','model','--id','echo','--provider','echo','--default')
+            chats=[cli('run','--json','soak initialization '+str(i))['run']['conversation_id'] for i in range(2)]
+            started=time.monotonic();deadline=started+args.soak_seconds;iteration=0
+            result.update(soak='RUNNING',samples=[],actual_seconds=0,
+                soak_started_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
+                soak_conversations=chats,_soak_monotonic=started)
+            save()
+            while time.monotonic()<deadline:
+                if iteration%5==0:
+                    chat=chats[(iteration//5)%2]
+                    answer=cli('run','--session',chat,'--request','soak-'+str(iteration),'--json','soak '+str(iteration))
+                    require(answer['run']['status']=='completed','Soak chat failed')
+                metrics=subprocess.check_output(['systemctl','show',args.unit,'-p','MemoryCurrent','-p','CPUUsageNSec','-p','NRestarts'],text=True)
+                require(subprocess.run(['systemctl','is-active','--quiet',args.unit]).returncode==0,'Soak service stopped')
+                require(owner(),'Soak Owner did not respond')
+                result['samples'].append({'elapsed_seconds':round(time.monotonic()-started,3),'metrics':metrics.strip()})
+                result['actual_seconds']=round(time.monotonic()-started,3);save();iteration+=1
+                time.sleep(min(60,max(0,deadline-time.monotonic())))
+            result['actual_seconds']=round(time.monotonic()-started,3)
+            require(result['actual_seconds']>=args.soak_seconds,'Soak duration was not reached')
+        finally:
+            # Cleanup is part of acceptance; a failed cleanup must not leave PASS.
+            policy('runtime.set_limits',{'max_messages':prior})
+        result['soak']='PASS'
+    if args.functional_evidence:
+        previous=json.loads(args.functional_evidence.read_text())
+        require(previous.get('functional')=='PASS' and previous.get('unit')==args.unit and previous.get('data_dir')==str(data),
+            'Functional evidence does not match this successful service validation')
+        result['functional']='PASS';result['checks']=previous['checks']
+        result['functional_evidence']=str(args.functional_evidence)
+        wait_for(owner,'Service Owner did not become ready')
+        result['owner_mode']=cli('owner','status')['mode']
+        soak()
+        result['completed_utc']=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime());save()
+        return
     wait_for(owner,'Service Owner did not become ready')
     require(cli('owner','status')['mode']=='service','Owner does not report service mode')
     rootenv={**os.environ,'FREEAGENT_DATA_DIR':str(data),'FREEAGENT_KEYS_FILE':str(state/'keys.json')}
@@ -154,8 +224,6 @@ def main():
 
     # A short real service expiry is part of the soak; no accelerated clock.
     finite={'command':'/usr/bin/dash','args':['-c','printf READY; while true; do sleep .1; done'],'cwd':'.','mode':'service','duration_seconds':2,'ready_text':'READY','ready_timeout_seconds':1}
-    started=time.monotonic()
-    wall_started=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
     service=cli('commands','start','--session',chats[0],'--arguments',json.dumps(finite),'--interactive','--json')
     finite_id=json.loads(service['answer'])['id']
     wait_for(lambda:cli('commands','poll','--id',finite_id,'--json')['state'] not in ('running','starting','stopping'),'Finite service did not expire',8)
@@ -167,27 +235,10 @@ def main():
     journal=subprocess.check_output(['journalctl','-u',args.unit,'--no-pager','-o','cat'],text=True)
     require('#key=' not in journal and wait_for(owner,'Owner unavailable')[1] not in journal,'Service journal contains a local capability')
     result['checks']['journal_without_launch_capability']=True
-    result['functional']='PASS';result['soak']='RUNNING' if args.soak_seconds else 'NOT_RUN';result['samples']=[]
-    result['soak_started_utc']=wall_started
-    deadline=started+args.soak_seconds;iteration=0
-    def save():
-        temp=output.with_suffix('.tmp');temp.write_text(json.dumps(result,indent=2)+'\n');temp.replace(output)
+    result['functional']='PASS'
     save()
-    while args.soak_seconds and time.monotonic()<deadline:
-        if iteration%5==0:
-            chat=chats[(iteration//5)%2]
-            answer=cli('run','--session',chat,'--request','soak-'+str(iteration),'--json','soak '+str(iteration))
-            require(answer['run']['status']=='completed','Soak chat failed')
-        metrics=subprocess.check_output(['systemctl','show',args.unit,'-p','MemoryCurrent','-p','CPUUsageNSec','-p','NRestarts'],text=True)
-        result['samples'].append({'elapsed_seconds':round(time.monotonic()-started,3),'metrics':metrics.strip()})
-        result['actual_seconds']=round(time.monotonic()-started,3);save();iteration+=1
-        time.sleep(min(60,max(0,deadline-time.monotonic())))
-    if args.soak_seconds:
-        result['actual_seconds']=round(time.monotonic()-started,3)
-        require(result['actual_seconds']>=args.soak_seconds,'Soak duration was not reached')
-        result['soak']='PASS'
+    soak()
     result['completed_utc']=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime());save()
-    print(json.dumps({k:v for k,v in result.items() if k!='samples'}))
 
 
 if __name__=='__main__':main()

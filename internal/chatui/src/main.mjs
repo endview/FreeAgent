@@ -25,7 +25,7 @@ import { spaceChatGroups, spaceSelection, publicationMessage } from './spaces.mj
 import { commandRows, commandOutput, remainingSeconds, directCommandText } from './command-sessions.mjs';
 import { eventStream } from './events.mjs';
 import { inputAccept, attachmentDraft, uploadProblem, attachmentCards } from './attachments.mjs';
-import { apiPath, authHeaders, publicSession, publicSecuritySwitches, publicSecurityNumbers } from './public-auth.mjs';
+import { apiPath, authHeaders, publicSession, loginPublicPassword, publicSecuritySwitches, publicSecurityNumbers } from './public-auth.mjs';
 
 const icons = { Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Play, X,
   ChevronDown, ChevronRight, Copy, Eye, PencilLine, Check, Settings2, RefreshCw,
@@ -99,7 +99,7 @@ app.innerHTML = `
       <div class="list-label">空间与对话<button type="button" class="icon" data-action="spaces-open" aria-label="管理空间" title="管理空间">${icon('folder-plus')}</button></div>
       <label class="chat-search"><span class="sr-only">搜索会话</span>${icon('search')}<input id="chat-search" type="search" placeholder="搜索会话" autocomplete="off"></label>
       <nav id="chats" aria-label="最近对话"></nav>
-      <div class="environment"><span class="workspace-label">工作区</span><button id="workspace-change" class="icon" title="更换工作区" aria-label="更换工作区">${icon('folder-open')}</button><span id="workspace-path"></span><span class="local-label">本地</span></div>
+      <div class="environment"><span class="workspace-label">工作区</span><button id="workspace-change" class="icon" title="更换工作区" aria-label="更换工作区">${icon('folder-open')}</button><span id="workspace-path"></span><span class="local-label">${publicMode ? '远程 · HTTPS' : '本地'}</span></div>
       <div class="sidebar-bottom">${button('key-round', 'Key 管理', 'keys')}${button('blocks', '能力管理', 'capabilities')}${button('settings-2', '设置', 'settings')}${publicMode ? button('x', '退出登录', 'public-logout') : ''}</div>
     </aside>
     <div class="layout-resizer sidebar-resizer" data-layout-resizer="sidebar" role="separator" aria-orientation="vertical" aria-label="调整会话列表宽度" tabindex="0"></div>
@@ -332,9 +332,7 @@ async function loginPublic(force = false) {
       form.onsubmit = async event => {
         event.preventDefault(); const password = input.value; input.value = ''; form.querySelector('button').disabled = true;
         try {
-          const response = await fetch('/api/public/login', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
-          const info = await response.json();
-          if (!response.ok) throw new Error(info.error || '登录失败。');
+          const info = await loginPublicPassword(password);
           publicCSRF = info.csrf; force = false; state.approval = null; state.approvalControl = null;
           notice.textContent = ''; dialog.close(); app.hidden = false; resolve();
         } catch (failure) {

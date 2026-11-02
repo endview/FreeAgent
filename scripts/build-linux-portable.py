@@ -5,5 +5,6 @@ from release_package import build
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--go', default='go')
 parser.add_argument('--output-directory', required=True)
+parser.add_argument('--allow-dirty', action='store_true')
 args = parser.parse_args()
-build('linux-amd64', args.go, args.output_directory)
+build('linux-amd64', args.go, args.output_directory, args.allow_dirty)

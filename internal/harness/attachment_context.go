@@ -105,7 +105,12 @@ func (service *Service) prepareAttachmentRequest(ctx context.Context, run Run, m
 			}
 			encoded := base64.StdEncoding.EncodedLen(int(ref.Bytes))
 			supported := vision.Enabled && (ref.MIME == "image/png" && vision.PNG || ref.MIME == "image/jpeg" && vision.JPEG) && encoded <= vision.MaxImageBytes && ref.Width <= vision.MaxSide && ref.Height <= vision.MaxSide
-			fits := supported && count < vision.MaxImages && total+encoded <= vision.MaxRequestBytes
+			imageLimit := vision.MaxImages
+			largeAnthropic := model.Provider == "anthropic" && (ref.Width > 2000 || ref.Height > 2000)
+			if largeAnthropic {
+				imageLimit = min(imageLimit, 20)
+			}
+			fits := supported && count < imageLimit && total+encoded <= vision.MaxRequestBytes
 			if !fits {
 				if current[ref.ID] {
 					return request, fmt.Errorf("%w: image %s exceeds the selected model's declared vision limits", ErrModelCapability, ref.Name)
@@ -119,6 +124,9 @@ func (service *Service) prepareAttachmentRequest(ctx context.Context, run Run, m
 				return request, err
 			}
 			message.Images = append(message.Images, ModelImage{ref.ID, ref.MIME, base64.StdEncoding.EncodeToString(raw), ref.Width, ref.Height})
+			if largeAnthropic {
+				vision.MaxImages = min(vision.MaxImages, 20)
+			}
 			count++
 			total += encoded
 		}

@@ -28,3 +28,14 @@ export async function publicSession(fetcher = fetch) {
   if (!response.ok) throw new Error('公网入口拒绝访问，请通过服务器本机 CLI 检查安全设置。');
   return response.json();
 }
+
+export async function loginPublicPassword(password, fetcher = fetch) {
+  // A login page may remain open longer than the one-use detection cookie.
+  // Refresh only on this explicit submit, never with an authentication timer.
+  const existing = await publicSession(fetcher);
+  if (existing.authenticated) return existing;
+  const response = await fetcher('/api/public/login', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+  const info = await response.json();
+  if (!response.ok) throw new Error(info.error || '登录失败。');
+  return info;
+}

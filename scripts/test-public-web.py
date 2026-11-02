@@ -6,7 +6,6 @@ No credential is accepted as an argument or written to the result. Optional
 with the dedicated acceptance instance, never with another user's live state.
 """
 import argparse
-import base64
 import copy
 import hashlib
 import http.cookiejar
@@ -88,7 +87,7 @@ class Client:
     def view(self, chat):
         status, value, _, _ = self.request('GET', '/api/chats/' + chat)
         require(status == 200, 'conversation read failed')
-        return value
+        return value['view']
 
     def submit(self, chat, prompt, attachments=None, key=None):
         key = key or secrets.token_hex(16)
@@ -126,7 +125,7 @@ def png():
 
 class ProtocolFixture(http.server.BaseHTTPRequestHandler):
     started = threading.Event()
-    finish = threading.Event()
+    release = threading.Event()
     calls = 0
     filename = ''
     def log_message(self, *args):
@@ -142,7 +141,7 @@ class ProtocolFixture(http.server.BaseHTTPRequestHandler):
         tool_results = [m for m in current if m['role'] == 'tool']
         if '[FA_SLOW]' in prompt:
             type(self).started.set()
-            type(self).finish.wait(20)
+            type(self).release.wait(20)
         message = {'role': 'assistant', 'content': 'Protocol fixture completed.'}
         reason = 'stop'
         if '[FA_EXPORT]' in prompt and not any('declined' in m.get('content', '') for m in tool_results):
@@ -186,9 +185,14 @@ def main():
     context = ssl.create_default_context(cafile=args.ca)
     result = {'status': 'RUNNING', 'origin': args.origin, 'tls_trust': 'provided_ca' if args.ca else 'system_roots',
               'real_provider': 'NOT_RUN', 'real_channels': 'NOT_RUN', 'checks': {}}
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    def save():
+        temporary = args.output.with_suffix('.tmp')
+        temporary.write_text(json.dumps(result, indent=2) + '\n')
+        temporary.replace(args.output)
     def record(name):
         result['checks'][name] = True
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save()
     def manager(*values):
         require(args.manager, 'local manager is required for this check')
         completed = subprocess.run([args.manager, *values], input='y\n', text=True, capture_output=True, timeout=25)
@@ -291,7 +295,7 @@ def main():
                     closed.set()
             threading.Thread(target=drain, daemon=True).start()
             require(closed.wait(3), 'logout left SSE open')
-            ProtocolFixture.finish.set()
+            ProtocolFixture.release.set()
             other.wait(slow, key)
             require(client.request('GET', '/api/environment')[0] == 401, 'logged-out credential retained access')
             client = other
@@ -328,21 +332,39 @@ def main():
                 client = Client(args.origin, context)
                 client.login(password)
                 record('real_owner_restart_requires_reauthentication')
-        result['status'] = 'PASS'
         result['visual_provider_semantics'] = 'NOT_RUN'
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
-        print(json.dumps(result, indent=2))
     except BaseException as error:
         result['status'] = 'FAIL'
         result['failure'] = type(error).__name__ + ': ' + str(error)
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save()
         raise
     finally:
-        ProtocolFixture.finish.set()
+        ProtocolFixture.release.set()
         if fixture:
             fixture.shutdown()
+            fixture.server_close()
+        cleanup_errors = []
+        operations = []
         if original and args.manager:
-            manager('control', 'plan', '--kind', 'public_web.set_policy', '--arguments', json.dumps(original))
+            operations.extend([
+                ('control', 'plan', '--kind', 'public_web.set_policy', '--arguments', json.dumps(original)),
+                ('control', 'plan', '--kind', 'space.set_permission', '--arguments', json.dumps({'space_id': 'local', 'mode': 'none'})),
+            ])
+        if args.manager and 'profile' in locals():
+            operations.append(('key', 'disable', profile))
+        for operation in operations:
+            try:
+                manager(*operation)
+            except Exception as error:
+                cleanup_errors.append(type(error).__name__ + ': ' + str(error))
+        if cleanup_errors:
+            result.update(status='FAIL', cleanup_failures=cleanup_errors)
+            save()
+            if 'failure' not in result:
+                raise RuntimeError('Acceptance cleanup failed')
+    result['status'] = 'PASS'
+    save()
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == '__main__':

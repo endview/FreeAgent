@@ -241,6 +241,44 @@ func TestAttachmentImagesResendBudgetAndNoBase64Persistence(t *testing.T) {
 	}
 }
 
+func TestAnthropicHistoryOmitsOldImageToFitNewLargeImage(t *testing.T) {
+	tasks, chat, _, _ := attachmentFixture(t, nil, nil)
+	old, err := tasks.createAttachment(t.Context(), chat, "old.png", bytes.NewReader(testPNG(t)), "upload", "old", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var imageBytes bytes.Buffer
+	if err := png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 2001, 1))); err != nil {
+		t.Fatal(err)
+	}
+	large, err := tasks.createAttachment(t.Context(), chat, "large.png", &imageBytes, "upload", "large", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ModelRequest{}
+	for range 20 {
+		request.Messages = append(request.Messages, ModelMessage{Role: "user", Attachments: []AttachmentRef{old}})
+	}
+	request.Messages = append(request.Messages, ModelMessage{Role: "user", Attachments: []AttachmentRef{large}})
+	core := tasks.core.runCopy()
+	core.inputAttachments = []AttachmentRef{large}
+	model := ModelConfig{Provider: "anthropic", Capabilities: ModelCapabilities{Vision: VisionCapabilities{true, true, true, 1 << 20, 8000, 32, 4 << 20}}}
+	prepared, err := core.prepareAttachmentRequest(t.Context(), Run{ID: "image-budget", ConversationID: chat}, model, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, message := range prepared.Messages {
+		count += len(message.Images)
+	}
+	if count != 20 || len(prepared.Messages[0].Images) != 0 || len(prepared.Messages[20].Images) != 1 {
+		t.Fatal("new large image rejected or older image not omitted", count)
+	}
+	if err := validateAnthropicImages(prepared); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAttachmentReplyNoneIdempotencyAndDeletion(t *testing.T) {
 	tasks, chat, _, _ := attachmentFixture(t, nil, nil)
 	result, err := tasks.Submit(t.Context(), chat, "r", "hello")

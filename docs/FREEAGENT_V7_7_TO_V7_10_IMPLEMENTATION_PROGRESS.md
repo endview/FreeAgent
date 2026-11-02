@@ -7,9 +7,9 @@ Baseline: 6b9e0ae with retained v7.5–v7.7 working changes. Existing work is pr
 |---|---|
 | v7.7 continuation, safety, Provider switches | IMPLEMENTED; focused and ordinary regression PASS |
 | v7.7 repeatable build and release | PASS; v7.7.0-dev.2 published from 421c25b |
-| v7.8 server lifecycle and Linux sandbox | IMPLEMENTED; actual unit functional gate PASS; eight-hour soak RUNNING |
+| v7.8 server lifecycle and Linux sandbox | IMPLEMENTED; actual unit functional gate PASS; first soak FAIL, complete retry RUNNING |
 | v7.9 attachments, delivery and backup | IMPLEMENTED; Windows ordinary/race and Debian full race PASS; final clean package gate pending |
-| v7.10 optional public Web and configurable login protection | IMPLEMENTED; targeted API/auth/JS PASS; actual TLS/deployment/package gates pending |
+| v7.10 optional public Web and configurable login protection | IMPLEMENTED; API/auth/race and real Caddy HTTPS fixture checks PASS; final package gates pending |
 
 Historical acceptance is not acceptance of these changes. Real Provider/channel,
 live HTTPS and eight-hour service checks must be recorded separately. Runtime
@@ -66,8 +66,14 @@ UNKNOWN model/Attempt retention without replay, finite service expiry, online
 backup/verify/restore and journal credential absence PASS. Acceptance also found
 and fixed a one-shot CLI approval race: it now waits for the accepted Owner
 execution, using all active conversation bindings rather than only the first.
-The real eight-hour soak started 2026-11-02T19:30:05Z and remains RUNNING until
-28800 actual monotonic seconds have elapsed. No shortened soak is accepted.
+The first eight-hour soak started 2026-11-02T19:30:05Z and FAILED after the
+functional test's reused conversation exhausted its context limit (last sample
+7747.678s). The process exited but its report incorrectly retained RUNNING; this
+was corrected after verifying the process was gone. The script now records
+exceptions atomically, uses two dedicated conversations with an explicit finite
+256-message limit, and counts cleanup as part of acceptance. A new complete
+28800-second soak started 2026-11-02T22:06:45Z. Its time is not combined with the
+failed run. No shortened soak is accepted.
 
 v7.9 selects unused Harness-v8, config/schema 10, Store format
 freeagent-harness-v10, backup-v4; launchers, manifest builders and current docs
@@ -116,3 +122,34 @@ subsequent security refinements. A Windows credential replacement/read-handle
 race was found and fixed using serialized file access and bounded rename retry.
 Actual Caddy/TLS, browser, final package and repeatable release checks remain
 separate gates; no trusted public certificate or real platform result is claimed.
+
+## v7.10 actual HTTPS checkpoint
+
+An isolated Debian service runs source 30cf65c behind Caddy 2.11.7 on port 9443,
+without changing existing server services or ports 80/443. The test client
+validates the supplied temporary CA and IP SAN; certificate verification is not
+disabled. All ten actual HTTPS checks PASS: safe login cookies, exact Origin and
+CSRF, proxy-header overwrite and private-route refusal, idempotency and CLI
+continuation, None attachment upload/reply export/image preview, remote ceiling
+and local recovery, real Owner file_create/file_export via a local protocol
+fixture, logout closing SSE while an admitted task completes, five-failure
+login lock and local unlock, actual 62.217s idle expiry, and Owner restart
+requiring reauthentication. The protocol fixture is not a real Provider.
+
+Windows full race on c4e4b6d PASS (harness 375.874s); Debian ordinary-user full
+race on 30cf65c PASS (harness 415.150s). Native Chromium with certificate errors
+enabled and a dedicated user's temporary-CA trust actually selected and
+submitted a Chinese/special-name text attachment in None, saved the reply,
+previewed a validated PNG, and rejected undeclared image capability without
+dispatch. Password rotation revoked its authenticated session. Browser work
+also exposed the expired one-use login cookie UX issue; explicit password
+submission now refreshes that cookie. Latest JS: 84 PASS plus production build.
+Anthropic history now omits older images to respect its conditional 20-image
+limit when the current input contains a large image, rather than rejecting the
+whole otherwise valid turn.
+
+The HTTPS script's fixture shutdown and final configuration restoration were
+fixed; its clean repeat against the final package is still pending. The latest
+login-cookie change is not yet deployed. A public system-trusted certificate,
+real visual Provider semantics and real channel file accounts remain NOT_RUN.
+Temporary-CA TLS acceptance is not a claim of publicly trusted deployment.
