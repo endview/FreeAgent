@@ -200,3 +200,14 @@ worker test now drains and reports stderr; ten local native race repetitions
 PASS without weakening its assertions. Hosted CI rerun is pending. These last
 workflow/test-only edits do not change the tested runtime, but final archives
 will be rebuilt from their precise source commit.
+
+Final sandbox inspection found a separate Linux defect: the private-directory
+hardlink check named a nonexistent public credential file and only enumerated
+fixed leaf names. Three actual Debian negative tests reproduced dispatch with a
+hardlink to the administrator credential, attachment blob or blocked content.
+Preflight now checks all private regular files using a cancellable walk capped
+at 100,000 entries per private directory, without reading contents or following
+directory symlinks. Critical state symlink checks remain. All Linux winlaunch
+race tests PASS after the fix, including these three refusals, ordinary project
+hardlink sharing, network denial, setsid cleanup and Owner death cleanup. This
+Linux runtime change requires its own final regression and rebuilt release.

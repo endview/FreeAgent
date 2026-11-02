@@ -69,7 +69,12 @@ Linux sandbox Internet and host-visible service ports are NOT_SUPPORTED in this
 release. Full is an explicit same-user host escape hatch, limited by the service
 user and outer systemd restrictions; it is never described as root/admin access.
 
-Protected application files must each have exactly one hardlink. Ordinary
+Protected application files must each have exactly one hardlink. Preflight
+checks private-directory regular files, including administrator credentials,
+attachments and blocked directory contents. It does not read their bodies or
+follow directory symlinks. The check is cancellable and capped at 100,000
+entries per private directory; unreadable or over-limit trees refuse sandbox
+dispatch instead of falling back to host execution. Ordinary
 project hardlinks remain supported: editing a pnpm/Git shared inode also changes
 its host aliases. Use copied dependencies when that sharing is unwanted. Trusted
 host activity can change mount sources concurrently; the sandbox does not claim

@@ -188,6 +188,38 @@ func TestLinuxSandboxProtectedHardlinkAndOrdinaryProjectHardlink(t *testing.T) {
 	}
 }
 
+func TestLinuxSandboxPrivateDirectoryHardlinksRefuseDispatch(t *testing.T) {
+	for _, relative := range []string{"public-admin.json", "attachments/blobs/input", "blocked/deep/personal.txt"} {
+		t.Run(relative, func(t *testing.T) {
+			spec, workspace, _ := sandboxFixture(t)
+			private := filepath.Join(spec.PrivatePaths[0], relative)
+			if strings.HasPrefix(relative, "blocked/") {
+				blocked := filepath.Join(filepath.Dir(workspace), "blocked")
+				spec.PrivatePaths = append(spec.PrivatePaths, blocked)
+				private = filepath.Join(blocked, strings.TrimPrefix(relative, "blocked/"))
+			}
+			if err := os.MkdirAll(filepath.Dir(private), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(private, []byte("private fixture"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Link(private, filepath.Join(workspace, "alias")); err != nil {
+				t.Fatal(err)
+			}
+			spec.Args = []string{"-c", "cat alias; printf escaped > must-not-run"}
+			if process, err := Start(t.Context(), spec); err == nil {
+				_ = process.Kill()
+				_ = process.Close()
+				t.Fatal("private-directory hardlink did not prevent dispatch")
+			}
+			if _, err := os.Stat(filepath.Join(workspace, "must-not-run")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("payload ran after private-directory preflight failed")
+			}
+		})
+	}
+}
+
 func TestLinuxSandboxKillsSetsidDescendants(t *testing.T) {
 	spec, workspace, _ := sandboxFixture(t)
 	spec.Args = []string{"-c", `setsid /bin/sh -c 'while true; do date +%s%N > heartbeat; sleep .05; done' & wait`}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -118,7 +119,7 @@ func startSandbox(ctx context.Context, spec Spec) (*Process, error) {
 	if err := denied.Close(); err != nil {
 		return nil, err
 	}
-	args, err := bubblewrapArgs(spec, deniedPath)
+	args, err := bubblewrapArgs(ctx, spec, deniedPath)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +186,7 @@ func startSandbox(ctx context.Context, spec Spec) (*Process, error) {
 
 // Begin with an empty mount tree. No user HOME, host /run, sockets, arbitrary
 // /etc or host root is mounted. Authorized project hardlinks remain shared.
-func bubblewrapArgs(spec Spec, deniedPath string) ([]string, error) {
+func bubblewrapArgs(ctx context.Context, spec Spec, deniedPath string) ([]string, error) {
 	if !filepath.IsAbs(spec.Command) || !filepath.IsAbs(spec.Dir) {
 		return nil, errors.New("sandbox: absolute command and working directory required")
 	}
@@ -297,7 +298,7 @@ func bubblewrapArgs(spec Spec, deniedPath string) ([]string, error) {
 		files := []string{path}
 		if info.IsDir() {
 			files = nil
-			for _, name := range []string{"config.json", "state.sqlite", "state.sqlite-wal", "state.sqlite-shm", "owner.lock", "engine.json", "attach.secret", "chat.secret", "control-journal.jsonl", "public.credentials.json"} {
+			for _, name := range []string{"config.json", "state.sqlite", "state.sqlite-wal", "state.sqlite-shm", "owner.lock", "engine.json", "attach.secret", "chat.secret", "control-journal.jsonl", "public-admin.json"} {
 				files = append(files, filepath.Join(path, name))
 			}
 		}
@@ -308,6 +309,11 @@ func bubblewrapArgs(spec Spec, deniedPath string) ([]string, error) {
 					return nil, errors.New("sandbox: protected state has a link; remove the alias before execution")
 				}
 			} else if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+		}
+		if info.IsDir() {
+			if err := privateDirectoryHardlinks(ctx, path); err != nil {
 				return nil, err
 			}
 		}
@@ -339,6 +345,44 @@ func bubblewrapArgs(spec Spec, deniedPath string) ([]string, error) {
 	}
 	args = append(args, "--chdir", spec.Dir)
 	return args, nil
+}
+
+// Mount privacy does not hide a hardlink already present in a writable
+// workspace. Check every private regular file, including new credential and
+// attachment files, without reading contents or following directory symlinks.
+func privateDirectoryHardlinks(ctx context.Context, root string) error {
+	const maxEntries = 100_000
+	entries := 0
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if errors.Is(walkErr, os.ErrNotExist) {
+			return nil // A completed temporary upload/write may disappear.
+		}
+		if walkErr != nil {
+			return walkErr
+		}
+		entries++
+		if entries > maxEntries {
+			return errors.New("sandbox: private-directory preflight exceeds 100000 entries; narrow blocked paths or reduce private data before sandbox execution")
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		info, err := entry.Info()
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || stat.Nlink != 1 {
+			return errors.New("sandbox: private regular file has additional hardlinks; remove the alias before execution")
+		}
+		return nil
+	})
 }
 
 func pathUnder(root, path string) bool {
