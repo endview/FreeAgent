@@ -48,7 +48,7 @@ def main():
         if path.is_symlink():raise SystemExit('Installation paths cannot be symbolic links')
         systemd(path)
     manifest=json.loads((package/'manifest.json').read_text())
-    if manifest['target']!='linux/amd64' or manifest['source_dirty'] or not re.fullmatch(r'v[0-9][A-Za-z0-9.+-]*',manifest['candidate']):
+    if manifest['target']!='linux/amd64' or manifest['source_dirty'] or not re.fullmatch(r'v[0-9][A-Za-z0-9.+-]*',manifest['candidate']) or not re.fullmatch(r'[0-9a-f]{40}',manifest['source_base_commit']):
         raise SystemExit('Use a clean Linux portable release candidate')
     data_format=manifest['data_format']
     if not re.fullmatch(r'Harness-v[0-9]+',data_format):raise SystemExit('Invalid current data format')
@@ -76,13 +76,18 @@ def main():
     for path in (state,state/'workspace',state/'data'):
         if path.exists() and path.stat().st_uid!=account.pw_uid:raise SystemExit('State directory belongs to another user')
         path.mkdir(parents=True,exist_ok=True);os.chown(path,account.pw_uid,account.pw_gid);path.chmod(0o700)
-    target=prefix/'releases'/manifest['candidate']
-    if target.exists():raise SystemExit('This release is already installed; select it explicitly, do not overwrite it')
+    target=prefix/'releases'/(manifest['candidate']+'-'+manifest['source_base_commit'][:12])
     target.parent.mkdir(parents=True,exist_ok=True)
-    shutil.copytree(package,target)
-    for path in target.rglob('*'):
-        path.chmod(0o755 if path.is_dir() or path.relative_to(target).as_posix() in ('FreeAgent','bin/freeagent') else 0o644)
-    target.chmod(0o755)
+    if target.exists():
+        for record in manifest['files']:
+            path=target/record['path']
+            if path.is_symlink() or not path.is_file() or hashlib.file_digest(path.open('rb'),'sha256').hexdigest()!=record['sha256']:
+                raise SystemExit('Existing release differs; nothing overwritten')
+    else:
+        shutil.copytree(package,target)
+        for path in target.rglob('*'):
+            path.chmod(0o755 if path.is_dir() or path.relative_to(target).as_posix() in ('FreeAgent','bin/freeagent') else 0o644)
+        target.chmod(0o755)
     data=state/'data'/data_format;keys=state/'keys.json'
     env={**os.environ,'FREEAGENT_DATA_DIR':str(data),'FREEAGENT_KEYS_FILE':str(keys)}
     if not (data/'config.json').exists():
@@ -113,7 +118,7 @@ RuntimeDirectoryMode=0700
 UMask=0077
 Environment={systemd('FREEAGENT_DATA_DIR='+str(data))}
 Environment={systemd('FREEAGENT_KEYS_FILE='+str(keys))}
-WorkingDirectory={systemd(state)}
+WorkingDirectory={state}
 ExecStart={systemd(executable)} web --service
 Restart=on-failure
 RestartSec=5
@@ -123,7 +128,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths={systemd(state)} {systemd(runtime)}
+ReadWritePaths={state} {runtime}
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 [Install]
 WantedBy=multi-user.target
@@ -152,4 +157,7 @@ exec runuser -u {shlex.quote(args.user)} -- {command}
     print(json.dumps({'installed':True,'unit':args.unit,'manager':str(manager),'data_dir':str(data),'started':args.start}))
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    try:main()
+    except (subprocess.CalledProcessError,OSError,ValueError,KeyError) as error:
+        raise SystemExit('Server installation did not finish; existing data was retained: '+str(error))
