@@ -340,7 +340,7 @@ func TestServiceAIExtensionNeedsConfirmationAndConfigBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 	policy := tasks.Config().Commands
-	policy.GitWrite = !policy.GitWrite
+	policy.TimeoutSecs = min(policy.TimeoutSecs+1, 600)
 	result, err := control.ApplyDirectControlChange(t.Context(), ControlSetCommandPolicy, policy, "", "test-user")
 	if !errors.Is(err, ErrCommandBusy) || result.ErrorCode != "execution_profile_busy" || !strings.Contains(err.Error(), r.ID) {
 		t.Fatalf("running authorization changed %+v %v", result, err)

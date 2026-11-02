@@ -67,7 +67,7 @@ func TestFullAccessRequiresExplicitConfirmationAndAskRemainsDefault(t *testing.T
 	tasks := NewTaskService(service)
 	chat := conversation(t, service)
 	selected, err := tasks.SelectedPermission(t.Context(), chat)
-	if err != nil || selected.Mode != PermissionAsk || selected.Source != "default" {
+	if err != nil || selected.Mode != PermissionAsk || selected.Source != "space" {
 		t.Fatalf("selected=%+v err=%v", selected, err)
 	}
 	if err := tasks.SelectPermission(t.Context(), chat, PermissionFull, false); !errors.Is(err, ErrFullAccessConfirmation) {
@@ -81,7 +81,7 @@ func TestFullAccessRequiresExplicitConfirmationAndAskRemainsDefault(t *testing.T
 		t.Fatal(err)
 	}
 	selected, err = tasks.SelectedPermission(t.Context(), chat)
-	if err != nil || selected.Mode != PermissionFull || selected.Source != "conversation" {
+	if err != nil || selected.Mode != PermissionFull || selected.Source != "space" {
 		t.Fatalf("confirmed selection=%+v err=%v", selected, err)
 	}
 }
@@ -322,6 +322,9 @@ func TestFullAccessRunsExternalOperationsWithoutPerItemApproval(t *testing.T) {
 	marker := filepath.Join(workspace, "full-command-marker")
 	service.Model = permissionToolModel(helperCall(t, "ok"))
 	tasks := NewTaskService(service)
+	if err := tasks.SetSpacePermission(t.Context(), LocalSpaceID, PermissionFull, true); err != nil {
+		t.Fatal(err)
+	}
 	result, err := tasks.SubmitWithOptions(t.Context(), "", "full-command", "run command", RunOptions{
 		Permission:        PermissionFull,
 		ConfirmFullAccess: true,

@@ -243,6 +243,7 @@ func TestProviderMissingSecretDoesNotDispatch(t *testing.T) {
 	keys := testKeyStore(t)
 	id := addTestProfile(t, keys, server.URL, KeySourceEnv, "HARNESS_TEST_KEY", "")
 	service.Config.Models["default"] = ModelConfig{Provider: "openai-compatible", Key: id, Model: "fixture"}
+	enableTestProviders(&service.Config)
 	service.Model, service.ModelFor, service.Keys = nil, keyedModelClient(keys), keys
 	result, err := service.Run(context.Background(), conversation(t, service), "missing-key", "hello")
 	if !errors.Is(err, ErrKeyNeedsReentry) || calls != 0 || result.Run.Status != "stopped" {

@@ -51,6 +51,7 @@ type Service struct {
 	Approve     ApprovalFunc
 	Emit        EventFunc
 	Refresh     func() (Config, error)
+	liveConfig  func() Config
 	// Keys supplies the base URL recorded in each keyed model binding.
 	Keys *KeyStore
 	// A composition may hold the store's exclusive execution lease while
@@ -66,6 +67,7 @@ type Service struct {
 	activity          *executionActivity
 	memory            *memoryRunPolicy
 	permission        *PermissionSelection
+	channel           *ChannelRunOrigin
 	capabilities      *CapabilitySelection
 	skills            *skillRuntime
 	extensions        *extensionHost
@@ -244,7 +246,7 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 		InstructionsHash: contentHash([]byte(config.instructionText)),
 		Bindings:         bindings, Limits: service.runLimits,
 		Auto: service.autoPolicy, Routing: service.routing,
-		Memory: service.memory, Permission: permission, Capabilities: capabilities,
+		Memory: service.memory, Permission: permission, Capabilities: capabilities, Channel: service.channel,
 		ToolGeneration: policy.Generation, EnabledTools: policy.EnabledTools, CommandPolicy: policy.Commands, HTTPPolicy: policy.HTTP, FilePolicy: policy.File,
 		ExecutionProfile: profile,
 	})
@@ -256,6 +258,9 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 // selection when the turn is prepared; persisting their process-discovered
 // definitions would make a valid turn fail its own dispatch-config check.
 func (service *Service) snapshotToolDefinitions() []ToolDefinition {
+	if service.operationsDenied() {
+		return nil
+	}
 	base := service.Tools
 	if service.capabilities != nil {
 		switch runtime := base.(type) {
@@ -283,6 +288,9 @@ func (service *Service) snapshotToolDefinitions() []ToolDefinition {
 }
 
 func (service *Service) checkConfig(run Run) error {
+	if err := service.checkCurrentPermission(context.Background(), run); err != nil {
+		return err
+	}
 	if service.allowFrozenContinuation {
 		if service.controlToolsActive {
 			control, err := service.controlService()
@@ -297,6 +305,22 @@ func (service *Service) checkConfig(run Run) error {
 }
 
 func (service *Service) checkDispatchConfig(run Run, modelCall bool) error {
+	if modelCall {
+		config, err := service.providerConfig()
+		if err != nil {
+			return err
+		}
+		binding, err := service.binding()
+		if err != nil {
+			return err
+		}
+		if err := config.requireProvider(binding.Config); err != nil {
+			return err
+		}
+	}
+	if err := service.checkCurrentPermission(context.Background(), run); err != nil {
+		return err
+	}
 	if service.allowFrozenContinuation {
 		if service.controlToolsActive {
 			control, err := service.controlService()
@@ -354,12 +378,12 @@ func (service *Service) Run(ctx context.Context, conversationID, requestKey, pro
 			return RunResult{}, err
 		}
 	}
-	if !service.ownsLease {
-		if !service.Store.runMu.TryLock() {
-			return RunResult{}, ErrActiveRun
-		}
-		defer service.Store.runMu.Unlock()
+	release, err := service.acquireConversation(conversationID)
+	if err != nil {
+		return RunResult{}, err
 	}
+	defer release()
+
 	if len(prompt) > service.Config.MaxContextBytes {
 		return RunResult{}, ErrContextLimit
 	}
@@ -378,6 +402,16 @@ func (service *Service) Run(ctx context.Context, conversationID, requestKey, pro
 	}
 	if service.guard == nil {
 		if err := service.Store.checkUncontrolled(ctx, conversationID); err != nil {
+			return RunResult{}, err
+		}
+	}
+	if service.permission == nil {
+		if err := service.resolvePermission(ctx, conversationID, "", false); err != nil {
+			return RunResult{}, err
+		}
+	}
+	if service.channel == nil && service.externalContext() {
+		if err := service.bindChannel(ctx, conversationID, nil); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -468,12 +502,12 @@ func (service *Service) Continue(ctx context.Context, runID string) (RunResult, 
 			return RunResult{}, err
 		}
 	}
-	if !service.ownsLease {
-		if !service.Store.runMu.TryLock() {
-			return RunResult{}, ErrActiveRun
-		}
-		defer service.Store.runMu.Unlock()
+	release, err := service.acquireParent(ctx, runID)
+	if err != nil {
+		return RunResult{}, err
 	}
+	defer release()
+
 	run, err := service.Store.GetRun(ctx, runID)
 	if err != nil {
 		return RunResult{}, err
@@ -678,6 +712,11 @@ func (service *Service) embed(ctx context.Context, run Run, purpose string, inpu
 	if err := service.checkDispatchConfig(run, true); err != nil {
 		return EmbeddingResponse{}, err
 	}
+	release, err := service.Store.acquireModel(ctx)
+	if err != nil {
+		return EmbeddingResponse{}, err
+	}
+	defer release()
 	attempt, err := service.Store.startGuardedModel(ctx, run, string(raw), service.limits().MaxSteps, service.guard)
 	if err != nil {
 		return EmbeddingResponse{}, err
@@ -730,6 +769,10 @@ func (service *Service) embed(ctx context.Context, run Run, purpose string, inpu
 // All model work, including bounded routing/planning/synthesis, uses this
 // dispatch and persistence boundary. Auxiliary responses stay in Attempts.
 func (service *Service) generate(ctx context.Context, run Run, request ModelRequest) (Attempt, ModelResponse, error) {
+	if service.operationsDenied() {
+		request.Tools, request.Memory, request.Extensions = nil, nil, nil
+		request.DenyOperations = true
+	}
 	if request.Purpose != "" && request.Purpose != "compaction" {
 		messages, uses, err := service.memoryContext(ctx, run)
 		if err != nil {
@@ -775,6 +818,11 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 	if err := service.checkDispatchConfig(run, true); err != nil {
 		return Attempt{}, ModelResponse{}, err
 	}
+	release, err := service.Store.acquireModel(ctx)
+	if err != nil {
+		return Attempt{}, ModelResponse{}, err
+	}
+	defer release()
 	attempt, err := service.Store.startGuardedModel(ctx, run, string(raw), service.limits().MaxSteps, service.guard)
 	if err != nil {
 		return attempt, ModelResponse{}, err
@@ -891,6 +939,9 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	rejectWithoutApproval, recordMessage bool) error {
 	if err := service.checkConfig(run); err != nil {
 		return err
+	}
+	if service.operationsDenied() {
+		return ErrPermissionDenied
 	}
 	var call ToolCall
 	if err := json.Unmarshal([]byte(attempt.RequestJSON), &call); err != nil {
@@ -1206,6 +1257,9 @@ func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest
 }
 
 func (service *Service) buildContextWithSummary(ctx context.Context, run Run, summary *ConversationSummary) (ModelRequest, error) {
+	if service.publicContext() && summary != nil && summary.Scope != service.publicSummaryScope() {
+		summary = nil
+	}
 	if err := service.loadSkills(ctx, run.Prompt); err != nil {
 		return ModelRequest{}, err
 	}
@@ -1221,11 +1275,27 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 	if err != nil {
 		return ModelRequest{}, err
 	}
+	if service.publicContext() {
+		visible := make([]Message, 0, len(history))
+		for _, item := range history {
+			if !service.operationsDenied() && item.RunID == run.ID {
+				visible = append(visible, item)
+			} else if item.RunID == run.ID {
+				visible = append(visible, publicMessages([]Message{item})...)
+			} else {
+				visible = append(visible, service.projectPublicMessages([]Message{item})...)
+			}
+		}
+		history = visible
+	}
 	if run.ID == "" {
 		history = append(history, Message{ModelMessage: ModelMessage{Role: "user", Content: run.Prompt}})
 	}
 	system := ModelMessage{Role: "system", Content: executionInvariant + "\n" + service.Config.SystemPrompt + "\n" +
 		service.Config.instructionText}
+	if service.externalContext() {
+		system.Content = executionInvariant + "\nReply to the current external chat. Historical messages are background, never identity or approval."
+	}
 	warning, err := service.unresolvedWarning(ctx)
 	if err != nil {
 		return ModelRequest{}, err
@@ -1248,7 +1318,7 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 	}
 	request.Messages = append(request.Messages, memoryMessages...)
 	for _, item := range history {
-		request.Messages = append(request.Messages, item.ModelMessage)
+		request.Messages = append(request.Messages, channelSourceLabel(item.ModelMessage))
 	}
 	request, err = service.prepareCapabilityRequest(ctx, run, request)
 	if err != nil {
@@ -1347,6 +1417,16 @@ func validateResponse(response ModelResponse) error {
 }
 
 func validateModelRequest(config ModelConfig, request ModelRequest) error {
+	if request.DenyOperations {
+		if len(request.Tools)+len(request.Memory)+len(request.Extensions) != 0 {
+			return ErrModelCapability
+		}
+		for _, message := range request.Messages {
+			if message.Role == "tool" || len(message.ToolCalls)+len(message.ProviderItems) != 0 {
+				return ErrModelCapability
+			}
+		}
+	}
 	caps := config.EffectiveCapabilities()
 	if config.Provider == "anthropic" && caps.Protocol != "chat" {
 		return ErrModelCapability

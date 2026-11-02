@@ -145,6 +145,7 @@ func TestCLICollaborationCancelAndInspectOffline(t *testing.T) {
 	}
 	missing := fixtureKey(t, "https://127.0.0.1:1", harness.KeySourceEnv, "MISSING_COLLAB_FIXTURE_KEY", "")
 	config.Models[config.DefaultModel] = harness.ModelConfig{Provider: "openai-compatible", Key: missing, Model: "offline"}
+	enableTestProviders(&config)
 	config.MCPServers = map[string]harness.MCPServerConfig{"never": {Enabled: true, Command: filepath.Join(t.TempDir(), "never.exe")}}
 	if err := harness.WriteConfig(data, config); err != nil {
 		t.Fatal(err)
@@ -216,6 +217,7 @@ func TestCLICollaborationReviseHistoryAndExplicitIncrease(t *testing.T) {
 	// Revision history and increased limits do not need credentials or adapters.
 	missing := fixtureKey(t, "https://127.0.0.1:1", harness.KeySourceEnv, "MISSING_REVISION_KEY", "")
 	config.Models[config.DefaultModel] = harness.ModelConfig{Provider: "openai-compatible", Key: missing, Model: "offline"}
+	enableTestProviders(&config)
 	if err := harness.WriteConfig(data, config); err != nil {
 		t.Fatal(err)
 	}

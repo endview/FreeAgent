@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	github.com/google/jsonschema-go v0.4.3
+	github.com/gorilla/websocket v1.5.3
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	golang.org/x/sys v0.46.0

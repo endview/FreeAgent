@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// Evidence is a projection of existing attempts, not another durable entity.
+// Evidence projects existing Attempts and delivery receipts, not a new entity.
 type Evidence struct {
 	Files        []ToolReceipt `json:"files,omitempty"`
 	Commands     []ToolReceipt `json:"commands_run,omitempty"`
@@ -21,7 +21,36 @@ func (store *Store) Evidence(ctx context.Context, runID string) (Evidence, error
 	if err != nil {
 		return Evidence{}, err
 	}
-	return attemptEvidence(attempts), nil
+	evidence := attemptEvidence(attempts)
+	notes, err := channelDeliveryNotes(ctx, store.db, runID)
+	evidence.Uncertainty = append(evidence.Uncertainty, notes...)
+	return evidence, err
+}
+
+// Delivery is a projection of the existing send receipts. A completed tool or
+// model Run stays completed even when its channel reply could not be delivered.
+func channelDeliveryNotes(ctx context.Context, reader attemptReader, runID string) ([]string, error) {
+	prefix := "channel/send/" + runID + "/"
+	rows, err := reader.QueryContext(ctx, `SELECT json_extract(value,'$.state'),count(*) FROM meta WHERE key>=? AND key<? GROUP BY json_extract(value,'$.state') LIMIT 16`, prefix, prefix+"\uffff")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var notes []string
+	for rows.Next() {
+		var state string
+		var count int
+		if err := rows.Scan(&state, &count); err != nil {
+			return nil, err
+		}
+		switch state {
+		case "unknown", "dispatching":
+			notes = append(notes, fmt.Sprintf("channel delivery UNKNOWN for %d part(s); execution was not replayed; inspect saved result before a new request", count))
+		case "failed":
+			notes = append(notes, fmt.Sprintf("channel delivery failed for %d part(s); saved execution result retained; use an explicit status query", count))
+		}
+	}
+	return notes, rows.Err()
 }
 
 func attemptEvidence(attempts []Attempt) Evidence {

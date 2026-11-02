@@ -20,6 +20,7 @@ var ErrSummaryStale = errors.New("harness: saved context summary is stale; refre
 // ConversationSummary selects context. It is never a memory or execution proof.
 // The prefix digest keeps the record bounded as conversation history grows.
 type ConversationSummary struct {
+	Scope          string `json:"scope,omitempty"`
 	Version        int    `json:"version"`
 	ConversationID string `json:"conversation_id"`
 	Revision       int64  `json:"revision"`
@@ -82,7 +83,7 @@ func (summary ConversationSummary) prefix() sourcePrefix {
 func readSourcePrefix(ctx context.Context, reader interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }, chat string, through int64, prefix sourcePrefix) (sourcePrefix, error) {
-	rows, err := reader.QueryContext(ctx, `SELECT id,run_id,body_json FROM messages
+	rows, err := reader.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
 		WHERE conversation_id=? AND id>? AND id<=? ORDER BY id`, chat, prefix.Through, through)
 	if err != nil {
 		return prefix, err
@@ -145,6 +146,7 @@ func (store *Store) contextSummary(ctx context.Context, chat string, force bool)
 	}
 	var summary ConversationSummary
 	if strictDecode([]byte(raw), &summary) != nil || summary.Version != 1 || summary.ConversationID != chat ||
+		summary.Scope != "" && summary.Scope != "public_text" && summary.Scope != "channel_public" ||
 		summary.Revision < 1 || summary.CoveredThrough < 1 || summary.SourceCount < 1 || summary.SourceCount > summary.CoveredThrough ||
 		summary.SourceBytes < 1 || len(summary.SourceDigest) != 64 || summary.ByteLimit < 1 || summary.ByteLimit > maxSummaryBytes ||
 		len(summary.Text) > summary.ByteLimit || strings.TrimSpace(summary.Text) == "" || !utf8.ValidString(summary.Text) ||
@@ -188,8 +190,8 @@ func summaryInput(summary *ConversationSummary) ModelMessage {
 // contextTail never silently drops earlier Runs. A caller must compact or
 // report a context limit when the selected unsummarized history cannot fit.
 func (store *Store) contextTail(ctx context.Context, run Run, through int64, maxMessages, maxBytes int) ([]Message, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT id,run_id,body_json FROM messages
-		WHERE conversation_id=? AND id>? ORDER BY id LIMIT ?`, run.ConversationID, through, maxMessages+1)
+	rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
+		WHERE conversation_id=? AND id>? AND (id<=? OR run_id=?) ORDER BY id LIMIT ?`, run.ConversationID, through, historyBound(run), run.ID, maxMessages+1)
 	if err != nil {
 		return nil, err
 	}

@@ -96,9 +96,11 @@ const (
 	ControlSetWorkspace                = "config.set_workspace"
 	ControlSetDefaultModel             = "model.set_default"
 	ControlSetModelProfile             = "model.set_profile"
+	ControlSetProviderEnabled          = "providers.set_enabled"
 	ControlRemoveModel                 = "model.remove"
 	ControlSetAutoPolicy               = "auto.set_policy"
 	ControlSetHTTPPolicy               = "http.set_policy"
+	ControlSetChannelPolicy            = "channels.set_policy"
 	ControlSetMemoryPolicy             = "memory.set_policy"
 	ControlSetPromptPolicy             = "prompt.set_policy"
 	ControlSetCollaboration            = "collaboration.set_policy"
@@ -119,7 +121,7 @@ const (
 	ControlRestartExtension            = "extensions.restart"
 	ControlClearExtensionData          = "extensions.clear_data"
 	ControlSetConversationModel        = "conversation.set_model"
-	ControlSetConversationPermission   = "conversation.set_permission"
+	ControlSetSpacePermission          = "space.set_permission"
 	ControlRenameConversation          = "conversation.rename"
 	ControlPinConversation             = "conversation.set_pinned"
 	ControlSetConversationCapabilities = "conversation.set_capabilities"
@@ -237,6 +239,7 @@ type ControlResult struct {
 }
 
 type ControlConfigState struct {
+	Channels       ChannelsConfig        `json:"channels"`
 	PermissionMode string                `json:"permission_mode"`
 	SandboxMode    string                `json:"sandbox_mode"`
 	FileScope      string                `json:"file_scope"`
@@ -265,12 +268,20 @@ type ControlModelState struct {
 }
 
 type ControlState struct {
-	Generation              string             `json:"generation"`
-	ResourceRevisions       map[string]uint64  `json:"resource_revisions"`
-	Config                  ControlConfigState `json:"config"`
-	Pending                 []ControlOperation `json:"pending,omitempty"`
-	ExternalChangePending   bool               `json:"external_change_pending,omitempty"`
-	ExternalChangeResources []string           `json:"external_change_resources,omitempty"`
+	Spaces                  []ControlSpaceState `json:"spaces,omitempty"`
+	Generation              string              `json:"generation"`
+	ResourceRevisions       map[string]uint64   `json:"resource_revisions"`
+	Config                  ControlConfigState  `json:"config"`
+	Pending                 []ControlOperation  `json:"pending,omitempty"`
+	ExternalChangePending   bool                `json:"external_change_pending,omitempty"`
+	ExternalChangeResources []string            `json:"external_change_resources,omitempty"`
+}
+
+type ControlSpaceState struct {
+	ID         string         `json:"id"`
+	Title      string         `json:"title"`
+	Source     string         `json:"source"`
+	Permission PermissionMode `json:"permission"`
 }
 
 // ReadControlStateForModel removes fields that are useful to a local UI but
@@ -596,9 +607,11 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSetWorkspace, ResourceFamily: "config.workspace", Risk: ControlRiskAuthority, Description: "Change the selected workspace for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetDefaultModel, ResourceFamily: "config.models", Risk: ControlRiskOrdinary, Description: "Select the default configured model for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetModelProfile, ResourceFamily: "config.models", Risk: ControlRiskAuthority, Description: "Add or update a model profile using an existing Key profile reference; no secret is accepted.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetProviderEnabled, ResourceFamily: "config.providers", Risk: ControlRiskAuthority, Description: "Enable or disable a model Provider by saved Key profile ID. No network request is made.", ModelProposable: true, Reversible: true},
 		{Kind: ControlRemoveModel, ResourceFamily: "config.models", Risk: ControlRiskDestructive, Description: "Remove a configured model profile and its future references.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetAutoPolicy, ResourceFamily: "config.auto", Risk: ControlRiskAuthority, Description: "Change bounded Auto model selection settings.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetHTTPPolicy, ResourceFamily: "config.http", Risk: ControlRiskAuthority, Description: "Change the bounded HTTP tool policy and origins.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetChannelPolicy, ResourceFamily: "config.channels", Risk: ControlRiskAuthority, Description: "Enable or disable an external channel using an existing credential profile.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetMemoryPolicy, ResourceFamily: "config.memory", Risk: ControlRiskAuthority, Description: "Change local memory and knowledge bounds.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetPromptPolicy, ResourceFamily: "config.prompt", Risk: ControlRiskAuthority, Description: "Change the bounded system prompt and instruction file selection for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetCollaboration, ResourceFamily: "config.collaboration", Risk: ControlRiskAuthority, Description: "Change bounded collaboration authorization and budgets.", ModelProposable: true, Reversible: true},
@@ -619,7 +632,15 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlRestartExtension, ResourceFamily: "extensions.runtime", Risk: ControlRiskAuthority, Description: "Restart one Extension process through the owner runtime.", ModelProposable: false, Reversible: false},
 		{Kind: ControlClearExtensionData, ResourceFamily: "extensions.data", Risk: ControlRiskDestructive, Description: "Clear one Extension data directory.", ModelProposable: false, Reversible: false},
 		{Kind: ControlSetConversationModel, ResourceFamily: "conversation.model", Risk: ControlRiskOrdinary, Description: "Select a configured model for one conversation.", ModelProposable: true, Reversible: true},
-		{Kind: ControlSetConversationPermission, ResourceFamily: "conversation.permission", Risk: ControlRiskAuthority, Description: "Set the permission mode for one conversation's future Runs.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetSpacePermission, ResourceFamily: "spaces", Risk: ControlRiskAuthority, Description: "Set a space's operation permission; affects all of its conversations. Full requires explicit local confirmation.", ModelProposable: true, Reversible: true},
+		{Kind: ControlCreateSpace, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Create a local space with None permission.", ModelProposable: true},
+		{Kind: ControlRenameSpace, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Rename a space.", ModelProposable: true},
+		{Kind: ControlDeleteSpace, ResourceFamily: "spaces", Risk: ControlRiskDestructive, Description: "Delete a space, move its conversations to Local, and unpair its external chat.", ModelProposable: true},
+		{Kind: ControlMoveConversation, ResourceFamily: "spaces", Risk: ControlRiskAuthority, Description: "Move a conversation; explicitly confirm any publication to an external space.", ModelProposable: true},
+		{Kind: ControlSpaceDefault, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Choose a space's default conversation.", ModelProposable: true},
+		{Kind: ControlSpaceActive, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Choose the external channel's active conversation.", ModelProposable: true},
+		{Kind: ControlSpaceMulti, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Explicitly enable or disable multiple channel conversations.", ModelProposable: true},
+		{Kind: ControlPersonPermission, ResourceFamily: "people", Risk: ControlRiskAuthority, Description: "Change a platform person's permission across connected spaces; local confirmation only.", ModelProposable: true},
 		{Kind: ControlRenameConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Rename one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlPinConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Pin or unpin one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetConversationCapabilities, ResourceFamily: "conversation.capabilities", Risk: ControlRiskAuthority, Description: "Select the Skills, MCP servers and Extensions available to one conversation.", ModelProposable: true, Reversible: true},
@@ -691,6 +712,21 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 		return ControlState{}, err
 	}
 	_ = service.detectExternalChange()
+	spaces, err := service.core.Store.ListSpaces(ctx)
+	if err != nil {
+		return ControlState{}, err
+	}
+	spaceStates := make([]ControlSpaceState, 0, min(len(spaces), 100))
+	for _, space := range spaces {
+		if len(spaceStates) >= 100 {
+			break
+		}
+		p, err := service.core.Store.spacePermission(ctx, space.ID)
+		if err != nil {
+			return ControlState{}, err
+		}
+		spaceStates = append(spaceStates, ControlSpaceState{space.ID, space.Title, space.Source, p.Mode})
+	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	config := service.core.currentConfig()
@@ -707,8 +743,8 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 		workspace = "workspace"
 	}
 	workspace = workspace + "#" + shortHash(config.Workspace)
-	state := ControlState{Generation: service.generation, ResourceRevisions: cloneRevisions(service.revisions),
-		Config: ControlConfigState{PermissionMode: string(settings.PermissionMode), SandboxMode: string(settings.SandboxMode),
+	state := ControlState{Spaces: spaceStates, Generation: service.generation, ResourceRevisions: cloneRevisions(service.revisions),
+		Config: ControlConfigState{Channels: config.Channels, PermissionMode: string(settings.PermissionMode), SandboxMode: string(settings.SandboxMode),
 			FileScope: string(settings.FileScope), NetworkMode: string(settings.NetworkPolicy.Mode),
 			EnabledTools: effectiveBuiltinToolSettings(config), CommandReady: config.Commands.Enabled && config.Commands.Execution != "",
 			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled,
@@ -1490,9 +1526,30 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "busy_active_run"}, ErrControlBusy
 		}
 	}
-	if commands := service.core.commands; commands != nil {
+	permissionReduction := spacePermissionReduction(record)
+	providerSwitch := record.Operation.Kind == ControlSetProviderEnabled
+	if !permissionReduction {
+		global := false
+		for _, resource := range record.Operation.ResourceIDs {
+			if strings.HasPrefix(resource, "config.") {
+				global = true
+			}
+		}
+		if global && !providerSwitch {
+			allowed := ""
+			if fromRun {
+				allowed = record.Operation.ConversationID
+			}
+			release, err := service.core.Store.runMu.commit(allowed)
+			if err != nil {
+				return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "busy_active_run"}, err
+			}
+			defer release()
+		}
+	}
+	if commands := service.core.commands; commands != nil && !permissionReduction {
 		switch record.Operation.Kind {
-		case ControlSetWorkspace, ControlSetPermission, ControlSetExecutionProfile, ControlSetSandbox, ControlSetNetwork, ControlSetFileScope, ControlSetTool, ControlSetCommandPolicy, ControlSetConversationPermission:
+		case ControlSetWorkspace, ControlSetPermission, ControlSetExecutionProfile, ControlSetSandbox, ControlSetNetwork, ControlSetFileScope, ControlSetTool, ControlSetCommandPolicy, ControlSetSpacePermission:
 			commands.mu.Lock()
 			ids := commands.activeIDsLocked()
 			commands.mu.Unlock()
@@ -1501,7 +1558,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 			}
 		}
 	}
-	if record.Operation.Risk != ControlRiskOrdinary {
+	if record.Operation.Risk != ControlRiskOrdinary && !permissionReduction && !providerSwitch {
 		if err := service.gate.beginControl(); err != nil {
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "host_execution_busy"}, err
 		}
@@ -1642,14 +1699,30 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 		record.Operation.Kind == ControlRestartExtension || record.Operation.Kind == ControlClearExtensionData {
 		return service.applyCapabilityLifecycleLocked(ctx, record)
 	}
+	if isSpaceControl(record.Operation.Kind) {
+		return service.applySpaceControl(ctx, record)
+	}
 	if isConversationControl(record.Operation.Kind) {
 		return service.applyConversationLocked(ctx, *record)
 	}
 	candidate := cloneConfig(service.core.currentConfig())
+	if record.Operation.Kind == ControlSetProviderEnabled {
+		if err := service.validateProvider(record.Arguments); err != nil {
+			return err
+		}
+		if err := applyConfigControl(&candidate, record.Operation.Kind, record.Arguments, ctx, service.core.Store.DataDir()); err != nil {
+			return err
+		}
+		if err := WriteConfig(service.core.Store.DataDir(), candidate); err != nil {
+			return err
+		}
+		service.core.setConfig(candidate)
+		return nil
+	}
 	if err := applyConfigControl(&candidate, record.Operation.Kind, record.Arguments, ctx, service.core.Store.DataDir()); err != nil {
 		return err
 	}
-	_, err := NewTaskService(service.core).ConfigureRuntimePolicy(ctx, "", func(config *Config) error { *config = candidate; return nil })
+	_, err := NewTaskService(service.core).configureRuntimePolicy(ctx, "", func(config *Config) error { *config = candidate; return nil }, true)
 	return err
 }
 
@@ -1677,10 +1750,10 @@ func (service *ControlService) applyMCPRecordLocked(ctx context.Context, record 
 	if err := candidate.Validate(); err != nil {
 		return err
 	}
-	_, err := NewTaskService(service.core).ConfigureRuntimePolicy(ctx, "", func(config *Config) error {
+	_, err := NewTaskService(service.core).configureRuntimePolicy(ctx, "", func(config *Config) error {
 		*config = candidate
 		return nil
-	})
+	}, true)
 	service.clearMCPProfileLocked(record.Operation.ID)
 	return err
 }
@@ -1771,10 +1844,10 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 			if _, err := RemoveModels(&candidate, users, args.NewDefault); err != nil {
 				return err
 			}
-			if _, err := NewTaskService(service.core).ConfigureRuntimePolicy(ctx, "", func(next *Config) error {
+			if _, err := NewTaskService(service.core).configureRuntimePolicy(ctx, "", func(next *Config) error {
 				*next = candidate
 				return nil
-			}); err != nil {
+			}, true); err != nil {
 				return err
 			}
 		}
@@ -1805,6 +1878,20 @@ func (service *ControlService) clearKeySecretLocked(operationID string) {
 }
 
 func (service *ControlService) applyBeforeLocked(ctx context.Context, original controlRecord) error {
+	if original.Operation.Kind == ControlSetSpacePermission {
+		var args SpaceControlArguments
+		var before struct {
+			Permissions map[string]PermissionSelection `json:"permissions"`
+		}
+		if json.Unmarshal(original.Arguments, &args) != nil || json.Unmarshal(original.Before["spaces"], &before) != nil {
+			return ErrStoreFormat
+		}
+		selection, ok := before.Permissions[args.SpaceID]
+		if !ok {
+			return ErrStoreFormat
+		}
+		return NewTaskService(service.core).persistSpacePermission(ctx, args.SpaceID, mustJSON(selection))
+	}
 	if isConversationControl(original.Operation.Kind) {
 		return service.applyConversationBeforeLocked(ctx, original)
 	}
@@ -1824,7 +1911,7 @@ func (service *ControlService) applyBeforeLocked(ctx context.Context, original c
 			return err
 		}
 	}
-	_, err := NewTaskService(service.core).ConfigureRuntimePolicy(ctx, "", func(config *Config) error { *config = candidate; return nil })
+	_, err := NewTaskService(service.core).configureRuntimePolicy(ctx, "", func(config *Config) error { *config = candidate; return nil }, true)
 	return err
 }
 
@@ -1852,27 +1939,6 @@ func (service *ControlService) applyConversationLocked(ctx context.Context, reco
 		}
 		_, err := service.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/model/"+args.ConversationID, args.ModelID)
 		return err
-	case ControlSetConversationPermission:
-		previous, err := service.core.Store.selectedPermission(ctx, args.ConversationID)
-		if err != nil {
-			return err
-		}
-		selection := previous
-		if args.Selection != nil {
-			selection = *args.Selection
-		} else {
-			selection.Mode = args.Mode
-		}
-		selection, err = prepareExecutionProfileSelection(ctx, service.core.Store.DataDir(), service.core.currentConfig(), selection)
-		if err != nil {
-			return err
-		}
-		raw, err := json.Marshal(selection)
-		if err != nil {
-			return err
-		}
-		_, err = service.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/permission/"+args.ConversationID, string(raw))
-		return err
 	case ControlRenameConversation:
 		return service.core.Store.RenameConversation(ctx, args.ConversationID, args.Title)
 	case ControlPinConversation:
@@ -1897,24 +1963,6 @@ func (service *ControlService) applyConversationBeforeLocked(ctx context.Context
 				return err
 			}
 			_, err := service.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/model/"+id, model)
-			return err
-		}
-		if strings.HasPrefix(resource, "conversation.permission:") {
-			id := strings.TrimPrefix(resource, "conversation.permission:")
-			var selection PermissionSelection
-			if err := json.Unmarshal(raw, &selection); err != nil || selection.validate() != nil {
-				return ErrStoreFormat
-			}
-			if selection.Source == "default" {
-				_, err := service.core.Store.db.ExecContext(ctx, `DELETE FROM meta WHERE key=?`, "chat/permission/"+id)
-				return err
-			}
-			selection.Source = "conversation"
-			encoded, err := json.Marshal(selection)
-			if err != nil {
-				return err
-			}
-			_, err = service.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/permission/"+id, string(encoded))
 			return err
 		}
 		if strings.HasPrefix(resource, "conversation.title:") {
@@ -1973,7 +2021,11 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		record.Arguments = json.RawMessage(`{}`)
 	}
 	config := cloneConfig(service.core.currentConfig())
-	if request.Kind == ControlSetMemorySelection {
+	if isSpaceControl(request.Kind) {
+		if err := service.buildSpaceControl(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlSetMemorySelection {
 		if err := service.buildMemorySelectionRecord(&record, ctx); err != nil {
 			return controlRecord{}, err
 		}
@@ -2010,28 +2062,6 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 			record.Before = map[string]json.RawMessage{record.Operation.ResourceIDs[0]: mustJSON(conversation.ModelID)}
 			record.After = map[string]json.RawMessage{record.Operation.ResourceIDs[0]: mustJSON(args.ModelID)}
 			record.Operation.Preview = fmt.Sprintf("Set conversation %s model to %s for future Runs.", redactID(args.ConversationID), args.ModelID)
-		case ControlSetConversationPermission:
-			record.Operation.ResourceIDs = []string{"conversation.permission:" + args.ConversationID}
-			previous, previousErr := service.core.Store.selectedPermission(ctx, args.ConversationID)
-			if previousErr != nil {
-				return controlRecord{}, previousErr
-			}
-			next := previous
-			if args.Selection != nil {
-				next = *args.Selection
-			} else {
-				next.Mode = args.Mode
-			}
-			if next.Mode == "" {
-				return controlRecord{}, errors.New("harness: conversation permission requires a mode")
-			}
-			next, err = prepareExecutionProfileSelection(ctx, service.core.Store.DataDir(), config, next)
-			if err != nil {
-				return controlRecord{}, err
-			}
-			record.Before = map[string]json.RawMessage{record.Operation.ResourceIDs[0]: mustJSON(previous)}
-			record.After = map[string]json.RawMessage{record.Operation.ResourceIDs[0]: mustJSON(next)}
-			record.Operation.Preview = fmt.Sprintf("Set conversation %s permission to %s for future Runs.", redactID(args.ConversationID), next.Mode)
 		case ControlRenameConversation:
 			if strings.TrimSpace(args.Title) == "" {
 				return controlRecord{}, ErrInvalidConversationTitle
@@ -2063,8 +2093,18 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 			record.Operation.Preview = fmt.Sprintf("Change capability selection for conversation %s for future Runs.", redactID(args.ConversationID))
 		}
 	} else {
+		if record.Operation.Kind == ControlSetProviderEnabled {
+			if err := service.validateProvider(record.Arguments); err != nil {
+				return controlRecord{}, err
+			}
+		}
 		if err := buildConfigRecord(&record, &config, ctx, service.core.Store.DataDir()); err != nil {
 			return controlRecord{}, err
+		}
+		if record.Operation.Kind == ControlSetChannelPolicy {
+			if err := validateChannelKeys(service.core.Keys, config.Channels); err != nil {
+				return controlRecord{}, err
+			}
 		}
 	}
 	for _, resource := range record.Operation.ResourceIDs {
@@ -2138,6 +2178,8 @@ func buildConfigRecord(record *controlRecord, config *Config, ctx context.Contex
 
 func configControlResource(kind string, raw json.RawMessage) (string, error) {
 	switch kind {
+	case ControlSetProviderEnabled:
+		return "config.providers", nil
 	case ControlSetDefaultModel, ControlRemoveModel:
 		return "config.models", nil
 	case ControlSetWorkspace:
@@ -2148,6 +2190,8 @@ func configControlResource(kind string, raw json.RawMessage) (string, error) {
 		return "config.auto", nil
 	case ControlSetHTTPPolicy:
 		return "config.http", nil
+	case ControlSetChannelPolicy:
+		return "config.channels", nil
 	case ControlSetMemoryPolicy:
 		return "config.memory", nil
 	case ControlSetPromptPolicy:
@@ -2272,6 +2316,21 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		return errors.New("harness: configuration is required")
 	}
 	switch kind {
+	case ControlSetProviderEnabled:
+		var args struct {
+			ID      string `json:"id"`
+			Enabled bool   `json:"enabled"`
+		}
+		if err := decodeControlJSON(raw, &args); err != nil {
+			return err
+		}
+		if !validKeyID(args.ID) {
+			return errors.New("harness: provider requires a saved Key profile ID")
+		}
+		if config.Providers == nil {
+			config.Providers = map[string]bool{}
+		}
+		config.Providers[args.ID] = args.Enabled
 	case ControlSetPermission:
 		var args struct {
 			Mode PermissionMode `json:"mode"`
@@ -2390,6 +2449,9 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		if err := decodeControlJSON(raw, &args); err != nil {
 			return err
 		}
+		if args.GitWrite {
+			return errors.New("harness: git_write was disabled; Git metadata is read-only in a sandbox")
+		}
 		config.Commands = args
 		tools := effectiveBuiltinToolSettings(*config)
 		tools.CommandRun = args.Enabled
@@ -2464,6 +2526,15 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 			return err
 		}
 		config.HTTP = args
+	case ControlSetChannelPolicy:
+		var args ChannelsConfig
+		if err := decodeControlJSON(raw, &args); err != nil {
+			return err
+		}
+		if err := args.validate(); err != nil {
+			return err
+		}
+		config.Channels = args
 	case ControlSetMemoryPolicy:
 		var args MemoryConfig
 		if err := decodeControlJSON(raw, &args); err != nil {
@@ -2683,6 +2754,8 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 
 func configResourceValue(config Config, resource string) any {
 	switch resource {
+	case "config.providers":
+		return config.Providers
 	case "config.models":
 		return map[string]any{"models": config.Models, "default_model": config.DefaultModel, "default_selection": config.DefaultSelection, "auto": config.Auto, "collaboration": config.Collaboration}
 	case "config.auto":
@@ -2690,6 +2763,8 @@ func configResourceValue(config Config, resource string) any {
 		return autoControlArguments{AutoConfig: config.Auto, DefaultSelection: &selection}
 	case "config.http":
 		return config.HTTP
+	case "config.channels":
+		return config.Channels
 	case "config.memory":
 		return config.Memory
 	case "config.prompt":
@@ -2747,6 +2822,10 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		return err
 	}
 	switch resource {
+	case "config.providers":
+		if err := json.Unmarshal(raw, &config.Providers); err != nil {
+			return err
+		}
 	case "config." + ControlSetPermission:
 		var mode PermissionMode
 		if err := json.Unmarshal(raw, &mode); err != nil {
@@ -2838,6 +2917,8 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		}
 	case "config.http":
 		return decodeAndAssign(raw, &config.HTTP)
+	case "config.channels":
+		return decodeAndAssign(raw, &config.Channels)
 	case "config.memory":
 		return decodeAndAssign(raw, &config.Memory)
 	case "config.prompt":
@@ -2950,7 +3031,7 @@ func catalogEntry(kind string) (ControlCatalogEntry, bool) {
 }
 
 func isConversationControl(kind string) bool {
-	return kind == ControlSetConversationModel || kind == ControlSetConversationPermission || kind == ControlRenameConversation || kind == ControlPinConversation || kind == ControlSetConversationCapabilities
+	return kind == ControlSetConversationModel || kind == ControlRenameConversation || kind == ControlPinConversation || kind == ControlSetConversationCapabilities
 }
 
 func decodeControlJSON(raw []byte, target any) error {

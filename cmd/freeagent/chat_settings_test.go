@@ -52,6 +52,7 @@ func chatSuggestionFixture(t *testing.T, data, workspace string) (*atomic.Int32,
 	key := fixtureKey(t, server.URL, harness.KeySourceNone, "", "")
 	config := cliConfig(workspace, harness.ModelConfig{Provider: "openai-compatible", Key: key, Model: "initial"})
 	config.Models["review"] = harness.ModelConfig{Provider: "openai-compatible", Key: key, Model: "reviewed"}
+	enableTestProviders(&config)
 	if err := harness.WriteConfig(data, config); err != nil {
 		t.Fatal(err)
 	}

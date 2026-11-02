@@ -226,7 +226,9 @@ func TestConfigureModelsReusesStore(t *testing.T) {
 		}
 		t.Fatalf("second owner error=%v", err)
 	}
-	service.Store.runMu.Lock()
+	if !service.Store.runMu.TryLock() {
+		t.Fatal("fixture exclusive gate unavailable")
+	}
 	err = tasks.ConfigureModels(ctx, addModel("busy", "light"))
 	service.Store.runMu.Unlock()
 	if !errors.Is(err, ErrActiveRun) {

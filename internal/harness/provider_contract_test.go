@@ -210,6 +210,7 @@ func TestProviderDefinitiveFinishAndErrorCategoriesPersistWithoutReplay(t *testi
 			core, _, _ := testHarness(t, client)
 			core.Keys = keys
 			core.Config.Models[core.Config.DefaultModel] = config
+			enableTestProviders(&core.Config)
 			id := conversation(t, core)
 			result, err := core.Run(t.Context(), id, "failure", "task")
 			var failure *CallError

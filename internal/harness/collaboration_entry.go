@@ -185,13 +185,9 @@ func (tasks *TaskService) SetCollaborationSettings(ctx context.Context, conversa
 		return err
 	}
 	if len(cancelled) != 0 {
-		tasks.mu.Lock()
-		if tasks.activeChat == conversationID && tasks.cancel != nil {
-			tasks.cancel()
-		}
-		tasks.mu.Unlock()
-		if tasks.core.Store.runMu.TryLock() {
-			defer tasks.core.Store.runMu.Unlock()
+		tasks.CancelConversation(conversationID)
+		if release, err := tasks.core.Store.runMu.acquire(conversationID, false); err == nil {
+			defer release()
 			collab := NewCollaboration(tasks)
 			for _, id := range cancelled {
 				if err := collab.drainCancelled(ctx, tasks.core, id); err != nil {
@@ -204,21 +200,13 @@ func (tasks *TaskService) SetCollaborationSettings(ctx context.Context, conversa
 }
 
 func (tasks *TaskService) SetDefaultCollaborationSettings(ctx context.Context, settings CollaborationSettings) error {
-	if ctx == nil || tasks == nil || tasks.core == nil {
-		return errors.New("harness: task service and context are required")
-	}
-	tasks.mu.Lock()
-	defer tasks.mu.Unlock()
-	if err := settings.validate(tasks.core.currentConfig(), tasks.core.Tools); err != nil {
-		return err
-	}
-	config := tasks.core.currentConfig()
-	config.Collaboration = settings
-	if err := WriteConfig(tasks.core.Store.DataDir(), config); err != nil {
-		return err
-	}
-	tasks.core.setConfig(config)
-	return nil
+	return tasks.ConfigureModels(ctx, func(config *Config) error {
+		if err := settings.validate(*config, tasks.core.Tools); err != nil {
+			return err
+		}
+		config.Collaboration = settings
+		return nil
+	})
 }
 
 // Experts contain no endpoints, credentials or budgets. Their tool, path and
@@ -313,10 +301,11 @@ func (collab *Collaboration) startGoal(ctx context.Context, conversationID, requ
 	if len(prompt) > min(core.Config.MaxContextBytes, 32768) {
 		return RunResult{}, ErrContextLimit
 	}
-	if !core.Store.runMu.TryLock() {
-		return RunResult{}, ErrActiveRun
+	release, err := core.acquireConversation(conversationID)
+	if err != nil {
+		return RunResult{}, err
 	}
-	defer core.Store.runMu.Unlock()
+	defer release()
 	if repeated, exists, err := core.Store.repeatedRun(ctx, conversationID, requestKey, prompt); err != nil {
 		return RunResult{}, err
 	} else if exists {
@@ -580,26 +569,27 @@ func (tasks *TaskService) continueComposition(ctx context.Context, core *Service
 	core.ownsLease, core.guard = true, collaborationGuard{parentID: run.ID}
 	collab := NewCollaboration(NewTaskService(core))
 	if record.Planning || record.Single {
-		if !core.Store.runMu.TryLock() {
-			return RunResult{}, ErrActiveRun
+		release, err := core.acquireParent(ctx, run.ID)
+		if err != nil {
+			return RunResult{}, err
 		}
 		if record.Control != "running" {
-			core.Store.runMu.Unlock()
+			release()
 			return RunResult{Run: run}, ErrChildPaused
 		}
 		if record.Planning {
 			if record.Settings == nil {
-				core.Store.runMu.Unlock()
+				release()
 				return RunResult{}, ErrStoreFormat
 			}
 			result, err := collab.planGoal(ctx, core, run, *record.Settings, review)
-			core.Store.runMu.Unlock()
+			release()
 			if err == nil && result.Run.Status == "stopped" {
 				return tasks.continueComposition(ctx, core, result.Run, review)
 			}
 			return result, err
 		}
-		defer core.Store.runMu.Unlock()
+		defer release()
 		activity := newExecutionActivity(ctx, core.Store, run.ID, record.Plan.Budget.MaxActiveSeconds)
 		core.activity = activity
 		result, err := core.Continue(activity.ctx, run.ID)

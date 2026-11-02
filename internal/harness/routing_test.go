@@ -142,6 +142,7 @@ func TestAutoFiltersActualSerializedRequestAndToolHistory(t *testing.T) {
 				core.Tools = describedTools{description: strings.Repeat("tool description ", 500)}
 			}
 			core.Config.Models["light"] = profile
+			enableTestProviders(&core.Config)
 			chat := conversation(t, core)
 			if scenario == "tool-history" {
 				saveAutoConfig(t, core)
@@ -369,6 +370,7 @@ func TestAutoUpgradeAtCompleteGroupRetainsConsumptionAndBounds(t *testing.T) {
 			profile := core.Config.Models["light"]
 			profile.Capabilities.ContextBytes = 4096
 			core.Config.Models["light"] = profile
+			enableTestProviders(&core.Config)
 			core.Config.Auto.MaxUpgrades = upgrades
 			saveAutoConfig(t, core)
 			result, err := tasks.Submit(t.Context(), "", "upgrade", "simple read file")
@@ -420,6 +422,7 @@ func TestAutoRevocationStopsAssessmentAndUpgradeWithoutReplacingSavedBinding(t *
 				profile := core.Config.Models["light"]
 				profile.Capabilities.ContextBytes = 4096
 				core.Config.Models["light"] = profile
+				enableTestProviders(&core.Config)
 				core.Tools = boundaryTools{effect: EffectRead, execute: func(context.Context) (ToolResult, error) {
 					current, _ := LoadConfig(core.Store.DataDir())
 					current.Auto.Models, current.Auto.AssessmentModel = []string{"light"}, ""
@@ -522,6 +525,7 @@ func TestAutoRevocationBetweenSelectionAndDispatchStopsNewCall(t *testing.T) {
 				profile := core.Config.Models["light"]
 				profile.Capabilities.ContextBytes = 4096
 				core.Config.Models["light"] = profile
+				enableTestProviders(&core.Config)
 				core.Tools = boundaryTools{effect: EffectRead, execute: func(context.Context) (ToolResult, error) {
 					return ToolResult{Content: strings.Repeat("observed data ", 310)}, nil
 				}}

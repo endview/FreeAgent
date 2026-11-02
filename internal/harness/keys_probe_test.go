@@ -161,3 +161,21 @@ func TestProbeRedactsKey(t *testing.T) {
 		})
 	}
 }
+
+func TestProbeTelegramUsesGetMeAndDoesNotPretendModelsExist(t *testing.T) {
+	var path string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		path = request.URL.Path
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"ok":true,"result":{"id":1,"is_bot":true,"username":"fixture_bot"}}`))
+	}))
+	defer server.Close()
+	key, err := NewResolvedKeyForProtocol(server.URL, "12345678:fixture", KeyProtocolTelegram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := ProbeModels(t.Context(), key, server.Client())
+	if err != nil || result.Category != "ok" || result.Models != nil || result.Detail != "@fixture_bot" || path != "/bot12345678:fixture/getMe" {
+		t.Fatalf("result=%+v path=%q err=%v", result, path, err)
+	}
+}

@@ -29,6 +29,12 @@ func (server *Server) chatCommand(writer http.ResponseWriter, request *http.Requ
 		return true
 	}
 	switch command.Action {
+	case "backup":
+		var target string
+		if !decode(&target) {
+			return
+		}
+		err = tasks.Backup(ctx, target)
 	case "config":
 		config := tasks.Config()
 		// Only menu metadata crosses the surface; never prompts, env or secrets.

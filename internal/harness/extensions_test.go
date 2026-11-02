@@ -1256,6 +1256,9 @@ func TestExtensionOperationCheckRealProcessControlsDispatch(t *testing.T) {
 			service.Emit = func(event Event) { events = append(events, event) }
 			tasks.SetEvents(service.Emit)
 			chat := conversation(t, service)
+			if err := tasks.SetSpacePermission(t.Context(), LocalSpaceID, PermissionFull, true); err != nil {
+				t.Fatal(err)
+			}
 			result, err := tasks.SubmitWithOptions(t.Context(), chat, tc.name, "run checked operation", RunOptions{
 				Permission:        PermissionFull,
 				ConfirmFullAccess: true,
@@ -1472,6 +1475,9 @@ func TestExtensionHostToolCallSkipsCallerOperationCheck(t *testing.T) {
 	service.extensions = newExtensionHost(service.Store.DataDir(), workspace, service.Config, nil)
 	t.Cleanup(func() { _ = service.extensions.close() })
 	tasks := NewTaskService(service)
+	if err := tasks.SetSpacePermission(t.Context(), LocalSpaceID, PermissionFull, true); err != nil {
+		t.Fatal(err)
+	}
 	result, err := tasks.SubmitWithOptions(t.Context(), conversation(t, service), "reentrant", "hello", RunOptions{
 		Permission: PermissionFull, ConfirmFullAccess: true,
 	})

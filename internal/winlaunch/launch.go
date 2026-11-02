@@ -47,9 +47,6 @@ type ProtectMode string
 const (
 	// ProtectReadOnly lets the container read the subtree but not change it.
 	ProtectReadOnly ProtectMode = "read_only"
-	// ProtectGitWrite lets the container read and write inside the subtree
-	// while the entry itself cannot be deleted, renamed or replaced.
-	ProtectGitWrite ProtectMode = "git_write"
 )
 
 // ProtectedPath overrides one subtree's access for a single launch. The

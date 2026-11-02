@@ -269,7 +269,7 @@ are errors. An empty `new_text` deletes the matched text, but `null` does not.
 ## Optional Commands
 
 ```text
-freeagent config commands --data-dir <data> --enabled --allow <absolute-executable> --timeout 120 --output-bytes 32768 [--inherit-environment] [--git-write]
+freeagent config commands --data-dir <data> --enabled --allow <absolute-executable> --timeout 120 --output-bytes 32768 [--inherit-environment]
 freeagent config commands --data-dir <data> --enabled=false
 ```
 
@@ -281,8 +281,8 @@ the host as the current user; the receipt records `host_escape_hatch`. Builds
 without the sandbox report sandboxed commands as unsupported. Command rules,
 edited in Settings or through the `commands.set_policy` control operation, allow,
 ask or deny a program with given arguments: `deny` always blocks and `ask` always
-asks. `--git-write` lets sandboxed commands write `.git`; `.git` itself, hooks and
-config stay protected.
+asks. Git metadata is entirely read-only in the sandbox. `git_write` is disabled;
+use an explicit Full/host operation or the host Git client for commits.
 
 Repeat `--allow` for up to 32 executables. The command selection replaces the
 complete command policy; omitting `--allow` selects no path restriction.
@@ -378,10 +378,10 @@ freeagent config memory --data-dir <data> --knowledge=false
 Unmentioned memory fields are preserved. Configuration is offline; changing
 memory settings requires no unfinished Run. Chat `/settings memory` offers the
 same finite bounds and enable switch. No scanning or background model work is
-started. The current format is `freeagent-harness-v7`, configuration version
-`7`, backup format `freeagent-harness-backup-v3`, with default data directory
-`os.UserConfigDir()/FreeAgent/Harness-v5`; older formats are rejected. The
-current SQLite store format is `freeagent-harness-v7`.
+started. The current format is `freeagent-harness-v9`, configuration version
+`9`, backup format `freeagent-harness-backup-v3`, with default data directory
+`os.UserConfigDir()/FreeAgent/Harness-v7`; older formats are rejected. The
+current SQLite store format is `freeagent-harness-v9`.
 
 Private entries are explicitly selected per Chat, or supplied as a task override
 by a local caller. Selection fixes input authority in the Run; each model request
@@ -492,3 +492,16 @@ The same typed operation is available through `freeagent control`.
 Authorization-related changes while commands run return busy with their IDs;
 stop them explicitly first. Defaults affect future starts, not existing service
 deadlines. See [owner-bound commands and services](COMMAND_SESSIONS.md).
+
+
+Provider profiles are disabled by default. Saving a Key, enabling a Provider or
+starting FreeAgent makes no discovery request. Use the Provider page switch or
+`freeagent key enable NAME --data-dir DATA`; `key disable` prevents the next
+model request without replaying an in-flight call. `key add --enable` explicitly
+opts in. Models stay saved when the Provider is off; select an enabled model.
+Connection tests remain explicit and may be run while the Provider is off.
+
+`abandon --run ID` and `backup --out ABSOLUTE_PATH` also work while the GUI/Web
+Owner is running, using its interactive attach capability. A backup takes the
+existing exclusive snapshot boundary and reports busy during active execution.
+Observer credentials cannot perform these mutations.

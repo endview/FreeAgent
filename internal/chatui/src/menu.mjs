@@ -12,6 +12,7 @@ export function modelMenuItems(environment, profiles = []) {
   const items = [];
   if (environment?.auto) items.push({ id: 'auto', label: 'Auto', kind: 'model', disabled: false });
   for (const [id, model] of Object.entries(environment?.models || {})) {
+    if (model.provider_enabled === false) continue;
     const profile = profiles.find((item) => item.id === model.key);
     const name = model.provider === 'echo' ? '本地 Echo' : model.model || id;
     items.push({

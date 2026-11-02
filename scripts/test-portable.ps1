@@ -5,6 +5,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# .NET Framework creates the redirected writer with Console.InputEncoding
+# and emits its preamble during Process.Start, before BaseStream is accessed.
+[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 $Archive = (Resolve-Path -LiteralPath $Archive).Path
 $Root = [IO.Path]::GetFullPath($Root)
 if (Test-Path -LiteralPath $Root) { throw 'Portable test root must be new.' }
@@ -35,7 +38,7 @@ $manifest = Get-Content -LiteralPath (Join-Path $package 'manifest.json') -Raw |
 if ($manifest.signed -or $manifest.installer -or $manifest.bundled_credentials -or $manifest.bundled_user_data) {
     throw 'Unexpected portable release claim or bundled state.'
 }
-if ($manifest.data_format -ne 'Harness-v5') { throw 'Portable manifest has the wrong data format.' }
+if ($manifest.data_format -ne 'Harness-v7') { throw 'Portable manifest has the wrong data format.' }
 $expected = @('SHA256SUMS.txt', 'manifest.json') + @($manifest.files.path)
 $actual = @(Get-ChildItem -LiteralPath $package -File -Recurse | ForEach-Object {
     $_.FullName.Substring($package.Length + 1).Replace('\', '/')
@@ -86,8 +89,11 @@ function Invoke-Cli {
     try {
         $null = $process.Start()
         if ($null -ne $InputText) {
-            $process.StandardInput.Write($InputText)
-            $process.StandardInput.Close()
+            # Windows PowerShell 5's text writer emits a UTF-8 BOM. Write
+            # exact input bytes and close the pipe without the text writer.
+            $inputBytes = [Text.UTF8Encoding]::new($false).GetBytes($InputText)
+            $process.StandardInput.BaseStream.Write($inputBytes, 0, $inputBytes.Length)
+            $process.StandardInput.BaseStream.Close()
         }
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
@@ -158,7 +164,7 @@ try {
     $desktopCheck = & (Join-Path $PSScriptRoot 'test-desktop-startup.ps1') -Package $package
     if (-not $desktopCheck.ok) { throw 'Fresh desktop startup regression failed.' }
     $workspace = Join-Path $package 'workspace'
-    $data = [IO.Path]::GetFullPath((Join-Path $package 'data/Harness-v5'))
+    $data = [IO.Path]::GetFullPath((Join-Path $package 'data/Harness-v7'))
     $shown = Invoke-CliJson -Executable $cli -Arguments @('config', 'show', '--data-dir', $data)
     if ($shown.workspace -ne $workspace) { throw 'Desktop init did not select the portable workspace.' }
     if (@($shown.models.PSObject.Properties).Count -ne 0) { throw 'Portable init unexpectedly created a model.' }

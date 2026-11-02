@@ -47,6 +47,18 @@ func testKeyStore(t *testing.T) *KeyStore {
 	return NewKeyStore(filepath.Join(t.TempDir(), "keys.json"))
 }
 
+// Execution fixtures explicitly opt in; product defaults remain disabled.
+func enableTestProviders(config *Config) {
+	if config.Providers == nil {
+		config.Providers = map[string]bool{}
+	}
+	for _, model := range config.Models {
+		if model.Key != "" {
+			config.Providers[model.Key] = true
+		}
+	}
+}
+
 // mustResolved wraps NewResolvedKey for fixtures whose address is known good.
 func mustResolved(key ResolvedKey, err error) ResolvedKey {
 	if err != nil {

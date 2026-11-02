@@ -122,7 +122,7 @@ func (tasks *TaskService) SetMemoryConfig(ctx context.Context, memory MemoryConf
 	}
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
-	if tasks.cancel != nil || !tasks.core.Store.runMu.TryLock() {
+	if len(tasks.running) != 0 || !tasks.core.Store.runMu.TryLock() {
 		return ErrActiveRun
 	}
 	defer tasks.core.Store.runMu.Unlock()

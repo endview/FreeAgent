@@ -168,6 +168,7 @@ func TestCLIConfigModelSwitchPreservesAndUsesHistory(t *testing.T) {
 		changed.Models[changed.DefaultModel].Model != "selected-model" || changed.Models[changed.DefaultModel].Key != key {
 		t.Fatalf("configuration result=%+v error=%v", changed, err)
 	}
+	enableCLIProviders(t, data)
 	raw, _, err = invoke(t, "", "run", "--data-dir", data, "--session", first.Run.ConversationID, "--json", "second turn")
 	if err != nil {
 		t.Fatal(err)
@@ -327,6 +328,7 @@ func TestCLIHTTPExactApprovalAndEvidence(t *testing.T) {
 		"--provider", "openai-compatible", "--key", fixtureKey(t, model.URL, harness.KeySourceNone, "", ""), "--model", "fixture"); err != nil {
 		t.Fatal(err)
 	}
+	enableCLIProviders(t, data)
 	raw, _, err := invoke(t, "", "run", "--data-dir", data, "--json", "read explicit project docs")
 	var waiting harness.RunResult
 	if exitCode(err) != exitWaiting || json.Unmarshal([]byte(raw), &waiting) != nil ||
@@ -472,6 +474,7 @@ func TestConfigWorkspaceUsesExecutionLeaseSemantics(t *testing.T) {
 	if _, _, err := invoke(t, "", "config", "model", "--data-dir", data, "--id", "reentry", "--key", keyID, "--model", "m"); err != nil {
 		t.Fatal(err)
 	}
+	enableCLIProviders(t, data)
 	raw, stderr, err := invoke(t, "", "run", "--data-dir", data, "--model", "reentry", "--json", "needs a key")
 	var stopped harness.RunResult
 	if exitCode(err) != exitStopped || json.Unmarshal([]byte(raw), &stopped) != nil || stopped.Run.Status != "stopped" ||
@@ -511,6 +514,7 @@ func TestConfigWorkspaceUsesExecutionLeaseSemantics(t *testing.T) {
 	config.MaxSteps = 1
 	config.Models["looping"] = harness.ModelConfig{Provider: "openai-compatible", Model: "fixture",
 		Key: fixtureKey(t, server.URL, harness.KeySourceNone, "", "")}
+	enableTestProviders(&config)
 	if err := harness.WriteConfig(data, config); err != nil {
 		t.Fatal(err)
 	}

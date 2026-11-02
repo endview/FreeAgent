@@ -27,6 +27,7 @@ func TestConfigChangeDuringApprovalPreventsDispatch(t *testing.T) {
 		model := config.Models[config.DefaultModel]
 		model.Capabilities.Strength = "strong"
 		config.Models[config.DefaultModel] = model
+		enableTestProviders(&config)
 		return true, WriteConfig(service.Store.DataDir(), config)
 	}
 	result, err := service.Run(context.Background(), conversation(t, service), "drift", "edit")
@@ -210,6 +211,7 @@ func TestBackupWALInstructionsRestoreAndTampering(t *testing.T) {
 	service.Config.Instructions = []string{"selected.txt"}
 	// A model whose key profile does not exist must not block backup or restore.
 	service.Config.Models["absent"] = ModelConfig{Provider: "openai-compatible", Key: "k-0badc0de", Model: "absent"}
+	enableTestProviders(&service.Config)
 	service.Config.MCPServers = map[string]MCPServerConfig{"not-started": {
 		Enabled: true, Command: filepath.Join(data, "absent-program.exe"), EnvFrom: map[string]string{"TOKEN": "BACKUP_ABSENT_KEY"},
 	}}

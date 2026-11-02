@@ -58,9 +58,37 @@ func modelProviderForKey(key harness.KeyProfileView) string {
 	return "openai-compatible"
 }
 
+func rejectChannelModelKey(key harness.KeyProfileView) bool {
+	if !harness.IsChannelKeyProtocol(key.Protocol) {
+		return false
+	}
+	return true
+}
+
 func (server *Server) keysAPI(writer http.ResponseWriter, request *http.Request) bool {
 	path := request.URL.Path
 	switch {
+	case path == "/api/providers" && request.Method == http.MethodPut:
+		var body struct {
+			ID      string `json:"id"`
+			Enabled bool   `json:"enabled"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		profile, err := server.tasks.Keys().Find(body.ID)
+		if err == nil && harness.IsChannelKeyProtocol(profile.Protocol) {
+			err = errors.New("channel credentials have a separate switch")
+		}
+		if err == nil {
+			_, err = server.applyDirectControl(request.Context(), "", "", harness.ControlSetProviderEnabled, body)
+		}
+		if err != nil {
+			server.fail(writer, err)
+		} else {
+			server.writeJSON(writer, http.StatusOK, map[string]bool{"saved": true})
+		}
+		return true
 	case path == "/api/keys":
 		if request.Method == http.MethodGet {
 			server.listKeys(writer)
@@ -151,7 +179,12 @@ func (server *Server) listKeys(writer http.ResponseWriter) {
 	views := make([]keyProfileView, 0, len(profiles))
 	for _, profile := range profiles {
 		needsReentry := false
-		if _, err := store.Resolve(profile.ID); errors.Is(err, harness.ErrKeyNeedsReentry) {
+		if _, err := func() (harness.ResolvedKey, error) {
+			if !harness.IsChannelKeyProtocol(profile.Protocol) && !server.tasks.Config().Providers[profile.ID] {
+				return harness.ResolvedKey{}, nil
+			}
+			return store.Resolve(profile.ID)
+		}(); errors.Is(err, harness.ErrKeyNeedsReentry) {
 			needsReentry = true
 		} else if err != nil {
 			server.keyFailure(writer, err, http.StatusConflict)
@@ -410,6 +443,10 @@ func (server *Server) enableModel(writer http.ResponseWriter, request *http.Requ
 		server.keyFailure(writer, err, http.StatusNotFound)
 		return
 	}
+	if rejectChannelModelKey(key) {
+		server.writeError(writer, http.StatusBadRequest, "channel_key", "渠道 Key 只用于渠道连接，不能作为模型 Key。")
+		return
+	}
 	modelName := strings.TrimSpace(body.Model)
 	modelID := strings.TrimSpace(body.ID)
 	makeDefault := body.Default
@@ -453,6 +490,10 @@ func (server *Server) enableModelsBatch(writer http.ResponseWriter, request *htt
 	key, err := store.Find(body.Key)
 	if err != nil {
 		server.keyFailure(writer, err, http.StatusNotFound)
+		return
+	}
+	if rejectChannelModelKey(key) {
+		server.writeError(writer, http.StatusBadRequest, "channel_key", "渠道 Key 只用于渠道连接，不能作为模型 Key。")
 		return
 	}
 	modelIDs := make([]string, 0, len(body.Models))

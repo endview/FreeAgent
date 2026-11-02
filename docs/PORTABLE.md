@@ -1,15 +1,25 @@
 # FreeAgent Windows Portable Preview
 
-Current candidate: `v7.4.0-dev.1`, Windows amd64. This is an unsigned
+For the separate Linux amd64 CLI/Web archive, see [Linux portable](LINUX_PORTABLE.md).
+
+Current candidate: `v7.7.0-dev.1` (spaces, optional channels and parallel conversations), Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are embedded in the
 desktop executable.
+
+Settings includes optional Telegram, Lark/Feishu and official QQ connections.
+Save channel credentials in Key management, select the matching saved profile,
+then enable and pair from Settings. See [Channel setup](docs/CHANNELS.md).
+Real app/chat acceptance remains NOT_RUN; the package is a local development
+preview. Two foreground conversations share one workspace; command and service
+quotas do not increase. Global configuration commits require idle execution,
+while permission reductions still take effect immediately.
 
 ## Start
 
 Extract the entire ZIP to a writable directory, then double-click
 `FreeAgent.exe`. No console window is opened. The package creates its own
-`data\Harness-v5` store and `workspace\` directory on first start.
+`data\Harness-v7` store and `workspace\` directory on first start.
 
 The desktop app uses Microsoft WebView2 when it is installed. If WebView2 is
 unavailable, it opens the same local Chat in the default browser and shows a
@@ -33,7 +43,7 @@ default, independently of these manual operations.
 
 ## Data And Workspace
 
-The package uses the independent `data\Harness-v5` directory. Old stores,
+The package uses the independent `data\Harness-v7` directory. Old stores,
 backups and configurations are not imported, upgraded or removed. The default
 workspace is `workspace\` beside the desktop executable.
 
@@ -90,3 +100,16 @@ Providers, model quality or every external failure mode.
 The v7.0 live DeepSeek results, packaged CLI checklist, native Windows race
 run and manual desktop checks are recorded in
 `FREEAGENT_V7_0_IMPLEMENTATION_PROGRESS.md` in the repository.
+
+
+Provider profiles are disabled by default. Saving a Key, enabling a Provider or
+starting FreeAgent makes no discovery request. Use the Provider page switch or
+`freeagent key enable NAME --data-dir DATA`; `key disable` prevents the next
+model request without replaying an in-flight call. `key add --enable` explicitly
+opts in. Models stay saved when the Provider is off; select an enabled model.
+Connection tests remain explicit and may be run while the Provider is off.
+
+`abandon --run ID` and `backup --out ABSOLUTE_PATH` also work while the GUI/Web
+Owner is running, using its interactive attach capability. A backup takes the
+existing exclusive snapshot boundary and reports busy during active execution.
+Observer credentials cannot perform these mutations.

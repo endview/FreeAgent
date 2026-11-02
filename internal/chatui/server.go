@@ -39,9 +39,8 @@ type Server struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	mu            sync.Mutex
-	active        string
-	activeBinding string
-	activeCancel  context.CancelFunc
+	running       map[string]*ownerExecution
+	deliveries    []func(context.Context, harness.RunResult) error
 	stopping      bool
 	closed        bool
 	streams       map[string]Stream
@@ -53,6 +52,9 @@ type Server struct {
 	stopRequested chan struct{}
 	stopOnce      sync.Once
 	ownerInfo     handoff.EngineInfo
+	telegram      *harness.TelegramRuntime
+	lark, qq      *harness.AppChannelRuntime
+	channelConfig harness.ChannelsConfig
 }
 
 func NewToken() string {
@@ -84,7 +86,7 @@ func newServer(ctx context.Context, tasks *harness.TaskService, origin, token, a
 	lifetime, cancel := context.WithCancel(ctx)
 	server := &Server{tasks: tasks, origin: origin, host: address.Host, token: token, attachToken: attachToken,
 		ctx: lifetime, cancel: cancel, streams: map[string]Stream{}, listeners: map[chan []byte]bool{},
-		stopRequested: make(chan struct{})}
+		stopRequested: make(chan struct{}), running: make(map[string]*ownerExecution)}
 	server.generation = NewToken()
 	tasks.SetCommandGeneration(server.generation)
 	tasks.SetApproval(nil)
@@ -113,6 +115,12 @@ func (server *Server) SetOwnerInfo(info handoff.EngineInfo) {
 	server.mu.Unlock()
 }
 
+func (server *Server) SetTelegramRuntime(runtime *harness.TelegramRuntime) {
+	server.mu.Lock()
+	server.telegram = runtime
+	server.mu.Unlock()
+}
+
 // StopRequested is closed when an attached client has requested a graceful
 // owner handoff. The process that owns the Store performs final shutdown and
 // releases owner.lock.
@@ -125,8 +133,8 @@ func (server *Server) requestStopLocked() {
 func (server *Server) Close() {
 	server.mu.Lock()
 	server.closed = true
-	if server.activeCancel != nil {
-		server.activeCancel()
+	for _, execution := range server.running {
+		execution.cancel()
 	}
 	server.mu.Unlock()
 	server.cancel()
@@ -150,8 +158,20 @@ func (server *Server) onEvent(event harness.Event) {
 		stream := server.streams[key]
 		switch event.Kind {
 		case "model_started":
-			// One foreground caller; completed streams are represented by messages.
-			server.streams = map[string]Stream{key: {Attempt: key, Run: event.RunID}}
+			// Preserve streams from other foreground conversations.
+			for id, old := range server.streams {
+				if old.Run == event.RunID {
+					delete(server.streams, id)
+				}
+			}
+			if len(server.streams) >= 16 {
+				for id, old := range server.streams {
+					if old.Interrupted {
+						delete(server.streams, id)
+					}
+				}
+			}
+			server.streams[key] = Stream{Attempt: key, Run: event.RunID}
 		case "model_text":
 			if len(stream.Raw)+len(event.Message) <= 1<<20 {
 				stream.Raw += event.Message
@@ -204,7 +224,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("Cache-Control", "no-store")
 	header.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-	if request.Host != server.host || request.Header.Get("Origin") != "" && request.Header.Get("Origin") != server.origin ||
+	if !validLocalHost(request.Host) || request.Header.Get("Origin") != "" && request.Header.Get("Origin") != "http://"+request.Host ||
 		request.Header.Get("Sec-Fetch-Site") == "cross-site" {
 		server.writeError(writer, http.StatusForbidden, "origin", "请从本地 Chat 地址打开页面。")
 		return
@@ -220,11 +240,6 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	}
 	key := request.Header.Get("X-FreeAgent-Key")
 	attachKey := request.Header.Get("X-FreeAgent-Attach")
-	if request.Method == http.MethodGet && key == "" {
-		if cookie, err := request.Cookie("freeagent-chat"); err == nil {
-			key = cookie.Value
-		}
-	}
 	keyOK := subtle.ConstantTimeCompare([]byte(key), []byte(server.token)) == 1
 	attachOK := subtle.ConstantTimeCompare([]byte(attachKey), []byte(server.attachToken)) == 1
 	if !keyOK && !attachOK {
@@ -240,8 +255,6 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	if path == "/api/connect" && request.Method == http.MethodPost {
-		http.SetCookie(writer, &http.Cookie{Name: "freeagent-chat", Value: server.token, Path: "/api/",
-			HttpOnly: true, SameSite: http.SameSiteStrictMode})
 		server.writeJSON(writer, http.StatusOK, map[string]any{"connected": true})
 		return
 	}
@@ -260,6 +273,9 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.writeError(writer, http.StatusForbidden, "user_interaction_required", "需要当前用户界面的交互确认。")
 		return
 	}
+	if server.channelsAPI(writer, request) {
+		return
+	}
 	if server.controlAPI(writer, request) {
 		return
 	}
@@ -267,6 +283,9 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	if server.settingsAPI(writer, request) {
+		return
+	}
+	if server.spacesAPI(writer, request) {
 		return
 	}
 	if server.conversationsAPI(writer, request) {
@@ -278,7 +297,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		keys := server.tasks.Keys()
 		for id, model := range config.Models {
 			entry := map[string]any{"provider": model.Provider, "model": model.Model, "capabilities": model.Capabilities,
-				"key": model.Key, "key_name": "", "missing": false}
+				"key": model.Key, "key_name": "", "missing": false, "provider_enabled": config.ProviderEnabled(model)}
 			if model.Key != "" && keys != nil {
 				profile, err := keys.Find(model.Key)
 				if errors.Is(err, harness.ErrKeyNotFound) {
@@ -295,7 +314,8 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.writeJSON(writer, http.StatusOK, map[string]any{
 			"workspace": config.Workspace, "environment": server.tasks.EnvironmentID(),
 			"models": models, "auto": config.Auto.Enabled, "default_model": config.DefaultModel,
-			"permission_modes": []harness.PermissionMode{harness.PermissionAsk, harness.PermissionWorkspace, harness.PermissionFull},
+			"providers":        config.Providers,
+			"permission_modes": []harness.PermissionMode{harness.PermissionNone, harness.PermissionAsk, harness.PermissionWorkspace, harness.PermissionFull},
 			"capabilities":     server.tasks.CapabilityCatalog(),
 			"max_prompt_bytes": config.MaxContextBytes,
 		})
@@ -330,7 +350,8 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			return
 		}
 		var body struct {
-			Title string `json:"title"`
+			Title   string `json:"title"`
+			SpaceID string `json:"space_id"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return
@@ -342,7 +363,10 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		if strings.TrimSpace(body.Title) == "" {
 			body.Title = "新对话"
 		}
-		chat, err := server.tasks.NewConversation(request.Context(), body.Title)
+		if body.SpaceID == "" {
+			body.SpaceID = harness.LocalSpaceID
+		}
+		chat, err := server.tasks.NewConversationInSpace(request.Context(), body.SpaceID, body.Title)
 		if err != nil {
 			server.fail(writer, err)
 			return
@@ -424,11 +448,12 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 				}
 			}
 		}
-		activeChat := server.active
-		busy, stopping, elsewhere := activeChat == chat, server.stopping && activeChat == chat, activeChat != "" && activeChat != chat
+		activeChat, _ := server.firstActiveLocked()
+		activeChats := server.activeChatsLocked()
+		busy, stopping, elsewhere := server.running[chat] != nil, server.stopping && server.running[chat] != nil, len(server.running) >= harness.MaxForegroundRuns && server.running[chat] == nil
 		server.mu.Unlock()
 		server.writeJSON(writer, http.StatusOK, map[string]any{"view": view, "streams": streams, "busy": busy,
-			"stopping": stopping, "running_elsewhere": elsewhere, "active_chat": activeChat, "background_active": server.tasks.HasCommands()})
+			"stopping": stopping, "running_elsewhere": elsewhere, "active_chat": activeChat, "active_chats": activeChats, "foreground_capacity": harness.MaxForegroundRuns, "background_active": server.tasks.HasCommands()})
 		return
 	}
 	if request.Method != http.MethodPost || len(parts) != 2 {
@@ -528,7 +553,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			server.fail(writer, harness.ErrFullAccessConfirmation)
 			return
 		}
-		if _, applyErr := server.applyDirectControl(request.Context(), "", chat, harness.ControlSetConversationPermission, map[string]any{
+		if _, applyErr := server.applyDirectControl(request.Context(), "", chat, harness.ControlSetSpacePermission, map[string]any{
 			"conversation_id": chat, "mode": body.Mode,
 		}); applyErr != nil {
 			server.fail(writer, applyErr)
@@ -615,7 +640,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 				}
 			}
 		}
-		server.start(writer, chat, func(ctx context.Context) (harness.RunResult, error) {
+		server.startBound(writer, chat, body.RequestKey, func(ctx context.Context) (harness.RunResult, error) {
 			// This first Chat caller is explicitly single-Agent. Optional compositions
 			// remain in the CLI, not silently enabled by a hidden preference.
 			off := harness.DefaultCollaborationSettings()
@@ -626,13 +651,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			})
 		})
 	case "stop":
-		server.mu.Lock()
-		active := server.active == chat
-		if active {
-			server.activeCancel()
-			server.tasks.Cancel()
-		}
-		server.mu.Unlock()
+		active := server.cancelConversation(chat, "")
 		server.writeJSON(writer, http.StatusOK, map[string]bool{"requested": active})
 	case "continue", "preview", "confirm", "end", "limits":
 		run, err := server.tasks.Latest(request.Context(), chat)
@@ -757,7 +776,7 @@ func (server *Server) conversationsAPI(writer http.ResponseWriter, request *http
 			server.permissionFailure(writer, harness.ErrFullAccessConfirmation)
 			return true
 		}
-		if _, applyErr := server.applyDirectControl(request.Context(), "", chatID, harness.ControlSetConversationPermission, map[string]any{
+		if _, applyErr := server.applyDirectControl(request.Context(), "", chatID, harness.ControlSetSpacePermission, map[string]any{
 			"conversation_id": chatID, "mode": body.Mode,
 		}); applyErr != nil {
 			server.permissionFailure(writer, applyErr)
@@ -810,31 +829,16 @@ func (server *Server) executeAttachedOperation(writer http.ResponseWriter, chat 
 }
 
 func (server *Server) executeAttachedOperationBound(writer http.ResponseWriter, chat, binding string, execute func(context.Context) (any, error)) {
-	server.mu.Lock()
-	if server.active != "" || server.closed || server.stopping {
-		server.mu.Unlock()
-		server.fail(writer, harness.ErrActiveRun)
+	execution, err := server.reserve(chat, binding)
+	if err != nil {
+		server.fail(writer, err)
 		return
 	}
-	operation, cancel := context.WithCancel(server.ctx)
-	server.active, server.activeCancel = chat, cancel
-	server.activeBinding = binding
-	server.wg.Add(1)
-	server.mu.Unlock()
-	defer func() {
-		cancel()
-		server.mu.Lock()
-		stopping := server.stopping
-		server.active = ""
-		server.activeCancel = nil
-		server.activeBinding = ""
-		if stopping {
-			server.requestStopLocked()
-		}
-		server.mu.Unlock()
-		server.wg.Done()
-	}()
-	result, err := execute(operation)
+	defer server.release(chat, execution)
+	result, err := execute(execution.ctx)
+	if run, ok := result.(harness.RunResult); ok {
+		server.deliverResult(run)
+	}
 	if err != nil {
 		server.fail(writer, err)
 		return
@@ -847,40 +851,10 @@ func (server *Server) start(writer http.ResponseWriter, chat string, execute fun
 }
 
 func (server *Server) startBound(writer http.ResponseWriter, chat, binding string, execute func(context.Context) (harness.RunResult, error)) {
-	server.mu.Lock()
-	if server.active != "" || server.closed || server.stopping {
-		server.mu.Unlock()
-		server.fail(writer, harness.ErrActiveRun)
+	if err := server.dispatchBound(chat, binding, execute); err != nil {
+		server.fail(writer, err)
 		return
 	}
-	server.active, server.stopping = chat, false
-	server.activeBinding = binding
-	operation, cancel := context.WithCancel(server.ctx)
-	server.activeCancel = cancel
-	server.wg.Add(1)
-	server.mu.Unlock()
-	go func() {
-		defer server.wg.Done()
-		defer cancel()
-		result, err := execute(operation)
-		server.mu.Lock()
-		stopping := server.stopping
-		server.active = ""
-		server.activeBinding = ""
-		server.activeCancel = nil
-		server.mu.Unlock()
-		if stopping {
-			server.mu.Lock()
-			server.requestStopLocked()
-			server.mu.Unlock()
-		}
-		if err != nil {
-			code, text := userError(err)
-			// Classification is transport feedback, never an authoritative Run state.
-			server.notify("request_error", chat, code+": "+text)
-		}
-		server.notify("refresh", chat, result.Run.Status)
-	}()
 	server.writeJSON(writer, http.StatusAccepted, map[string]bool{"accepted": true})
 }
 
@@ -952,6 +926,12 @@ func (server *Server) readBody(writer http.ResponseWriter, request *http.Request
 func userError(err error) (string, string) {
 	var failure *harness.CallError
 	switch {
+	case errors.Is(err, harness.ErrInvalidExecutable):
+		return "invalid_executable", "程序不存在、目标是链接或未通过路径检查。请选取实际可执行文件后重试。"
+	case errors.Is(err, harness.ErrSandboxUnsupported):
+		return "sandbox_unavailable", "当前主机沙箱不可用。请查看运行环境原因，或由用户明确选择 Full 宿主执行。"
+	case errors.Is(err, harness.ErrHostExecutionRequiresFull):
+		return "host_requires_full", "宿主命令需要 Full 权限，请检查空间与本次执行权限。"
 	case errors.Is(err, harness.ErrSummaryStale):
 		return "context_stale", "摘要来源已变化。请检查后重新生成或清除摘要；原始记录保留。"
 	case errors.Is(err, harness.ErrUnknownResult):
@@ -1004,6 +984,8 @@ func userError(err error) (string, string) {
 		}
 	case errors.Is(err, harness.ErrKeyNotFound):
 		return "key_not_found", "找不到这个 Key 配置，可能已被删除。请在 Key 管理中重新选择。"
+	case errors.Is(err, harness.ErrProviderDisabled):
+		return "provider_disabled", "此 Provider 已关闭，请在 Provider 页开启或明确选择其他模型。"
 	case errors.Is(err, harness.ErrKeyNeedsReentry):
 		return "key_reentry", "这个 Key 需要重新输入，可能换了 Windows 用户或电脑。请在 Key 管理中重新输入。"
 	case errors.Is(err, harness.ErrKeysBusy):
@@ -1026,7 +1008,7 @@ func userError(err error) (string, string) {
 	case errors.Is(err, harness.ErrCommandBusy):
 		return "execution_profile_busy", err.Error()
 	case errors.Is(err, harness.ErrControlBusy):
-		return "control_busy", "当前有主机命令正在运行，请稍后确认。"
+		return "control_busy", "当前执行阻止了这项配置变更，请先停止或等待相关任务结束。"
 	case errors.Is(err, harness.ErrControlUserInteractionRequired):
 		return "control_interaction", "需要当前用户界面的交互确认。"
 	case errors.Is(err, harness.ErrExternalControlChange):

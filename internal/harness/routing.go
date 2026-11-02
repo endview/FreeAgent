@@ -122,12 +122,21 @@ func (service *Service) forTask(ctx context.Context, conversationID, selection, 
 		preferred := ids[index]
 		ids = append([]string{preferred}, slices.Delete(ids, index, index+1)...)
 	}
-	for _, id := range ids[:min(len(ids), service.Config.Auto.MaxCandidates)] {
+	for _, id := range ids {
+		if len(policy.Models) >= service.Config.Auto.MaxCandidates {
+			break
+		}
 		binding, err := service.newBinding(service.Config, id)
+		if errors.Is(err, ErrProviderDisabled) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
 		policy.Models = append(policy.Models, binding)
+	}
+	if len(policy.Models) == 0 {
+		return nil, ErrProviderDisabled
 	}
 	for _, binding := range policy.Models {
 		if binding.ID == assessmentID {
@@ -165,6 +174,9 @@ func (service *Service) chooseAuto(ctx context.Context, run Run, minimumStrength
 	var candidates []ModelBinding
 	var contextError bool
 	for _, binding := range service.autoPolicy.Models {
+		if !service.Config.ProviderEnabled(binding.Config) {
+			continue
+		}
 		if modelStrength(binding.Config) < minimumStrength ||
 			needsTools && (binding.Config.Capabilities.Tools == "none" || len(service.Tools.Definitions()) == 0) {
 			continue

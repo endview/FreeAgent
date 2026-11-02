@@ -18,7 +18,7 @@ func writeManifest(t *testing.T, directory, body string) {
 }
 
 func TestAppPathsPortableDetection(t *testing.T) {
-	current := `{"version":"v7.0.0-dev.1","data_format":"Harness-v5","files":[]}`
+	current := `{"version":"v7.0.0-dev.1","data_format":"Harness-v7","files":[]}`
 	t.Run("package root", func(t *testing.T) {
 		root := t.TempDir()
 		writeManifest(t, root, current)
@@ -61,7 +61,7 @@ func TestAppPathsPortableDetection(t *testing.T) {
 		"broken JSON":     `{"data_format":`,
 		"old data format": `{"data_format":"Harness-v` + `3"}`,
 		"missing format":  `{"version":"v5.5.0-dev.1"}`,
-		"trailing data":   `{"data_format":"Harness-v5"} {}`,
+		"trailing data":   `{"data_format":"Harness-v7"} {}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()

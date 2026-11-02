@@ -327,10 +327,11 @@ func (collab *Collaboration) IncreaseLimits(ctx context.Context, parentID string
 	if err != nil {
 		return err
 	}
-	if !core.Store.runMu.TryLock() {
-		return ErrActiveRun
+	release, err := core.acquireParent(ctx, parentID)
+	if err != nil {
+		return err
 	}
-	defer core.Store.runMu.Unlock()
+	defer release()
 	return collab.change(ctx, parentID, func(record *collaborationRecord, tx *sql.Tx) error {
 		parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, parentID))
 		if err != nil {

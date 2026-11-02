@@ -45,6 +45,7 @@ func TestLiveProviderToolErrorAndApprovalDecline(t *testing.T) {
 	core, _, workspace := testHarness(t, keyedClient(t, config, keys, nil))
 	core.Keys = keys
 	core.Config.Models[core.Config.DefaultModel] = config
+	enableTestProviders(&core.Config)
 	id := conversation(t, core)
 	result, err := core.Run(t.Context(), id, "missing-file",
 		"Use file_read to read deliberately-missing.txt. It deliberately does not exist; still call file_read once to observe the actual error. Then reply HARNESS_LIVE_TOOL_ERROR_OBSERVED. Do not create it.")
@@ -148,6 +149,7 @@ func TestLiveProviderControlledInterruptionsRetainUNKNOWN(t *testing.T) {
 			core, _, workspace := testHarness(t, client)
 			core.Keys = keys
 			core.Config.Models[core.Config.DefaultModel] = config
+			enableTestProviders(&core.Config)
 			id := conversation(t, core)
 			result, err := core.Run(ctx, id, "interrupted",
 				"Use file_create to create never-applied.txt containing HARNESS_LIVE_EFFECT. Then report success only after the tool result.")

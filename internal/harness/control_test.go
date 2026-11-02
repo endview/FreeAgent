@@ -682,10 +682,10 @@ func TestConversationPermissionControlAppliesFullSelectionAndReverts(t *testing.
 	if err := control.ReviewExternalChange(ctx); err != nil {
 		t.Fatal(err)
 	}
-	selection := PermissionSelection{Mode: PermissionWorkspace, Source: "conversation", ComputerFiles: true,
+	selection := PermissionSelection{Mode: PermissionWorkspace, Source: "space", ComputerFiles: true,
 		ComputerRoots: []string{root}, FileScope: FileScopeWorkspacePlusAllowedRoots,
 		BlockedPaths: []string{filepath.Join(root, "blocked")}}
-	operation, err := control.PlanControlChange(ctx, ControlPlanRequest{Kind: ControlSetConversationPermission,
+	operation, err := control.PlanControlChange(ctx, ControlPlanRequest{Kind: ControlSetSpacePermission,
 		Arguments:     mustJSON(map[string]any{"conversation_id": conversationID, "selection": selection}),
 		Authorization: ControlUserDirect, ConversationID: conversationID})
 	if err != nil {
@@ -731,7 +731,7 @@ func TestConversationPermissionControlAppliesFullSelectionAndReverts(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if selected.Mode != PermissionAsk || selected.Source != "default" || selected.FileScope != "" || len(selected.ComputerRoots) != 0 {
+	if selected.Mode != PermissionAsk || selected.Source != "space" || selected.FileScope != "" || len(selected.ComputerRoots) != 0 {
 		t.Fatalf("conversation selection revert did not restore default: %+v", selected)
 	}
 }

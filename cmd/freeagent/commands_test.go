@@ -36,6 +36,9 @@ func commandCLIConfig(t *testing.T, full bool) string {
 	}
 	if full {
 		config.Execution.PermissionMode = harness.PermissionFull
+		if _, _, err := invoke(t, "", "spaces", "permission", "--data-dir", data, "--mode", "full", "--yes"); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := harness.WriteConfig(data, config); err != nil {
 		t.Fatal(err)

@@ -44,3 +44,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local acceptance logs, mock fixtures and UI captures
+/output/

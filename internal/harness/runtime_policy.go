@@ -30,6 +30,9 @@ func (view *RuntimeToolView) Definitions() []ToolDefinition {
 	if view == nil || view.base == nil {
 		return nil
 	}
+	if view.policy.Profile.PermissionMode == PermissionNone {
+		return nil
+	}
 	definitions := append([]ToolDefinition(nil), view.base.Definitions()...)
 	if !view.policy.EnabledTools.File {
 		filtered := definitions[:0]
@@ -70,6 +73,9 @@ func (view *RuntimeToolView) Definitions() []ToolDefinition {
 func (view *RuntimeToolView) Prepare(ctx context.Context, call ToolCall) (PreparedTool, error) {
 	if view == nil || view.base == nil {
 		return PreparedTool{}, errors.New("harness: runtime tool view is unavailable")
+	}
+	if view.policy.Profile.PermissionMode == PermissionNone {
+		return PreparedTool{}, ErrPermissionDenied
 	}
 	if call.Name == "command_run" {
 		if !view.policy.EnabledTools.CommandRun || !view.policy.Commands.Enabled {

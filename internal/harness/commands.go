@@ -589,27 +589,15 @@ func (tools *CommandTools) sandboxRoots() []string {
 	return roots
 }
 
-// gitProtection keeps repository metadata readable so git status and log
-// work. With git_write the repository is writable, but hooks and config,
-// which later host git commands run or obey, stay read-only.
+// Git metadata must remain entirely read-only: Git also executes metadata
+// outside hooks/config, including commondir and sequencer instructions.
 func gitProtection(root string, gitWrite bool) []winlaunch.ProtectedPath {
 	gitDir := filepath.Join(root, ".git")
-	info, err := os.Lstat(gitDir)
+	_, err := os.Lstat(gitDir)
 	if err != nil {
 		return nil
 	}
-	if !gitWrite || !info.IsDir() {
-		// A .git file points at metadata elsewhere, which is never granted.
-		return []winlaunch.ProtectedPath{{Path: gitDir, Mode: winlaunch.ProtectReadOnly}}
-	}
-	return []winlaunch.ProtectedPath{
-		{Path: gitDir, Mode: winlaunch.ProtectGitWrite},
-		{Path: filepath.Join(gitDir, "hooks"), Mode: winlaunch.ProtectReadOnly, Create: true, Dir: true},
-		{Path: filepath.Join(gitDir, "config"), Mode: winlaunch.ProtectReadOnly, Create: true},
-		{Path: filepath.Join(gitDir, "config.worktree"), Mode: winlaunch.ProtectReadOnly, Create: true},
-		{Path: filepath.Join(gitDir, "modules"), Mode: winlaunch.ProtectReadOnly},
-		{Path: filepath.Join(gitDir, "worktrees"), Mode: winlaunch.ProtectReadOnly},
-	}
+	return []winlaunch.ProtectedPath{{Path: gitDir, Mode: winlaunch.ProtectReadOnly}}
 }
 
 // sandboxProfileName is stable for one data directory, so grants left by a

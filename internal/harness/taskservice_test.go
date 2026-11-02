@@ -106,7 +106,11 @@ func TestTaskServiceCancellationAndAdapterSnapshot(t *testing.T) {
 		t.Fatal("model did not start")
 	}
 	tasks.SetEvents(func(Event) { t.Error("active call changed event adapter") })
-	if _, err := tasks.Submit(t.Context(), "", "", "second"); !errors.Is(err, ErrActiveRun) {
+	active := tasks.ActiveConversations()
+	if len(active) != 1 {
+		t.Fatalf("active=%v", active)
+	}
+	if _, err := tasks.Submit(t.Context(), active[0], "", "second"); !errors.Is(err, ErrActiveRun) {
 		t.Fatalf("concurrent call=%v", err)
 	}
 	if !tasks.Cancel() {
@@ -475,6 +479,9 @@ func TestTaskServiceReopenPreservesConfirmationAndUnknown(t *testing.T) {
 	})
 	tasks, closeAll, err := OpenTasks(ctx, data, Adapters{Model: model})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tasks.SetSpacePermission(ctx, LocalSpaceID, PermissionAsk, false); err != nil {
 		t.Fatal(err)
 	}
 	waiting, err := tasks.Submit(ctx, "", "saved", "create file")

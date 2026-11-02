@@ -25,10 +25,10 @@ func TestEngineExecutable(t *testing.T) {
 		engine   string
 		wantErr  string
 	}{
-		{"portable", `{"data_format":"Harness-v5"}`, "file", ""},
+		{"portable", `{"data_format":"Harness-v7"}`, "file", ""},
 		{"installed", "", "file", ""},
-		{"missing engine", `{"data_format":"Harness-v5"}`, "", "engine was not found"},
-		{"directory instead of engine", `{"data_format":"Harness-v5"}`, "directory", "not a file"},
+		{"missing engine", `{"data_format":"Harness-v7"}`, "", "engine was not found"},
+		{"directory instead of engine", `{"data_format":"Harness-v7"}`, "directory", "not a file"},
 		{"invalid manifest", `{`, "file", "manifest"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -104,7 +104,7 @@ func TestDesktopCLIWorkflow(t *testing.T) {
 	if err := os.WriteFile(desktop, []byte("must never be executed as a CLI"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "manifest.json"), []byte(`{"data_format":"Harness-v5"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "manifest.json"), []byte(`{"data_format":"Harness-v7"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	enginePath, err := engineExecutable(desktop)

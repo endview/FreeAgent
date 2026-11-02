@@ -460,6 +460,14 @@ func buildExecutionProfile(config Config, selection PermissionSelection) (Execut
 	}
 
 	switch mode {
+	case PermissionNone:
+		profile.ApprovalPolicy = ApprovalAsk
+		profile.SandboxMode = SandboxReadOnly
+		profile.FileScope = FileScopeWorkspace
+		profile.AdditionalRoots = nil
+		profile.NetworkPolicy = NetworkPolicy{Mode: NetworkOff}
+		profile.CommandPolicy.Enabled = false
+		profile.CommandPolicy.Execution = CommandExecutionSandboxed
 	case PermissionAsk:
 		profile.ApprovalPolicy = ApprovalAsk
 		profile.SandboxMode = SandboxReadOnly
@@ -516,6 +524,9 @@ func commandConfigForProfile(base CommandConfig, profile ExecutionProfile) Comma
 
 func toolPolicyForProfile(config Config, profile ExecutionProfile) ToolPolicy {
 	tools := effectiveBuiltinToolSettings(config)
+	if profile.PermissionMode == PermissionNone {
+		tools = BuiltinToolSettings{}
+	}
 	command := commandConfigForProfile(config.Commands, profile)
 	command.Enabled = command.Enabled && tools.CommandRun
 	return ToolPolicy{

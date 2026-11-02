@@ -8,6 +8,10 @@ import (
 )
 
 type ModelMessage struct {
+	// Channel records verified transport provenance. It is source data, never
+	// execution authority. Only received text and confirmed deliveries are Public.
+	Channel    *ChannelMessageSource `json:",omitempty"`
+	Public     bool                  `json:",omitempty"`
 	Role       string
 	Content    string
 	Name       string
@@ -19,6 +23,7 @@ type ModelMessage struct {
 }
 
 type ModelRequest struct {
+	DenyOperations  bool `json:",omitempty"`
 	ModelID         string
 	ModelRevision   string
 	Purpose         string `json:",omitempty"`

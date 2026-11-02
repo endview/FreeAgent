@@ -95,8 +95,22 @@ func TestLocalCallerApprovalEventsAndCancellation(t *testing.T) {
 			}
 			config := harness.DefaultConfig(workspace)
 			config.Models = map[string]harness.ModelConfig{"default": {Provider: "openai-compatible", Key: profile.ID, Model: "local-caller-fixture"}}
+			config.Providers = map[string]bool{profile.ID: true}
 			config.DefaultModel = "default"
 			if err := harness.WriteConfig(data, config); err != nil {
+				t.Fatal(err)
+			}
+			// The example inherits the user's space grant; it must never gain
+			// authority merely because the model is configured.
+			setupStore, err := harness.OpenStore(t.Context(), data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tasks := harness.NewTaskService(harness.NewService(setupStore, config, harness.Adapters{}))
+			if err := tasks.SetSpacePermission(t.Context(), harness.LocalSpaceID, harness.PermissionAsk, false); err != nil {
+				t.Fatal(err)
+			}
+			if err := setupStore.Close(); err != nil {
 				t.Fatal(err)
 			}
 			program, err := os.Executable()

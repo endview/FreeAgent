@@ -40,7 +40,7 @@ export function modelsForKey(environment, keyID) {
 }
 
 export function hasModels(environment) {
-  return Object.keys(environment?.models || {}).length > 0;
+  return Object.values(environment?.models || {}).some(model => model.provider_enabled !== false);
 }
 
 // An unsaved draft overrides the saved values; the secret exists only in it.

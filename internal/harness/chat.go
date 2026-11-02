@@ -16,6 +16,7 @@ type ChatView struct {
 	ModelID      string              `json:"model_id"`
 	Permission   PermissionSelection `json:"permission"`
 	Capabilities CapabilitySelection `json:"capabilities"`
+	Background   []ChatMessage       `json:"background,omitempty"`
 	Turns        []ChatTurn          `json:"turns"`
 	HasEarlier   bool                `json:"has_earlier"`
 	Before       string              `json:"before,omitempty"`
@@ -219,6 +220,11 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 			}
 		}
 		turn.CanContinue = (run.Status == "stopped" || run.Status == "limited" || run.Status == "waiting_confirmation") && turn.State != "unknown"
+		deliveryNotes, err := channelDeliveryNotes(ctx, tx, run.ID)
+		if err != nil {
+			return ChatView{}, err
+		}
+		turn.Evidence.Uncertainty = append(turn.Evidence.Uncertainty, deliveryNotes...)
 		turn.CanEnd = run.Status != "running" && run.Status != "completed" && run.Status != "failed" && !turn.Ended
 		messages, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE run_id=? ORDER BY id`, run.ID)
 		if err != nil {
@@ -310,6 +316,35 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 	if len(runs) != 0 {
 		view.Before = runs[0].ID
 	}
+	if before == "" {
+		rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE conversation_id=? AND run_id IS NULL AND json_extract(body_json,'$.Channel.purpose') IN ('background','command','request') ORDER BY id DESC LIMIT 100`, conversationID)
+		if err != nil {
+			return ChatView{}, err
+		}
+		for rows.Next() {
+			var id int64
+			var raw string
+			if err := rows.Scan(&id, &raw); err != nil {
+				rows.Close()
+				return ChatView{}, err
+			}
+			var message ModelMessage
+			if json.Unmarshal([]byte(raw), &message) != nil {
+				rows.Close()
+				return ChatView{}, ErrStoreFormat
+			}
+			text := message.Content
+			if message.Channel != nil {
+				text = message.Channel.DisplayName + " [" + message.Channel.PersonID + "] " + text
+			}
+			text, truncated := chatText(text)
+			view.Background = append(view.Background, ChatMessage{Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated})
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return ChatView{}, err
+		}
+		slices.Reverse(view.Background)
+	}
 	return view, tx.Commit()
 }
 
@@ -328,8 +363,7 @@ func (tasks *TaskService) ChatRaw(ctx context.Context, conversationID, kind, key
 	var raw string
 	switch kind {
 	case "message":
-		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT m.body_json FROM messages m
-			JOIN runs r ON r.id=m.run_id WHERE r.conversation_id=? AND m.id=?`, conversationID, key).Scan(&raw)
+		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT m.body_json FROM messages m WHERE m.conversation_id=? AND m.id=?`, conversationID, key).Scan(&raw)
 		if err != nil {
 			return "", err
 		}

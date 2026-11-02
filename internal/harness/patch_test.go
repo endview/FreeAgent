@@ -122,6 +122,9 @@ func TestPatchUsesSharedAskAndWorkspaceApproval(t *testing.T) {
 			}))
 			tasks := NewTaskService(service)
 			chat := conversation(t, service)
+			if err := tasks.SelectPermission(t.Context(), chat, mode, false); err != nil {
+				t.Fatal(err)
+			}
 			result, err := tasks.SubmitWithOptions(t.Context(), chat, "patch", "apply exact patch", RunOptions{Permission: mode})
 			if err != nil {
 				t.Fatal(err)

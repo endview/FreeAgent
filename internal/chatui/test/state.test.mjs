@@ -196,7 +196,7 @@ test('pinned chats have a stable group and stay first in search results', () => 
 });
 
 test('permission mode follows an existing conversation snapshot and pending turn override', () => {
-  assert.equal(permissionMode(null), 'ask');
+  assert.equal(permissionMode(null), 'none');
   assert.equal(permissionMode({ permission: { mode: 'workspace' } }), 'workspace');
   assert.equal(permissionMode({ permission: { mode: 'full' } }), 'full');
   assert.equal(permissionMode({ permission: { mode: 'full' } }, 'workspace'), 'workspace');

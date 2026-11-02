@@ -80,7 +80,7 @@ func TestHostCommandBackendCanBeConfiguredBeforeFullAccessIsSelected(t *testing.
 		t.Fatalf("Ask profile did not retain the configured backend: %+v", askProfile.CommandPolicy)
 	}
 
-	fullProfile, err := buildExecutionProfile(config, PermissionSelection{Mode: PermissionFull, Source: "conversation"})
+	fullProfile, err := buildExecutionProfile(config, PermissionSelection{Mode: PermissionFull, Source: "space"})
 	if err != nil {
 		t.Fatal(err)
 	}

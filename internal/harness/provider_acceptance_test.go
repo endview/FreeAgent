@@ -64,6 +64,7 @@ func providerAcceptance(t *testing.T, config ModelConfig, keys *KeyStore, keyEnv
 	service, _, workspace := testHarness(t, model)
 	service.Keys = keys
 	service.Config.Models[service.Config.DefaultModel] = config
+	enableTestProviders(&service.Config)
 	if err := WriteConfig(service.Store.DataDir(), service.Config); err != nil {
 		t.Fatal(err)
 	}

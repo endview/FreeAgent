@@ -37,6 +37,11 @@ func testHarness(t *testing.T, model ModelClient) (*Service, *FileTools, string)
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
+	// Existing execution fixtures explicitly exercise Ask. Product stores
+	// still initialize at None; spaces_test covers that default separately.
+	if err := NewTaskService(NewService(store, config, Adapters{Model: model})).SetSpacePermission(t.Context(), LocalSpaceID, PermissionAsk, false); err != nil {
+		t.Fatal(err)
+	}
 	tools, err := NewFileTools(workspace, data)
 	if err != nil {
 		t.Fatal(err)
@@ -110,12 +115,12 @@ func makeCall(id, name string, args any) ToolCall {
 }
 
 func TestOpenStoreRejectsV4(t *testing.T) {
-	if !strings.HasSuffix(StoreFormat, "-v7") {
+	if !strings.HasSuffix(StoreFormat, "-v9") {
 		t.Fatalf("store format %q", StoreFormat)
 	}
 	for name, statement := range map[string]string{
 		"user_version": `PRAGMA user_version=4`,
-		"format":       `UPDATE meta SET value='` + strings.Replace(StoreFormat, "v7", "v6", 1) + `' WHERE key='format'`,
+		"format":       `UPDATE meta SET value='` + strings.Replace(StoreFormat, "v9", "v8", 1) + `' WHERE key='format'`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			service, _, _ := testHarness(t, EchoModel{})

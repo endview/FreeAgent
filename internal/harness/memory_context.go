@@ -239,6 +239,10 @@ func (service *Service) validateMemorySelection(ctx context.Context, policy memo
 }
 
 func (service *Service) selectMemory(ctx context.Context, chat string, selection *MemorySelection) error {
+	if service.publicContext() {
+		service.memory = nil
+		return nil
+	}
 	if service.memory != nil && selection == nil {
 		return service.memory.validate(service.Config.Workspace)
 	}
@@ -283,6 +287,9 @@ func memoryUse(entry MemoryEntry) MemoryUse {
 }
 
 func (service *Service) memoryContext(ctx context.Context, run Run) ([]ModelMessage, []MemoryUse, error) {
+	if service.publicContext() {
+		return nil, nil, nil
+	}
 	if service.memory == nil {
 		return nil, nil, nil
 	}

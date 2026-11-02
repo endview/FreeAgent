@@ -148,7 +148,7 @@ func boolStatus(enabled bool) string {
 func (server *Server) hasActiveRun() bool {
 	server.mu.Lock()
 	defer server.mu.Unlock()
-	return server.active != ""
+	return len(server.running) != 0
 }
 
 func (server *Server) patchSettingsPermissions(writer http.ResponseWriter, request *http.Request) {

@@ -42,17 +42,25 @@ func NewService(store *Store, config Config, adapters Adapters) *Service {
 // TaskService is the local product boundary used by callers. It deliberately
 // exposes task operations, not persistence tables or provider wire details.
 type TaskService struct {
-	mu         sync.Mutex
-	core       *Service
-	approve    ApprovalFunc
-	emit       EventFunc
-	cancel     context.CancelFunc
-	activeChat string
+	mu      sync.Mutex
+	core    *Service
+	approve ApprovalFunc
+	emit    EventFunc
+	running map[string]*taskExecution
+}
+
+// Backup uses the store's existing exclusive execution boundary, including
+// when a GUI or terminal already owns the writer.
+func (tasks *TaskService) Backup(ctx context.Context, target string) error {
+	return tasks.core.Store.Backup(ctx, target)
 }
 
 func NewTaskService(core *Service) *TaskService {
 	tasks := &TaskService{core: core}
 	if core != nil {
+		if core.liveConfig == nil {
+			core.liveConfig = core.currentConfig
+		}
 		tasks.approve, tasks.emit = core.Approve, core.Emit
 	}
 	return tasks
@@ -423,7 +431,7 @@ func (tasks *TaskService) RestartMCP(ctx context.Context) error {
 	}
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
-	if tasks.cancel != nil || !tasks.core.Store.runMu.TryLock() {
+	if len(tasks.running) != 0 || !tasks.core.Store.runMu.TryLock() {
 		return ErrActiveRun
 	}
 	defer tasks.core.Store.runMu.Unlock()
@@ -468,7 +476,7 @@ func (tasks *TaskService) ConfigureModels(ctx context.Context, edit func(*Config
 	}
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
-	if tasks.cancel != nil || !tasks.core.Store.runMu.TryLock() {
+	if len(tasks.running) != 0 || !tasks.core.Store.runMu.TryLock() {
 		return ErrActiveRun
 	}
 	defer tasks.core.Store.runMu.Unlock()
@@ -524,15 +532,24 @@ func (tasks *TaskService) RuntimePolicy() ToolPolicy {
 	return tasks.core.globalToolPolicy()
 }
 
-// ConfigureRuntimePolicy changes only future-run tool policy. It deliberately
-// does not acquire runMu or reject an active Run; existing Service copies keep
-// their immutable tool view and Continue reconstructs it from its snapshot.
+// ConfigureRuntimePolicy commits future-run tool policy only while execution
+// is idle. Existing Runs retain their immutable snapshots.
 func (tasks *TaskService) ConfigureRuntimePolicy(ctx context.Context, baseGeneration string, edit func(*Config) error) (ToolPolicy, error) {
+	return tasks.configureRuntimePolicy(ctx, baseGeneration, edit, false)
+}
+func (tasks *TaskService) configureRuntimePolicy(ctx context.Context, baseGeneration string, edit func(*Config) error, commitHeld bool) (ToolPolicy, error) {
 	if ctx == nil || tasks == nil || tasks.core == nil || edit == nil {
 		return ToolPolicy{}, errors.New("harness: runtime policy, context and edit are required")
 	}
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
+	if !commitHeld {
+		release, err := tasks.core.Store.runMu.commit("")
+		if err != nil {
+			return ToolPolicy{}, err
+		}
+		defer release()
+	}
 	current := tasks.core.currentConfig()
 	oldPolicy := tasks.core.globalToolPolicy()
 	if baseGeneration != "" && baseGeneration != oldPolicy.Generation {
@@ -641,46 +658,108 @@ func (tasks *TaskService) SetEvents(emit EventFunc) {
 	}
 }
 
-func (tasks *TaskService) execute(ctx context.Context, call func(context.Context, *Service) (RunResult, error)) (RunResult, error) {
-	if ctx == nil || tasks == nil || tasks.core == nil {
-		return RunResult{}, errors.New("harness: task service and context are required")
+type taskExecution struct {
+	cancel context.CancelFunc
+	runID  string
+}
+
+func (tasks *TaskService) ActiveConversations() []string {
+	tasks.mu.Lock()
+	defer tasks.mu.Unlock()
+	ids := make([]string, 0, len(tasks.running))
+	for id := range tasks.running {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (tasks *TaskService) execute(ctx context.Context, chat string, call func(context.Context, *Service) (RunResult, error)) (RunResult, error) {
+	if ctx == nil || tasks == nil || tasks.core == nil || chat == "" {
+		return RunResult{}, errors.New("harness: task service, conversation and context are required")
 	}
 	tasks.mu.Lock()
-	if tasks.cancel != nil {
+	if tasks.running[chat] != nil {
 		tasks.mu.Unlock()
 		return RunResult{}, ErrActiveRun
 	}
-	child, cancel := context.WithCancel(ctx)
 	core := tasks.core.runCopy()
-	core.Approve, core.Emit = tasks.approve, tasks.emit
-	tasks.cancel = cancel
-	tasks.mu.Unlock()
-	defer func() {
-		cancel()
-		tasks.mu.Lock()
-		tasks.cancel = nil
-		tasks.activeChat = ""
+	release, err := core.acquireConversation(chat)
+	if err != nil {
 		tasks.mu.Unlock()
-	}()
+		return RunResult{}, err
+	}
+	core.ownsLease = true
+	child, cancel := context.WithCancel(ctx)
+	execution := &taskExecution{cancel: cancel}
+	if tasks.running == nil {
+		tasks.running = make(map[string]*taskExecution)
+	}
+	tasks.running[chat] = execution
+	core.Approve = tasks.approve
+	emit := tasks.emit
+	core.Emit = func(event Event) {
+		tasks.mu.Lock()
+		if event.Kind == "run_started" && event.RunID != "" {
+			execution.runID = event.RunID
+		}
+		runID := execution.runID
+		tasks.mu.Unlock()
+		if event.ConversationID == "" {
+			event.ConversationID = chat
+		}
+		if event.RunID == "" {
+			event.RunID = runID
+		}
+		if emit != nil {
+			emit(event)
+		}
+	}
+	tasks.mu.Unlock()
+	defer func() { cancel(); tasks.mu.Lock(); delete(tasks.running, chat); tasks.mu.Unlock(); release() }()
 	return call(child, &core)
 }
 
-// Cancel stops new dispatch and propagates to the active provider/tool.
-// A dispatched outcome may remain UNKNOWN; cancellation never promises undo.
+func (tasks *TaskService) executeRun(ctx context.Context, runID string, call func(context.Context, *Service) (RunResult, error)) (RunResult, error) {
+	run, err := tasks.core.Store.GetRun(ctx, runID)
+	if err != nil {
+		return RunResult{}, err
+	}
+	return tasks.execute(ctx, run.ConversationID, call)
+}
+
+// CancelConversation never affects another conversation's execution.
+func (tasks *TaskService) CancelConversation(chat string) bool {
+	if tasks == nil {
+		return false
+	}
+	tasks.mu.Lock()
+	defer tasks.mu.Unlock()
+	if execution := tasks.running[chat]; execution != nil {
+		execution.cancel()
+		return true
+	}
+	return false
+}
+
+// Cancel is the Owner shutdown path. It stops all current dispatches without
+// promising reversal of side effects or a known result for dispatched calls.
 func (tasks *TaskService) Cancel() bool {
 	if tasks == nil {
 		return false
 	}
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
-	if tasks.cancel == nil {
-		return false
+	for _, execution := range tasks.running {
+		execution.cancel()
 	}
-	tasks.cancel()
-	return true
+	return len(tasks.running) > 0
 }
 
 type RunOptions struct {
+	channel           *ChannelRunOrigin
+	personID          string
+	SpaceID           string                 `json:"space_id,omitempty"`
 	ModelID           string                 `json:"model_id,omitempty"`
 	Collaboration     *CollaborationSettings `json:"collaboration,omitempty"`
 	Review            SuggestionReview       `json:"-"`
@@ -695,36 +774,47 @@ func (tasks *TaskService) Submit(ctx context.Context, conversationID, requestKey
 }
 
 func (tasks *TaskService) SubmitWithOptions(ctx context.Context, conversationID, requestKey, prompt string, options RunOptions) (RunResult, error) {
+	return tasks.submitWithOptions(ctx, conversationID, requestKey, prompt, options)
+}
+
+func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID, requestKey, prompt string, options RunOptions) (RunResult, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return RunResult{}, errors.New("harness: task prompt is required")
 	}
-	return tasks.execute(ctx, func(ctx context.Context, core *Service) (RunResult, error) {
+	if conversationID == "" {
+		title := strings.SplitN(strings.TrimSpace(prompt), "\n", 2)[0]
+		runes := []rune(title)
+		if len(runes) > 80 {
+			title = string(runes[:80])
+		}
+		spaceID := options.SpaceID
+		if spaceID == "" {
+			spaceID = LocalSpaceID
+		}
+		chat, err := tasks.NewConversationInSpace(ctx, spaceID, title)
+		if err != nil {
+			return RunResult{}, err
+		}
+		conversationID = chat.ID
+	}
+	return tasks.execute(ctx, conversationID, func(ctx context.Context, core *Service) (RunResult, error) {
 		core.selection = options.ModelID
 		if err := core.validate(ctx); err != nil {
 			return RunResult{}, err
 		}
-		createdConversation := conversationID == ""
-		if createdConversation {
-			title := strings.SplitN(strings.TrimSpace(prompt), "\n", 2)[0]
-			runes := []rune(title)
-			if len(runes) > 80 {
-				title = string(runes[:80])
-			}
-			conversation, err := core.Store.CreateConversation(ctx, title, core.Config.Workspace)
-			if err != nil {
-				return RunResult{}, err
-			}
-			conversationID = conversation.ID
-		}
-		if createdConversation && options.Permission != "" {
-			if err := NewTaskService(core).SelectPermission(ctx, conversationID, options.Permission, options.ConfirmFullAccess); err != nil {
-				return RunResult{}, err
-			}
-		}
+
 		if requestKey == "" {
 			requestKey = newID()
 		}
 		if err := core.resolvePermission(ctx, conversationID, options.Permission, options.ConfirmFullAccess); err != nil {
+			return RunResult{}, err
+		}
+		if options.channel != nil {
+			if err := core.resolveRequestPermission(ctx, conversationID, options.personID, options.channel.Source); err != nil {
+				return RunResult{}, err
+			}
+		}
+		if err := core.bindChannel(ctx, conversationID, options.channel); err != nil {
 			return RunResult{}, err
 		}
 		if options.Capabilities == nil {
@@ -740,9 +830,6 @@ func (tasks *TaskService) SubmitWithOptions(ctx context.Context, conversationID,
 			}
 			core.capabilities = &selected
 		}
-		tasks.mu.Lock()
-		tasks.activeChat = conversationID
-		tasks.mu.Unlock()
 		if err := core.selectMemory(ctx, conversationID, options.Memory); err != nil {
 			return RunResult{}, err
 		}
@@ -797,7 +884,7 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 	if len(prompt) > tasks.Config().MaxContextBytes {
 		return RunResult{}, ErrContextLimit
 	}
-	return tasks.execute(ctx, func(ctx context.Context, core *Service) (RunResult, error) {
+	return tasks.execute(ctx, conversationID, func(ctx context.Context, core *Service) (RunResult, error) {
 		core.controlToolsDisabled = true
 		if err := core.validate(ctx); err != nil {
 			return RunResult{}, err
@@ -817,6 +904,15 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 		}
 		if err := core.Store.checkUncontrolled(ctx, conversationID); err != nil {
 			return RunResult{}, err
+		}
+		if err := core.resolvePermission(ctx, conversationID, "", false); err != nil {
+			return RunResult{}, err
+		}
+		if err := core.bindChannel(ctx, conversationID, nil); err != nil {
+			return RunResult{}, err
+		}
+		if core.operationsDenied() {
+			return RunResult{}, ErrPermissionDenied
 		}
 		if !core.Config.Extensions.Enabled[extensionID] {
 			return RunResult{}, errors.New("harness: extension is not enabled")
@@ -864,10 +960,7 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 		if err := bound.checkConfig(Run{ConfigJSON: snapshot}); err != nil {
 			return RunResult{}, err
 		}
-		if !core.Store.runMu.TryLock() {
-			return RunResult{}, ErrActiveRun
-		}
-		defer core.Store.runMu.Unlock()
+
 		run, created, err := bound.Store.CreateRun(ctx, conversationID, requestKey, prompt, snapshot)
 		if err != nil {
 			return RunResult{}, err
@@ -876,9 +969,6 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 			evidence, evidenceErr := bound.Store.Evidence(ctx, run.ID)
 			return RunResult{Run: run, Answer: run.Output, Duplicate: true, Evidence: evidence}, evidenceErr
 		}
-		tasks.mu.Lock()
-		tasks.activeChat = conversationID
-		tasks.mu.Unlock()
 		bound.event(Event{Kind: "run_started", Message: run.ID, RunID: run.ID, ConversationID: run.ConversationID})
 		clock := &runClock{parent: ctx, store: bound.Store, runID: run.ID,
 			limit: time.Duration(bound.limits().MaxRunSeconds) * time.Second, activity: bound.activity}
@@ -981,14 +1071,11 @@ func (tasks *TaskService) ContinueWithOptions(ctx context.Context, runID string,
 	if strings.TrimSpace(runID) == "" {
 		return RunResult{}, errors.New("harness: run id is required")
 	}
-	return tasks.execute(ctx, func(ctx context.Context, core *Service) (RunResult, error) {
+	return tasks.executeRun(ctx, runID, func(ctx context.Context, core *Service) (RunResult, error) {
 		run, err := core.Store.GetRun(ctx, runID)
 		if err != nil {
 			return RunResult{}, err
 		}
-		tasks.mu.Lock()
-		tasks.activeChat = run.ConversationID
-		tasks.mu.Unlock()
 		if controlled, err := core.Store.controlledParent(ctx, runID); err != nil {
 			return RunResult{}, err
 		} else if controlled == runID {
@@ -1102,14 +1189,11 @@ func previewConfirmation(ctx context.Context, core *Service, runID string) (Conf
 
 // Confirm grants exactly one decision, never authority for later model edits.
 func (tasks *TaskService) Confirm(ctx context.Context, runID string, decision Confirmation, approved bool) (RunResult, error) {
-	return tasks.execute(ctx, func(ctx context.Context, core *Service) (RunResult, error) {
+	return tasks.executeRun(ctx, runID, func(ctx context.Context, core *Service) (RunResult, error) {
 		run, err := core.Store.GetRun(ctx, runID)
 		if err != nil {
 			return RunResult{}, err
 		}
-		tasks.mu.Lock()
-		tasks.activeChat = run.ConversationID
-		tasks.mu.Unlock()
 		actual, err := previewConfirmation(ctx, core, runID)
 		if err != nil {
 			return RunResult{}, errors.Join(ErrApprovalChanged, err)
@@ -1144,7 +1228,7 @@ func (tasks *TaskService) Confirm(ctx context.Context, runID string, decision Co
 // are supplied by the interactive GUI card or CLI prompt; the model never
 // receives either value.
 func (tasks *TaskService) ConfirmControl(ctx context.Context, runID string, decision Confirmation, auth ControlAuthorization, approved bool) (RunResult, error) {
-	return tasks.execute(ctx, func(ctx context.Context, core *Service) (RunResult, error) {
+	return tasks.executeRun(ctx, runID, func(ctx context.Context, core *Service) (RunResult, error) {
 		run, err := core.Store.GetRun(ctx, runID)
 		if err != nil {
 			return RunResult{}, err
@@ -1246,6 +1330,76 @@ func (tasks *TaskService) Conversations(ctx context.Context) ([]Conversation, er
 	return tasks.core.Store.ListConversations(ctx)
 }
 
+func (tasks *TaskService) Spaces(ctx context.Context) ([]Space, error) {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return nil, errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.ListSpaces(ctx)
+}
+
+func (tasks *TaskService) Space(ctx context.Context, spaceID string) (Space, error) {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return Space{}, errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.GetSpace(ctx, spaceID)
+}
+
+func (tasks *TaskService) SpaceConversations(ctx context.Context, spaceID string) ([]Conversation, error) {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return nil, errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.ListConversationsInSpace(ctx, spaceID)
+}
+
+func (tasks *TaskService) NewSpace(ctx context.Context, title, source, chatKind, externalChat string) (Space, error) {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return Space{}, errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.CreateSpace(ctx, title, source, chatKind, externalChat)
+}
+
+func (tasks *TaskService) RenameSpace(ctx context.Context, spaceID, title string) error {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.RenameSpace(ctx, spaceID, title)
+}
+
+func (tasks *TaskService) DeleteSpace(ctx context.Context, spaceID string) error {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.DeleteSpace(ctx, spaceID)
+}
+
+func (tasks *TaskService) MoveConversation(ctx context.Context, conversationID, spaceID string) error {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.MoveConversation(ctx, conversationID, spaceID)
+}
+
+func (tasks *TaskService) SetSpaceDefaultConversation(ctx context.Context, spaceID, conversationID string) error {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.SetSpaceDefaultConversation(ctx, spaceID, conversationID)
+}
+
+func (tasks *TaskService) SetSpaceActiveConversation(ctx context.Context, spaceID, conversationID string) error {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.SetSpaceActiveConversation(ctx, spaceID, conversationID)
+}
+
+func (tasks *TaskService) SetSpaceMultiConversation(ctx context.Context, spaceID string, enabled bool) error {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.SetSpaceMultiConversation(ctx, spaceID, enabled)
+}
+
 func (tasks *TaskService) Messages(ctx context.Context, conversationID string) ([]Message, error) {
 	if tasks == nil || tasks.core == nil {
 		return nil, errors.New("harness: task service is not configured")
@@ -1254,10 +1408,14 @@ func (tasks *TaskService) Messages(ctx context.Context, conversationID string) (
 }
 
 func (tasks *TaskService) NewConversation(ctx context.Context, title string) (Conversation, error) {
+	return tasks.NewConversationInSpace(ctx, LocalSpaceID, title)
+}
+
+func (tasks *TaskService) NewConversationInSpace(ctx context.Context, spaceID, title string) (Conversation, error) {
 	if tasks == nil || tasks.core == nil {
 		return Conversation{}, errors.New("harness: task service is not configured")
 	}
-	return tasks.core.Store.CreateConversation(ctx, title, tasks.core.currentConfig().Workspace)
+	return tasks.core.Store.CreateConversationInSpace(ctx, spaceID, title, tasks.core.currentConfig().Workspace)
 }
 
 func (tasks *TaskService) RenameConversation(ctx context.Context, conversationID, title string) error {

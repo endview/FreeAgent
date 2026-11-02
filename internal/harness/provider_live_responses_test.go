@@ -149,6 +149,7 @@ func TestLiveProviderResponsesHarnessToolsSearchAndRestart(t *testing.T) {
 	core, _, workspace := testHarness(t, liveResponsesClient(t, config, keys))
 	core.Keys = keys
 	core.Config.Models[core.Config.DefaultModel] = config
+	enableTestProviders(&core.Config)
 	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Minute)
 	defer cancel()
 	if err := os.WriteFile(filepath.Join(workspace, "acceptance.txt"), []byte(acceptanceBefore), 0o600); err != nil {

@@ -40,6 +40,9 @@ func initCLI(t *testing.T) (string, string) {
 	if _, _, err := invoke(t, "", "config", "model", "--data-dir", data, "--id", "default", "--default", "--provider", "echo"); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := invoke(t, "", "spaces", "permission", "--data-dir", data, "--mode", "ask", "--yes"); err != nil {
+		t.Fatal(err)
+	}
 	return data, workspace
 }
 

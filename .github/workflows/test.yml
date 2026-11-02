@@ -19,7 +19,7 @@ jobs:
           cache: true
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '24.22.1'
       - uses: pnpm/action-setup@v4
         with:
           version: 11.25.0
@@ -30,6 +30,7 @@ jobs:
         working-directory: internal/chatui
       - run: pnpm build
         working-directory: internal/chatui
+      - run: git diff --exit-code -- internal/chatui/dist
       - run: go mod verify
       - run: go test -count=1 -timeout=5m -skip 'Live|RealProvider' ./...
       - run: go vet ./...
@@ -39,3 +40,16 @@ jobs:
         run: ./scripts/update-notices.ps1 -Check
       - if: runner.os == 'Linux'
         run: go test -race -count=1 -timeout=10m -skip 'Live|RealProvider' ./...
+      - if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          install: mingw-w64-x86_64-gcc
+          update: true
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH = 'C:\msys64\mingw64\bin;' + $env:PATH
+          $env:CGO_ENABLED = '1'
+          gcc --version
+          go test -race -count=1 -timeout=10m -skip 'Live|RealProvider' ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

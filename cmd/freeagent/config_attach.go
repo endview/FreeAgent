@@ -46,7 +46,8 @@ type configInvocation struct {
 	SharedKinds         []string
 	SharedEntries       []string
 
-	Memory harness.MemoryConfig
+	Memory   harness.MemoryConfig
+	Channels harness.ChannelsConfig
 }
 
 func tryAttachedConfigShow(ctx context.Context, dataDir string, stdout io.Writer) (bool, error) {
@@ -203,6 +204,26 @@ func (inv configInvocation) controlPlan(ctx context.Context, dataDir string) (st
 			httpConfig.AllowedOrigins = append([]string(nil), inv.AllowedOrigins...)
 		}
 		return marshalControlArgs(harness.ControlSetHTTPPolicy, httpConfig)
+	case "channels":
+		channels := current.Channels
+		if visited("enabled") {
+			channels.Telegram.Enabled = inv.Channels.Telegram.Enabled
+		}
+		if visited("telegram-key") {
+			store, err := keyStore()
+			if err != nil {
+				return "", nil, err
+			}
+			profile, err := store.Find(inv.Channels.Telegram.Key)
+			if err != nil {
+				return "", nil, err
+			}
+			if profile.Protocol != harness.KeyProtocolTelegram {
+				return "", nil, usageErr("config channels: --telegram-key must refer to a Telegram protocol Key")
+			}
+			channels.Telegram.Key = profile.ID
+		}
+		return marshalControlArgs(harness.ControlSetChannelPolicy, channels)
 	case "context":
 		limits := map[string]any{}
 		if visited("summary-bytes") {

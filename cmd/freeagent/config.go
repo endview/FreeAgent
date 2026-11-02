@@ -14,7 +14,7 @@ import (
 	"github.com/endview/freeagent/internal/harness"
 )
 
-var configCommands = []string{"show", "model", "workspace", "auto", "commands", "context", "http", "collaboration", "memory"}
+var configCommands = []string{"show", "model", "workspace", "auto", "commands", "context", "http", "channels", "collaboration", "memory"}
 
 func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 || !slices.Contains(configCommands, args[0]) {
@@ -38,6 +38,7 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	var auto harness.AutoConfig
 	var autoModels repeatedStrings
 	var memory harness.MemoryConfig
+	var channels harness.ChannelsConfig
 	var sharedKinds, sharedEntries repeatedStrings
 	if args[0] == "memory" {
 		flags.BoolVar(&memory.KnowledgeEnabled, "knowledge", false, "explicitly enable local knowledge import and selected search")
@@ -101,7 +102,6 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	if args[0] == "commands" {
 		flags.BoolVar(&commands.Enabled, "enabled", false, "explicitly enable approved local commands")
 		flags.BoolVar(&commands.InheritEnv, "inherit-environment", false, "inherit ALL parent environment variables")
-		flags.BoolVar(&commands.GitWrite, "git-write", false, "let sandboxed commands write .git; hooks and config stay read-only")
 		flags.IntVar(&commands.TimeoutSecs, "timeout", 120, "timeout in seconds")
 		flags.IntVar(&commands.MaxOutput, "output-bytes", 32768, "captured output limit")
 		flags.Var(&allowedExecutables, "allow", "allowed absolute executable path; repeat for multiple paths")
@@ -111,6 +111,10 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		flags.IntVar(&httpConfig.TimeoutSecs, "timeout", 20, "timeout in seconds")
 		flags.IntVar(&httpConfig.MaxOutput, "output-bytes", 32768, "response text limit")
 		flags.Var(&allowedOrigins, "origin", "allowed scheme://host[:port]; repeat for multiple origins")
+	}
+	if args[0] == "channels" {
+		flags.BoolVar(&channels.Telegram.Enabled, "enabled", false, "enable the configured Telegram Bot channel")
+		flags.StringVar(&channels.Telegram.Key, "telegram-key", "", "Telegram Bot Key profile id or name")
 	}
 	if args[0] == "context" {
 		flags.IntVar(&summaryBytes, "summary-bytes", 0, "explicit task-local recap bound; 0 disables")
@@ -149,7 +153,8 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 			Collaboration: collaboration, CollaborationMode: collaborationMode,
 			CollaborationModels: collaborationModels, CollaborationTools: collaborationTools,
 			CollaborationPaths: collaborationPaths, SharedKinds: sharedKinds, SharedEntries: sharedEntries,
-			Memory: memory,
+			Memory:   memory,
+			Channels: channels,
 		}
 		attached, err := tryAttachedConfig(ctx, path, invocation, stdin, stdout, stderr)
 		if err != nil || attached {
@@ -245,11 +250,12 @@ func writeConfigResult(stdout io.Writer, path string, config harness.Config, res
 		capabilities[id] = profile.EffectiveCapabilities()
 	}
 	output := map[string]any{
+		"providers": config.Providers, "git_write_disabled": true,
 		"ok": true, "config_path": filepath.Join(path, "config.json"), "workspace": config.Workspace,
 		"models": config.Models, "default_model": config.DefaultModel, "default_selection": config.DefaultSelection,
 		"auto": config.Auto, "enabled_mcp_servers": enabled, "instructions": config.Instructions,
 		"model_capabilities": capabilities,
-		"commands":           config.Commands, "http": config.HTTP,
+		"commands":           config.Commands, "http": config.HTTP, "channels": config.Channels,
 		"collaboration": config.Collaboration,
 		"memory":        config.Memory,
 		"limits": map[string]int{

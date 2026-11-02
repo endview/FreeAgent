@@ -66,6 +66,7 @@ func TestCollaborationProviderWireFixtures(t *testing.T) {
 			collab, core, plan := collaborationFixture(t, keyedClient(t, config, keys, nil))
 			core.Keys = keys
 			core.Config.Models[core.Config.DefaultModel] = config
+			enableTestProviders(&core.Config)
 			plan.Parallel = true
 			id := createCollaboration(t, collab, plan)
 			report, err := collab.Continue(t.Context(), id)
@@ -99,6 +100,7 @@ func TestLiveProviderCollaboration(t *testing.T) {
 	collab, core, plan := collaborationFixture(t, keyedClient(t, config, keys, nil))
 	core.Keys = keys
 	core.Config.Models[core.Config.DefaultModel] = config
+	enableTestProviders(&core.Config)
 	core.Config.instructionText = ""
 	role := plan.Roles["reviewer"]
 	role.Budget = ChildBudget{MaxSteps: 8, MaxSeconds: 120, MaxOutputBytes: 65536, MaxCallOutputBytes: 16384}
@@ -133,6 +135,7 @@ func TestCollaborationChildBindingHasBaseURL(t *testing.T) {
 	collab, core, plan := collaborationFixture(t, modelFunc(readingChild))
 	core.Keys = keys
 	core.Config.Models[core.Config.DefaultModel] = ModelConfig{Provider: "openai-compatible", Key: id, Model: "fixture"}
+	enableTestProviders(&core.Config)
 	report, err := collab.Continue(t.Context(), createCollaboration(t, collab, plan))
 	if err != nil || report.Parent.Status != "completed" || len(report.Children) != 2 {
 		t.Fatalf("report=%+v err=%v", report, err)

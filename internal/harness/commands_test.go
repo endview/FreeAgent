@@ -71,6 +71,11 @@ func TestCommandHelper(t *testing.T) {
 		}
 		_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "SERVICE_OK") }))
 		os.Exit(0)
+	case "overlap":
+		start := time.Now().UnixNano()
+		time.Sleep(300 * time.Millisecond)
+		fmt.Printf("%d %d", start, time.Now().UnixNano())
+		os.Exit(0)
 	case "ok":
 		fmt.Print("check really ran")
 		os.Exit(0)
@@ -402,8 +407,8 @@ func TestSandboxSpecScopesRootsAndProtectsGit(t *testing.T) {
 	if !otherGranted {
 		t.Fatal("selected roots were not granted to commands")
 	}
-	if modes[".git"] != winlaunch.ProtectGitWrite || modes["hooks"] != winlaunch.ProtectReadOnly || modes["config"] != winlaunch.ProtectReadOnly {
-		t.Fatalf("git_write protection = %v", modes)
+	if modes[".git"] != winlaunch.ProtectReadOnly || modes["hooks"] != "" || modes["config"] != "" {
+		t.Fatalf("deprecated git_write widened protection = %v", modes)
 	}
 
 	commands.Profile.SandboxMode = SandboxReadOnly

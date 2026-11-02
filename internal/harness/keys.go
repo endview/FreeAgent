@@ -31,6 +31,9 @@ const (
 const (
 	KeyProtocolOpenAICompatible = "openai-compatible"
 	KeyProtocolAnthropic        = "anthropic"
+	KeyProtocolTelegram         = "telegram"
+	KeyProtocolLark             = "lark"
+	KeyProtocolQQ               = "qq"
 )
 
 const (
@@ -294,6 +297,13 @@ func NormalizeBaseURLForProtocol(raw, protocol string) (string, error) {
 	}
 	host := strings.TrimSuffix(strings.ToLower(parsed.Host), ":")
 	path := parsed.EscapedPath()
+	if IsChannelKeyProtocol(protocol) {
+		official := protocol == KeyProtocolTelegram && host == "api.telegram.org" || protocol == KeyProtocolLark && (host == "open.feishu.cn" || host == "open.larksuite.com") || protocol == KeyProtocolQQ && (host == "api.sgroup.qq.com" || host == "sandbox.api.sgroup.qq.com")
+		if path != "" && path != "/" || !(scheme == "https" && official || scheme == "http" && loopbackHost(parsed.Hostname())) {
+			return "", errors.New("harness: channel key requires official HTTPS origin or loopback fixture")
+		}
+		return scheme + "://" + host, nil
+	}
 	for {
 		path = strings.TrimRight(path, "/")
 		trimmed := path
@@ -332,7 +342,11 @@ func normalizeKeyProtocol(protocol string) string {
 
 func validKeyProtocol(protocol string) bool {
 	protocol = normalizeKeyProtocol(protocol)
-	return protocol == KeyProtocolOpenAICompatible || protocol == KeyProtocolAnthropic
+	return protocol == KeyProtocolOpenAICompatible || protocol == KeyProtocolAnthropic || IsChannelKeyProtocol(protocol)
+}
+
+func IsChannelKeyProtocol(protocol string) bool {
+	return protocol == KeyProtocolTelegram || protocol == KeyProtocolLark || protocol == KeyProtocolQQ
 }
 
 func loopbackHost(host string) bool {

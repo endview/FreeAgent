@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $Package = (Resolve-Path -LiteralPath $Package).Path
 $desktop = Join-Path $Package 'FreeAgent.exe'
 $cli = Join-Path $Package 'bin/freeagent.exe'
-$data = Join-Path $Package 'data/Harness-v5'
+$data = Join-Path $Package 'data/Harness-v7'
 $configPath = Join-Path $data 'config.json'
 if ((Test-Path -LiteralPath (Join-Path $Package 'data')) -or
     (Test-Path -LiteralPath (Join-Path $Package 'workspace'))) {

@@ -3,3 +3,11 @@ docs/*.md text eol=lf
 .github/workflows/*.yml text eol=lf
 THIRD_PARTY_NOTICES.md text eol=lf
 VERSION text eol=lf
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

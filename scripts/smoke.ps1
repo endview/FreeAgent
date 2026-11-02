@@ -77,9 +77,13 @@ $echo = Invoke-Harness -Arguments @('config', 'model', '--data-dir', $data, '--i
 if ($echo.default_model -ne 'default') { throw 'The first model did not become the default' }
 $first = Invoke-Harness -Arguments @('run', '--data-dir', $data, '--json', '--request', 'first', 'hello')
 if ($first.run.status -ne 'completed' -or $first.answer -ne 'Echo: hello') { throw 'First run did not complete' }
+if ($first.run.permission.mode -ne 'none') { throw 'A new store inherited an operation grant instead of None' }
 $session = $first.run.conversation_id
 $duplicate = Invoke-Harness -Arguments @('run', '--data-dir', $data, '--session', $session, '--request', 'first', '--json', 'hello')
 if (-not $duplicate.duplicate -or $duplicate.run.id -ne $first.run.id) { throw 'Request was not deduplicated' }
+# The following operation/input-source checks explicitly run as Ask. A model
+# configuration or a memory selection must not grant space permission.
+$null = Invoke-Harness -Arguments @('spaces', 'permission', '--data-dir', $data, '--space', 'local', '--mode', 'ask', '--yes')
 $key = Invoke-Harness -Arguments @('key', 'add', '--name', 'smoke', '--url', 'https://example.invalid',
     '--key-env', 'FREEAGENT_SMOKE_UNRESOLVED_KEY')
 $configured = Invoke-Harness -Arguments @('config', 'model', '--data-dir', $data, '--id', 'smoke', '--key', 'smoke', '--model', 'smoke-model')

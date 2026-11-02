@@ -34,11 +34,35 @@ func TestMain(m *testing.M) {
 func cliConfig(workspace string, model harness.ModelConfig) harness.Config {
 	config := harness.DefaultConfig(workspace)
 	config.Models = map[string]harness.ModelConfig{"default": model}
+	enableTestProviders(&config)
 	config.DefaultModel = "default"
 	return config
 }
 
+func enableTestProviders(config *harness.Config) {
+	if config.Providers == nil {
+		config.Providers = map[string]bool{}
+	}
+	for _, model := range config.Models {
+		if model.Key != "" {
+			config.Providers[model.Key] = true
+		}
+	}
+}
+
 var fixtureKeyCount atomic.Int64
+
+func enableCLIProviders(t *testing.T, data string) {
+	t.Helper()
+	config, err := harness.LoadConfig(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enableTestProviders(&config)
+	if err := harness.WriteConfig(data, config); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // fixtureKey adds a uniquely named profile to the test keys file and returns
 // its id. Every test shares the file, so the tests stay parallel-safe.

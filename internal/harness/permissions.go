@@ -2,7 +2,6 @@ package harness
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 type PermissionMode string
 
 const (
+	PermissionNone      PermissionMode = "none"
 	PermissionAsk       PermissionMode = "ask"
 	PermissionWorkspace PermissionMode = "workspace"
 	PermissionFull      PermissionMode = "full"
@@ -21,15 +21,20 @@ var ErrFullAccessConfirmation = errors.New("harness: Full access requires explic
 
 func (mode PermissionMode) Validate() error {
 	switch mode {
-	case PermissionAsk, PermissionWorkspace, PermissionFull:
+	case PermissionNone, PermissionAsk, PermissionWorkspace, PermissionFull:
 		return nil
 	default:
-		return errors.New("harness: permission must be ask, workspace or full")
+		return errors.New("harness: permission must be none, ask, workspace or full")
 	}
 }
 
 // This is part of the existing run snapshot, not another execution object.
 type PermissionSelection struct {
+	SpaceID           string         `json:"space_id,omitempty"`
+	PersonID          string         `json:"person_id,omitempty"`
+	Entry             string         `json:"entry,omitempty"`
+	SpaceLimit        PermissionMode `json:"space_limit,omitempty"`
+	PersonLimit       PermissionMode `json:"person_limit,omitempty"`
 	Mode              PermissionMode `json:"mode"`
 	Source            string         `json:"source"`
 	ComputerFiles     bool           `json:"computer_files,omitempty"`
@@ -42,7 +47,19 @@ type PermissionSelection struct {
 }
 
 func (selection PermissionSelection) validate() error {
-	if selection.Source != "turn" && selection.Source != "conversation" && selection.Source != "default" {
+	if len(selection.SpaceID) > 128 || strings.ContainsAny(selection.SpaceID, "\x00\r\n") {
+		return ErrInvalidSpace
+	}
+	if selection.PersonID != "" && !validPersonID(selection.PersonID) {
+		return ErrPermissionDenied
+	}
+	if selection.SpaceLimit != "" && selection.SpaceLimit.Validate() != nil {
+		return ErrPermissionDenied
+	}
+	if selection.PersonLimit != "" && selection.PersonLimit.Validate() != nil {
+		return ErrPermissionDenied
+	}
+	if selection.Source != "turn" && selection.Source != "space" && selection.Source != "default" {
 		return errors.New("harness: invalid permission source")
 	}
 	if err := selection.Mode.Validate(); err != nil {
@@ -68,22 +85,11 @@ func (selection PermissionSelection) validate() error {
 }
 
 func (store *Store) selectedPermission(ctx context.Context, conversationID string) (PermissionSelection, error) {
-	if _, err := store.GetConversation(ctx, conversationID); err != nil {
-		return PermissionSelection{}, err
-	}
-	var raw string
-	err := store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "chat/permission/"+conversationID).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return PermissionSelection{Mode: PermissionAsk, Source: "default"}, nil
-	}
+	chat, err := store.GetConversation(ctx, conversationID)
 	if err != nil {
 		return PermissionSelection{}, err
 	}
-	var selection PermissionSelection
-	if json.Unmarshal([]byte(raw), &selection) != nil || selection.validate() != nil || selection.Source != "conversation" {
-		return PermissionSelection{}, ErrStoreFormat
-	}
-	return selection, nil
+	return store.spacePermission(ctx, chat.SpaceID)
 }
 
 func (tasks *TaskService) SelectedPermission(ctx context.Context, conversationID string) (PermissionSelection, error) {
@@ -94,13 +100,7 @@ func (tasks *TaskService) SelectedPermission(ctx context.Context, conversationID
 	if err != nil {
 		return PermissionSelection{}, err
 	}
-	if selection.Source == "default" {
-		selection.Mode = effectiveExecutionSettings(tasks.core.currentConfig()).PermissionMode
-		if selection.Mode == "" {
-			selection.Mode = PermissionAsk
-		}
-		selection.ProfileGeneration = effectiveToolGeneration(tasks.core.currentConfig())
-	}
+	selection.ProfileGeneration = effectiveToolGeneration(tasks.core.currentConfig())
 	return selection, nil
 }
 
@@ -110,16 +110,16 @@ func (tasks *TaskService) EffectiveExecutionProfile(ctx context.Context, convers
 	if ctx == nil || tasks == nil || tasks.core == nil {
 		return ExecutionProfile{}, PermissionSelection{}, errors.New("harness: task service and context are required")
 	}
-	selection := PermissionSelection{Mode: effectiveExecutionSettings(tasks.core.currentConfig()).PermissionMode, Source: "default"}
+	selection, err := tasks.core.Store.spacePermission(ctx, LocalSpaceID)
+	if err != nil {
+		return ExecutionProfile{}, PermissionSelection{}, err
+	}
 	if strings.TrimSpace(conversationID) != "" {
 		stored, err := tasks.SelectedPermission(ctx, conversationID)
 		if err != nil {
 			return ExecutionProfile{}, PermissionSelection{}, err
 		}
 		selection = stored
-		if selection.Source == "default" {
-			selection.Mode = effectiveExecutionSettings(tasks.core.currentConfig()).PermissionMode
-		}
 	}
 	selection.ProfileGeneration = effectiveToolGeneration(tasks.core.currentConfig())
 	profile, err := buildExecutionProfile(tasks.core.currentConfig(), selection)
@@ -143,15 +143,13 @@ func (tasks *TaskService) SelectPermission(ctx context.Context, conversationID s
 		return ErrFullAccessConfirmation
 	}
 	next := selected
-	next.Mode, next.Source = mode, "conversation"
+	next.Mode, next.Source = mode, "space"
 	next.ProfileGeneration = effectiveToolGeneration(tasks.Config())
 	raw, err := json.Marshal(next)
 	if err != nil {
 		return err
 	}
-	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/permission/"+conversationID, string(raw))
-	return err
+	return tasks.persistSpacePermission(ctx, next.SpaceID, raw)
 }
 
 func (tasks *TaskService) SelectPermissionWithFiles(ctx context.Context, conversationID string, mode PermissionMode, confirmed, computerFiles bool, roots []string) error {
@@ -192,15 +190,13 @@ func (tasks *TaskService) SelectPermissionWithFiles(ctx context.Context, convers
 			}
 		}
 	}
-	raw, err := json.Marshal(PermissionSelection{Mode: mode, Source: "conversation", ComputerFiles: computerFiles,
+	raw, err := json.Marshal(PermissionSelection{Mode: mode, Source: "space", SpaceID: selected.SpaceID, ComputerFiles: computerFiles,
 		ComputerRoots: append([]string(nil), roots...), FileScope: map[bool]FileScope{false: FileScopeWorkspace, true: FileScopeSelectedRoots}[computerFiles],
 		ProfileGeneration: effectiveToolGeneration(config)})
 	if err != nil {
 		return err
 	}
-	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/permission/"+conversationID, string(raw))
-	return err
+	return tasks.persistSpacePermission(ctx, selected.SpaceID, raw)
 }
 
 // SelectExecutionProfile persists the conversation's next-run selection in
@@ -221,13 +217,12 @@ func (tasks *TaskService) SelectExecutionProfile(ctx context.Context, conversati
 	if err != nil {
 		return err
 	}
+	selection.SpaceID = previous.SpaceID
 	raw, err := json.Marshal(selection)
 	if err != nil {
 		return err
 	}
-	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/permission/"+conversationID, string(raw))
-	return err
+	return tasks.persistSpacePermission(ctx, previous.SpaceID, raw)
 }
 
 func (service *Service) resolvePermission(ctx context.Context, conversationID string, mode PermissionMode, confirmed bool) error {
@@ -235,6 +230,12 @@ func (service *Service) resolvePermission(ctx context.Context, conversationID st
 	if err != nil {
 		return err
 	}
+	selected.SpaceLimit = selected.Mode
+	space, err := service.Store.GetSpace(ctx, selected.SpaceID)
+	if err != nil {
+		return err
+	}
+	selected.Entry = space.Source
 	if mode != "" {
 		if err := mode.Validate(); err != nil {
 			return err
@@ -242,13 +243,9 @@ func (service *Service) resolvePermission(ctx context.Context, conversationID st
 		if mode == PermissionFull && selected.Mode != PermissionFull && !confirmed {
 			return ErrFullAccessConfirmation
 		}
-		selected.Mode, selected.Source = mode, "turn"
-	}
-	if selected.Source == "default" {
-		selected.Mode = effectiveExecutionSettings(service.Config).PermissionMode
-		if selected.Mode == "" {
-			selected.Mode = PermissionAsk
-		}
+		// A local per-turn choice can narrow the space grant. Increasing it
+		// requires changing the space explicitly through the control surface.
+		selected.Mode, selected.Source = lowerPermission(selected.Mode, mode), "turn"
 	}
 	if selected.ComputerFiles {
 		if err := validateComputerRoots(ctx, service.Store.DataDir(), selected.ComputerRoots); err != nil {
@@ -276,9 +273,9 @@ func (service *Service) resolvePermission(ctx context.Context, conversationID st
 // persists the same normalized value after its legacy direct caller checks.
 func prepareExecutionProfileSelection(ctx context.Context, dataDir string, config Config, selection PermissionSelection) (PermissionSelection, error) {
 	if selection.Source == "" {
-		selection.Source = "conversation"
+		selection.Source = "space"
 	}
-	selection.Source = "conversation"
+	selection.Source = "space"
 	if err := selection.validate(); err != nil {
 		return PermissionSelection{}, err
 	}

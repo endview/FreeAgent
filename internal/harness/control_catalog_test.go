@@ -24,7 +24,7 @@ func TestControlCatalogCoversCurrentMutableFamilies(t *testing.T) {
 		"config.execution", "config.tools", "config.commands", "config.workspace", "config.models",
 		"config.auto", "config.http", "config.memory", "config.prompt", "config.collaboration", "config.limits",
 		"config.skills", "config.extensions", "config.mcp", "conversation.model",
-		"conversation.permission", "conversation.metadata", "keys.profile",
+		"spaces", "people", "conversation.metadata", "keys.profile",
 	} {
 		if !seenFamilies[family] {
 			t.Fatalf("persistent mutable family %q has no typed control operation", family)
@@ -47,6 +47,7 @@ func TestControlCatalogCoversPersistentConfigFields(t *testing.T) {
 		"tools": "config.tools", "commands": "config.commands", "execution": "config.execution",
 		"computer_files": "config.execution", "computer_roots": "config.execution", "http": "config.http",
 		"collaboration": "config.collaboration", "memory": "config.memory",
+		"channels": "config.channels", "providers": "config.providers",
 	}
 	typ := reflect.TypeOf(Config{})
 	for index := 0; index < typ.NumField(); index++ {

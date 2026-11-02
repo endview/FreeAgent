@@ -584,17 +584,19 @@ func TestProtectedGitPathsStayReadable(t *testing.T) {
 	readOnly := runProbe(t, executable, root, name, grants, []ProtectedPath{{Path: gitDir, Mode: ProtectReadOnly}},
 		"head|read|"+filepath.Join(gitDir, "HEAD"),
 		"object|write|"+filepath.Join(gitDir, "objects", "new"),
+		"commondir|write|"+filepath.Join(gitDir, "commondir"),
 		"delete|delete|"+filepath.Join(gitDir, "HEAD"),
 		"rename|rename|"+gitDir+">"+filepath.Join(root, "moved"),
 		"ordinary|write|"+filepath.Join(root, "file.txt"))
 	expectProbe(t, readOnly, "head", true)
 	expectProbe(t, readOnly, "object", false)
+	expectProbe(t, readOnly, "commondir", false)
 	expectProbe(t, readOnly, "delete", false)
 	expectProbe(t, readOnly, "rename", false)
 	expectProbe(t, readOnly, "ordinary", true)
 
 	gitWrite := runProbe(t, executable, root, name, grants, []ProtectedPath{
-		{Path: gitDir, Mode: ProtectGitWrite},
+		{Path: gitDir, Mode: ProtectReadOnly},
 		{Path: filepath.Join(gitDir, "hooks"), Mode: ProtectReadOnly, Create: true, Dir: true},
 		{Path: filepath.Join(gitDir, "config"), Mode: ProtectReadOnly, Create: true},
 	},
@@ -604,7 +606,7 @@ func TestProtectedGitPathsStayReadable(t *testing.T) {
 		"configdelete|delete|"+filepath.Join(gitDir, "config"),
 		"hooksrename|rename|"+filepath.Join(gitDir, "hooks")+">"+filepath.Join(gitDir, "hooks-old"),
 		"rename|rename|"+gitDir+">"+filepath.Join(root, "moved"))
-	expectProbe(t, gitWrite, "object", true)
+	expectProbe(t, gitWrite, "object", false)
 	expectProbe(t, gitWrite, "hook", false)
 	expectProbe(t, gitWrite, "config", false)
 	expectProbe(t, gitWrite, "configdelete", false)

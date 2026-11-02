@@ -276,6 +276,8 @@ func (tools *FileTools) validateCreatePath(input string) (string, error) {
 }
 
 func (tools *FileTools) create(ctx context.Context, name string, content []byte) (ToolResult, error) {
+	fileMutationMu.Lock()
+	defer fileMutationMu.Unlock()
 	if ctx.Err() != nil {
 		return ToolResult{}, &CallError{Certain: true, Message: "cancelled before creation"}
 	}

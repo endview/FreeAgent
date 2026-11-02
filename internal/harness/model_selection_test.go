@@ -17,6 +17,7 @@ func selectionHarness(t *testing.T, model ModelClient) (*Service, *TaskService, 
 	core, _, workspace := testHarness(t, model)
 	// Echo takes no model name; a capability gives "second" its own revision.
 	core.Config.Models["second"] = ModelConfig{Provider: "echo", Capabilities: ModelCapabilities{Strength: "light"}}
+	enableTestProviders(&core.Config)
 	if err := WriteConfig(core.Store.DataDir(), core.Config); err != nil {
 		t.Fatal(err)
 	}
@@ -349,6 +350,7 @@ func TestModelCapabilitiesBoundDispatch(t *testing.T) {
 			profile := core.Config.Models["second"]
 			profile.Capabilities = caps
 			core.Config.Models["second"] = profile
+			enableTestProviders(&core.Config)
 			if err := WriteConfig(core.Store.DataDir(), core.Config); err != nil {
 				t.Fatal(err)
 			}

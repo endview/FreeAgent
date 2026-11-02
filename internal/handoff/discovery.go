@@ -18,7 +18,7 @@ const (
 	SecretFile     = "attach.secret"
 	ChatFile       = "chat.secret"
 	Protocol       = "freeagent-attach-v1"
-	DataFormat     = "freeagent-harness-v7"
+	DataFormat     = "freeagent-harness-v9"
 	Product        = "FreeAgent"
 	MaxEngineBytes = 64 << 10
 )

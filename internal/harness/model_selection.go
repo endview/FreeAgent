@@ -29,6 +29,7 @@ type ModelBinding struct {
 // Model and limit changes remain bounded data in the existing run snapshot.
 // The first binding is immutable; attempts record the actual dispatched binding.
 type runSnapshot struct {
+	Channel          *ChannelRunOrigin `json:",omitempty"`
 	Config           Config
 	Tools            []ToolDefinition
 	InstructionsHash string
@@ -98,6 +99,9 @@ func modelBinding(config Config, id string) (ModelBinding, error) {
 // only the profile metadata; the key itself is resolved at dispatch.
 func (service *Service) newBinding(config Config, id string) (ModelBinding, error) {
 	binding, err := modelBinding(config, id)
+	if err == nil {
+		err = config.requireProvider(binding.Config)
+	}
 	if err != nil || binding.Config.Key == "" {
 		return binding, err
 	}
@@ -110,6 +114,9 @@ func (service *Service) newBinding(config Config, id string) (ModelBinding, erro
 	}
 	if err != nil {
 		return ModelBinding{}, err
+	}
+	if view.Protocol != KeyProtocolOpenAICompatible && view.Protocol != KeyProtocolAnthropic {
+		return ModelBinding{}, errors.New("harness: channel credentials cannot be used as model keys")
 	}
 	binding.BaseURL = view.BaseURL
 	return binding, nil
@@ -153,7 +160,7 @@ func decodeRunSnapshot(raw string) (runSnapshot, error) {
 		snapshot.Config.Version != ConfigVersion || len(snapshot.Bindings) < 1 || len(snapshot.Bindings) > 64 {
 		return snapshot, ErrSnapshotIncomplete
 	}
-	if snapshot.EnabledTools == (BuiltinToolSettings{}) {
+	if snapshot.EnabledTools == (BuiltinToolSettings{}) && snapshot.ExecutionProfile.PermissionMode != PermissionNone {
 		snapshot.EnabledTools = defaultBuiltinToolSettings()
 	}
 	if err := validateSnapshotToolPolicy(ToolPolicy{EnabledTools: snapshot.EnabledTools, Generation: snapshot.ToolGeneration, Commands: snapshot.CommandPolicy, HTTP: snapshot.HTTPPolicy, File: snapshot.FilePolicy}); err != nil {
@@ -180,6 +187,13 @@ func decodeRunSnapshot(raw string) (runSnapshot, error) {
 	}
 	if snapshot.Permission != nil && snapshot.Permission.validate() != nil {
 		return snapshot, ErrStoreFormat
+	}
+	if origin := snapshot.Channel; origin != nil {
+		if origin.ChannelTarget.validate() != nil || origin.HistoryThrough < 0 || origin.InputMessageID < 0 ||
+			origin.InputMessageID > origin.HistoryThrough || origin.InputMessageID > 0 && origin.RequestKey == "" ||
+			snapshot.Permission == nil || snapshot.Permission.Entry != origin.Source {
+			return snapshot, ErrStoreFormat
+		}
 	}
 	if snapshot.Memory != nil && snapshot.Memory.validate(snapshot.Config.Workspace) != nil {
 		return snapshot, ErrStoreFormat
@@ -375,6 +389,7 @@ func (service *Service) forRun(run Run) (*Service, error) {
 		snapshot.Bindings, snapshot.Limits, snapshot.Auto, snapshot.Routing
 	copy.memory = snapshot.Memory
 	copy.permission = snapshot.Permission
+	copy.channel = snapshot.Channel
 	copy.capabilities = snapshot.Capabilities
 	if snapshot.FilePolicy.ComputerFiles {
 		roots, rootErr := normalizeComputerRoots(context.Background(), copy.Store.DataDir(), snapshot.FilePolicy.ComputerRoots)
@@ -427,6 +442,13 @@ func (service *Service) requestLimits() (ExecutionLimits, ModelBinding, error) {
 func (service *Service) modelClient() (ModelClient, error) {
 	binding, err := service.binding()
 	if err != nil {
+		return nil, err
+	}
+	current, err := service.providerConfig()
+	if err != nil {
+		return nil, err
+	}
+	if err := current.requireProvider(binding.Config); err != nil {
 		return nil, err
 	}
 	client := service.Model
@@ -499,16 +521,20 @@ func (tasks *TaskService) editRun(ctx context.Context, runID string, edit func(*
 	}
 	tasks.mu.Lock()
 	core := tasks.core.runCopy()
-	active := tasks.cancel != nil
 	tasks.mu.Unlock()
-	if active || !core.Store.runMu.TryLock() {
-		return ErrActiveRun
+	run, err := core.Store.GetRun(ctx, runID)
+	if err != nil {
+		return err
 	}
-	defer core.Store.runMu.Unlock()
+	release, err := core.Store.runMu.acquire(run.ConversationID, false)
+	if err != nil {
+		return err
+	}
+	defer release()
 	if parent, err := core.Store.controlledParent(ctx, runID); err != nil || parent != "" {
 		return errors.Join(ErrControlledRun, err)
 	}
-	run, err := core.Store.GetRun(ctx, runID)
+	run, err = core.Store.GetRun(ctx, runID)
 	if err != nil {
 		return err
 	}

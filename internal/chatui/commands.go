@@ -84,7 +84,7 @@ func (server *Server) commandPolicyJSON() map[string]any {
 func (server *Server) writeCommandPolicy(writer http.ResponseWriter) {
 	value := server.commandPolicyJSON()
 	server.mu.Lock()
-	value["active_run_uses_previous_snapshot"] = server.active != ""
+	value["active_run_uses_previous_snapshot"] = len(server.running) != 0
 	server.mu.Unlock()
 	server.writeJSON(writer, http.StatusOK, value)
 }
@@ -169,7 +169,7 @@ func (server *Server) writePermissions(writer http.ResponseWriter, request *http
 		return
 	}
 	server.mu.Lock()
-	active := server.active != ""
+	active := len(server.running) != 0
 	server.mu.Unlock()
 	server.writeJSON(writer, http.StatusOK, map[string]any{
 		"selection": selection, "computer_files": selection.ComputerFiles, "default_computer_files": config.ComputerFiles,
@@ -222,7 +222,7 @@ func (server *Server) updateExecutionProfile(writer http.ResponseWriter, request
 	}
 	if strings.TrimSpace(body.ChatID) != "" {
 		if body.FileScope == "" && len(body.AdditionalRoots) == 0 && len(body.BlockedPaths) == 0 && body.CommandEnabled == nil {
-			if _, err := server.applyDirectControl(request.Context(), "", body.ChatID, harness.ControlSetConversationPermission, map[string]any{
+			if _, err := server.applyDirectControl(request.Context(), "", body.ChatID, harness.ControlSetSpacePermission, map[string]any{
 				"conversation_id": body.ChatID, "mode": body.Mode,
 			}); err != nil {
 				server.permissionFailure(writer, err)
@@ -278,7 +278,7 @@ func (server *Server) applyConversationPermission(ctx context.Context, conversat
 		len(selection.AdditionalRoots) != 0 || len(selection.BlockedPaths) != 0 || selection.CommandEnabled != nil {
 		arguments = map[string]any{"conversation_id": conversationID, "selection": selection}
 	}
-	_, err = server.applyDirectControl(ctx, "", conversationID, harness.ControlSetConversationPermission, arguments)
+	_, err = server.applyDirectControl(ctx, "", conversationID, harness.ControlSetSpacePermission, arguments)
 	return err
 }
 

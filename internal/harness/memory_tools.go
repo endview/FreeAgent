@@ -29,6 +29,9 @@ func (tools disabledMemoryToolRunner) Prepare(ctx context.Context, call ToolCall
 }
 
 func (service *Service) runtimeTools(runID, attemptID string) ToolRunner {
+	if service.operationsDenied() {
+		return deniedTools{}
+	}
 	base := service.Tools
 	if service.capabilities != nil {
 		switch runtime := base.(type) {
@@ -62,7 +65,7 @@ func (service *Service) runtimeTools(runID, attemptID string) ToolRunner {
 }
 
 func (service *Service) controlToolsEnabled() bool {
-	return service != nil && service.controlToolsActive && service.guard == nil && !service.controlToolsDisabled
+	return service != nil && !service.operationsDenied() && service.controlToolsActive && service.guard == nil && !service.controlToolsDisabled
 }
 
 func (policy memoryRunPolicy) enabled() bool {

@@ -1,0 +1,48 @@
+name: Repeatable portable candidates
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v7.*']
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-amd64
+          - os: ubuntu-latest
+            target: linux-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: go mod verify
+      - run: go test -count=1 -timeout=10m -skip 'Live|RealProvider' ./...
+      - run: python scripts/release_package.py --target ${{ matrix.target }} --output-directory bin/repeat-a
+      - run: python scripts/release_package.py --target ${{ matrix.target }} --output-directory bin/repeat-b
+      - run: python scripts/verify-repeatable.py bin/repeat-a bin/repeat-b
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem bin/repeat-a/*.zip).FullName
+          ./scripts/test-portable.ps1 -Archive $zip
+      - if: runner.os == 'Linux'
+        run: |
+          archive=$(find bin/repeat-a -maxdepth 1 -name '*.tar.gz')
+          digest=$(sha256sum "$archive" | cut -d' ' -f1)
+          python scripts/test-linux-portable.py --archive "$archive" --sha256 "$digest" --root /tmp/freeagent-release-check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-${{ matrix.target }}
+          path: |
+            bin/repeat-a/*.zip
+            bin/repeat-a/*.tar.gz
+            bin/repeat-a/*SUMS.txt
+          if-no-files-found: error

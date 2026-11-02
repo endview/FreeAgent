@@ -13,10 +13,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
 const maxFileBytes = 256 << 10
+
+// A single short publication lock also covers external views and aliases of
+// the same file. It is never held during a model call or approval wait.
+var fileMutationMu sync.Mutex
 
 type FileTools struct {
 	root            *os.Root
@@ -376,6 +381,8 @@ func (tools *FileTools) hash(name string) ([]byte, error) {
 }
 
 func (tools *FileTools) delete(ctx context.Context, name, expected string, record func(ToolResult) error) (ToolResult, error) {
+	fileMutationMu.Lock()
+	defer fileMutationMu.Unlock()
 	result := ToolResult{IsError: true, Receipts: []ToolReceipt{{Kind: "file", Path: name, Status: "unknown", BeforeHash: expected}}}
 	if err := ctx.Err(); err != nil {
 		result.Receipts[0].Status = "not_launched"
@@ -574,6 +581,8 @@ func (tools *FileTools) edit(ctx context.Context, name, expected string, updated
 	if err := ctx.Err(); err != nil {
 		return ToolResult{}, &CallError{Certain: true, Message: "cancelled before edit publication"}
 	}
+	fileMutationMu.Lock()
+	defer fileMutationMu.Unlock()
 	current, err = openWorkspaceFile(parent, base)
 	if err != nil {
 		return ToolResult{}, &CallError{Certain: true, Message: "edit target changed during staging"}

@@ -181,7 +181,7 @@ func responsesRequestFrom(request ModelRequest, model string, stream, webSearch 
 		toolNames[tool.Name] = struct{}{}
 		wire.Tools = append(wire.Tools, responsesTool{Type: "function", Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema})
 	}
-	if webSearch {
+	if webSearch && !request.DenyOperations {
 		wire.Tools = append(wire.Tools, responsesTool{Type: "web_search"})
 	}
 	if len(wire.Input) == 0 && strings.TrimSpace(wire.Instructions) == "" {

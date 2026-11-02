@@ -13,6 +13,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/endview/freeagent/internal/channels"
 )
 
 const (
@@ -38,6 +40,15 @@ func ProbeModels(ctx context.Context, key ResolvedKey, client *http.Client) (Pro
 
 func ProbeModelsForProtocol(ctx context.Context, key ResolvedKey, client *http.Client) (ProbeResult, error) {
 	protocol := normalizeKeyProtocol(key.Protocol)
+	if protocol == KeyProtocolTelegram {
+		return probeTelegram(ctx, key, client)
+	}
+	if protocol == KeyProtocolLark || protocol == KeyProtocolQQ {
+		return ProbeResult{Category: "channel_config_required", Detail: "Configure app ID in Channels; channel secrets have no model list."}, nil
+	}
+	if protocol != KeyProtocolOpenAICompatible && protocol != KeyProtocolAnthropic {
+		return ProbeResult{}, errors.New("harness: channel credentials cannot be used for model probing")
+	}
 	if base, err := NormalizeBaseURLForProtocol(key.BaseURL, protocol); err != nil || base != key.BaseURL {
 		return ProbeResult{}, errors.New("harness: probe needs a normalized base URL")
 	}
@@ -106,6 +117,34 @@ func ProbeModelsForProtocol(ctx context.Context, key ResolvedKey, client *http.C
 	}
 	result.Detail = probeDetail(body, key.secret)
 	return result, nil
+}
+
+func probeTelegram(ctx context.Context, key ResolvedKey, client *http.Client) (ProbeResult, error) {
+	api, err := channels.NewTelegramAPI(key.BaseURL, key.secret, client)
+	if err != nil {
+		return ProbeResult{}, err
+	}
+	bot, err := api.Me(ctx)
+	if err == nil {
+		return ProbeResult{Category: "ok", Status: http.StatusOK, Detail: "@" + bot.Username}, nil
+	}
+	var telegramErr *channels.TelegramError
+	if errors.As(err, &telegramErr) {
+		category := "unexpected"
+		switch {
+		case telegramErr.Status == http.StatusUnauthorized || telegramErr.Status == http.StatusForbidden:
+			category = "auth"
+		case telegramErr.Status >= 500:
+			category = "server"
+		case telegramErr.Status == http.StatusTooManyRequests:
+			category = "rate_limited"
+		}
+		return ProbeResult{Category: category, Status: telegramErr.Status}, nil
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return ProbeResult{}, ctx.Err()
+	}
+	return ProbeResult{Category: probeErrorCategory(err)}, nil
 }
 
 // decodeModelList accepts {"data":[{"id":...}]}; an empty list is still a

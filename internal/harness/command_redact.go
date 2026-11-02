@@ -6,11 +6,14 @@ import (
 	"strings"
 )
 
-func knownCommandSecrets(keys *KeyStore) []string {
+func knownCommandSecrets(keys *KeyStore, config Config) []string {
 	seen := map[string]bool{}
 	if keys != nil {
 		if profiles, err := keys.List(); err == nil {
 			for _, profile := range profiles {
+				if !IsChannelKeyProtocol(profile.Protocol) && !config.Providers[profile.ID] {
+					continue
+				}
 				if key, err := keys.Resolve(profile.ID); err == nil && key.secret != "" {
 					seen[key.secret] = true
 				}

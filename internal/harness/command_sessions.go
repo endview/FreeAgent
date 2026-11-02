@@ -594,7 +594,7 @@ func (s *commandSupervisor) launch(parent context.Context, tools *CommandTools, 
 	if err != nil {
 		return ToolResult{}, &CallError{Certain: true, Message: "Run metadata unavailable before command start"}
 	}
-	secrets := knownCommandSecrets(inv.service.Keys)
+	secrets := knownCommandSecrets(inv.service.Keys, inv.service.currentConfig())
 	receipt.Command = commandRedact(receipt.Command, secrets)
 	ctx, cancel := context.WithCancel(s.ctx)
 	if tools.executionMode() == CommandExecutionHostExplicit && tools.Gate != nil {

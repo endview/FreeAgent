@@ -20,7 +20,10 @@ import { installDesktopBridge, setDesktopBusy, notifyDesktopAttention, selectDes
 import { approvalHTML, approvalRawHTML } from './approval.mjs';
 import { bindLayoutResizers } from './layout.mjs';
 import { summaryByteLimit, contextActions, contextStatus } from './context.mjs';
+import { channelSections } from './channels.mjs';
+import { spaceChatGroups, spaceSelection, publicationMessage } from './spaces.mjs';
 import { commandRows, commandOutput, remainingSeconds, directCommandText } from './command-sessions.mjs';
+import { eventStream } from './events.mjs';
 
 const icons = { Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Play, X,
   ChevronDown, ChevronRight, Copy, Eye, PencilLine, Check, Settings2, RefreshCw,
@@ -42,13 +45,13 @@ if (key) safeStorage(session, 'freeagent-key', key);
 history.replaceState(null, '', location.pathname + location.search);
 
 // chat is null while drafting: a new chat exists only after its first send.
-const state = { env: null, chats: [], chat: '', drafting: false, creating: false, view: null, turns: [], busy: false,
+const state = { env: null, chats: [], spaces: [], space: 'local', chat: '', drafting: false, creating: false, view: null, turns: [], busy: false,
   elsewhere: false, stopping: false, online: false, following: true, composing: false,
   preview: false, pending: null, streams: new Map(), expanded: new Set(),
   approval: null, approvalControl: null, approvalTab: 'items', approvalNotice: '', approvalLoading: false,
   raw: new Map(), refresh: { current: 0, earlier: 0, generation: 0 },
   streamRevision: 0, epoch: 0, mutation: false, page: 'chat', keys: null, keyProfile: null,
-  keyModels: new Map(), workspaceChanging: false, activeChat: '', offlineSince: 0,
+  keyModels: new Map(), workspaceChanging: false, activeChat: '', activeChats: [], offlineSince: 0,
   keyProbe: null, keyNotice: '', keyModelQuery: '', keyDrafts: new Map(), keyManualModel: '',
   connectionEver: false, runAnchor: null, runNotice: '', endIntent: 'end', endPrompt: '',
   earlierLoading: false, chatQuery: '', modelMenuOpen: false, modelMenuIndex: -1,
@@ -59,7 +62,7 @@ const state = { env: null, chats: [], chat: '', drafting: false, creating: false
   mcp: null, mcpServer: '', skills: null, skillName: '', skillDetail: null,
   extensions: null, extensionId: '', capabilityTab: 'mcp',
   commandMenuOpen: false, commandIndex: -1, pendingCommand: null, commandCatalog: [],
-  permissions: null, settings: null, permissionPageLoading: false, permissionRootDraft: null, permissionBlockedDraft: null,
+  permissions: null, settings: null, channels: null, permissionPageLoading: false, permissionRootDraft: null, permissionBlockedDraft: null,
   context: null, contextBusy: false, contextChat: '', contextNotice: '' };
 let sse, snapshotTimer, streamTimer, runTimer, refreshListTimer, offlineTimer, errorTimer = 0, errorRevision = 0, scrollProgram = false;
 let earlierObserver;
@@ -88,7 +91,7 @@ app.innerHTML = `
     <aside class="sidebar" aria-label="会话">
       <div class="brand"><span class="brand-mark" aria-hidden="true">F</span><strong>FreeAgent</strong>${button('panel-left-close', '收起会话', 'sidebar')}</div>
       <button class="new-chat" data-action="new">${icon('plus')}<span>新建对话</span></button>
-      <div class="list-label">最近对话</div>
+      <div class="list-label">空间与对话<button type="button" class="icon" data-action="spaces-open" aria-label="管理空间" title="管理空间">${icon('folder-plus')}</button></div>
       <label class="chat-search"><span class="sr-only">搜索会话</span>${icon('search')}<input id="chat-search" type="search" placeholder="搜索会话" autocomplete="off"></label>
       <nav id="chats" aria-label="最近对话"></nav>
       <div class="environment"><span class="workspace-label">工作区</span><button id="workspace-change" class="icon" title="更换工作区" aria-label="更换工作区">${icon('folder-open')}</button><span id="workspace-path"></span><span class="local-label">本地</span></div>
@@ -139,6 +142,10 @@ app.innerHTML = `
       </footer>
     </main>
   </div>
+  <dialog id="spaces-dialog" aria-labelledby="spaces-title">
+    <header><h2 id="spaces-title">空间管理</h2>${button('x', '关闭空间管理', 'spaces-close')}</header>
+    <div id="spaces-content"></div>
+  </dialog>
   <dialog id="ending" aria-labelledby="ending-title">
     <header><h2 id="ending-title">结束当前任务？</h2>${button('x', '取消', 'close-end')}</header>
     <div id="ending-content"></div>
@@ -313,12 +320,13 @@ function selectedModelID() {
     (state.env?.default_model || ''));
 }
 const PERMISSION_LABELS = {
+  none: 'None · 仅聊天',
   ask: 'Ask',
   workspace: 'Workspace access',
   full: 'Full access',
 };
 function selectedPermissionMode() {
-  return permissionMode(state.view, state.pendingPermission);
+  return state.view ? permissionMode(state.view, state.pendingPermission) : (state.pendingPermission || spaceSelection(state.spaces, state.space)?.permission || 'none');
 }
 function selectedPermissionSource() {
   return state.pendingPermission ? 'turn' : state.view?.permission?.source || 'default';
@@ -489,7 +497,7 @@ async function toggleCapability(group, id) {
   controls();
 }
 function permissionSourceLabel(source) {
-  return source === 'turn' ? '新会话待保存' : source === 'conversation' ? '当前会话' : '全局默认';
+  return source === 'turn' ? '新会话待保存' : source === 'space' ? '当前空间' : '当前空间';
 }
 function renderPermissionMenu() {
   const trigger = $('#permission-trigger'), menu = $('#permission-menu');
@@ -497,13 +505,14 @@ function renderPermissionMenu() {
   const selected = selectedPermissionMode();
   const source = permissionSourceLabel(selectedPermissionSource());
   trigger.innerHTML = `${icon('shield-check')}<span>${esc(PERMISSION_LABELS[selected] || 'Ask')} · ${esc(source)}</span>`;
-  trigger.classList.remove('permission-ask', 'permission-workspace', 'permission-full');
+  trigger.classList.remove('permission-none', 'permission-ask', 'permission-workspace', 'permission-full');
   trigger.classList.add(`permission-${selected}`);
   trigger.title = '权限管理';
   trigger.setAttribute('aria-label', '权限管理');
   trigger.setAttribute('aria-expanded', String(state.permissionMenuOpen));
   menu.innerHTML = [
-    ['ask', '逐项确认文件、命令和外部调用'],
+    ['none', '可以聊天；不操作文件、命令、网络或扩展'],
+    ['ask', '只读操作按现有规则执行；需要审批的操作明确确认'],
     ['workspace', '当前 Workspace 内文件操作自动执行'],
     ['full', '文件、命令和已启用工具自动执行'],
   ].map(([id, description]) => `<button type="button" role="menuitemradio" class="model-option permission-${id} ${id === selected ? 'selected' : ''}" data-permission-id="${id}" aria-checked="${id === selected}">${id === selected ? icon('check') : '<span class="menu-check"></span>'}<span><strong>${PERMISSION_LABELS[id]}${id === selected ? ` · ${permissionSourceLabel(selectedPermissionSource())}` : ''}</strong><small>${description}</small></span></button>`).join('') +
@@ -676,6 +685,7 @@ async function loadPermissions() {
   const [settings, permissions] = await Promise.all([api('settings'), api(`permissions${query}`)]);
   state.settings = settings;
   state.permissions = permissions;
+  try { [state.channels, state.keys] = await Promise.all([api('channels'), api('keys')]); } catch { state.channels = null; }
   state.permissionRootDraft = [...(settings.file_access?.allowed_roots || permissions.profile?.additional_roots || permissions.computer_roots || [])];
   state.permissionBlockedDraft = [...(settings.file_access?.global_blocked_paths || [])];
   return state.permissions;
@@ -700,6 +710,7 @@ function renderPermissionsView() {
   const tools = settings.enabled_tools || { file: true, command_run: false, network: false, memory: true };
   const network = settings.network || { enabled: false, allowed_origins: [] };
   const command = settings.command_run || data.commands || { enabled: false, allowed_executables: [], timeout_seconds: 120, max_output_bytes: 32768, inherit_environment: false, execution: 'sandboxed', rules: [], generation: settings.revision || '1' };
+
   const commandCatalog = data.command_catalog || [];
   const activeNotice = data.active_run_uses_previous_snapshot
     ? '<p class="permission-notice">当前运行沿用创建时的权限和工具快照；本页保存内容只影响下一次新 Run。</p>' : '';
@@ -722,10 +733,10 @@ function renderPermissionsView() {
   root.innerHTML = `<div class="keys-header"><div><h2 id="permissions-title">设置</h2><p>全局权限、文件范围和内置工具设置。能力管理保持独立；修改只影响新 Run。</p></div><button class="icon" data-action="close-permissions" title="返回对话" aria-label="返回对话">${icon('arrow-left')}</button></div>
     ${activeNotice}
     <div class="permission-layout">
-      <section class="permission-section"><header><div><h3>权限模式</h3><p>默认值用于新会话；当前会话模式单独保存并立即生效于下一次新 Run。</p></div><span class="permission-badge permission-${esc(currentMode)}">${esc(PERMISSION_LABELS[currentMode] || 'Ask')}</span></header>
-        <label>全局默认模式<select id="settings-default-mode"><option value="ask" ${settings.default_permission_mode === 'ask' ? 'selected' : ''}>Ask</option><option value="workspace" ${settings.default_permission_mode === 'workspace' ? 'selected' : ''}>Workspace access</option><option value="full" ${settings.default_permission_mode === 'full' ? 'selected' : ''}>Full access</option></select></label>
-        ${state.chat ? `<label>当前会话模式<select id="page-permission-mode"><option value="ask" ${currentMode === 'ask' ? 'selected' : ''}>Ask</option><option value="workspace" ${currentMode === 'workspace' ? 'selected' : ''}>Workspace access</option><option value="full" ${currentMode === 'full' ? 'selected' : ''}>Full access</option></select></label><div class="permission-actions"><button class="primary" data-action="save-permission-page">${icon('save')}保存当前会话模式</button></div>` : '<p class="subtle-note">当前是新会话草稿，顶部权限按钮会在首次发送时保存。</p>'}
-        <div class="permission-actions"><button class="primary" data-action="save-settings-permission">${icon('save')}保存全局默认</button></div>
+      <section class="permission-section"><header><div><h3>权限模式</h3><p>权限属于空间，影响该空间内所有对话。新空间默认 None；下降会限制旧 Run 并请求停止相关命令。</p></div><span class="permission-badge permission-${esc(currentMode)}">${esc(PERMISSION_LABELS[currentMode] || 'Ask')}</span></header>
+        <label hidden>运行时基础模式（不授予空间权限）<select id="settings-default-mode"><option value="ask" ${settings.default_permission_mode === 'ask' ? 'selected' : ''}>Ask</option><option value="workspace" ${settings.default_permission_mode === 'workspace' ? 'selected' : ''}>Workspace access</option><option value="full" ${settings.default_permission_mode === 'full' ? 'selected' : ''}>Full access</option></select></label>
+        ${state.chat ? `<label>当前空间权限<select id="page-permission-mode"><option value="none" ${currentMode === 'none' ? 'selected' : ''}>None · 仅聊天</option><option value="ask" ${currentMode === 'ask' ? 'selected' : ''}>Ask</option><option value="workspace" ${currentMode === 'workspace' ? 'selected' : ''}>Workspace access</option><option value="full" ${currentMode === 'full' ? 'selected' : ''}>Full access</option></select></label><div class="permission-actions"><button class="primary" data-action="save-permission-page">${icon('save')}保存当前空间权限</button></div>` : '<p class="subtle-note">当前是新会话草稿，顶部权限按钮会在首次发送时保存。</p>'}
+        <p class="subtle-note">新空间固定以 None 开始，权限在当前空间单独设置。</p>
       </section>
       <section class="permission-section"><header><div><h3>文件访问范围</h3><p>保护路径始终拒绝；目录授权不会解除数据目录和 Key 存储保护。</p></div><span class="permission-state ${scope !== 'workspace' ? 'enabled' : ''}">${esc(scope)}</span></header>
         <label>全局文件范围<select id="execution-file-scope"><option value="workspace" ${scope === 'workspace' ? 'selected' : ''}>当前工作区</option><option value="workspace_plus_allowed_roots" ${scope === 'workspace_plus_allowed_roots' ? 'selected' : ''}>工作区 + 全局授权目录</option><option value="all_non_protected" ${scope === 'all_non_protected' ? 'selected' : ''}>所有非保护文件</option></select></label>
@@ -753,11 +764,12 @@ function renderPermissionsView() {
         <label class="check-line"><input id="service-enabled" type="checkbox" ${command.services?.enabled?'checked':''}>允许有限期服务</label>
         <label class="check-line"><input id="service-listen" type="checkbox" ${command.services?.allow_local_listen?'checked':''}>允许服务监听（Full 无法强制限制为本机；沙箱访问尚不支持）</label>
         <div class="permission-grid"><label>默认服务秒数<input id="service-default" type="number" min="1" max="28800" value="${Number(command.services?.default_seconds)||1800}"></label><label>最长总秒数<input id="service-maximum" type="number" min="1" max="28800" value="${Number(command.services?.max_total_seconds)||28800}"></label></div>
-        <label class="check-line"><input id="command-git-write" type="checkbox" ${command.git_write ? 'checked' : ''}>允许沙箱命令写入 .git（hooks 和 config 始终只读）</label>
+        <p class="subtle-note">沙箱内 Git 元数据始终只读；需要提交时使用 Full。</p>
         <div class="permission-catalog"><strong>检测到的程序</strong>${commandCatalog.length ? commandCatalog.map((entry) => `<div class="permission-catalog-row"><span>${esc(entry.program)}</span><code>${esc(entry.path || '未找到')}</code><span class="subtle-note">${esc(entry.risk)} · ${esc(catalogSandboxLabels[entry.sandbox] || entry.sandbox)}</span></div>`).join('') : '<p class="subtle-note">尚未发现可用程序。</p>'}</div>
         <p class="subtle-note">当前 generation：<code>${esc(command.generation || data.generation || '1')}</code></p>
         <div class="permission-actions"><button class="primary" data-action="save-command-policy">${icon('save')}保存命令策略</button></div>
       </section>
+      ${channelSections(state.channels, state.keys?.profiles || [])}
     </div>`;
   $('#command-allowlist').value = (command.allowed_executables || []).join('\n');
   decorate(root);
@@ -793,7 +805,7 @@ async function saveCommandPolicy() {
     timeout_seconds: Number($('#command-timeout')?.value),
     max_output_bytes: Number($('#command-output')?.value),
     inherit_environment: Boolean($('#command-inherit')?.checked),
-    git_write: Boolean($('#command-git-write')?.checked),
+    git_write: false,
     execution: $('#command-execution')?.value || 'sandboxed',
     services: {enabled:Boolean($('#service-enabled')?.checked),allow_local_listen:Boolean($('#service-listen')?.checked),default_seconds:Number($('#service-default')?.value),max_total_seconds:Number($('#service-maximum')?.value)},
     expected_revision: state.settings?.revision || command.generation || '',
@@ -831,6 +843,20 @@ async function saveSettingsTools() {
   }, 'PATCH');
   await loadPermissions();
   renderPermissionsView();
+}
+async function channelPairCode(source) {
+  await api(`channels/${source}`, {}, 'POST');
+  state.channels = await api('channels');
+  renderPermissionsView();
+}
+async function saveChannel(source) {
+  const config = { enabled: $(`#channel-${source}-enabled`).checked, key: $(`#channel-${source}-key`).value };
+  if (source !== 'telegram') config.app_id = $(`#channel-${source}-app`).value.trim();
+  if (source === 'qq') config.listen = $('#channel-qq-listen').value.trim();
+  await api(`channels/${source}`, config, 'PATCH');
+  state.channels = await api('channels');
+  renderPermissionsView();
+  error('渠道配置已保存。连接状态以页面显示为准。');
 }
 function updatePermissionRootList() {
   const list = $('#permission-root-list');
@@ -879,7 +905,7 @@ function removeBlockedPath(value) {
 }
 async function savePermissionPage() {
   const mode = $('#page-permission-mode')?.value || 'ask';
-  if (mode === 'full' && state.view?.permission?.mode !== 'full' && !window.confirm('确认对当前会话启用 Full access？')) return;
+  if (mode === 'full' && state.view?.permission?.mode !== 'full' && !window.confirm('确认对整个空间启用 Full access？')) return;
   if (!state.chat) {
     state.pendingPermission = mode;
     state.permissionConfirmed = mode === 'full';
@@ -1000,20 +1026,46 @@ function selectedKeyProfile() {
 }
 function renderChatList() {
   const query = state.chatQuery.trim();
-  const chats = state.chats.filter((chat) => matchChat(chat, query));
+  const chats = state.chats.filter(chat => matchChat(chat, query));
   const list = $('#chats');
-  if (!chats.length) {
-    list.innerHTML = '<p class="chat-empty">没有匹配的会话</p>';
-    return;
-  }
-  const renderItems = (items) => items.map((chat) => `<div class="chat-row"><button class="chat-item ${chat.id === state.chat ? 'selected' : ''}" data-chat="${esc(chat.id)}" ${chat.id === state.chat ? 'aria-current="page"' : ''}>${icon(chat.id === state.activeChat ? 'loader-circle' : 'message-square')}<span>${esc(chat.title)}</span></button><button class="icon chat-pin ${chat.pinned ? 'pinned' : ''}" data-action="chat-pin" data-chat="${esc(chat.id)}" data-pinned="${Boolean(chat.pinned)}" title="${chat.pinned ? '取消置顶' : '置顶会话'}" aria-label="${chat.pinned ? '取消置顶' : '置顶会话'}">${icon('pin')}</button></div>`).join('');
-  const groups = query ? [{ label: '', items: prioritizePinned(chats) }] : groupChats(chats);
-  list.innerHTML = groups.length
-    ? groups.map((group) => `<div class="chat-group">${group.label ? `<h3>${esc(group.label)}</h3>` : ''}${renderItems(group.items)}</div>`).join('')
-    : renderItems(chats);
-  if (!query && state.chats.length === 200) list.insertAdjacentHTML('beforeend', '<p class="chat-cap">只显示最近 200 个会话</p>');
+  const renderItems = items => items.map(chat => `<div class="chat-row" draggable="true" data-drag-chat="${esc(chat.id)}"><button class="chat-item ${chat.id === state.chat ? 'selected' : ''}" data-chat="${esc(chat.id)}" ${chat.id === state.chat ? 'aria-current="page"' : ''}>${icon(state.activeChats.includes(chat.id) ? 'loader-circle' : 'message-square')}<span>${esc(chat.title)}</span></button><button class="icon chat-pin ${chat.pinned ? 'pinned' : ''}" data-action="chat-pin" data-chat="${esc(chat.id)}" data-pinned="${Boolean(chat.pinned)}" title="${chat.pinned ? '取消置顶' : '置顶会话'}" aria-label="${chat.pinned ? '取消置顶' : '置顶会话'}">${icon('pin')}</button></div>`).join('');
+  const { pinned, local, groups } = spaceChatGroups(state.spaces, chats);
+  const times = groupChats(local).map(group => `<div class="chat-group"><h3>${esc(group.label)}</h3>${renderItems(group.items)}</div>`).join('');
+  list.innerHTML = (pinned.length ? `<div class="chat-group"><h3>置顶</h3>${renderItems(pinned)}</div>` : '') +
+    `<div data-drop-space="local"><button class="space-heading ${state.space === 'local' ? 'selected' : ''}" data-action="space-select" data-space="local">${icon('folder-open')}<span>${esc(spaceSelection(state.spaces, 'local')?.title || '本地')}</span></button>${times}</div>` +
+    groups.map(({ space, chats: items }) => `<details class="space-group" data-drop-space="${esc(space.id)}" ${space.id === state.space || query ? 'open' : ''}><summary>${esc(space.title)} <small>${esc(space.permission || 'none')}</small></summary><button class="space-heading ${state.space === space.id ? 'selected' : ''}" data-action="space-select" data-space="${esc(space.id)}">${icon('folder-open')}<span>在此空间新建对话${space.source !== 'local' ? ' · 回复到外部聊天' : ''}</span></button>${renderItems(items)}</details>`).join('') +
+    (!chats.length ? '<p class="chat-empty">暂无匹配对话，可选择空间后新建</p>' : '');
   decorate(list);
 }
+
+function renderSpaces() {
+  const space = spaceSelection(state.spaces, state.space);
+  const options = state.spaces.map(item => `<option value="${esc(item.id)}" ${item.id === state.space ? 'selected' : ''}>${esc(item.title)} (${esc(item.source)})</option>`).join('');
+  $('#spaces-content').innerHTML = `<label>当前空间<select id="space-select">${options}</select></label>
+    <p>${space?.source !== 'local' ? '此空间的公开回复会投递到外部聊天。' : '空间用于整理对话；文件范围仍由工作区决定。'} 权限：${esc(space?.permission || 'none')}</p>
+    <label>空间名称（用于新建或重命名）<input id="space-name" maxlength="80" value="${esc(space?.title || '')}"></label>
+    <div class="space-actions"><button data-action="space-new">新建空间</button><button data-action="space-rename">重命名</button><button data-action="space-delete" ${state.space === 'local' ? 'disabled' : ''}>删除空间</button></div>
+    <label>空间权限<select id="space-mode">${Object.entries(PERMISSION_LABELS).map(([id,label]) => `<option value="${id}" ${id === space?.permission ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
+    <p>影响空间内所有对话；Full 允许同用户宿主机执行。</p><button data-action="space-permission">保存空间权限</button>
+    <label>把当前对话移动到<select id="space-target">${options}</select></label>
+    <div class="space-actions"><button data-action="space-move" ${!state.chat ? 'disabled' : ''}>移动当前对话</button><button data-action="space-default" ${!state.chat ? 'disabled' : ''}>当前对话设为默认</button></div>
+    <label><input type="checkbox" id="space-multi" ${space?.multi_conversation_enabled ? 'checked' : ''}>显式开启外部多对话</label><button data-action="space-multi">保存多对话设置</button>
+    <label>人员稳定 ID<input id="space-person" placeholder="telegram:user:123456" autocomplete="off"></label>
+    <label>人员权限<select id="person-mode">${Object.entries(PERMISSION_LABELS).map(([id,label]) => `<option value="${id}">${esc(label)}</option>`).join('')}</select></label>
+    <p>修改人员权限会影响其在其他已接入空间的资格，最终仍受各空间限制。</p><button data-action="space-person">保存人员权限</button>`;
+  $('#space-select').addEventListener('change', event => { state.space = event.target.value; renderSpaces(); renderChatList(); });
+}
+
+async function spaceChange(kind, args, message = '') {
+  if (message && !window.confirm(message)) return;
+  const result = await api('spaces', { kind, arguments: args, confirmed: true });
+  if (kind === 'space.create' && result.data?.id) state.space = result.data.id;
+  await listChats();
+  if (state.chat) await snapshot();
+  if ($('#spaces-dialog').open) renderSpaces();
+  renderPermissionMenu();
+}
+
 function renderMemoryPanel() {
   const root = $('#memory-panel');
   if (!root) return;
@@ -1093,7 +1145,7 @@ function renderKeysView() {
   const caret = typeof active?.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
   const value = keyFormValue(profile, state.keyDrafts.get(profile?.id || ''));
   const protocolLocked = profile && modelsForKey(state.env, profile.id).length > 0;
-  root.innerHTML = `<div class="keys-header"><div><h2 id="keys-title">Key 管理</h2><p>Key 只保存在本机；模型配置引用 Key，不保存 Key 原文。</p></div>
+  root.innerHTML = `<div class="keys-header"><div><h2 id="keys-title">Provider 与 Key</h2><p>Provider 默认关闭，按需开启。保存或开启不会自动联网。</p></div>
     <button class="icon" data-action="key-new" title="新增 Key" aria-label="新增 Key">${icon('plus')}</button></div>
     <div class="keys-layout"><aside class="key-list" aria-label="Key 配置">
       ${profiles.length ? profiles.map((item) => `<button class="key-item ${item.id === state.keyProfile ? 'selected' : ''}" data-key-id="${esc(item.id)}"><strong>${esc(item.name)}</strong><span>${esc(keyHost(item.base_url))}</span>${keyStatusHTML(item)}</button>`).join('') : '<p class="key-empty">还没有 Key 配置。</p>'}
@@ -1102,8 +1154,10 @@ function renderKeysView() {
         <button class="icon" data-action="key-delete" title="删除 Key" aria-label="删除 Key">${icon('trash-2')}</button></div>` : '<h3>新增 Key</h3>'}
       <div class="key-preset">${!profile ? `<label>预设<select id="key-preset"><option value="">选择预设...</option>${(state.keys?.presets || []).map((preset) => `<option value="${esc(preset.id)}">${esc(preset.name)}</option>`).join('')}</select></label>` : ''}</div>
       <form id="key-form" class="key-form">
+        ${profile && !['telegram','lark','qq'].includes(profile.protocol) ? `<label class="check-line"><input type="checkbox" data-provider-id="${esc(profile.id)}" ${state.env?.providers?.[profile.id] ? 'checked' : ''}>启用此 Provider</label>` : ''}
+        ${!profile ? `<label class="check-line"><input id="key-enable-new" type="checkbox" ${state.newProviderEnabled ? 'checked' : ''}>保存后启用 Provider（不会自动测试连接）</label>` : ''}
         <label>名称<input id="key-name" required maxlength="64" value="${esc(value.name)}"></label>
-        <label>协议<select id="key-protocol" ${protocolLocked ? 'disabled' : ''}><option value="openai-compatible" ${value.protocol === 'openai-compatible' ? 'selected' : ''}>OpenAI 兼容</option><option value="anthropic" ${value.protocol === 'anthropic' ? 'selected' : ''}>Anthropic Messages</option></select></label>
+        <label>协议<select id="key-protocol" ${protocolLocked ? 'disabled' : ''}><option value="openai-compatible" ${value.protocol === 'openai-compatible' ? 'selected' : ''}>OpenAI 兼容</option><option value="anthropic" ${value.protocol === 'anthropic' ? 'selected' : ''}>Anthropic Messages</option><option value="telegram" ${value.protocol === 'telegram' ? 'selected' : ''}>Telegram Bot</option><option value="lark" ${value.protocol === 'lark' ? 'selected' : ''}>Lark / 飞书应用 Secret</option><option value="qq" ${value.protocol === 'qq' ? 'selected' : ''}>QQ 官方应用 Secret</option></select></label>
         <label>地址<input id="key-base-url" required value="${esc(value.base_url)}" placeholder="https://api.example.com/v1"></label>
         ${profile?.source === 'env' ? `<div class="key-source"><span>来源</span><strong>环境变量：${esc(profile.env_name || '')}</strong></div>` : `<label class="key-secret-label">API Key<input id="key-secret" type="password" autocomplete="new-password" placeholder="${profile?.hint ? `已保存 ****${esc(profile.hint)}，留空保持不变` : profile ? '已保存，留空保持不变' : '输入 API Key'}"></label>
           <label class="check-line"><input id="key-none" type="checkbox" ${value.source === 'none' ? 'checked' : ''}>无需 Key（仅回环地址）</label>`}
@@ -1454,8 +1508,8 @@ function controls() {
   $('#prompt').disabled = state.workspaceChanging;
   $('#input-state').innerHTML = noModels ? '请先添加 Key 和模型' :
     state.elsewhere && state.activeChat && state.activeChat !== state.chat
-      ? `<button class="text-action active-chat-link" data-chat="${esc(state.activeChat)}">另一会话正在运行</button>`
-      : state.elsewhere ? '另一会话正在运行' : pending ? '正在核对提交' : state.creating ? '正在创建对话' : '';
+      ? `<button class="text-action active-chat-link" data-chat="${esc(state.activeChat)}">前台名额已满，请等待运行结束</button>`
+      : state.elsewhere ? '前台名额已满，请等待运行结束' : pending ? '正在核对提交' : state.creating ? '正在创建对话' : '';
   const actions = [];
   if (state.busy) actions.push(button('square', state.stopping ? '正在停止' : '停止任务', 'stop',
     state.stopping || state.mutation || !state.online ? 'disabled' : ''));
@@ -1489,7 +1543,8 @@ function controls() {
   }
 }
 async function listChats() {
-  state.chats = await api('chats');
+  [state.chats, state.spaces] = await Promise.all([api('chats'), api('spaces')]);
+  state.space = spaceSelection(state.spaces, state.space)?.id || 'local';
   renderChatList();
 }
 async function togglePin(chatID, pinned) {
@@ -1541,6 +1596,7 @@ function resetView() {
   state.stopping = false;
   state.elsewhere = false;
   state.activeChat = '';
+  state.activeChats = [];
   state.runAnchor = null;
   state.runNotice = '';
   state.endIntent = 'end';
@@ -1582,6 +1638,7 @@ async function openChat(id) {
   $('#prompt').value = safeStorage(storage, draftKey());
   safeStorage(storage, selectedKey(), id);
   await snapshot();
+  state.space = state.view?.conversation?.space_id || 'local';
   await listChats();
   if (state.preview) draft();
 }
@@ -1596,7 +1653,7 @@ async function createChat(prompt) {
   error('');
   controls();
   try {
-    const chat = await api('chats', { title: chatTitle(prompt) });
+    const chat = await api('chats', { title: chatTitle(prompt), space_id: state.space });
     safeStorage(storage, chatDraftKey(chat.id), $('#prompt').value);
     safeStorage(storage, draftKey(), '');
     state.drafting = false;
@@ -1745,11 +1802,12 @@ async function snapshot(before = '') {
       state.view.has_earlier = prior.has_earlier;
       state.view.before = prior.before;
     }
-    const previousActiveChat = state.activeChat;
+    const previousActiveChats = JSON.stringify(state.activeChats);
     state.busy = result.busy;
     state.stopping = result.stopping;
     state.elsewhere = result.running_elsewhere;
     state.activeChat = result.active_chat || '';
+    state.activeChats = result.active_chats || [];
     if (state.busy && view.turns.at(-1)?.state === 'generating') {
       const current = view.turns.at(-1);
       state.runAnchor = { key: current.key, base: current.elapsed_ms || 0, at: Date.now() };
@@ -1758,7 +1816,7 @@ async function snapshot(before = '') {
       clearTimeout(runTimer);
       runTimer = 0;
     }
-    if (previousActiveChat !== state.activeChat) listChats().catch(() => {});
+    if (previousActiveChats !== JSON.stringify(state.activeChats)) listChats().catch(() => {});
     reportDesktopBusy(state.busy || state.elsewhere || result.background_active, true);
     if (streamRevision === state.streamRevision) {
       state.streams = new Map(result.streams.map((stream) => [stream.attempt, stream]));
@@ -1866,6 +1924,17 @@ function renderApproval() {
 function renderTurns() {
   const started = performance.now();
   const container = $('#turns');
+  let background = $('#channel-background');
+  if (!background) {
+    background = document.createElement('details');
+    background.id = 'channel-background';
+    background.className = 'channel-background';
+    container.before(background);
+  }
+  const received = state.view?.background || [];
+  background.hidden = !received.length;
+  background.innerHTML = received.length ? `<summary>收到的背景与渠道命令（最近 ${received.length} 条，未自动执行）</summary>${received.map(message => `<p>${esc(message.raw)}</p>`).join('')}` : '';
+
   if (!state.turns.length) container.replaceChildren();
   const keys = new Set(state.turns.map((turn) => turn.key));
   for (const child of [...container.children]) if (!keys.has(child.dataset.turn)) child.remove();
@@ -1965,10 +2034,10 @@ async function refreshCommands() {
 }
 function connectEvents() {
   sse?.close();
-  sse = new EventSource('/api/events');
-  sse.onopen = () => { connection(true); queueSnapshot(); };
-  sse.onerror = () => connection(false);
-  sse.onmessage = (message) => {
+  sse = eventStream('/api/events', { 'X-FreeAgent-Key': key }, {
+  open: () => { connection(true); queueSnapshot(); },
+  error: () => connection(false),
+  message: (message) => {
     let event;
     try { event = JSON.parse(message.data); } catch { error('事件格式无效，请刷新记录。'); return; }
     if (event.kind === 'heartbeat') return;
@@ -1998,7 +2067,7 @@ function connectEvents() {
       if (event.kind === 'model_text') return;
     }
     queueSnapshot();
-  };
+  }});
 }
 async function mutate(action, body = {}) {
   if (state.mutation) return;
@@ -2211,6 +2280,11 @@ async function saveKey() {
   const value = keyForm();
   const path = value.id ? `keys/${encodeURIComponent(value.id)}/update` : 'keys';
   const saved = await api(path, value);
+  if (!value.id && state.newProviderEnabled && !['telegram','lark','qq'].includes(value.protocol)) {
+    try { await api('providers', { id: saved.id, enabled: true }, 'PUT'); }
+    catch (failure) { error(`Key 已保存，Provider 尚未开启：${failure.message}`); }
+  }
+  state.newProviderEnabled = false;
   state.keyDrafts.delete(value.id);
   if (!value.id && state.keyProbe) state.keyModels.set(saved.id, state.keyProbe);
   state.keyProbe = null;
@@ -2337,6 +2411,25 @@ async function act(action, node = null) {
         if (open) requestAnimationFrame(() => $('#chat-search')?.focus());
       } else $('.workspace').classList.toggle('sidebar-collapsed');
       break;
+    case 'spaces-open': await listChats(); renderSpaces(); $('#spaces-dialog').showModal(); break;
+    case 'spaces-close': $('#spaces-dialog').close(); break;
+    case 'space-select': state.space = node.dataset.space; await newChat(); break;
+    case 'space-new': {
+      const title = $('#space-name').value.trim();
+      if (!title) throw new Error('请先填写空间名称。');
+      await spaceChange('space.create', { title });
+      break;
+    }
+    case 'space-rename': await spaceChange('space.rename', { space_id: state.space, title: $('#space-name').value.trim() }); break;
+    case 'space-delete': await spaceChange('space.delete', { space_id: state.space }, '删除该空间并将对话移回本地？外部聊天会解除配对。'); break;
+    case 'space-permission': await spaceChange('space.set_permission', { space_id: state.space, mode: $('#space-mode').value }, '确认更改整个空间的权限？影响该空间内所有对话。'); break;
+    case 'space-move': {
+      const target = spaceSelection(state.spaces, $('#space-target').value);
+      await spaceChange('space.move_conversation', { space_id: target.id, conversation_id: state.chat }, publicationMessage(target)); break;
+    }
+    case 'space-default': await spaceChange('space.set_default', { space_id: state.space, conversation_id: state.chat }); break;
+    case 'space-multi': await spaceChange('space.set_multi', { space_id: state.space, enabled: $('#space-multi').checked }); break;
+    case 'space-person': await spaceChange('person.set_permission', { person_id: $('#space-person').value.trim(), mode: $('#person-mode').value }, '确认更改此人的全局权限？每个空间仍有独立权限上限。'); break;
     case 'new': await newChat(); break;
     case 'keys': await openKeys(); break;
     case 'capabilities': await openCapabilities(); break;
@@ -2347,6 +2440,8 @@ async function act(action, node = null) {
     case 'save-computer-files': await saveComputerFiles(); break;
     case 'save-settings-permission': await saveSettingsPermission(); break;
     case 'save-settings-tools': await saveSettingsTools(); break;
+    case 'channel-code': await channelPairCode(node.dataset.source); break;
+    case 'channel-save': await saveChannel(node.dataset.source); break;
     case 'add-permission-root': await addPermissionRoot(); break;
     case 'add-permission-folder': await addPermissionRoot('folder'); break;
     case 'add-permission-file': await addPermissionRoot('file'); break;
@@ -2777,7 +2872,21 @@ $('#chat-search').addEventListener('keydown', (event) => {
     renderChatList();
   }
 });
-$('#keys-view').addEventListener('change', (event) => {
+$('#keys-view').addEventListener('change', async (event) => {
+  if (event.target.id === 'key-enable-new') { state.newProviderEnabled = event.target.checked; return; }
+  if (event.target.dataset.providerId) {
+    const toggle = event.target;
+    const enabled = toggle.checked;
+    toggle.disabled = true;
+    try {
+      await api('providers', { id: toggle.dataset.providerId, enabled }, 'PUT');
+      await refreshEnvironment();
+      state.keyNotice = enabled ? 'Provider 已启用。' : 'Provider 已关闭，下一次模型请求将停止。';
+      renderKeysView();
+    } catch (failure) { toggle.checked = !enabled; error(failure.message); }
+    finally { toggle.disabled = false; }
+    return;
+  }
   if (event.target.id === 'key-preset') applyPreset(event.target.value);
   if (event.target.id === 'key-none' && event.target.checked) {
     const secret = $('#key-secret');
@@ -2842,3 +2951,18 @@ async function boot() {
   syncPage();
 }
 boot().catch((failure) => { connection(false); error(failure.message || '连接未完成。'); });
+
+// Dragging has the same exact publication confirmation as the menu action.
+$('#chats').addEventListener('dragstart', event => {
+  const row = event.target.closest('[data-drag-chat]');
+  if (row && event.dataTransfer) event.dataTransfer.setData('application/x-freeagent-chat', row.dataset.dragChat);
+});
+$('#chats').addEventListener('dragover', event => { if (event.target.closest('[data-drop-space]')) event.preventDefault(); });
+$('#chats').addEventListener('drop', async event => {
+  const target = event.target.closest('[data-drop-space]');
+  const chat = event.dataTransfer?.getData('application/x-freeagent-chat');
+  if (!target || !chat) return;
+  event.preventDefault();
+  try { await spaceChange('space.move_conversation', { space_id: target.dataset.dropSpace, conversation_id: chat }, publicationMessage(spaceSelection(state.spaces, target.dataset.dropSpace))); }
+  catch (failure) { error(failure.message); }
+});

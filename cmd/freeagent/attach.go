@@ -270,7 +270,11 @@ func attachedControlDecision(ctx context.Context, dataDir string, run harness.Ru
 func runAttachedSubmit(ctx context.Context, client *handoff.Client, dataDir, conversationID, requestKey, prompt string,
 	options harness.RunOptions, interactive bool, stdin io.Reader, stdout, stderr io.Writer, asJSON bool) error {
 	if conversationID == "" {
-		conversation, err := client.NewConversation(ctx, firstLine(prompt))
+		spaceID := options.SpaceID
+		if spaceID == "" {
+			spaceID = harness.LocalSpaceID
+		}
+		conversation, err := client.NewConversationInSpace(ctx, spaceID, firstLine(prompt))
 		if err != nil {
 			return err
 		}

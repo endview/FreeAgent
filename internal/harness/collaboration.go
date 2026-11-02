@@ -49,6 +49,14 @@ func (collab *Collaboration) childService(core *Service, record collaborationRec
 	if record.Control != "running" || child.Control != "running" {
 		return nil, ErrChildPaused
 	}
+	parentSnapshot, err := decodeRunSnapshot(record.ConfigJSON)
+	if err != nil {
+		return nil, err
+	}
+	boundCore := core.runCopy()
+	boundCore.permission = parentSnapshot.Permission
+	boundCore.channel = parentSnapshot.Channel
+	core = &boundCore
 	role := record.Plan.Roles[child.Spec.Role]
 	config, err := childConfig(core.Config, role)
 	if err != nil {
@@ -74,6 +82,7 @@ func (collab *Collaboration) childService(core *Service, record collaborationRec
 		return nil, err
 	}
 	service.permission = core.permission
+	service.channel = core.channel
 	service.ownsLease = true
 	service.controlToolsDisabled = true
 	service.commandManagementDisabled = true
@@ -91,6 +100,9 @@ func (collab *Collaboration) childService(core *Service, record collaborationRec
 	}
 	service.Refresh = func() (Config, error) {
 		if core.Refresh == nil {
+			if core.liveConfig != nil {
+				config.Providers = core.liveConfig().Providers
+			}
 			return config, nil
 		}
 		current, err := core.Refresh()
@@ -107,15 +119,26 @@ func (collab *Collaboration) childService(core *Service, record collaborationRec
 }
 
 func insertCollaborationRun(ctx context.Context, tx *sql.Tx, workspace, title, request, prompt, snapshot string) (Run, error) {
-	conversation := Conversation{ID: newID(), Title: title, Workspace: workspace, CreatedAt: nowText(), UpdatedAt: nowText()}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO conversations VALUES(?,?,?,?,?)`, conversation.ID, title, workspace, conversation.CreatedAt, conversation.UpdatedAt); err != nil {
+	conversation := Conversation{ID: newID(), Title: title, Workspace: workspace, SpaceID: LocalSpaceID, CreatedAt: nowText(), UpdatedAt: nowText()}
+	saved, err := decodeRunSnapshot(snapshot)
+	if err != nil {
+		return Run{}, err
+	}
+	if saved.Permission != nil && saved.Permission.SpaceID != "" {
+		conversation.SpaceID = saved.Permission.SpaceID
+	}
+	// Children inherit the recipient and authority, never the parent's input
+	// receipt. Only the parent can claim the platform trigger.
+	if saved.Channel != nil {
+		origin := *saved.Channel
+		origin.InputMessageID, origin.RequestKey = 0, ""
+		saved.Channel = &origin
+		snapshot = string(mustJSON(saved))
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO conversations(id,title,workspace,space_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`, conversation.ID, title, workspace, conversation.SpaceID, conversation.CreatedAt, conversation.UpdatedAt); err != nil {
 		return Run{}, err
 	}
 	run, err := insertPlannedRun(ctx, tx, conversation.ID, request, prompt, snapshot)
-	if err != nil {
-		return run, err
-	}
-	saved, err := decodeRunSnapshot(snapshot)
 	if err != nil {
 		return run, err
 	}
@@ -133,7 +156,17 @@ func insertPlannedRun(ctx context.Context, tx *sql.Tx, conversationID, request, 
 	if err != nil {
 		return Run{}, err
 	}
-	return run, insertMessage(ctx, tx, run, ModelMessage{Role: "user", Content: prompt})
+	if origin := channelOriginFromJSON(snapshot); origin != nil && origin.InputMessageID > 0 {
+		updated, err := tx.ExecContext(ctx, `UPDATE messages SET run_id=? WHERE id=? AND conversation_id=? AND request_key=? AND run_id IS NULL`, run.ID, origin.InputMessageID, conversationID, request)
+		if err != nil {
+			return Run{}, err
+		}
+		if n, err := updated.RowsAffected(); err != nil || n != 1 {
+			return Run{}, ErrRequestKey
+		}
+		return run, nil
+	}
+	return run, insertMessage(ctx, tx, run, ModelMessage{Role: "user", Content: prompt, Public: channelOriginFromJSON(snapshot) != nil})
 }
 
 // Create records the entire authorized plan and its bounded child runs in one
@@ -145,6 +178,20 @@ func (collab *Collaboration) Create(ctx context.Context, conversationID, request
 	}
 	if ctx == nil {
 		return "", errors.New("harness: context is required")
+	}
+	if core.permission == nil {
+		if conversationID != "" {
+			if err := core.resolvePermission(ctx, conversationID, "", false); err != nil {
+				return "", err
+			}
+		} else {
+			selected, err := core.Store.spacePermission(ctx, LocalSpaceID)
+			if err != nil {
+				return "", err
+			}
+			selected.SpaceLimit, selected.Entry = selected.Mode, SpaceSourceLocal
+			core.permission = &selected
+		}
 	}
 	settings, preference, err := collab.tasks.collaborationSettings(ctx, conversationID)
 	if err != nil {
@@ -167,10 +214,11 @@ func (collab *Collaboration) Create(ctx context.Context, conversationID, request
 	if err := json.Unmarshal(rawPlan, &plan); err != nil {
 		return "", err
 	}
-	if !core.Store.runMu.TryLock() {
-		return "", ErrActiveRun
+	release, err := core.acquireConversation(conversationID)
+	if err != nil {
+		return "", err
 	}
-	defer core.Store.runMu.Unlock()
+	defer release()
 	if conversationID != "" {
 		if err := core.selectMemory(ctx, conversationID, nil); err != nil {
 			return "", err
@@ -364,8 +412,8 @@ func (collab *Collaboration) Control(ctx context.Context, parentID, childName, a
 		if err != nil {
 			return err
 		}
-		if core.Store.runMu.TryLock() {
-			defer core.Store.runMu.Unlock()
+		if release, err := core.acquireParent(ctx, parentID); err == nil {
+			defer release()
 			return collab.drainCancelled(ctx, core, parentID)
 		}
 	}
@@ -502,10 +550,11 @@ func (collab *Collaboration) Continue(ctx context.Context, parentID string) (rep
 		collab.activeParent = ""
 		collab.mu.Unlock()
 	}()
-	if !core.Store.runMu.TryLock() {
-		return report, ErrActiveRun
+	release, err := core.acquireParent(ctx, parentID)
+	if err != nil {
+		return report, err
 	}
-	defer core.Store.runMu.Unlock()
+	defer release()
 	record, err := loadCollaboration(parentCtx, core.Store.db, parentID)
 	if err != nil {
 		return report, err
@@ -765,10 +814,11 @@ func (collab *Collaboration) ChildConfirm(ctx context.Context, parentID, name st
 		collab.activeParent, collab.parentCancel = "", nil
 		collab.mu.Unlock()
 	}()
-	if !core.Store.runMu.TryLock() {
-		return RunResult{}, ErrActiveRun
+	release, err := core.acquireParent(ctx, parentID)
+	if err != nil {
+		return RunResult{}, err
 	}
-	defer core.Store.runMu.Unlock()
+	defer release()
 	parent, err := core.Store.GetRun(ctx, parentID)
 	if err != nil {
 		return RunResult{}, err
@@ -823,10 +873,11 @@ func (collab *Collaboration) Resolve(ctx context.Context, parentID, digest, deci
 	if err != nil {
 		return err
 	}
-	if !core.Store.runMu.TryLock() {
-		return ErrActiveRun
+	release, err := core.acquireParent(ctx, parentID)
+	if err != nil {
+		return err
 	}
-	defer core.Store.runMu.Unlock()
+	defer release()
 	report, err := collab.Inspect(ctx, parentID)
 	if err != nil {
 		return err

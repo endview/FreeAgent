@@ -4,10 +4,10 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v7.4.0-dev.1 development preview**. Download published Windows portable
+This is the **v7.7.0-dev.1 development preview**. Download published Windows portable
 builds from [Releases](https://github.com/endview/FreeAgent/releases).
 It uses a new
-current-only `Harness-v5` data directory and the v7 store format. Old
+current-only `Harness-v7` data directory and the v9 store format. Old
 configurations, databases, backups, commands, and SDKs are not supported or
 imported. Do not point it at an old data directory.
 The v7 control service, GUI/CLI attach path, sandboxed Windows command
@@ -26,13 +26,28 @@ automatic compaction at the input limit. Original history remains intact.
 Auxiliary model calls use the existing Run budgets and Attempts. See
 [v7.1 acceptance](docs/FREEAGENT_V7_1_IMPLEMENTATION_PROGRESS.md).
 
+v7.7 adds unified spaces, optional Telegram/Lark/QQ channels and two foreground
+conversations in one workspace. New spaces and people default to None; external
+operation permission is the lower of space and actual requester. GUI/CLI share
+the same Owner and records. Commands/services keep their original Owner quotas.
+Channel implementations have local mock acceptance; real platform and current
+Provider group/summary checks remain NOT_RUN. QQ supports official C2C and group
+@ text with local approvals. See [setup and limitations](docs/CHANNELS.md) and
+[v7.7 acceptance](docs/FREEAGENT_V7_7_IMPLEMENTATION_PROGRESS.md).
+
+Linux amd64 has a separate portable archive with the same CLI and embedded Web
+UI. It starts with `./FreeAgent`, uses package-local data, and needs no Go or
+Node installation. See [Linux instructions](docs/LINUX_PORTABLE.md). Windows
+AppContainer is unavailable on Linux; sandboxed commands refuse without host
+fallback. Linux command execution requires explicit Full/host permission.
+
 ## Start
 
 The Windows portable preview starts by double-clicking `FreeAgent.exe`, needs no
 Go or Node installation, and stores Keys encrypted for the current Windows
 user. The CLI is `bin\freeagent.exe`. See
 [Portable Instructions](docs/PORTABLE.md). It is unsigned and uses its own
-`data/Harness-v5`; it does not import existing installations.
+`data/Harness-v7`; it does not import existing installations.
 
 The v7 desktop build opens `FreeAgent.exe` without a console window and uses
 the installed Microsoft WebView2 runtime. If WebView2 is unavailable, it
@@ -74,6 +89,8 @@ process variable instead, `--key-stdin` reads one line for scripts, and
 `--no-key` is accepted only for loopback addresses. Keys are never accepted as
 command arguments. On Windows a saved key is encrypted for the current user with
 DPAPI. `key list` and `doctor` show the source and a short hint, never the key.
+Linux saved keys use a plaintext file restricted to mode 0600; environment
+references are also supported.
 `key test` sends one `GET <base>/models`; `key models` lists the reported model
 names. Both are explicit network requests; no other configuration command makes one.
 

@@ -24,8 +24,8 @@ func (server *Server) controlCapability(conversationID string) (harness.Interact
 }
 
 // confirmControlProposal decides a model-proposed control change through the
-// Run that is waiting on it. The interactive caller submits the code it was
-// shown by /api/control/confirmation; rejection needs no code.
+// Run that is waiting on it. GUI clicks and CLI prompts supply the local
+// interactive capability; external channel callbacks cannot apply settings.
 func (server *Server) confirmControlProposal(ctx context.Context, chat, runID string, confirmation harness.Confirmation, code string, approved bool) (harness.RunResult, error) {
 	capability, err := server.controlCapability(chat)
 	if err != nil {
@@ -40,6 +40,7 @@ func (server *Server) confirmControlProposal(ctx context.Context, chat, runID st
 	}
 	// The applied operation is persisted in the core; discovery only carries
 	// the new workspace as a reconnect hint for an attached desktop.
+	server.reconfigureChannelsIfChanged()
 	if control, controlErr := server.tasks.Control(); controlErr == nil {
 		if operations, listErr := control.ListControlOperations(ctx); listErr == nil {
 			for _, operation := range operations {
@@ -94,6 +95,9 @@ func (server *Server) applyDirectControl(ctx context.Context, generation, conver
 	}
 	if !result.Applied {
 		return result, errors.New("chat: direct control change was not applied")
+	}
+	if kind == harness.ControlSetChannelPolicy {
+		server.reconfigureChannels()
 	}
 	if kind == harness.ControlSetWorkspace {
 		var workspace string
@@ -302,6 +306,7 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 				Code: body.Code, Capability: capability,
 			})
 			if applyErr == nil {
+				server.reconfigureChannelsIfChanged()
 				if result.Operation.Kind == harness.ControlSetWorkspace {
 					var workspace string
 					if json.Unmarshal([]byte(result.Operation.ProposedValues["config.workspace"]), &workspace) == nil {

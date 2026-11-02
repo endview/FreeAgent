@@ -32,27 +32,32 @@ func (failure *APIError) Error() string {
 }
 
 type AttachState struct {
-	Protocol       string                 `json:"protocol"`
-	DataFormat     string                 `json:"data_format"`
-	Generation     string                 `json:"generation"`
-	OwnerKind      string                 `json:"owner_kind,omitempty"`
-	PID            int                    `json:"pid,omitempty"`
-	ExpiresAt      string                 `json:"expires_at,omitempty"`
-	Stopping       bool                   `json:"stopping"`
-	LastSeq        uint64                 `json:"last_seq"`
-	ActiveChat     string                 `json:"active_chat"`
-	ActiveBinding  string                 `json:"active_binding,omitempty"`
-	ActiveCommands bool                   `json:"active_commands"`
-	Control        harness.ControlState   `json:"control"`
-	Conversations  []harness.Conversation `json:"conversations"`
+	ActiveBindings     map[string]string      `json:"active_bindings"`
+	ActiveChats        []string               `json:"active_chats"`
+	ForegroundCapacity int                    `json:"foreground_capacity"`
+	Protocol           string                 `json:"protocol"`
+	DataFormat         string                 `json:"data_format"`
+	Generation         string                 `json:"generation"`
+	OwnerKind          string                 `json:"owner_kind,omitempty"`
+	PID                int                    `json:"pid,omitempty"`
+	ExpiresAt          string                 `json:"expires_at,omitempty"`
+	Stopping           bool                   `json:"stopping"`
+	LastSeq            uint64                 `json:"last_seq"`
+	ActiveChat         string                 `json:"active_chat"`
+	ActiveBinding      string                 `json:"active_binding,omitempty"`
+	ActiveCommands     bool                   `json:"active_commands"`
+	Control            harness.ControlState   `json:"control"`
+	Conversations      []harness.Conversation `json:"conversations"`
 }
 
 type AttachEvents struct {
-	Generation    string          `json:"generation"`
-	NextSeq       uint64          `json:"next_seq"`
-	Events        []harness.Event `json:"events"`
-	ActiveChat    string          `json:"active_chat"`
-	ActiveBinding string          `json:"active_binding"`
+	ActiveBindings map[string]string `json:"active_bindings"`
+	ActiveChats    []string          `json:"active_chats"`
+	Generation     string            `json:"generation"`
+	NextSeq        uint64            `json:"next_seq"`
+	Events         []harness.Event   `json:"events"`
+	ActiveChat     string            `json:"active_chat"`
+	ActiveBinding  string            `json:"active_binding"`
 }
 
 type AttachRunStatus struct {
@@ -140,6 +145,36 @@ func (client *Client) State(ctx context.Context) (AttachState, error) {
 	return state, err
 }
 
+func (client *Client) ChannelStatus(ctx context.Context, source string) (json.RawMessage, error) {
+	var out json.RawMessage
+	err := client.request(ctx, http.MethodGet, "/api/attach/channels/"+url.PathEscape(source), nil, &out)
+	return out, err
+}
+func (client *Client) ChannelConfigure(ctx context.Context, source string, input any) (json.RawMessage, error) {
+	var out json.RawMessage
+	err := client.request(ctx, http.MethodPatch, "/api/attach/channels/"+url.PathEscape(source), input, &out)
+	return out, err
+}
+func (client *Client) ChannelPair(ctx context.Context, source string) (json.RawMessage, error) {
+	var out json.RawMessage
+	err := client.request(ctx, http.MethodPost, "/api/attach/channels/"+url.PathEscape(source), struct{}{}, &out)
+	return out, err
+}
+func (client *Client) TelegramStatus(ctx context.Context) (harness.TelegramChannelStatus, error) {
+	var status harness.TelegramChannelStatus
+	err := client.request(ctx, http.MethodGet, "/api/attach/channels/telegram", nil, &status)
+	return status, err
+}
+
+func (client *Client) TelegramPairCode(ctx context.Context) (string, time.Time, error) {
+	var response struct {
+		Code      string    `json:"code"`
+		ExpiresAt time.Time `json:"expires_at"`
+	}
+	err := client.request(ctx, http.MethodPost, "/api/attach/channels/telegram", nil, &response)
+	return response.Code, response.ExpiresAt, err
+}
+
 func (client *Client) Events(ctx context.Context, after uint64) (AttachEvents, error) {
 	var events AttachEvents
 	query := url.Values{}
@@ -164,9 +199,19 @@ func (client *Client) SubmitWithOptions(ctx context.Context, conversationID, req
 }
 
 func (client *Client) NewConversation(ctx context.Context, title string) (harness.Conversation, error) {
+	return client.NewConversationInSpace(ctx, harness.LocalSpaceID, title)
+}
+
+func (client *Client) NewConversationInSpace(ctx context.Context, spaceID, title string) (harness.Conversation, error) {
 	var conversation harness.Conversation
-	err := client.request(ctx, http.MethodPost, "/api/attach/conversation", map[string]string{"title": title}, &conversation)
+	err := client.request(ctx, http.MethodPost, "/api/attach/conversation", map[string]string{"title": title, "space_id": spaceID}, &conversation)
 	return conversation, err
+}
+
+func (client *Client) Spaces(ctx context.Context) ([]harness.Space, error) {
+	var spaces []harness.Space
+	err := client.request(ctx, http.MethodGet, "/api/attach/spaces", nil, &spaces)
+	return spaces, err
 }
 
 func (client *Client) Status(ctx context.Context, conversationID, requestKey string) (AttachRunStatus, error) {

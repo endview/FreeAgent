@@ -27,6 +27,8 @@ type localOwner struct {
 	once     sync.Once
 	result   error
 	publish  handoff.Published
+	telegram *harness.TelegramRuntime
+	lark, qq *harness.AppChannelRuntime
 }
 
 func startLocalOwner(ctx context.Context, tasks *harness.TaskService, data string, port int, oneShot bool) (*localOwner, error) {
@@ -66,13 +68,25 @@ func startLocalOwner(ctx context.Context, tasks *harness.TaskService, data strin
 	}
 	handler.SetGeneration(published.Info.Generation)
 	handler.SetOwnerInfo(published.Info)
+	telegram := harness.NewTelegramRuntime(tasks)
+	telegram.SetDispatch(handler.DispatchChannel)
+	handler.AddChannelDelivery(telegram.Deliver)
+	_ = telegram.Start(ctx) // optional channel errors are exposed in local status
+	handler.SetTelegramRuntime(telegram)
+	lark, qq := harness.NewLarkRuntime(tasks), harness.NewQQRuntime(tasks)
+	for _, runtime := range []*harness.AppChannelRuntime{lark, qq} {
+		runtime.SetDispatch(handler.DispatchChannel)
+		handler.AddChannelDelivery(runtime.Deliver)
+		_ = runtime.Start(ctx)
+	}
+	handler.SetAppChannels(lark, qq)
 	client, err := handoff.NewInteractiveClient(published.Info, chatSecret)
 	if err != nil {
 		handler.Close()
 		published.Close()
 		return nil, err
 	}
-	owner := &localOwner{address: origin + "/#key=" + chatSecret, client: client, handler: handler,
+	owner := &localOwner{address: origin + "/#key=" + chatSecret, client: client, handler: handler, telegram: telegram, lark: lark, qq: qq,
 		server: &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second},
 		done:   make(chan struct{}), publish: published}
 	go func() {
@@ -85,6 +99,16 @@ func startLocalOwner(ctx context.Context, tasks *harness.TaskService, data strin
 
 func (owner *localOwner) Close() error {
 	owner.once.Do(func() {
+		if owner.telegram != nil {
+			if telegramErr := owner.telegram.Stop(); telegramErr != nil {
+				owner.result = telegramErr
+			}
+		}
+		for _, runtime := range []*harness.AppChannelRuntime{owner.lark, owner.qq} {
+			if runtime != nil {
+				owner.result = errors.Join(owner.result, runtime.Stop())
+			}
+		}
 		owner.handler.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -98,7 +122,7 @@ func (owner *localOwner) Close() error {
 			serveErr = nil
 		}
 		owner.publish.Close()
-		owner.result = errors.Join(err, serveErr)
+		owner.result = errors.Join(owner.result, err, serveErr)
 	})
 	return owner.result
 }

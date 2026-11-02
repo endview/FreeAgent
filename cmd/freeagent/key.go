@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,7 +26,7 @@ const maxKeyInput = 4096
 
 var errNotConsole = errors.New("stdin is not a console")
 
-const keyUsage = "usage: freeagent key <list|add|edit|remove|test|models> [flags]; use --help"
+const keyUsage = "usage: freeagent key <list|add|edit|remove|test|models|enable|disable> [flags]; use --help"
 
 func keyStore() (*harness.KeyStore, error) {
 	path, err := apppaths.KeysFile()
@@ -39,7 +40,7 @@ func keyStore() (*harness.KeyStore, error) {
 // lock, so it works while the desktop app owns the data directory; the one
 // exception is remove --disable-models, which edits config.json.
 func runKey(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if len(args) == 0 || !slices.Contains([]string{"list", "add", "edit", "remove", "test", "models"}, args[0]) {
+	if len(args) == 0 || !slices.Contains([]string{"list", "add", "edit", "remove", "test", "models", "enable", "disable"}, args[0]) {
 		return usageErr(keyUsage)
 	}
 	action, rest := args[0], args[1:]
@@ -50,8 +51,8 @@ func runKey(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 	}
 	flags := flag.NewFlagSet("key "+action, flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	var asJSON, keyStdin, keyPrompt, noKey, force, disableModels bool
-	var name, address, note, keyEnv, preset, newDefault string
+	var asJSON, keyStdin, keyPrompt, noKey, force, disableModels, enable bool
+	var name, address, note, keyEnv, preset, newDefault, protocol string
 	dataDir := defaultDataDir()
 	flags.StringVar(&dataDir, "data-dir", dataDir, "data directory whose owner should receive mutations")
 	switch action {
@@ -61,10 +62,12 @@ func runKey(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		flags.StringVar(&name, "name", "", "profile name")
 		flags.StringVar(&address, "url", "", "service address, for example https://api.example.com/v1")
 		flags.StringVar(&note, "note", "", "optional note")
+		flags.StringVar(&protocol, "protocol", harness.KeyProtocolOpenAICompatible, "openai-compatible, anthropic, telegram, lark, or qq")
 		flags.BoolVar(&keyStdin, "key-stdin", false, "read the key from stdin (one line, at most 4096 bytes)")
 		flags.StringVar(&keyEnv, "key-env", "", "read the key from this environment variable when it is used")
 		flags.BoolVar(&noKey, "no-key", false, "no key; loopback addresses only")
 		if action == "add" {
+			flags.BoolVar(&enable, "enable", false, "enable this model Provider after saving (no network call)")
 			flags.StringVar(&preset, "preset", "", "fill name and address from a preset: deepseek")
 		} else {
 			flags.BoolVar(&keyPrompt, "key-prompt", false, "enter a new key with hidden input")
@@ -90,13 +93,41 @@ func runKey(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		return err
 	}
 	switch action {
+	case "enable", "disable":
+		if err := resolveDataDir(&dataDir); err != nil {
+			return err
+		}
+		return changeProvider(ctx, dataDir, ref, action == "enable", stdin, stdout, stderr)
 	case "list":
-		return keyList(store, asJSON, stdout, stderr)
+		config, err := harness.LoadConfig(dataDir)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return keyList(store, config, asJSON, stdout, stderr)
 	case "add":
-		return keyAdd(ctx, store, dataDir, harness.KeyInput{Name: name, BaseURL: address, Note: note}, preset,
-			keySource{stdin: keyStdin, env: keyEnv, none: noKey}, stdin, stdout, stderr)
+		if enable && harness.IsChannelKeyProtocol(protocol) {
+			return usageErr("--enable is for model Providers; use channel configure for channels")
+		}
+		var saved bytes.Buffer
+		if err := keyAdd(ctx, store, dataDir, harness.KeyInput{Name: name, BaseURL: address, Protocol: protocol, Note: note}, preset,
+			keySource{stdin: keyStdin, env: keyEnv, none: noKey}, stdin, &saved, stderr); err != nil {
+			return err
+		}
+		if enable {
+			var profile struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(saved.Bytes(), &profile); err != nil {
+				return err
+			}
+			if err := changeProvider(ctx, dataDir, profile.ID, true, stdin, io.Discard, stderr); err != nil {
+				return fmt.Errorf("Key saved disabled; enable: %w", err)
+			}
+		}
+		_, err := stdout.Write(saved.Bytes())
+		return err
 	case "edit":
-		return keyEdit(ctx, store, dataDir, ref, flags, harness.KeyInput{Name: name, BaseURL: address, Note: note},
+		return keyEdit(ctx, store, dataDir, ref, flags, harness.KeyInput{Name: name, BaseURL: address, Protocol: protocol, Note: note},
 			keySource{stdin: keyStdin, env: keyEnv, none: noKey, prompt: keyPrompt}, stdin, stdout, stderr)
 	case "remove":
 		return keyRemove(ctx, store, dataDir, ref, force, disableModels, newDefault, stdout, stderr)
@@ -104,26 +135,34 @@ func runKey(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 	return keyProbe(ctx, store, dataDir, ref, action == "models", asJSON, stdout, stderr)
 }
 
-func keyList(store *harness.KeyStore, asJSON bool, stdout, stderr io.Writer) error {
+func keyList(store *harness.KeyStore, config harness.Config, asJSON bool, stdout, stderr io.Writer) error {
 	views, err := store.List()
 	if err != nil {
 		return err
 	}
 	if asJSON {
-		return writeJSON(stdout, views)
+		type item struct {
+			harness.KeyProfileView
+			Enabled bool `json:"enabled"`
+		}
+		items := make([]item, 0, len(views))
+		for _, view := range views {
+			items = append(items, item{view, config.Providers[view.ID]})
+		}
+		return writeJSON(stdout, items)
 	}
 	if len(views) == 0 {
 		_, _ = fmt.Fprintln(stderr, "No keys yet. Add one: freeagent key add --name <name> --url <address>")
 		return nil
 	}
 	table := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-	_, _ = fmt.Fprintln(table, "ID\tNAME\tADDRESS\tSOURCE\tHINT\tLAST CHECK")
+	_, _ = fmt.Fprintln(table, "ID\tNAME\tENABLED\tADDRESS\tSOURCE\tHINT\tLAST CHECK")
 	for _, view := range views {
 		hint := view.Hint
 		if hint == "" {
 			hint = "-"
 		}
-		_, _ = fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n", view.ID, view.Name, view.BaseURL, keySourceText(view), hint, lastCheckText(view.LastCheck))
+		_, _ = fmt.Fprintf(table, "%s\t%s\t%t\t%s\t%s\t%s\t%s\n", view.ID, view.Name, config.Providers[view.ID], view.BaseURL, keySourceText(view), hint, lastCheckText(view.LastCheck))
 	}
 	return table.Flush()
 }
@@ -315,6 +354,8 @@ func keyEdit(ctx context.Context, store *harness.KeyStore, dataDir, ref string, 
 			input.BaseURL = changes.BaseURL
 		case "note":
 			input.Note = changes.Note
+		case "protocol":
+			input.Protocol = changes.Protocol
 		}
 	})
 	if err := source.apply(ctx, &input, false, stdin, stderr); err != nil {

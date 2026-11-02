@@ -25,6 +25,12 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 		return false
 	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/attach/")
+	if server.spacesAPI(writer, request) {
+		return true
+	}
+	if server.channelsAPI(writer, request) {
+		return true
+	}
 	if server.commandSessionsAPI(writer, request) {
 		return true
 	}
@@ -111,27 +117,34 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			return true
 		}
 		server.mu.Lock()
-		active, binding, generation, seq, stopping, owner := server.active, server.activeBinding, server.generation, server.eventSeq, server.stopping, server.ownerInfo
+		active, binding := server.firstActiveLocked()
+		activeChats := server.activeChatsLocked()
+		activeBindings := server.bindingsLocked()
+		generation, seq, stopping, owner := server.generation, server.eventSeq, server.stopping, server.ownerInfo
 		server.mu.Unlock()
 		conversations, err := server.tasks.Conversations(request.Context())
 		if err != nil {
 			server.fail(writer, err)
 			return true
 		}
-		server.writeJSON(writer, http.StatusOK, map[string]any{"protocol": "freeagent-attach-v1", "data_format": "freeagent-harness-v7",
+		server.writeJSON(writer, http.StatusOK, map[string]any{"protocol": "freeagent-attach-v1", "data_format": "freeagent-harness-v9",
 			"generation": generation, "owner_kind": owner.OwnerKind, "pid": owner.PID, "expires_at": owner.ExpiresAt,
-			"stopping": stopping, "last_seq": seq, "active_chat": active, "active_binding": binding, "active_commands": server.tasks.HasCommands(), "control": state, "conversations": conversations})
+			"stopping": stopping, "last_seq": seq, "active_chat": active, "active_binding": binding, "active_chats": activeChats, "active_bindings": activeBindings, "foreground_capacity": harness.MaxForegroundRuns, "active_commands": server.tasks.HasCommands(), "control": state, "conversations": conversations})
 		return true
 	case path == "events" && request.Method == http.MethodGet:
 		return server.attachEvents(writer, request)
 	case path == "conversation" && request.Method == http.MethodPost:
 		var body struct {
-			Title string `json:"title"`
+			Title   string `json:"title"`
+			SpaceID string `json:"space_id"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
-		conversation, err := server.tasks.NewConversation(request.Context(), body.Title)
+		if body.SpaceID == "" {
+			body.SpaceID = harness.LocalSpaceID
+		}
+		conversation, err := server.tasks.NewConversationInSpace(request.Context(), body.SpaceID, body.Title)
 		if err != nil {
 			server.fail(writer, err)
 			return true
@@ -275,13 +288,7 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
-		server.mu.Lock()
-		requested := body.ConversationID != "" && server.active == body.ConversationID && server.activeCancel != nil &&
-			(body.Binding == "" || body.Binding == server.activeBinding)
-		if requested {
-			server.activeCancel()
-		}
-		server.mu.Unlock()
+		requested := server.cancelConversation(body.ConversationID, body.Binding)
 		server.writeJSON(writer, http.StatusOK, map[string]bool{"requested": requested})
 		return true
 	case path == "continue" && request.Method == http.MethodPost:
@@ -337,13 +344,15 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			server.writeJSON(writer, http.StatusAccepted, map[string]any{"accepted": true, "already_stopping": true})
 			return true
 		}
-		active := server.active
-		if (active != "" || server.tasks.HasCommands()) && !body.CancelActive {
+		active := server.activeChatsLocked()
+		if (len(active) != 0 || server.tasks.HasCommands()) && !body.CancelActive {
 			server.mu.Unlock()
 			server.writeError(writer, http.StatusConflict, "active_run", "存在运行中的任务；请明确请求取消后再交接。")
 			return true
 		}
-		cancel := server.activeCancel
+		for _, execution := range server.running {
+			execution.cancel()
+		}
 		server.stopping = true
 		server.mu.Unlock()
 		if err := server.tasks.CloseCommands("owner_handoff"); err != nil {
@@ -353,16 +362,13 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 			server.fail(writer, err)
 			return true
 		}
-		if active == "" {
+		if len(active) == 0 {
 			server.mu.Lock()
 			server.requestStopLocked()
 			server.mu.Unlock()
 		}
-		if cancel != nil {
-			cancel()
-			server.tasks.Cancel()
-		}
-		server.writeJSON(writer, http.StatusAccepted, map[string]any{"accepted": true, "active": active, "cancel_requested": active != ""})
+		server.tasks.Cancel()
+		server.writeJSON(writer, http.StatusAccepted, map[string]any{"accepted": true, "active": active, "cancel_requested": len(active) != 0})
 		return true
 	default:
 		http.NotFound(writer, request)
@@ -399,9 +405,11 @@ func (server *Server) attachEvents(writer http.ResponseWriter, request *http.Req
 			events = append(events, event)
 		}
 	}
-	active, binding := server.active, server.activeBinding
+	active, binding := server.firstActiveLocked()
+	activeChats := server.activeChatsLocked()
+	activeBindings := server.bindingsLocked()
 	server.mu.Unlock()
 	server.writeJSON(writer, http.StatusOK, map[string]any{"generation": generation, "next_seq": next, "events": events,
-		"active_chat": active, "active_binding": binding})
+		"active_chat": active, "active_binding": binding, "active_chats": activeChats, "active_bindings": activeBindings})
 	return true
 }

@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 
 function Fail([string]$Message) {
     throw $Message
@@ -44,9 +45,12 @@ function Invoke-Cli {
     $null = $process.Start()
     try {
         if ($InputText -ne '') {
-            $process.StandardInput.Write($InputText)
+            $inputBytes = [Text.UTF8Encoding]::new($false).GetBytes($InputText)
+            try {
+                $process.StandardInput.BaseStream.Write($inputBytes, 0, $inputBytes.Length)
+            } finally { [Array]::Clear($inputBytes, 0, $inputBytes.Length) }
         }
-        $process.StandardInput.Close()
+        $process.StandardInput.BaseStream.Close()
         $stdout = $process.StandardOutput.ReadToEnd()
         $stderr = $process.StandardError.ReadToEnd()
         $process.WaitForExit()
@@ -120,7 +124,7 @@ try {
     }
     $package = $directories[0].FullName
     $cli = Join-Path $package 'bin/freeagent.exe'
-    $data = Join-Path $package 'data/Harness-v5'
+    $data = Join-Path $package 'data/Harness-v7'
     $workspace = Join-Path $package 'workspace'
     $keysPath = Join-Path $package 'data/keys.json'
     if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) {
@@ -143,8 +147,9 @@ try {
     if ($init.value.data_dir -ne $data -or $init.value.workspace -ne $workspace) {
         Fail 'Portable init selected the wrong data or workspace path.'
     }
+    $null = Invoke-CliJson -Executable $cli -Arguments @('spaces', 'permission', '--data-dir', $data, '--space', 'local', '--mode', 'ask', '--yes')
 
-    $add = Invoke-CliJson -Executable $cli -Arguments @('key', 'add', '--preset', 'deepseek', '--key-stdin') `
+    $add = Invoke-CliJson -Executable $cli -Arguments @('key', 'add', '--data-dir', $data, '--preset', 'deepseek', '--key-stdin', '--enable') `
         -InputText ($plain + "`n")
     Assert-NoCredential $add.result.text $plain 'key add output'
     if ($add.value.name -ne 'DeepSeek' -or [string]::IsNullOrWhiteSpace($add.value.id)) {

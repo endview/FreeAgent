@@ -613,7 +613,7 @@ func applyProtectedPaths(p *profile, paths []ProtectedPath) error {
 		}
 		seen[strings.ToLower(path)] = true
 		switch protected.Mode {
-		case ProtectReadOnly, ProtectGitWrite:
+		case ProtectReadOnly:
 		default:
 			return fmt.Errorf("invalid protect mode %q for %s", protected.Mode, path)
 		}
@@ -680,15 +680,6 @@ func protectPath(path string, mode ProtectMode, dir bool, sid *windows.SID) (fun
 	switch mode {
 	case ProtectReadOnly:
 		entries = append(entries, windows.EXPLICIT_ACCESS{AccessPermissions: read, AccessMode: windows.GRANT_ACCESS, Inheritance: inherit, Trustee: sidTrustee(sid)})
-	case ProtectGitWrite:
-		// The entry itself is readable and writable but carries no DELETE,
-		// so it cannot be removed, renamed or replaced. Children inherit
-		// write and DELETE; no ACE grants FILE_DELETE_CHILD.
-		entries = append(entries, windows.EXPLICIT_ACCESS{AccessPermissions: read | windows.FILE_GENERIC_WRITE, AccessMode: windows.GRANT_ACCESS, Inheritance: inherit, Trustee: sidTrustee(sid)})
-		if dir {
-			entries = append(entries, windows.EXPLICIT_ACCESS{AccessPermissions: windows.DELETE, AccessMode: windows.GRANT_ACCESS,
-				Inheritance: windows.OBJECT_INHERIT_ACE | windows.CONTAINER_INHERIT_ACE | windows.INHERIT_ONLY_ACE, Trustee: sidTrustee(sid)})
-		}
 	}
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {

@@ -105,7 +105,7 @@ func TestCollaborationSerialEvidenceBudgetsAndDeduplication(t *testing.T) {
 	var tables int
 	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_schema
 		WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'knowledge_fts%'
-		AND name NOT IN ('memories','memory_revisions','memory_operations')`).Scan(&tables); err != nil || tables != 5 {
+		AND name NOT IN ('memories','memory_revisions','memory_operations')`).Scan(&tables); err != nil || tables != 6 {
 		t.Fatalf("execution tables=%d err=%v", tables, err)
 	}
 }
@@ -254,7 +254,7 @@ func TestCollaborationParallelReadOnlyAndExclusiveWorkspace(t *testing.T) {
 	if err != nil || report.Usage.ActiveChildren != 2 {
 		t.Fatalf("capacity=%+v %v", report, err)
 	}
-	if _, err := NewTaskService(core).Submit(t.Context(), "", "", "unrelated write"); !errors.Is(err, ErrActiveRun) {
+	if _, err := NewTaskService(core).Submit(t.Context(), report.Parent.ConversationID, "", "unrelated write"); !errors.Is(err, ErrActiveRun) {
 		t.Fatalf("workspace lease bypass=%v", err)
 	}
 	close(release)

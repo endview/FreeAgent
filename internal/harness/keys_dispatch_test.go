@@ -62,6 +62,7 @@ func keyedDispatchHarness(t *testing.T, base, source, env, secret string) (*Serv
 	keys := testKeyStore(t)
 	id := addTestProfile(t, keys, base, source, env, secret)
 	service.Config.Models["default"] = ModelConfig{Provider: "openai-compatible", Key: id, Model: "fixture"}
+	enableTestProviders(&service.Config)
 	service.Model, service.ModelFor, service.Keys = nil, keyedModelClient(keys), keys
 	return service, keys, id, workspace
 }

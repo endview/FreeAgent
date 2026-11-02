@@ -14,11 +14,13 @@ import (
 )
 
 const (
-	ConfigVersion = 7
-	StoreFormat   = "freeagent-harness-v7"
+	ConfigVersion = 9
+	StoreFormat   = "freeagent-harness-v9"
 )
 
 type Config struct {
+	Providers        map[string]bool            `json:"providers,omitempty"`
+	Channels         ChannelsConfig             `json:"channels,omitempty"`
 	Version          int                        `json:"version"`
 	Models           map[string]ModelConfig     `json:"models"`
 	DefaultModel     string                     `json:"default_model"`
@@ -67,8 +69,7 @@ type CommandConfig struct {
 	AllowedExecutables []string             `json:"allowed_executables,omitempty"`
 	Execution          CommandExecutionMode `json:"execution,omitempty"`
 	Rules              []CommandRule        `json:"rules,omitempty"`
-	// GitWrite lets sandboxed commands write .git. Hooks and repository
-	// config stay read-only either way.
+	// Deprecated current-format field. Loading forces false; enabling is rejected.
 	GitWrite bool `json:"git_write"`
 }
 
@@ -270,6 +271,7 @@ func LoadConfig(dataDir string) (Config, error) {
 	if err := config.Validate(); err != nil {
 		return Config{}, err
 	}
+	config.Commands.GitWrite = false
 	if err := validateComputerRoots(context.Background(), dataDir, config.ComputerRoots); err != nil {
 		return Config{}, err
 	}
@@ -542,6 +544,17 @@ func (config Config) Validate() error {
 }
 
 func (config Config) validate(requireWorkspace bool) error {
+	if len(config.Providers) > 256 {
+		return errors.New("harness: too many Provider switches")
+	}
+	for id := range config.Providers {
+		if !validKeyID(id) {
+			return errors.New("harness: invalid Provider ID")
+		}
+	}
+	if err := config.Channels.validate(); err != nil {
+		return err
+	}
 	if config.Version != ConfigVersion {
 		return fmt.Errorf("harness: unsupported config version %d", config.Version)
 	}
@@ -930,6 +943,10 @@ func (model ModelConfig) Validate() error {
 }
 
 func safetyConfig(config Config) Config {
+	// Connections may be stopped while a Run is active. They never widen the
+	// frozen execution grant or change its recipient.
+	config.Channels = ChannelsConfig{}
+	config.Providers = nil
 	config.Models, config.DefaultModel, config.DefaultSelection = nil, "", ""
 	config.Auto = AutoConfig{}
 	config.Collaboration = CollaborationSettings{}

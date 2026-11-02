@@ -67,6 +67,9 @@ func setupUIWithConfig(t *testing.T, model harness.ModelClient, data, work strin
 		t.Fatal(err)
 	}
 	t.Cleanup(closeTasks)
+	if err := tasks.SetSpacePermission(t.Context(), harness.LocalSpaceID, harness.PermissionAsk, false); err != nil {
+		t.Fatal(err)
+	}
 	httpServer := httptest.NewUnstartedServer(nil)
 	origin := "http://" + httpServer.Listener.Addr().String()
 	server, err := NewServer(t.Context(), tasks, origin, NewToken())
@@ -704,7 +707,7 @@ func TestChatServerPermissionModesAndFrozenSnapshot(t *testing.T) {
 		PermissionModes []harness.PermissionMode `json:"permission_modes"`
 	}
 	if code != http.StatusOK || json.Unmarshal(raw, &environment) != nil ||
-		len(environment.PermissionModes) != 3 {
+		len(environment.PermissionModes) != 4 {
 		t.Fatalf("permission environment %d %s", code, raw)
 	}
 
@@ -715,7 +718,7 @@ func TestChatServerPermissionModesAndFrozenSnapshot(t *testing.T) {
 	}
 	if code != http.StatusOK || json.Unmarshal(raw, &askSnapshot) != nil ||
 		askSnapshot.View.Permission.Mode != harness.PermissionAsk ||
-		askSnapshot.View.Permission.Source != "default" {
+		askSnapshot.View.Permission.Source != "space" {
 		t.Fatalf("default permission %d %s", code, raw)
 	}
 	code, _ = ui.request(t, "POST", "/api/chats/"+ask+"/submit",
@@ -728,6 +731,9 @@ func TestChatServerPermissionModesAndFrozenSnapshot(t *testing.T) {
 	}
 
 	workspace := ui.create(t)
+	if err := ui.tasks.SetSpacePermission(t.Context(), harness.LocalSpaceID, harness.PermissionWorkspace, false); err != nil {
+		t.Fatal(err)
+	}
 	code, _ = ui.request(t, "POST", "/api/chats/"+workspace+"/submit",
 		map[string]any{"prompt": "workspace", "request_key": "workspace", "permission": "workspace"})
 	workspaceView := ui.settled(t, workspace)
@@ -747,6 +753,9 @@ func TestChatServerPermissionModesAndFrozenSnapshot(t *testing.T) {
 	if code != http.StatusConflict || json.Unmarshal(raw, &failure) != nil ||
 		failure["code"] != "permission_confirmation" {
 		t.Fatalf("unconfirmed Full access was not rejected synchronously: %d %s", code, raw)
+	}
+	if err := ui.tasks.SetSpacePermission(t.Context(), harness.LocalSpaceID, harness.PermissionFull, true); err != nil {
+		t.Fatal(err)
 	}
 	code, _ = ui.request(t, "POST", "/api/chats/"+full+"/submit",
 		map[string]any{"prompt": "full", "request_key": "full-confirmed", "permission": "full", "confirm_full_access": true})
@@ -894,9 +903,8 @@ func TestChatServerSecurityAndStrictInput(t *testing.T) {
 	request.Header.Set("X-FreeAgent-Key", ui.server.token)
 	writer := httptest.NewRecorder()
 	ui.server.ServeHTTP(writer, request)
-	cookie := writer.Result().Cookies()[0]
-	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/api/" {
-		t.Fatal("unsafe SSE cookie")
+	if len(writer.Result().Cookies()) != 0 {
+		t.Fatal("local capability must not be carried by any cookie")
 	}
 	if !strings.Contains(writer.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatal("missing CSP")

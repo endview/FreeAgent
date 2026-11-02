@@ -42,7 +42,7 @@ export function attentionTitle(base, waiting) {
 }
 
 export function permissionMode(view, pending = '') {
-  return pending || view?.permission?.mode || 'ask';
+	return pending || view?.permission?.mode || 'none';
 }
 
 const STATE_META = {

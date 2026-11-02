@@ -67,6 +67,9 @@ key edit <id|name> [--name <name>] [--url <address>] [--note <text>] [--key-prom
 key remove <id|name> [--force | --disable-models [--new-default <id>]] [--data-dir <directory>]
 key test <id|name> [--json]
 key models <id|name> [--json]
+key enable <id|name> [--data-dir <directory>]
+key disable <id|name> [--data-dir <directory>]
+  Model Providers default to off; key add --enable explicitly opts in without a network request.
 config show
 config model --id <name> [--default] [--key <key profile id|name> --model <name>] [--provider <echo|openai-compatible>]
   --key names a key profile from "key list", not the key itself. --provider echo is for tests only.
@@ -75,8 +78,10 @@ config model --id <name> --default            switches the default model
 config model --id <name> --remove [--new-default <id>]
 config workspace --path <directory>
 config auto --enabled [--default] [--allow-model <id>] [--assessment-model <id>] [--max-candidates 8 --max-assessments 1 --max-upgrades 1]
-config commands --enabled [--allow <absolute-path>] [--timeout 120 --output-bytes 32768 --inherit-environment --git-write]
+config commands --enabled [--allow <absolute-path>] [--timeout 120 --output-bytes 32768 --inherit-environment]
 config http --enabled --origin <scheme://host[:port]> [--timeout 20 --output-bytes 32768]
+config channels --enabled --telegram-key <key profile>
+channel <telegram|lark|qq> <status|pair-code|configure> [--key <profile> --app-id <id> --listen 127.0.0.1:PORT --enabled true|false]
 config context --summary-bytes <0-16384>
 config memory [--knowledge] [--max-entries 16 --context-bytes 16384 --document-bytes 65536]
 memory <scopes|list|read|save|save-result|update|disable|enable|delete|copy|import|search|sources|select|clear|agent> [flags]
@@ -130,6 +135,10 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runCommands(ctx, args[1:], stdin, stdout, stderr)
 	case "sessions":
 		return runSessions(ctx, args[1:], stdout, stderr)
+	case "spaces", "space":
+		return runSpaces(ctx, args[1:], stdin, stdout, stderr)
+	case "channel", "channels":
+		return runChannel(ctx, args[1:], stdout, stderr)
 	case "inspect":
 		return runInspect(ctx, args[1:], stdout, stderr)
 	case "preview":
@@ -162,7 +171,7 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 }
 
 func usageError() error {
-	return usageErr("usage: freeagent <init|key|config|control|memory|chat|web|ext|run|continue|sessions|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore> [flags]; use --help")
+	return usageErr("usage: freeagent <init|key|config|control|memory|channel|chat|web|ext|run|continue|sessions|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore> [flags]; use --help")
 }
 
 func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -208,6 +217,7 @@ func runSessions(ctx context.Context, args []string, stdout, stderr io.Writer) e
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
 	show := flags.String("show", "", "show session history")
+	spaceID := flags.String("space", harness.LocalSpaceID, "limit sessions to this space")
 	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
@@ -232,7 +242,7 @@ func runSessions(ctx context.Context, args []string, stdout, stderr io.Writer) e
 		}
 		return writeJSON(stdout, history)
 	}
-	sessions, err := store.ListConversations(ctx)
+	sessions, err := store.ListConversationsInSpace(ctx, *spaceID)
 	if err != nil {
 		return err
 	}
@@ -260,6 +270,7 @@ func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
 	conversationID := flags.String("session", "", "session id; created when omitted")
+	spaceID := flags.String("space", harness.LocalSpaceID, "space for a new conversation")
 	requestKey := flags.String("request", "", "stable idempotency key")
 	interactive := flags.Bool("interactive", false, "prompt to approve file edits")
 	asJSON := flags.Bool("json", false, "write only structured output to stdout")
@@ -281,7 +292,7 @@ func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	if err := requireModels(*dataDir, stderr); err != nil {
 		return err
 	}
-	options := harness.RunOptions{ModelID: *modelID, Permission: harness.PermissionMode(*permission), ConfirmFullAccess: *confirmFullAccess}
+	options := harness.RunOptions{SpaceID: *spaceID, ModelID: *modelID, Permission: harness.PermissionMode(*permission), ConfirmFullAccess: *confirmFullAccess}
 	if *permission != "" {
 		if err := options.Permission.Validate(); err != nil {
 			return usageErr(err.Error())
@@ -445,6 +456,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
 	conversationID := flags.String("resume", "", "session id; created when omitted")
+	spaceID := flags.String("space", harness.LocalSpaceID, "initial space")
 	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
@@ -484,7 +496,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return err
 	}
 	reader := newTerminalInput(ctx, stdin)
-	tasks := &remoteChat{Client: client, data: *dataDir, reader: reader, stderr: stderr}
+	tasks := &remoteChat{Client: client, data: *dataDir, reader: reader, stderr: stderr, space: *spaceID}
 	if err := tasks.refresh(ctx); err != nil {
 		return err
 	}
@@ -497,9 +509,11 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		*conversationID = conversation.ID
 		_, _ = fmt.Fprintln(stderr, "New conversation")
 	} else {
-		if _, err := tasks.Chat(ctx, *conversationID); err != nil {
+		view, err := tasks.Chat(ctx, *conversationID)
+		if err != nil {
 			return err
 		}
+		tasks.space = view.Conversation.SpaceID
 	}
 	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /compact /context [inspect|refresh|clear] /status /continue /more /abandon /file <path> /begin ... /end /exit\n", config.Workspace)
 	var references []string
@@ -526,6 +540,12 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		}
 		if prompt == "/exit" || prompt == "/quit" {
 			return nil
+		}
+		if handled, err := handleChatSpaces(ctx, tasks, prompt, conversationID, reader, stdout, stderr); handled {
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+			}
+			continue
 		}
 		if prompt == "/history" {
 			messages, err := tasks.Messages(ctx, *conversationID)
@@ -1106,6 +1126,20 @@ func runBackupCommand(ctx context.Context, command string, args []string, stdout
 			return err
 		}
 		store, err := harness.OpenStore(ctx, *dataDir)
+		if errors.Is(err, harness.ErrOwnerActive) {
+			client, attachErr := interactiveOwner(ctx, *dataDir)
+			if attachErr != nil {
+				return fmt.Errorf("%w: %v", harness.ErrOwnerActive, attachErr)
+			}
+			absolute, pathErr := filepath.Abs(*target)
+			if pathErr != nil {
+				return pathErr
+			}
+			if err := client.ChatCommand(ctx, "backup", "", "", absolute, nil); err != nil {
+				return err
+			}
+			return writeJSON(stdout, map[string]any{"ok": true, "command": command, "out": absolute})
+		}
 		if err != nil {
 			return err
 		}
@@ -1159,6 +1193,20 @@ func runAbandon(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		return err
 	}
 	store, err := harness.OpenStore(ctx, *dataDir)
+	if errors.Is(err, harness.ErrOwnerActive) {
+		client, attachErr := interactiveOwner(ctx, *dataDir)
+		if attachErr != nil {
+			return fmt.Errorf("%w: %v", harness.ErrOwnerActive, attachErr)
+		}
+		if err := client.ChatCommand(ctx, "abandon", "", *runID, nil, nil); err != nil {
+			return err
+		}
+		item, _, _, inspectErr := client.Inspect(ctx, *runID)
+		if inspectErr != nil {
+			return inspectErr
+		}
+		return writeJSON(stdout, item)
+	}
 	if err != nil {
 		return err
 	}

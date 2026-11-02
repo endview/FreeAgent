@@ -57,6 +57,7 @@ type remoteChat struct {
 	binding      string
 	requestError string
 	activity     handoff.AttachEvents
+	space        string
 }
 
 func (remote *remoteChat) bind(binding string) {
@@ -102,7 +103,28 @@ func (remote *remoteChat) refresh(ctx context.Context) error {
 func (remote *remoteChat) Config() harness.Config { return remote.config }
 func (remote *remoteChat) Conversations(ctx context.Context) ([]harness.Conversation, error) {
 	state, err := remote.State(ctx)
-	return state.Conversations, err
+	if err != nil {
+		return nil, err
+	}
+	space := remote.space
+	if space == "" {
+		space = harness.LocalSpaceID
+	}
+	result := make([]harness.Conversation, 0)
+	for _, chat := range state.Conversations {
+		if chat.SpaceID == space && chat.Workspace == remote.config.Workspace {
+			result = append(result, chat)
+		}
+	}
+	return result, nil
+}
+
+func (remote *remoteChat) NewConversation(ctx context.Context, title string) (harness.Conversation, error) {
+	space := remote.space
+	if space == "" {
+		space = harness.LocalSpaceID
+	}
+	return remote.Client.NewConversationInSpace(ctx, space, title)
 }
 func (remote *remoteChat) Messages(ctx context.Context, chat string) ([]harness.Message, error) {
 	return chatValue[[]harness.Message](remote, ctx, "messages", chat, "", nil)
@@ -217,7 +239,7 @@ func (remote *remoteChat) events(ctx context.Context, chat string) error {
 			return errors.New("owner changed; input was not resubmitted")
 		}
 		remote.cursor = state.LastSeq
-		remote.activity = handoff.AttachEvents{Generation: state.Generation, ActiveChat: state.ActiveChat, ActiveBinding: state.ActiveBinding}
+		remote.activity = handoff.AttachEvents{Generation: state.Generation, ActiveChat: state.ActiveChat, ActiveBinding: state.ActiveBinding, ActiveChats: state.ActiveChats, ActiveBindings: state.ActiveBindings}
 		_, _ = fmt.Fprintln(remote.stderr, "Event history expired; final output will be read from the saved result. No input was resubmitted.")
 		remote.emit = nil
 		return nil
@@ -250,7 +272,7 @@ func (remote *remoteChat) wait(ctx context.Context, chat, key, runID string) (ha
 		if runID != "" {
 			binding = runID
 		}
-		if state.ActiveChat != chat || state.ActiveBinding != binding {
+		if current, active := state.ActiveBindings[chat]; !active || current != "" && current != binding {
 			if runID == "" {
 				status, err := remote.Status(ctx, chat, key)
 				if err != nil {

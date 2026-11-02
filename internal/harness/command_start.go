@@ -15,11 +15,8 @@ func (tasks *TaskService) StartCommand(ctx context.Context, chat, key string, ar
 		return RunResult{}, err
 	}
 	prompt := "Explicit command request: " + string(mustJSON(args))
-	return tasks.execute(ctx, func(ctx context.Context, core *Service) (RunResult, error) {
-		if !core.Store.runMu.TryLock() {
-			return RunResult{}, ErrActiveRun
-		}
-		defer core.Store.runMu.Unlock()
+	return tasks.execute(ctx, chat, func(ctx context.Context, core *Service) (RunResult, error) {
+
 		if err := core.validate(ctx); err != nil {
 			return RunResult{}, err
 		}

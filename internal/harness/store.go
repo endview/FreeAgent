@@ -32,7 +32,7 @@ var (
 
 const (
 	applicationID      = 0x46414833
-	storeSchemaVersion = 7
+	storeSchemaVersion = 9
 )
 
 type Store struct {
@@ -40,7 +40,9 @@ type Store struct {
 	db              *sql.DB
 	owner           processFileLock
 	mu              sync.Mutex
-	runMu           sync.Mutex
+	runMu           executionGate
+	modelMu         sync.Mutex
+	modelSlots      chan struct{}
 	closed          bool
 	summaryVerified map[string]string
 }
@@ -49,12 +51,37 @@ type Conversation struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	Workspace string `json:"workspace"`
+	SpaceID   string `json:"space_id"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 	ModelID   string `json:"model_id,omitempty"`
 	Pinned    bool   `json:"pinned"`
 	PinnedAt  string `json:"pinned_at,omitempty"`
 }
+
+// Space is the shared organizational boundary for local and external
+// conversations. External channel fields are inert until an adapter is
+// enabled; the core owns identity and routing rules.
+type Space struct {
+	ID                    string `json:"id"`
+	Title                 string `json:"title"`
+	Source                string `json:"source"`
+	ChatKind              string `json:"chat_kind,omitempty"`
+	ExternalChat          string `json:"external_chat,omitempty"`
+	DefaultConversationID string `json:"default_conversation_id,omitempty"`
+	ActiveConversationID  string `json:"active_conversation_id,omitempty"`
+	MultiConversation     bool   `json:"multi_conversation_enabled"`
+	CreatedAt             string `json:"created_at"`
+	UpdatedAt             string `json:"updated_at"`
+}
+
+const (
+	LocalSpaceID        = "local"
+	SpaceSourceLocal    = "local"
+	SpaceSourceTelegram = "telegram"
+	SpaceSourceLark     = "lark"
+	SpaceSourceQQ       = "qq"
+)
 
 type Message struct {
 	ID    int64
@@ -136,6 +163,9 @@ func InitStore(ctx context.Context, dataDir string) (returnErr error) {
 	}
 	db.SetMaxOpenConns(1)
 	schemaErr := createSchema(ctx, db)
+	if schemaErr == nil {
+		schemaErr = seedLocalSpace(ctx, db)
+	}
 	closeErr := db.Close()
 	if err := errors.Join(schemaErr, closeErr); err != nil {
 		return err
@@ -240,13 +270,38 @@ func (store *Store) Close() error {
 func (store *Store) DataDir() string { return store.dataDir }
 
 func (store *Store) CreateConversation(ctx context.Context, title, workspace string) (Conversation, error) {
+	return store.CreateConversationInSpace(ctx, LocalSpaceID, title, workspace)
+}
+
+func (store *Store) CreateConversationInSpace(ctx context.Context, spaceID, title, workspace string) (Conversation, error) {
 	if title == "" || workspace == "" {
 		return Conversation{}, errors.New("harness: title and workspace are required")
 	}
+	if _, err := store.GetSpace(ctx, spaceID); err != nil {
+		return Conversation{}, err
+	}
 	result := Conversation{ID: newID(), Title: title, Workspace: workspace, CreatedAt: nowText(), UpdatedAt: nowText()}
-	_, err := store.db.ExecContext(ctx, `INSERT INTO conversations VALUES(?, ?, ?, ?, ?)`,
-		result.ID, result.Title, result.Workspace, result.CreatedAt, result.UpdatedAt)
-	return result, err
+	result.SpaceID = spaceID
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Conversation{}, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO conversations(id,title,workspace,space_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
+		result.ID, result.Title, result.Workspace, result.SpaceID, result.CreatedAt, result.UpdatedAt); err != nil {
+		return Conversation{}, err
+	}
+	var defaultID string
+	if err := tx.QueryRowContext(ctx, `SELECT default_conversation_id FROM spaces WHERE id=?`, spaceID).Scan(&defaultID); err != nil {
+		return Conversation{}, err
+	}
+	if defaultID == "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE spaces SET default_conversation_id=?, active_conversation_id=?, updated_at=? WHERE id=?`,
+			result.ID, result.ID, result.UpdatedAt, spaceID); err != nil {
+			return Conversation{}, err
+		}
+	}
+	return result, tx.Commit()
 }
 
 var ErrInvalidConversationTitle = errors.New("harness: invalid conversation title")
@@ -270,9 +325,9 @@ func (store *Store) RenameConversation(ctx context.Context, id, title string) er
 func (store *Store) GetConversation(ctx context.Context, id string) (Conversation, error) {
 	var result Conversation
 	err := store.db.QueryRowContext(ctx,
-		`SELECT c.id, c.title, c.workspace, c.created_at, c.updated_at, coalesce(pin.value,'')
+		`SELECT c.id, c.title, c.workspace, c.space_id, c.created_at, c.updated_at, coalesce(pin.value,'')
 		 FROM conversations c LEFT JOIN meta pin ON pin.key='chat/pin/'||c.id WHERE c.id=?`, id,
-	).Scan(&result.ID, &result.Title, &result.Workspace, &result.CreatedAt, &result.UpdatedAt, &result.PinnedAt)
+	).Scan(&result.ID, &result.Title, &result.Workspace, &result.SpaceID, &result.CreatedAt, &result.UpdatedAt, &result.PinnedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = fmt.Errorf("harness: session %q not found; use sessions to choose one, or omit --session to create one", id)
 	}
@@ -289,24 +344,28 @@ func (store *Store) GetConversation(ctx context.Context, id string) (Conversatio
 }
 
 func (store *Store) ListConversations(ctx context.Context) ([]Conversation, error) {
+	return store.listConversations(ctx, "")
+}
+
+func (store *Store) listConversations(ctx context.Context, spaceID string) ([]Conversation, error) {
 	result := make([]Conversation, 0, 250)
 	for _, query := range []string{
-		`SELECT c.id,c.title,c.workspace,c.created_at,c.updated_at,coalesce(model.value,''),pin.value
+		`SELECT c.id,c.title,c.workspace,c.space_id,c.created_at,c.updated_at,coalesce(model.value,''),pin.value
 		 FROM conversations c JOIN meta pin ON pin.key='chat/pin/'||c.id
 		 LEFT JOIN meta model ON model.key='chat/model/'||c.id
-		 WHERE pin.value<>'' ORDER BY pin.value DESC,c.updated_at DESC LIMIT 50`,
-		`SELECT c.id,c.title,c.workspace,c.created_at,c.updated_at,coalesce(model.value,''),''
+		 WHERE (?='' OR c.space_id=?) AND pin.value<>'' ORDER BY pin.value DESC,c.updated_at DESC LIMIT 50`,
+		`SELECT c.id,c.title,c.workspace,c.space_id,c.created_at,c.updated_at,coalesce(model.value,''),''
 		 FROM conversations c LEFT JOIN meta pin ON pin.key='chat/pin/'||c.id
 		 LEFT JOIN meta model ON model.key='chat/model/'||c.id
-		 WHERE pin.key IS NULL OR pin.value='' ORDER BY c.updated_at DESC LIMIT 200`,
+		 WHERE (?='' OR c.space_id=?) AND (pin.key IS NULL OR pin.value='') ORDER BY c.updated_at DESC LIMIT 200`,
 	} {
-		rows, err := store.db.QueryContext(ctx, query)
+		rows, err := store.db.QueryContext(ctx, query, spaceID, spaceID)
 		if err != nil {
 			return nil, err
 		}
 		for rows.Next() {
 			var item Conversation
-			if err := rows.Scan(&item.ID, &item.Title, &item.Workspace, &item.CreatedAt, &item.UpdatedAt, &item.ModelID, &item.PinnedAt); err != nil {
+			if err := rows.Scan(&item.ID, &item.Title, &item.Workspace, &item.SpaceID, &item.CreatedAt, &item.UpdatedAt, &item.ModelID, &item.PinnedAt); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -320,6 +379,13 @@ func (store *Store) ListConversations(ctx context.Context) ([]Conversation, erro
 		rows.Close()
 	}
 	return result, nil
+}
+
+func (store *Store) ListConversationsInSpace(ctx context.Context, spaceID string) ([]Conversation, error) {
+	if _, err := store.GetSpace(ctx, spaceID); err != nil {
+		return nil, err
+	}
+	return store.listConversations(ctx, spaceID)
 }
 
 // PinConversation stores the pin timestamp in the existing metadata table. A
@@ -363,7 +429,7 @@ func (store *Store) PinConversation(ctx context.Context, id string, pinned bool)
 }
 
 func (store *Store) ListMessages(ctx context.Context, conversationID string) ([]Message, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT id, run_id, body_json FROM messages WHERE conversation_id=? ORDER BY id`, conversationID)
+	rows, err := store.db.QueryContext(ctx, `SELECT id, COALESCE(run_id,''), body_json FROM messages WHERE conversation_id=? ORDER BY id`, conversationID)
 	if err != nil {
 		return nil, err
 	}
@@ -384,8 +450,8 @@ func (store *Store) ListMessages(ctx context.Context, conversationID string) ([]
 }
 
 func (store *Store) contextMessages(ctx context.Context, run Run, maxMessages, maxBytes int) ([]Message, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT id,run_id,body_json FROM messages
-		WHERE conversation_id=? ORDER BY id DESC LIMIT ?`, run.ConversationID, maxMessages+1)
+	rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
+		WHERE conversation_id=? AND (id<=? OR run_id=?) ORDER BY id DESC LIMIT ?`, run.ConversationID, historyBound(run), run.ID, maxMessages+1)
 	if err != nil {
 		return nil, err
 	}
@@ -476,8 +542,19 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 		if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, maintenanceMetaPrefix+result.ID, "compaction"); err != nil {
 			return Run{}, false, err
 		}
+	} else if origin := channelOriginFromJSON(configJSON); origin != nil && origin.InputMessageID > 0 {
+		// Receipt and Run association commit atomically. The received message
+		// already exists; never append a second trigger or execute a duplicate.
+		updated, err := tx.ExecContext(ctx, `UPDATE messages SET run_id=? WHERE id=? AND conversation_id=? AND request_key=? AND run_id IS NULL`,
+			result.ID, origin.InputMessageID, conversationID, requestKey)
+		if err != nil {
+			return Run{}, false, err
+		}
+		if count, err := updated.RowsAffected(); err != nil || count != 1 {
+			return Run{}, false, ErrRequestKey
+		}
 	} else {
-		if err := insertMessage(ctx, tx, result, ModelMessage{Role: "user", Content: prompt}); err != nil {
+		if err := insertMessage(ctx, tx, result, ModelMessage{Role: "user", Content: prompt, Public: channelOriginFromJSON(configJSON) != nil}); err != nil {
 			return Run{}, false, err
 		}
 	}
@@ -1362,7 +1439,14 @@ func createSchema(ctx context.Context, db *sql.DB) error {
 		fmt.Sprintf(`PRAGMA user_version=%d`, storeSchemaVersion),
 		`CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
 		fmt.Sprintf(`INSERT INTO meta VALUES('format','%s')`, StoreFormat),
-		`CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT NOT NULL, workspace TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+		`CREATE TABLE spaces(
+			id TEXT PRIMARY KEY, title TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('local','telegram','lark','qq')),
+			chat_kind TEXT NOT NULL, external_chat TEXT NOT NULL, default_conversation_id TEXT NOT NULL,
+			active_conversation_id TEXT NOT NULL, multi_conversation_enabled INTEGER NOT NULL DEFAULT 0 CHECK(multi_conversation_enabled IN (0,1)),
+			created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX external_space_identity ON spaces(source,external_chat) WHERE source!='local' AND external_chat!=''`,
+		`CREATE TABLE conversations(id TEXT PRIMARY KEY, title TEXT NOT NULL, workspace TEXT NOT NULL, space_id TEXT NOT NULL REFERENCES spaces(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
 		`CREATE TABLE runs(
 			id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id),
 			request_key TEXT NOT NULL, prompt TEXT NOT NULL, config_json TEXT NOT NULL,
@@ -1372,8 +1456,9 @@ func createSchema(ctx context.Context, db *sql.DB) error {
 		`CREATE UNIQUE INDEX one_active_run ON runs(conversation_id) WHERE status IN ('running','waiting_confirmation','stopped','unknown','limited')`,
 		`CREATE TABLE messages(
 			id INTEGER PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id),
-			run_id TEXT NOT NULL REFERENCES runs(id), body_json TEXT NOT NULL CHECK(json_valid(body_json)))`,
+			run_id TEXT REFERENCES runs(id), request_key TEXT NOT NULL DEFAULT '', body_json TEXT NOT NULL CHECK(json_valid(body_json)))`,
 		`CREATE INDEX message_history ON messages(conversation_id,id)`,
+		`CREATE UNIQUE INDEX channel_request_identity ON messages(request_key) WHERE request_key!=''`,
 		`CREATE TABLE attempts(
 			id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL CHECK(kind IN ('model','tool','workflow')),
 			call_id TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','dispatched','finished','unknown')),
@@ -1398,6 +1483,25 @@ func createSchema(ctx context.Context, db *sql.DB) error {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("harness: initialize schema: %w", err)
 		}
+	}
+	return tx.Commit()
+}
+
+func seedLocalSpace(ctx context.Context, db *sql.DB) error {
+	now := nowText()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO spaces(id,title,source,chat_kind,external_chat,default_conversation_id,active_conversation_id,multi_conversation_enabled,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		LocalSpaceID, "本地", SpaceSourceLocal, "", "", "", "", false, now, now)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "space/permission/"+LocalSpaceID, string(mustJSON(PermissionSelection{SpaceID: LocalSpaceID, Source: "space", Mode: PermissionNone}))); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -1452,6 +1556,17 @@ func verifyStore(ctx context.Context, path string) error {
 	err = db.QueryRowContext(ctx, `SELECT count(*) FROM messages m JOIN runs r ON r.id=m.run_id WHERE m.conversation_id!=r.conversation_id`).Scan(&crossConversation)
 	if err != nil || broken || crossConversation != 0 {
 		return errors.New("harness: store relationships are invalid")
+	}
+	var invalidSpaces int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM spaces s WHERE
+		(s.default_conversation_id!='' AND NOT EXISTS(SELECT 1 FROM conversations c WHERE c.id=s.default_conversation_id AND c.space_id=s.id))
+		OR (s.active_conversation_id!='' AND NOT EXISTS(SELECT 1 FROM conversations c WHERE c.id=s.active_conversation_id AND c.space_id=s.id))
+		OR (s.source!='local' AND s.multi_conversation_enabled=0 AND s.default_conversation_id!=s.active_conversation_id)`).Scan(&invalidSpaces); err != nil || invalidSpaces != 0 {
+		return ErrStoreFormat
+	}
+	var localSource string
+	if err := db.QueryRowContext(ctx, `SELECT source FROM spaces WHERE id=?`, LocalSpaceID).Scan(&localSource); err != nil || localSource != SpaceSourceLocal {
+		return ErrStoreFormat
 	}
 	return nil
 }
