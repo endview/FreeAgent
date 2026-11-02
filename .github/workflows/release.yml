@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           $zip = (Get-ChildItem bin/repeat-a/*.zip).FullName
-          ./scripts/test-portable.ps1 -Archive $zip
+          ./scripts/test-portable.ps1 -Archive $zip -SkipDesktop
       - if: runner.os == 'Linux'
         run: |
           archive=$(find bin/repeat-a -maxdepth 1 -name '*.tar.gz')

@@ -673,6 +673,7 @@ func TestConcurrentAppContainerWorkersCannotCrossWorkspaceGrants(t *testing.T) {
 	type worker struct {
 		root, own, other string
 		process          *Process
+		stderr           chan string
 	}
 	workers := make([]worker, 2)
 	for index := range workers {
@@ -696,6 +697,15 @@ func TestConcurrentAppContainerWorkersCannotCrossWorkspaceGrants(t *testing.T) {
 			t.Fatal(startErr)
 		}
 		workers[index].process = process
+		workers[index].stderr = make(chan string, 1)
+		go func(process *Process, output chan<- string) {
+			raw, err := io.ReadAll(process.Stderr())
+			if err != nil {
+				output <- fmt.Sprintf("%s\nread stderr: %v", raw, err)
+				return
+			}
+			output <- string(raw)
+		}(process, workers[index].stderr)
 		defer process.Close()
 		_ = process.Stdin().Close()
 	}
@@ -705,8 +715,9 @@ func TestConcurrentAppContainerWorkersCannotCrossWorkspaceGrants(t *testing.T) {
 			t.Fatal(readErr)
 		}
 		exit, waitErr := workers[index].process.Wait(ctx)
+		stderr := <-workers[index].stderr
 		if waitErr != nil || exit.Code != 0 || !strings.Contains(string(stdout), "own=<nil>") {
-			t.Fatalf("worker %d exit=%+v err=%v output=%q", index, exit, waitErr, stdout)
+			t.Fatalf("worker %d exit=%+v err=%v output=%q stderr=%q", index, exit, waitErr, stdout, stderr)
 		}
 		if _, err := os.Stat(workers[index].other); err == nil {
 			t.Fatalf("worker %d crossed into sibling workspace", index)

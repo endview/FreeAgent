@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Archive,
-    [string]$Root = (Join-Path ([IO.Path]::GetTempPath()) ('freeagent-portable test (spaces) & !-' + [guid]::NewGuid().ToString('N')))
+    [string]$Root = (Join-Path ([IO.Path]::GetTempPath()) ('freeagent-portable test (spaces) & !-' + [guid]::NewGuid().ToString('N'))),
+    [switch]$SkipDesktop
 )
 
 $ErrorActionPreference = 'Stop'
@@ -161,12 +162,23 @@ function Stop-TestProcess([Diagnostics.Process]$Process) {
 $previousKeysFile = $env:FREEAGENT_KEYS_FILE
 try {
     Remove-Item Env:FREEAGENT_KEYS_FILE -ErrorAction SilentlyContinue
-    $desktopCheck = & (Join-Path $PSScriptRoot 'test-desktop-startup.ps1') -Package $package
-    if (-not $desktopCheck.ok) { throw 'Fresh desktop startup regression failed.' }
     $workspace = Join-Path $package 'workspace'
     $data = [IO.Path]::GetFullPath((Join-Path $package 'data/Harness-v8'))
+    if ($SkipDesktop) {
+        # Hosted service runners may have no interactive WebView2 desktop.
+        # Keep CLI/manifest checks useful without claiming native UI coverage.
+        New-Item -ItemType Directory -Path $workspace | Out-Null
+        $null = Invoke-CliJson -Executable $cli -Arguments @('init', '--workspace', $workspace)
+        $desktopCheck = [pscustomobject]@{
+            fresh_desktop_launch = 'NOT_RUN'; desktop_reopen = 'NOT_RUN'
+            desktop_engine_path = 'NOT_RUN'; desktop_http = 'NOT_RUN'; desktop_close = 'NOT_RUN'
+        }
+    } else {
+        $desktopCheck = & (Join-Path $PSScriptRoot 'test-desktop-startup.ps1') -Package $package
+        if (-not $desktopCheck.ok) { throw 'Fresh desktop startup regression failed.' }
+    }
     $shown = Invoke-CliJson -Executable $cli -Arguments @('config', 'show', '--data-dir', $data)
-    if ($shown.workspace -ne $workspace) { throw 'Desktop init did not select the portable workspace.' }
+    if ($shown.workspace -ne $workspace) { throw 'Portable init did not select the portable workspace.' }
     if (@($shown.models.PSObject.Properties).Count -ne 0) { throw 'Portable init unexpectedly created a model.' }
     $cliData = Join-Path $Root 'explicit-cli-data'
     $init = Invoke-CliJson -Executable $cli -Arguments @('init', '--workspace', $workspace, '--data-dir', $cliData)

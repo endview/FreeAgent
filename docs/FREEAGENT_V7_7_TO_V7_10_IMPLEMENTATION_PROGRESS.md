@@ -174,3 +174,29 @@ One-shot ordinary confirmation and continuation also wait for Owner settlement.
 These changes require rebuilding the final candidate; the earlier Windows race
 failure is not relabeled PASS. Release workflows now pin verified action commits
 and frontend/Python versions, rebuild and compare embedded dist before packaging.
+
+Source 0d05f21 runtime gates PASS: Windows ordinary (harness 213.579s), complete
+native race (harness 383.611s), Debian ordinary/vet and complete ordinary-user
+race (harness 411.779s), notices, clean frontend installation/84 JS tests/build,
+and byte-identical dist. Both platform archives repeat exactly. Their Windows
+startup/reopen/CLI and sixteen Debian portable checks PASS. Native None input,
+reply download with matching SHA-256 and displayed CLI continuation PASS on the
+unchanged UI; the reply hash is
+`798b95e6bff0b91293e59cce331d5167fbe7707089928e429335da6b163d5361`.
+
+All ten HTTPS checks on the release candidate PASS with empty stderr and an
+actual 62.372s idle expiry. An explicit browser login after 227 seconds on the
+login page succeeds on its first submission. A separate Windows HTTPS client
+validates the test CA/IP SAN over the real network, receives JSON and SSE run
+events, and observes public → CLI → public continuation. During a controlled
+Caddy pause, HTTPS times out while the local CLI completes; resuming Caddy
+restores the authenticated session without changing the Owner generation.
+
+The earlier GitHub v7.7 Windows run failed its native-window check, and another
+run reported an AppContainer child exit 66 without stderr. The release workflow
+now explicitly selects CLI/manifest checks on headless runners and marks native
+checks NOT_RUN; actual desktop acceptance remains separate. The isolation
+worker test now drains and reports stderr; ten local native race repetitions
+PASS without weakening its assertions. Hosted CI rerun is pending. These last
+workflow/test-only edits do not change the tested runtime, but final archives
+will be rebuilt from their precise source commit.
