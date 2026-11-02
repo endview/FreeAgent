@@ -32,6 +32,10 @@ type localOwner struct {
 }
 
 func startLocalOwner(ctx context.Context, tasks *harness.TaskService, data string, port int, oneShot bool) (*localOwner, error) {
+	return startLocalOwnerMode(ctx, tasks, data, port, oneShot, "interactive")
+}
+
+func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data string, port int, oneShot bool, mode string) (*localOwner, error) {
 	listener, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return nil, err
@@ -52,7 +56,7 @@ func startLocalOwner(ctx context.Context, tasks *harness.TaskService, data strin
 	}
 	origin := "http://" + listener.Addr().String()
 	info := handoff.EngineInfo{Product: "FreeAgent", Origin: origin, Workspace: tasks.Config().Workspace,
-		Generation: attachSecret[:16], PID: os.Getpid(), OwnerKind: "interactive"}
+		Generation: attachSecret[:16], PID: os.Getpid(), OwnerKind: mode}
 	if oneShot {
 		info.OwnerKind = "one_shot"
 		info.ExpiresAt = time.Now().UTC().Add(oneShotLease).Format(time.RFC3339Nano)

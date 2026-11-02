@@ -123,6 +123,14 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	if err := verifyRegularFile(args.Command); err != nil {
 		return PreparedTool{}, errors.New("command executable is not a safe regular file")
 	}
+	executableHash, err := executableHashFile(args.Command)
+	if err != nil {
+		return PreparedTool{}, err
+	}
+	executableInfo, err := os.Stat(args.Command)
+	if err != nil {
+		return PreparedTool{}, err
+	}
 	name, err := tools.Files.validatePath(args.Cwd)
 	if err != nil {
 		return PreparedTool{}, err
@@ -145,7 +153,7 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 		receipt.NetworkMode = string(NetworkHostInherited)
 		receipt.EnforcementState = "same_user_trusted"
 	} else {
-		receipt.Backend = "appcontainer"
+		receipt.Backend = winlaunch.SandboxBackend()
 		receipt.NetworkMode = string(tools.Profile.NetworkPolicy.Mode)
 		receipt.EnforcementState = "os_enforced"
 	}
@@ -155,6 +163,9 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 		preview += "\nNOT a sandbox. Host access is enabled only by explicit Full access."
 	} else {
 		preview += "\nSandboxed worker availability is checked before dispatch."
+		if winlaunch.SandboxBackend() == string(winlaunch.ModeBubblewrap) {
+			preview += "\nLinux uses user/PID/mount/network namespaces; network is off. Existing project hardlinks share host content. Use copied dependencies when independent content is required."
+		}
 	}
 	if len(tools.Config.AllowedExecutables) != 0 {
 		preview += "\nExecutable policy: exact configured path; arguments still require approval"
@@ -180,7 +191,9 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	}
 	execute := func(ctx context.Context, record func(ToolResult) error) (ToolResult, error) {
 		current, err := resolveCommandTarget(originalPath, originalArgs)
-		if err != nil || !samePath(current.program, args.Command) || !slices.Equal(current.args, args.Args) || current.root != args.installationRoot {
+		currentHash, hashErr := executableHashFile(args.Command)
+		currentInfo, statErr := os.Stat(args.Command)
+		if err != nil || hashErr != nil || statErr != nil || currentHash != executableHash || !os.SameFile(executableInfo, currentInfo) || !samePath(current.program, args.Command) || !slices.Equal(current.args, args.Args) || current.root != args.installationRoot {
 			blocked := receipt
 			blocked.Status, blocked.Detail = "blocked", "executable_target_unavailable"
 			return ToolResult{IsError: true, Content: "command not launched: executable target changed; prepare again", Receipts: []ToolReceipt{blocked}}, nil
@@ -202,7 +215,8 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	items := []ApprovalItem{{
 		Kind: "command", Target: args.Command,
 		Fields: map[string]string{
-			"command": string(argv), "working_dir": cwd, "environment": environment,
+			"executable_sha256": executableHash,
+			"command":           string(argv), "working_dir": cwd, "environment": environment,
 			"timeout_s":    strconv.Itoa(tools.Config.TimeoutSecs),
 			"output_bytes": strconv.Itoa(tools.Config.MaxOutput),
 		},
@@ -330,14 +344,6 @@ func (tools *CommandTools) execute(parent context.Context, args commandArguments
 		}
 		defer tools.Gate.endHost()
 	}
-	var missingGit []string
-	if tools.executionMode() == CommandExecutionSandboxed && tools.sandboxAccess() == winlaunch.AccessWrite {
-		for _, root := range tools.sandboxRoots() {
-			if _, err := os.Lstat(filepath.Join(root, ".git")); errors.Is(err, os.ErrNotExist) {
-				missingGit = append(missingGit, root)
-			}
-		}
-	}
 	process, err := tools.startProcess(ctx, args, receipt)
 	if err != nil {
 		if errors.Is(err, winlaunch.ErrUnsupported) || errors.Is(err, ErrSandboxUnsupported) {
@@ -435,12 +441,6 @@ func (tools *CommandTools) execute(parent context.Context, args commandArguments
 	if cleanupErr != nil {
 		result.Receipts[0].Detail += " cleanup not confirmed"
 	}
-	for _, root := range missingGit {
-		if _, err := os.Lstat(filepath.Join(root, ".git")); err == nil && !result.Receipts[0].GitMetadataCreated {
-			result.Receipts[0].GitMetadataCreated = true
-			result.Receipts[0].Detail = strings.TrimSpace(result.Receipts[0].Detail + " created .git; host git will load its hooks and config")
-		}
-	}
 	if err := record(result); err != nil {
 		return result, &CallError{Message: "command finished but result receipt could not be persisted"}
 	}
@@ -485,6 +485,10 @@ func (tools *CommandTools) startProcess(ctx context.Context, args commandArgumen
 	spec := winlaunch.Spec{Command: args.Command, Args: args.Args, Dir: receipt.WorkingDir,
 		Env: commandEnvironment(tools.Config.InheritEnv), Mode: winlaunch.ModeHost, Network: winlaunch.NetworkOff}
 	if tools.executionMode() == CommandExecutionSandboxed {
+		spec.PrivatePaths = append([]string{tools.DataDir}, tools.Profile.BlockedPaths...)
+		if inv, ok := ctx.Value(commandInvocationKey{}).(commandInvocation); ok && inv.service.Keys != nil {
+			spec.PrivatePaths = append(spec.PrivatePaths, inv.service.Keys.Path())
+		}
 		if err := tools.sandboxSpec(&spec); err != nil {
 			return nil, err
 		}
@@ -520,7 +524,7 @@ func (tools *CommandTools) startProcess(ctx context.Context, args commandArgumen
 // kept for the owner's lifetime so a large workspace is not re-propagated for
 // every command; protected paths are applied for each launch.
 func (tools *CommandTools) sandboxSpec(spec *winlaunch.Spec) error {
-	spec.Mode = winlaunch.ModeAppContainer
+	spec.Mode = winlaunch.SandboxMode()
 	switch tools.Profile.NetworkPolicy.Mode {
 	case NetworkOff:
 		spec.Network = winlaunch.NetworkOff
@@ -554,9 +558,8 @@ func (tools *CommandTools) sandboxSpec(spec *winlaunch.Spec) error {
 		}
 	}
 	if access == winlaunch.AccessWrite {
-		spec.ProtectedPaths = append(spec.ProtectedPaths, winlaunch.ProtectedPath{
-			Path: filepath.Join(tools.Workspace, ".freeagent"), Mode: winlaunch.ProtectReadOnly, Create: true, Dir: true})
 		for _, root := range roots {
+			spec.ProtectedPaths = append(spec.ProtectedPaths, winlaunch.ProtectedPath{Path: filepath.Join(root, ".freeagent"), Mode: winlaunch.ProtectReadOnly, Create: true, Dir: true})
 			spec.ProtectedPaths = append(spec.ProtectedPaths, gitProtection(root, tools.Config.GitWrite)...)
 		}
 	}
@@ -594,10 +597,30 @@ func (tools *CommandTools) sandboxRoots() []string {
 func gitProtection(root string, gitWrite bool) []winlaunch.ProtectedPath {
 	gitDir := filepath.Join(root, ".git")
 	_, err := os.Lstat(gitDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return []winlaunch.ProtectedPath{{Path: gitDir, Mode: winlaunch.ProtectReadOnly, Create: true, Dir: true}}
+	}
 	if err != nil {
 		return nil
 	}
 	return []winlaunch.ProtectedPath{{Path: gitDir, Mode: winlaunch.ProtectReadOnly}}
+}
+
+func executableHashFile(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	count, err := io.Copy(hash, io.LimitReader(file, 512<<20+1))
+	if err != nil {
+		return "", err
+	}
+	if count > 512<<20 {
+		return "", errors.New("executable exceeds the 512 MiB verification bound")
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 // sandboxProfileName is stable for one data directory, so grants left by a
@@ -634,6 +657,9 @@ func grantRootPresent(grants []winlaunch.Grant, path string) bool {
 }
 
 func systemInstallPath(path string) bool {
+	if isUnixSystemInstall(path) {
+		return true
+	}
 	path, err := filepath.Abs(path)
 	if err != nil {
 		return false

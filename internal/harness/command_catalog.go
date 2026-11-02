@@ -59,7 +59,7 @@ func (tasks *TaskService) CommandCatalog(ctx context.Context) ([]CommandCatalogE
 				entry.Sandbox = "sandboxed"
 			default:
 				entry.Sandbox = "unsupported"
-				entry.Reason = "the command sandbox requires Windows"
+				entry.Reason = "the optional OS sandbox is unavailable; run doctor for the actual backend reason"
 			}
 		}
 		entries = append(entries, entry)

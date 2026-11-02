@@ -11,7 +11,7 @@ fi
 
 case "$1" in
     web|chat)
-        freeagent_data="$freeagent_package/data/Harness-v7"
+        freeagent_data=${FREEAGENT_DATA_DIR-"$freeagent_package/data/Harness-v7"}
         freeagent_next_data=false
         for freeagent_argument in "$@"; do
             if [ "$freeagent_next_data" = true ]; then
@@ -19,7 +19,7 @@ case "$1" in
                 freeagent_next_data=false
             else
                 case "$freeagent_argument" in
-                    -h|--help) exec "$freeagent_cli" "$@" ;;
+                    -h|--help|--service|--service=true) exec "$freeagent_cli" "$@" ;;
                     --data-dir) freeagent_next_data=true ;;
                     --data-dir=*) freeagent_data=${freeagent_argument#--data-dir=} ;;
                 esac

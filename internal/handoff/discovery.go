@@ -167,7 +167,7 @@ func validateInfo(info EngineInfo) error {
 	if info.Generation == "" || len(info.Generation) > 128 || strings.ContainsAny(info.Generation, "\x00\r\n") {
 		return errors.New("handoff: owner generation is invalid")
 	}
-	if info.OwnerKind != "interactive" && info.OwnerKind != "one_shot" {
+	if info.OwnerKind != "interactive" && info.OwnerKind != "one_shot" && info.OwnerKind != "service" {
 		return errors.New("handoff: owner kind is invalid")
 	}
 	return nil

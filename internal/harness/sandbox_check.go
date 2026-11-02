@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/endview/freeagent/internal/winlaunch"
@@ -13,15 +14,23 @@ import (
 // SandboxStatus answers one question for doctor: can command_run start an
 // AppContainer worker on this machine right now.
 type SandboxStatus struct {
-	Status string `json:"status"`
-	Detail string `json:"detail,omitempty"`
+	Backend string `json:"backend"`
+	Network string `json:"network"`
+	Status  string `json:"status"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // CheckSandbox launches cmd.exe in a throwaway AppContainer with no grants
 // and no network. It touches no workspace and leaves no profile behind.
 func CheckSandbox(ctx context.Context) SandboxStatus {
+	if runtime.GOOS == "linux" {
+		if err := winlaunch.SandboxReason(ctx); err != nil {
+			return SandboxStatus{Status: "unsupported", Backend: winlaunch.SandboxBackend(), Network: "off only", Detail: safeError(err)}
+		}
+		return SandboxStatus{Status: "ready", Backend: winlaunch.SandboxBackend(), Network: "off only", Detail: "user/PID/mount/network namespaces and pidfd cleanup verified; project hardlinks share host content"}
+	}
 	if !winlaunch.SandboxSupported() {
-		return SandboxStatus{Status: "unsupported", Detail: "the command sandbox requires Windows"}
+		return SandboxStatus{Status: "unsupported", Backend: winlaunch.SandboxBackend(), Detail: "no command sandbox is implemented on this platform"}
 	}
 	system := os.Getenv("SystemRoot")
 	if system == "" {
@@ -46,5 +55,5 @@ func CheckSandbox(ctx context.Context) SandboxStatus {
 	if exit.Code != 0 {
 		return SandboxStatus{Status: "failed", Detail: "sandbox worker exited with a non-zero code"}
 	}
-	return SandboxStatus{Status: "ready", Detail: "AppContainer worker started and exited"}
+	return SandboxStatus{Status: "ready", Backend: winlaunch.SandboxBackend(), Network: "off/internet", Detail: "AppContainer worker started and exited"}
 }

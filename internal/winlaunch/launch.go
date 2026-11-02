@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"runtime"
 )
 
 var ErrUnsupported = errors.New("process launcher is unsupported on this host")
@@ -16,6 +17,7 @@ type Mode string
 const (
 	ModeHost         Mode = "host_explicit"
 	ModeAppContainer Mode = "appcontainer"
+	ModeBubblewrap   Mode = "bubblewrap"
 )
 
 type NetworkMode string
@@ -47,6 +49,7 @@ type ProtectMode string
 const (
 	// ProtectReadOnly lets the container read the subtree but not change it.
 	ProtectReadOnly ProtectMode = "read_only"
+	ProtectNone     ProtectMode = "none"
 )
 
 // ProtectedPath overrides one subtree's access for a single launch. The
@@ -71,6 +74,9 @@ type Spec struct {
 	Network        NetworkMode
 	Grants         []Grant
 	ProtectedPaths []ProtectedPath
+	// PrivatePaths are trusted application state, never exposed in a sandbox.
+	// Linux also checks every existing private regular file for extra hardlinks.
+	PrivatePaths []string
 
 	// AppContainerName is optional. An empty name creates a per-launch profile.
 	// A non-empty name is owned by the caller and is required for kept grants;
@@ -78,6 +84,19 @@ type Spec struct {
 	AppContainerName string
 	ProfileLabel     string
 }
+
+func SandboxBackend() string {
+	switch runtime.GOOS {
+	case "windows":
+		return string(ModeAppContainer)
+	case "linux":
+		return string(ModeBubblewrap)
+	default:
+		return "unsupported"
+	}
+}
+
+func SandboxMode() Mode { return Mode(SandboxBackend()) }
 
 type Exit struct {
 	Code int

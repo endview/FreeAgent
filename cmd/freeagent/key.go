@@ -88,6 +88,9 @@ func runKey(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 	if needsRef && strings.TrimSpace(ref) == "" {
 		return usagef("key %s: a key name or id is required", action)
 	}
+	if err := resolveDataDir(&dataDir); err != nil {
+		return err
+	}
 	store, err := keyStore()
 	if err != nil {
 		return err

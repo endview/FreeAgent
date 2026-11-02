@@ -333,6 +333,9 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	if server.keysAPI(writer, request) {
 		return
 	}
+	if server.serverPolicyAPI(writer, request) {
+		return
+	}
 	if path == "/api/chats" {
 		if request.Method == http.MethodGet {
 			chats, err := server.tasks.Conversations(request.Context())

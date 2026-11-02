@@ -89,6 +89,7 @@ func (server *Server) settingsProjection() map[string]any {
 			"enabled": commandEnabled, "available": command.Execution == harness.CommandExecutionHostExplicit || winlaunch.SandboxSupported(),
 			"status": commandStatus(command, tools.CommandRun, config.Execution.PermissionMode), "backend": command.Execution,
 			"sandbox_supported": winlaunch.SandboxSupported(),
+			"sandbox_backend":   winlaunch.SandboxBackend(),
 			"rules":             command.Rules, "allowed_executables": command.AllowedExecutables,
 			"timeout_seconds": command.TimeoutSecs, "max_output_bytes": command.MaxOutput, "services": command.Services,
 			"inherit_environment": command.InheritEnv, "git_write": command.GitWrite,

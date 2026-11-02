@@ -1,0 +1,33 @@
+[Unit]
+Description=FreeAgent single-user Harness
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=exec
+User=freeagent
+Group=freeagent
+StateDirectory=freeagent
+StateDirectoryMode=0700
+RuntimeDirectory=freeagent
+RuntimeDirectoryMode=0700
+UMask=0077
+Environment=FREEAGENT_DATA_DIR=/var/lib/freeagent/data/Harness-v7
+Environment=FREEAGENT_KEYS_FILE=/var/lib/freeagent/keys.json
+WorkingDirectory=/var/lib/freeagent
+ExecStart=/opt/freeagent/current/bin/freeagent web --service
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillMode=control-group
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/freeagent /run/freeagent
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

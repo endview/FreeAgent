@@ -172,7 +172,7 @@ func TestCommandsOptInAndEnvironmentPolicy(t *testing.T) {
 	service.Config.Commands.Enabled = false
 }
 
-func TestSandboxedCommandsUseWindowsWorker(t *testing.T) {
+func TestSandboxedCommandsUseAvailableOSWorker(t *testing.T) {
 	_, commands, _ := commandFixture(t)
 	commands.Config.Execution = CommandExecutionSandboxed
 	commands.Profile = ExecutionProfile{PermissionMode: PermissionWorkspace, ApprovalPolicy: ApprovalAutoInSandbox,
@@ -186,12 +186,12 @@ func TestSandboxedCommandsUseWindowsWorker(t *testing.T) {
 	if err != nil || len(result.Receipts) != 1 {
 		t.Fatalf("sandbox result=%+v err=%v", result, err)
 	}
-	if runtime.GOOS == "windows" {
+	if winlaunch.SandboxSupported() {
 		if result.Receipts[0].Status != "completed" || result.Receipts[0].ExitCode == nil || *result.Receipts[0].ExitCode != 0 {
 			t.Fatalf("sandbox worker result=%+v err=%v", result, err)
 		}
 	} else if result.Receipts[0].Status != "unsupported" {
-		t.Fatalf("non-Windows sandbox result=%+v err=%v", result, err)
+		t.Fatalf("unavailable sandbox result=%+v err=%v", result, err)
 	}
 }
 
@@ -446,8 +446,8 @@ func TestSandboxedCommandMarksCreatedGitMetadata(t *testing.T) {
 		return result.Receipts[0]
 	}
 	created := run(filepath.Join(workspace, ".git"))
-	if created.Status != "completed" || created.ExitCode == nil || *created.ExitCode != 0 || !created.GitMetadataCreated {
-		t.Fatalf("creating .git was not marked: %+v", created)
+	if created.ExitCode == nil || *created.ExitCode == 0 || created.GitMetadataCreated {
+		t.Fatalf("new .git guard did not prevent sandbox creation: %+v", created)
 	}
 	// The new repository is now protected like any other: readable, not writable.
 	blocked := run(filepath.Join(workspace, ".git", "objects"))

@@ -12,20 +12,24 @@ import (
 	"sync"
 )
 
-// SandboxSupported reports whether this build can launch AppContainer workers.
-func SandboxSupported() bool { return false }
-
 // ReleaseKept is a no-op: kept grants exist only for Windows AppContainers.
 func ReleaseKept(string) error { return nil }
 
 func Start(ctx context.Context, spec Spec) (*Process, error) {
+	if spec.Mode == ModeBubblewrap {
+		return startSandbox(ctx, spec)
+	}
+	return startOther(ctx, spec, nil, nil)
+}
+
+func startOther(ctx context.Context, spec Spec, extra []*os.File, bindTree func(processTree, *exec.Cmd) (processTree, error)) (*Process, error) {
 	if ctx == nil {
 		return nil, errors.New("process launcher: nil context")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if spec.Mode == ModeAppContainer {
+	if spec.Mode != ModeHost && spec.Mode != "" {
 		return nil, ErrUnsupported
 	}
 	if spec.Command == "" || !filepath.IsAbs(spec.Command) {
@@ -33,6 +37,7 @@ func Start(ctx context.Context, spec Spec) (*Process, error) {
 	}
 	command := exec.Command(spec.Command, spec.Args...)
 	command.Dir = spec.Dir
+	command.ExtraFiles = extra
 	if spec.Env != nil {
 		command.Env = append([]string(nil), spec.Env...)
 	}
@@ -79,8 +84,15 @@ func Start(ctx context.Context, spec Spec) (*Process, error) {
 	process := &otherProcess{cmd: command, stdin: stdin, stdout: stdout, stderr: stderr,
 		waitDone: make(chan struct{})}
 	process.tree, err = attachProcessTree(command)
+	if err == nil && bindTree != nil {
+		process.tree, err = bindTree(process.tree, command)
+	}
 	if err != nil {
+		if process.tree != nil {
+			_ = process.tree.kill()
+		}
 		_ = command.Process.Kill()
+		_ = command.Wait()
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderr.Close()
@@ -175,6 +187,9 @@ func (process *otherProcess) close() error {
 	process.closed = true
 	process.mu.Unlock()
 	result := process.kill()
+	if tree, ok := process.tree.(interface{ close() error }); ok {
+		result = errors.Join(result, tree.close())
+	}
 	for _, pipe := range []io.Closer{process.stdin, process.stdout, process.stderr} {
 		if err := pipe.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
 			result = errors.Join(result, err)

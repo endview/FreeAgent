@@ -464,6 +464,49 @@ func expectProbe(t *testing.T, output, label string, allowed bool) {
 	}
 }
 
+func TestAppContainerPrivatePathsDenyReadAndWrite(t *testing.T) {
+	root := t.TempDir()
+	private := filepath.Join(root, "private")
+	if err := os.Mkdir(private, 0700); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(private, "keys.json")
+	if err := os.WriteFile(key, []byte("private fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	args := []string{"-test.run=TestAppContainerHelper", "--", "--appcontainer-probe-helper", "read|read|" + key, "write|write|" + key, "create|write|" + filepath.Join(private, "new.txt"), "ordinary|write|" + filepath.Join(root, "ordinary.txt")}
+	p, err := Start(ctx, Spec{Command: executable, Args: args, Dir: root, Mode: ModeAppContainer, Network: NetworkOff,
+		Grants: []Grant{{Root: root, Access: AccessWrite}, {Root: filepath.Dir(executable), Access: AccessRead}}, PrivatePaths: []string{private}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	p.Stdin().Close()
+	output, err := io.ReadAll(p.Stdout())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exit, err := p.Wait(ctx); err != nil || exit.Code != 0 {
+		t.Fatalf("probe exit %+v %v", exit, err)
+	}
+	for _, label := range []string{"read", "write", "create"} {
+		expectProbe(t, string(output), label, false)
+	}
+	expectProbe(t, string(output), "ordinary", true)
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if raw, err := os.ReadFile(key); err != nil || string(raw) != "private fixture" {
+		t.Fatalf("host access changed: %v", err)
+	}
+}
+
 func probeOperation(operation string) error {
 	parts := strings.SplitN(operation, "|", 3)
 	if len(parts) != 3 {

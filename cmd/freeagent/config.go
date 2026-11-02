@@ -250,7 +250,7 @@ func writeConfigResult(stdout io.Writer, path string, config harness.Config, res
 		capabilities[id] = profile.EffectiveCapabilities()
 	}
 	output := map[string]any{
-		"providers": config.Providers, "git_write_disabled": true,
+		"providers": config.Providers, "git_write_disabled": true, "server": config.Server,
 		"ok": true, "config_path": filepath.Join(path, "config.json"), "workspace": config.Workspace,
 		"models": config.Models, "default_model": config.DefaultModel, "default_selection": config.DefaultSelection,
 		"auto": config.Auto, "enabled_mcp_servers": enabled, "instructions": config.Instructions,

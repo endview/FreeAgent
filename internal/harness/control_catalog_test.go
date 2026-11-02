@@ -47,7 +47,7 @@ func TestControlCatalogCoversPersistentConfigFields(t *testing.T) {
 		"tools": "config.tools", "commands": "config.commands", "execution": "config.execution",
 		"computer_files": "config.execution", "computer_roots": "config.execution", "http": "config.http",
 		"collaboration": "config.collaboration", "memory": "config.memory",
-		"channels": "config.channels", "providers": "config.providers",
+		"channels": "config.channels", "providers": "config.providers", "server": "config.server",
 	}
 	typ := reflect.TypeOf(Config{})
 	for index := 0; index < typ.NumField(); index++ {
@@ -76,6 +76,7 @@ func TestControlCatalogCoversNestedPersistentConfigFields(t *testing.T) {
 	}
 	types := map[reflect.Type]string{
 		reflect.TypeOf(ModelConfig{}):           "config.models",
+		reflect.TypeOf(ServerConfig{}):          "config.server",
 		reflect.TypeOf(ModelCapabilities{}):     "config.models",
 		reflect.TypeOf(AutoConfig{}):            "config.auto",
 		reflect.TypeOf(CommandConfig{}):         "config.commands",

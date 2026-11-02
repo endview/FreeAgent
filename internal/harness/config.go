@@ -19,6 +19,7 @@ const (
 )
 
 type Config struct {
+	Server           ServerConfig               `json:"server,omitempty"`
 	Providers        map[string]bool            `json:"providers,omitempty"`
 	Channels         ChannelsConfig             `json:"channels,omitempty"`
 	Version          int                        `json:"version"`
@@ -49,6 +50,10 @@ type Config struct {
 	Collaboration    CollaborationSettings      `json:"collaboration"`
 	Memory           MemoryConfig               `json:"memory"`
 	instructionText  string
+}
+
+type ServerConfig struct {
+	Port int `json:"port"`
 }
 
 type AutoConfig struct {
@@ -544,6 +549,9 @@ func (config Config) Validate() error {
 }
 
 func (config Config) validate(requireWorkspace bool) error {
+	if config.Server.Port < 0 || config.Server.Port > 65535 {
+		return errors.New("harness: server loopback port must be 0-65535")
+	}
 	if len(config.Providers) > 256 {
 		return errors.New("harness: too many Provider switches")
 	}
@@ -947,6 +955,7 @@ func safetyConfig(config Config) Config {
 	// frozen execution grant or change its recipient.
 	config.Channels = ChannelsConfig{}
 	config.Providers = nil
+	config.Server = ServerConfig{}
 	config.Models, config.DefaultModel, config.DefaultSelection = nil, "", ""
 	config.Auto = AutoConfig{}
 	config.Collaboration = CollaborationSettings{}

@@ -682,7 +682,8 @@ async function refreshEnvironment() {
 }
 async function loadPermissions() {
   const query = state.chat ? `?chat_id=${encodeURIComponent(state.chat)}` : '';
-  const [settings, permissions] = await Promise.all([api('settings'), api(`permissions${query}`)]);
+  const [settings, permissions, serverInfo] = await Promise.all([api('settings'), api(`permissions${query}`), api('server')]);
+  state.server = serverInfo;
   state.settings = settings;
   state.permissions = permissions;
   try { [state.channels, state.keys] = await Promise.all([api('channels'), api('keys')]); } catch { state.channels = null; }
@@ -768,6 +769,13 @@ function renderPermissionsView() {
         <div class="permission-catalog"><strong>检测到的程序</strong>${commandCatalog.length ? commandCatalog.map((entry) => `<div class="permission-catalog-row"><span>${esc(entry.program)}</span><code>${esc(entry.path || '未找到')}</code><span class="subtle-note">${esc(entry.risk)} · ${esc(catalogSandboxLabels[entry.sandbox] || entry.sandbox)}</span></div>`).join('') : '<p class="subtle-note">尚未发现可用程序。</p>'}</div>
         <p class="subtle-note">当前 generation：<code>${esc(command.generation || data.generation || '1')}</code></p>
         <div class="permission-actions"><button class="primary" data-action="save-command-policy">${icon('save')}保存命令策略</button></div>
+      </section>
+      <section class="permission-section"><h3>服务器与运行环境</h3>
+        <p class="subtle-note">运行方式：${esc(state.server?.mode || 'interactive')} · 沙箱：${esc(state.server?.sandbox?.backend || command.sandbox_backend || '未知')} · ${esc(state.server?.sandbox?.status || '')}</p>
+        <p class="subtle-note">${esc(state.server?.sandbox?.detail || '')}${state.server?.root_host ? ' 当前以 root 运行，Full 宿主命令具有 root 权限。' : ' Full 等于当前 OS 用户在服务外层限制内的权限。'}</p>
+        <label>下次启动的回环端口（0 为自动）<input id="server-port" type="number" min="0" max="65535" value="${Number(state.server?.policy?.port) || 0}"></label>
+        <p class="subtle-note">保存后需明确重启 Owner，现有会话记录保留。服务安装和用户身份由 OS 管理。</p>
+        <button class="primary" data-action="save-server-policy">${icon('save')}保存服务器设置</button>
       </section>
       ${channelSections(state.channels, state.keys?.profiles || [])}
     </div>`;
@@ -2450,6 +2458,11 @@ async function act(action, node = null) {
     case 'add-blocked-file': await addBlockedPath('file'); break;
     case 'remove-blocked-path': removeBlockedPath(node?.dataset.path || ''); break;
     case 'save-permission-page': await savePermissionPage(); break;
+    case 'save-server-policy':
+      if (!$('#server-port').reportValidity() || !window.confirm('保存后需显式重启 FreeAgent 才会切换监听端口，确认保存？')) return;
+      state.server = await api('server', { port: Number($('#server-port').value) }, 'PUT');
+      error('服务器设置已保存，重启 Owner 后生效。');
+      break;
     case 'context-open': await openContextDialog(); break;
     case 'commands-open': $('#commands-dialog').showModal();
       clearInterval(commandClock);commandClock=setInterval(()=>{if(!$('#commands-dialog').open){clearInterval(commandClock);return;} document.querySelectorAll('[data-service-expiry]').forEach((el)=>el.textContent=remainingSeconds(el.dataset.serviceExpiry));},1000);
@@ -2542,7 +2555,7 @@ async function act(action, node = null) {
     case 'mcp-delete': await deleteMCP(); break;
     case 'mcp-restart': await restartMCP(); break;
     case 'mcp-logs': await showMCPLogs(); break;
-    case 'refresh': await snapshot(); await listChats(); break;
+    case 'refresh': await refreshEnvironment(); await snapshot(); await listChats(); break;
     case 'dismiss': error(''); break;
     case 'latest': state.following = true; restoreAnchor(readerAnchor()); break;
     case 'send': await send(); break;

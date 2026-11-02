@@ -51,6 +51,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if ctx == nil || stdin == nil || stdout == nil || stderr == nil {
 		return usageErr("freeagent: context and input/output streams are required")
 	}
+	if err := guardCLIIdentity(args); err != nil {
+		return err
+	}
 	switch args[0] {
 	case "--version":
 		return runVersion(args[1:], stdout, currentBuildInfo())
@@ -159,6 +162,8 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runChat(ctx, args[1:], stdin, stdout, stderr)
 	case "web":
 		return runWeb(ctx, args[1:], stdin, stdout, stderr)
+	case "owner":
+		return runOwner(ctx, args[1:], stdout, stderr)
 	case "ext":
 		return runExtensions(ctx, args[1:], stdin, stdout, stderr)
 	case "doctor":

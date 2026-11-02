@@ -31,6 +31,7 @@ func runWebWithBrowser(ctx context.Context, args []string, stdin io.Reader, stdo
 	data := flags.String("data-dir", defaultDataDir(), "current Harness data directory")
 	port := flags.Int("port", 0, "loopback port; 0 chooses an available port")
 	open := flags.Bool("open-browser", false, "open the local Chat in the default Windows browser")
+	serviceMode := flags.Bool("service", false, "Linux non-root service; suppress private launch URL")
 	if err := parseFlags(flags, filtered); err != nil {
 		return err
 	}
@@ -39,6 +40,14 @@ func runWebWithBrowser(ctx context.Context, args []string, stdin io.Reader, stdo
 	}
 	if err := resolveDataDir(data); err != nil {
 		return err
+	}
+	if *serviceMode {
+		if err := validateServiceMode(); err != nil {
+			return err
+		}
+		if *open || exitOnStdinClose {
+			return usageErr("service mode cannot open a browser or depend on stdin")
+		}
 	}
 	if exitOnStdinClose {
 		runCtx, cancel := context.WithCancel(ctx)
@@ -54,14 +63,31 @@ func runWebWithBrowser(ctx context.Context, args []string, stdin io.Reader, stdo
 		return err
 	}
 	defer closeAll()
-	owner, err := startLocalOwner(ctx, tasks, *data, *port, exitOnStdinClose)
+	portSet := false
+	flags.Visit(func(item *flag.Flag) {
+		if item.Name == "port" {
+			portSet = true
+		}
+	})
+	if !portSet {
+		*port = tasks.Config().Server.Port
+	}
+	mode := "interactive"
+	if *serviceMode {
+		mode = "service"
+	}
+	owner, err := startLocalOwnerMode(ctx, tasks, *data, *port, exitOnStdinClose, mode)
 	if err != nil {
 		return err
 	}
 	defer owner.Close()
 	address := owner.address
-	_, _ = fmt.Fprintln(stdout, address)
-	_, _ = fmt.Fprintln(stderr, "Local single-Agent Chat. Keep this launch address private. Closing the browser does not stop tasks.")
+	if *serviceMode {
+		_, _ = fmt.Fprintf(stdout, "FreeAgent service ready; generation=%s; use owner status/url locally\n", owner.publish.Info.Generation)
+	} else {
+		_, _ = fmt.Fprintln(stdout, address)
+		_, _ = fmt.Fprintln(stderr, "Local single-Agent Chat. Keep this launch address private. Closing the browser does not stop tasks.")
+	}
 	if *open {
 		if err := browser(address); err != nil {
 			_, _ = fmt.Fprintln(stderr, "The browser could not open. Open the launch address above manually.")

@@ -19,6 +19,7 @@ const DataFormat = "Harness-v7"
 
 // KeysFileEnv overrides the key file location (tests and troubleshooting).
 const KeysFileEnv = "FREEAGENT_KEYS_FILE"
+const DataDirEnv = "FREEAGENT_DATA_DIR"
 
 // ErrManifest means the executable sits in a portable package whose manifest
 // cannot be used. Callers must not fall back to per-user data silently.
@@ -111,6 +112,12 @@ func checkManifest(path string) error {
 
 // DataDir is the default Harness data directory. --data-dir overrides only it.
 func DataDir() (string, error) {
+	if value, set := os.LookupEnv(DataDirEnv); set {
+		if strings.TrimSpace(value) == "" {
+			return "", fmt.Errorf("apppaths: %s is empty", DataDirEnv)
+		}
+		return filepath.Abs(value)
+	}
 	return choose(func(root string) string { return filepath.Join(root, "data", DataFormat) },
 		configDir, DataFormat)
 }

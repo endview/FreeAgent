@@ -98,6 +98,20 @@ func Start(ctx context.Context, spec Spec) (started *Process, failure error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if spec.Mode == ModeAppContainer {
+		for _, private := range spec.PrivatePaths {
+			if private == "" {
+				continue
+			}
+			for _, grant := range spec.Grants {
+				rel, err := filepath.Rel(strings.ToLower(filepath.Clean(grant.Root)), strings.ToLower(filepath.Clean(private)))
+				if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+					spec.ProtectedPaths = append(spec.ProtectedPaths, ProtectedPath{Path: private, Mode: ProtectNone})
+					break
+				}
+			}
+		}
+	}
 	if err := validateSpec(spec); err != nil {
 		return nil, fmt.Errorf("process launcher: validate spec: %w", err)
 	}
@@ -613,7 +627,7 @@ func applyProtectedPaths(p *profile, paths []ProtectedPath) error {
 		}
 		seen[strings.ToLower(path)] = true
 		switch protected.Mode {
-		case ProtectReadOnly:
+		case ProtectReadOnly, ProtectNone:
 		default:
 			return fmt.Errorf("invalid protect mode %q for %s", protected.Mode, path)
 		}
@@ -680,6 +694,9 @@ func protectPath(path string, mode ProtectMode, dir bool, sid *windows.SID) (fun
 	switch mode {
 	case ProtectReadOnly:
 		entries = append(entries, windows.EXPLICIT_ACCESS{AccessPermissions: read, AccessMode: windows.GRANT_ACCESS, Inheritance: inherit, Trustee: sidTrustee(sid)})
+	case ProtectNone:
+		// The protected DACL retains the host owner/system/admin grants below,
+		// with no grant to the AppContainer's restricted SID.
 	}
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {

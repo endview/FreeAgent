@@ -69,7 +69,12 @@ def build(target, go, output):
     files = {'docs/' + readme: 'README.md', **{p:p for p in ('VERSION','LICENSE','THIRD_PARTY_NOTICES.md')}}
     files.update({f'docs/{p}': f'docs/{p}' for p in (
         'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','COMMAND_SESSIONS.md','CHANNELS.md')})
+    if goos=='linux':
+        files.update({'deploy/freeagent.service':'deploy/freeagent.service',
+                      'scripts/install-server.py':'deploy/install-server.py',
+                      'docs/SERVER_DEPLOYMENT.md':'docs/SERVER_DEPLOYMENT.md'})
     for source, destination in files.items():
+        (package / destination).parent.mkdir(parents=True,exist_ok=True)
         shutil.copyfile(ROOT / source, package / destination)
     # git inventory includes embedded dist, workflow and lockfiles, but no
     # ignored outputs, node_modules, credentials, logs or user directories.

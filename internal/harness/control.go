@@ -97,6 +97,7 @@ const (
 	ControlSetDefaultModel             = "model.set_default"
 	ControlSetModelProfile             = "model.set_profile"
 	ControlSetProviderEnabled          = "providers.set_enabled"
+	ControlSetServerPolicy             = "server.set_policy"
 	ControlRemoveModel                 = "model.remove"
 	ControlSetAutoPolicy               = "auto.set_policy"
 	ControlSetHTTPPolicy               = "http.set_policy"
@@ -597,6 +598,7 @@ func (tasks *TaskService) Control() (*ControlService, error) {
 
 func ControlOperationCatalog() []ControlCatalogEntry {
 	entries := []ControlCatalogEntry{
+		{Kind: ControlSetServerPolicy, ResourceFamily: "config.server", Risk: ControlRiskAuthority, Description: "Set the numeric-loopback listener port (0 chooses an available port). Takes effect after an explicit Owner restart; does not change the OS service user or install a service.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetPermission, ResourceFamily: "config.execution", Risk: ControlRiskAuthority, Description: "Change the default permission mode for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetExecutionProfile, ResourceFamily: "config.execution", Risk: ControlRiskAuthority, Description: "Change the complete bounded execution profile for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetSandbox, ResourceFamily: "config.execution", Risk: ControlRiskAuthority, Description: "Change the default Windows sandbox mode for future Runs.", ModelProposable: true, Reversible: true},
@@ -2178,6 +2180,8 @@ func buildConfigRecord(record *controlRecord, config *Config, ctx context.Contex
 
 func configControlResource(kind string, raw json.RawMessage) (string, error) {
 	switch kind {
+	case ControlSetServerPolicy:
+		return "config.server", nil
 	case ControlSetProviderEnabled:
 		return "config.providers", nil
 	case ControlSetDefaultModel, ControlRemoveModel:
@@ -2316,6 +2320,10 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		return errors.New("harness: configuration is required")
 	}
 	switch kind {
+	case ControlSetServerPolicy:
+		if err := decodeControlJSON(raw, &config.Server); err != nil {
+			return err
+		}
 	case ControlSetProviderEnabled:
 		var args struct {
 			ID      string `json:"id"`
@@ -2749,11 +2757,16 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 	default:
 		return fmt.Errorf("harness: unsupported config control operation %q", kind)
 	}
+	if err := validatePlatformNetwork(*config, kind); err != nil {
+		return err
+	}
 	return config.Validate()
 }
 
 func configResourceValue(config Config, resource string) any {
 	switch resource {
+	case "config.server":
+		return config.Server
 	case "config.providers":
 		return config.Providers
 	case "config.models":
@@ -2824,6 +2837,10 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 	switch resource {
 	case "config.providers":
 		if err := json.Unmarshal(raw, &config.Providers); err != nil {
+			return err
+		}
+	case "config.server":
+		if err := json.Unmarshal(raw, &config.Server); err != nil {
 			return err
 		}
 	case "config." + ControlSetPermission:

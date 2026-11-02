@@ -17,6 +17,18 @@ func writeManifest(t *testing.T, directory, body string) {
 	}
 }
 
+func TestDataDirEnvironmentIsExplicitAndDoesNotFallBack(t *testing.T) {
+	wanted := filepath.Join(t.TempDir(), "service data")
+	t.Setenv(DataDirEnv, wanted)
+	if path, err := DataDir(); err != nil || path != wanted {
+		t.Fatalf("override %q %v", path, err)
+	}
+	t.Setenv(DataDirEnv, "")
+	if path, err := DataDir(); err == nil || path != "" {
+		t.Fatalf("empty override fell back: %q %v", path, err)
+	}
+}
+
 func TestAppPathsPortableDetection(t *testing.T) {
 	current := `{"version":"v7.0.0-dev.1","data_format":"Harness-v7","files":[]}`
 	t.Run("package root", func(t *testing.T) {
