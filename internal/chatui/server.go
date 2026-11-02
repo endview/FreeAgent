@@ -945,6 +945,10 @@ func (server *Server) readBody(writer http.ResponseWriter, request *http.Request
 func userError(err error) (string, string) {
 	var failure *harness.CallError
 	switch {
+	case errors.Is(err, harness.ErrPublicLocalConfirmation):
+		return "local_confirmation_required", "提高远程最高权限需要在服务器本机 GUI 或 CLI 确认。当前配置未提高。"
+	case errors.Is(err, harness.ErrPublicSourceBlocked):
+		return "current_source_blocked", "此配置会挡住当前远程来源，未保存。请先将当前来源加入白名单。"
 	case errors.Is(err, harness.ErrInvalidExecutable):
 		return "invalid_executable", "程序不存在、目标是链接或未通过路径检查。请选取实际可执行文件后重试。"
 	case errors.Is(err, harness.ErrSandboxUnsupported):

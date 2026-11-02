@@ -42,7 +42,7 @@ func newPublicFixture(t *testing.T, model harness.ModelClient) *publicFixture {
 		t.Fatal(err)
 	}
 	c := harness.DefaultConfig(work)
-	c.Models = map[string]harness.ModelConfig{"echo": {Provider: "echo"}}
+	c.Models = map[string]harness.ModelConfig{"echo": {Provider: "echo"}, "second": {Provider: "echo"}}
 	c.DefaultModel = "echo"
 	c.PublicWeb = harness.DefaultPublicWebConfig()
 	c.PublicWeb.Enabled = true
@@ -173,6 +173,11 @@ func TestPublicAttachmentOwnershipAndAsynchronousEntryPermission(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	raise := c
+	raise.MaxPermission = harness.PermissionFull
+	if response := f.request(t, "PUT", "/api/public-settings", bytes.NewReader(mustJSONTest(raise)), nil); response.Code != 409 || !strings.Contains(response.Body.String(), "local_confirmation_required") {
+		t.Fatal("remote raise did not explain local confirmation", response.Code, response.Body.String())
+	}
 	chat := f.ui.create(t)
 	q := url.Values{"conversation_id": {chat}, "name": {"说明.md"}, "request_key": {"upload"}}
 	w = f.request(t, "POST", "/api/attachments?"+q.Encode(), strings.NewReader("user supplied text"), nil)
@@ -221,6 +226,28 @@ func TestPublicAttachmentOwnershipAndAsynchronousEntryPermission(t *testing.T) {
 	}
 }
 func mustJSONTest(v any) []byte { raw, _ := json.Marshal(v); return raw }
+
+func TestPublicGUIModelAndPermissionControlsUseSharedCore(t *testing.T) {
+	f := newPublicFixture(t, nil)
+	f.login(t)
+	chat := f.ui.create(t)
+	w := f.request(t, "POST", "/api/chats/"+chat+"/model", strings.NewReader(`{"model":"second"}`), nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = f.request(t, "POST", "/api/chats/"+chat+"/permission", strings.NewReader(`{"mode":"none","confirmed":false}`), nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	view, err := f.ui.tasks.Chat(t.Context(), chat, "")
+	if err != nil || view.ModelID != "second" || view.Permission.Mode != harness.PermissionNone {
+		t.Fatalf("public controls diverged from local core: %+v %v", view, err)
+	}
+	w = f.request(t, "GET", "/api/remote/context?conversation_id="+chat, nil, nil)
+	if w.Code != 200 {
+		t.Fatal("context alias", w.Code, w.Body.String())
+	}
+}
 
 func TestPublicLogoutClosesSSEWithoutCancelingAcceptedTask(t *testing.T) {
 	started, finish := make(chan struct{}), make(chan struct{})

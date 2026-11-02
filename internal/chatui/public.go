@@ -44,7 +44,7 @@ func NewPublicServer(local *Server) (*PublicServer, error) {
 		return nil, errors.New("chat: valid enabled public Web configuration is required")
 	}
 	u, _ := url.Parse(c.Origin)
-	auth, err := publicweb.NewAuth(local.ctx, local.tasks.DataDir(), func() harness.PublicWebConfig { return local.tasks.Config().PublicWeb },local.tasks)
+	auth, err := publicweb.NewAuth(local.ctx, local.tasks.DataDir(), func() harness.PublicWebConfig { return local.tasks.Config().PublicWeb }, local.tasks)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +125,10 @@ func publicRoute(path, method string) (string, bool) {
 	}
 	if len(parts) == 3 && parts[0] == "chats" {
 		switch parts[2] {
-		case "submit", "stop", "continue", "preview", "confirm", "end", "limits", "pin":
+		case "submit", "stop", "continue", "preview", "confirm", "end", "pin", "model", "permission", "capabilities", "title", "exclude-memory", "workflow":
 			return path, method == "POST"
+		case "limits":
+			return path, method == "GET" || method == "POST"
 		case "memory", "raw":
 			return path, method == "GET"
 		}
@@ -365,6 +367,10 @@ func (server *Server) publicSettingsAPI(w http.ResponseWriter, r *http.Request) 
 		if r.Method == "PUT" {
 			var c harness.PublicWebConfig
 			if !server.readBody(w, r, &c) {
+				return true
+			}
+			if err := c.Validate(); err != nil {
+				server.writeError(w, 400, "public_policy_invalid", err.Error())
 				return true
 			}
 			if _, err := server.applyDirectControl(r.Context(), "", "", harness.ControlSetPublicWeb, c); err != nil {

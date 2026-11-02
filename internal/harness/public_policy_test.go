@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,6 +83,9 @@ func TestPublicPolicyConfirmationRejectsRaiseSelfBlockAndOtherSession(t *testing
 		t.Fatal(err)
 	}
 	other := WithPublicEntry(t.Context(), "public:other", "192.0.2.1")
+	if !strings.Contains(op.Preview, "max_permission: \"full\" -> \"ask\"") {
+		t.Fatal("public policy preview hid the exact change", op.Preview)
+	}
 	if err := apply(other, op); !errors.Is(err, ErrControlUserInteractionRequired) {
 		t.Fatal("other session accepted a bound proposal", err)
 	}

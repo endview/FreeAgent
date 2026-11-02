@@ -7,14 +7,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"net/url"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 )
 
 const ControlSetPublicWeb = "public_web.set_policy"
+
+var ErrPublicLocalConfirmation = errors.New("harness: increasing the remote permission ceiling requires a local confirmation")
+var ErrPublicSourceBlocked = errors.New("harness: this change would block the current remote source; add its IP to the allowlist first")
 
 // PublicWebConfig describes one optional administrator entrance. It contains
 // no password, cookie, proxy private key or local Owner capability.
@@ -156,6 +161,34 @@ func (service *Service) currentPublicPolicy() PublicWebConfig {
 	return service.currentConfig().PublicWeb.Effective()
 }
 
+func publicPolicyPreview(before, after PublicWebConfig) string {
+	fields := func(c PublicWebConfig) map[string]json.RawMessage {
+		var values, security map[string]json.RawMessage
+		_ = json.Unmarshal(mustJSON(c.Effective()), &values)
+		_ = json.Unmarshal(values["security"], &security)
+		delete(values, "security")
+		for k, v := range security {
+			values["security."+k] = v
+		}
+		return values
+	}
+	a, b := fields(before), fields(after)
+	keys := make([]string, 0, len(b))
+	for k := range b {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var text strings.Builder
+	text.WriteString("Public Web configuration changes:\n")
+	for _, k := range keys {
+		if string(a[k]) != string(b[k]) {
+			fmt.Fprintf(&text, "%s: %s -> %s\n", k, a[k], b[k])
+		}
+	}
+	text.WriteString("Reduced permissions/access rules apply to subsequent dispatch immediately. Disable/logout closes readers and retains accepted tasks. Origin/socket changes and first enable require an explicit Owner restart. Raising the remote ceiling requires local confirmation. Credentials and TLS proxy permissions must be configured separately.")
+	return text.String()
+}
+
 func validatePublicControl(ctx context.Context, before, after PublicWebConfig) error {
 	entry, remote := PublicEntryFrom(ctx)
 	if !remote {
@@ -163,10 +196,10 @@ func validatePublicControl(ctx context.Context, before, after PublicWebConfig) e
 	}
 	before, after = before.Effective(), after.Effective()
 	if permissionRank(after.MaxPermission) > permissionRank(before.MaxPermission) {
-		return errors.New("harness: increasing the remote permission ceiling requires a local confirmation")
+		return ErrPublicLocalConfirmation
 	}
 	if after.Enabled && !after.Security.AllowsIP(entry.IP) {
-		return errors.New("harness: this change would block the current remote source; add its IP to the allowlist first")
+		return ErrPublicSourceBlocked
 	}
 	return nil
 }

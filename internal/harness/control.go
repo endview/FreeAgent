@@ -2223,6 +2223,9 @@ func buildConfigRecord(record *controlRecord, config *Config, ctx context.Contex
 	record.Before = map[string]json.RawMessage{resource: mustJSON(configResourceValue(before, resource))}
 	record.After = map[string]json.RawMessage{resource: mustJSON(configResourceValue(*config, resource))}
 	record.Operation.Preview = fmt.Sprintf("Change %s for future Runs from %s to %s.", record.Operation.Kind, redactJSON(record.Before[resource]), redactJSON(record.After[resource]))
+	if record.Operation.Kind == ControlSetPublicWeb {
+		record.Operation.Preview = publicPolicyPreview(before.PublicWeb, config.PublicWeb)
+	}
 	return nil
 }
 
