@@ -4,7 +4,7 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v7.7.0-dev.1 development preview**. Download published Windows portable
+This is the **v7.10.0-dev.1 development preview**. Download published Windows and Linux portable
 builds from [Releases](https://github.com/endview/FreeAgent/releases).
 It uses a new
 current-only `Harness-v8` data directory and the v10 store format. Old
@@ -34,6 +34,13 @@ Channel implementations have local mock acceptance; real platform and current
 Provider group/summary checks remain NOT_RUN. QQ supports official C2C and group
 @ text with local approvals. See [setup and limitations](docs/CHANNELS.md) and
 [v7.7 acceptance](docs/FREEAGENT_V7_7_IMPLEMENTATION_PROGRESS.md).
+
+v7.8 adds non-root systemd service management and Linux Bubblewrap command
+isolation. v7.9 adds bounded text/image input, immutable file exports and reply
+downloads. v7.10 adds optional single-administrator HTTPS access through a
+restricted Unix socket. Provider connections and public Web default off.
+See [server deployment](docs/SERVER_DEPLOYMENT.md), [attachments](docs/ATTACHMENTS.md),
+[public Web](docs/PUBLIC_WEB.md) and [current acceptance](docs/FREEAGENT_V7_7_TO_V7_10_IMPLEMENTATION_PROGRESS.md).
 
 Linux amd64 has a separate portable archive with the same CLI and embedded Web
 UI. It starts with `./FreeAgent`, uses package-local data, and needs no Go or

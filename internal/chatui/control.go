@@ -15,24 +15,24 @@ import (
 
 const controlPrincipal = "chat-ui"
 
-func (server *Server) controlCapability(conversationID string) (harness.InteractiveControlCapability, error) {
+func (server *Server) controlCapability(ctx context.Context, conversationID string) (harness.InteractiveControlCapability, error) {
 	control, err := server.tasks.Control()
 	if err != nil {
 		return harness.InteractiveControlCapability{}, err
 	}
-	return control.IssueInteractiveCapability(server.ctx, conversationID, controlPrincipal)
+	return control.IssueInteractiveCapability(ctx, conversationID, harness.InteractivePrincipal(ctx, controlPrincipal))
 }
 
 // confirmControlProposal decides a model-proposed control change through the
 // Run that is waiting on it. GUI clicks and CLI prompts supply the local
 // interactive capability; external channel callbacks cannot apply settings.
 func (server *Server) confirmControlProposal(ctx context.Context, chat, runID string, confirmation harness.Confirmation, code string, approved bool) (harness.RunResult, error) {
-	capability, err := server.controlCapability(chat)
+	capability, err := server.controlCapability(ctx, chat)
 	if err != nil {
 		return harness.RunResult{}, err
 	}
 	result, err := server.tasks.ConfirmControl(ctx, runID, confirmation, harness.ControlAuthorization{
-		Source: harness.ControlModelProposed, ConversationID: chat, Principal: controlPrincipal,
+		Source: harness.ControlModelProposed, ConversationID: chat, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 		Code: code, Capability: capability,
 	}, approved)
 	if err != nil || !approved {
@@ -78,16 +78,16 @@ func (server *Server) applyDirectControl(ctx context.Context, generation, conver
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
-	capability, err := control.IssueInteractiveCapability(ctx, conversationID, controlPrincipal)
+	capability, err := control.IssueInteractiveCapability(ctx, conversationID, harness.InteractivePrincipal(ctx, controlPrincipal))
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
-	confirmation, err := control.RenderConfirmation(ctx, operation.ID, conversationID, controlPrincipal)
+	confirmation, err := control.RenderConfirmation(ctx, operation.ID, conversationID, harness.InteractivePrincipal(ctx, controlPrincipal))
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
 	result, err := control.ConfirmControlChange(ctx, operation.ID, harness.ControlAuthorization{
-		Source: harness.ControlUserDirect, ConversationID: conversationID, Principal: controlPrincipal,
+		Source: harness.ControlUserDirect, ConversationID: conversationID, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 		Code: confirmation.Code, Capability: capability,
 	})
 	if err != nil {
@@ -117,16 +117,16 @@ func (server *Server) applyDirectKeyControl(ctx context.Context, request harness
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
-	capability, err := control.IssueInteractiveCapability(ctx, "", controlPrincipal)
+	capability, err := control.IssueInteractiveCapability(ctx, "", harness.InteractivePrincipal(ctx, controlPrincipal))
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
-	confirmation, err := control.RenderConfirmation(ctx, operation.ID, "", controlPrincipal)
+	confirmation, err := control.RenderConfirmation(ctx, operation.ID, "", harness.InteractivePrincipal(ctx, controlPrincipal))
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
 	return control.ConfirmControlChange(ctx, operation.ID, harness.ControlAuthorization{
-		Source: harness.ControlUserDirect, Principal: controlPrincipal,
+		Source: harness.ControlUserDirect, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 		Code: confirmation.Code, Capability: capability,
 	})
 }
@@ -136,7 +136,7 @@ func (server *Server) applyDirectKeyProbe(ctx context.Context, ref string) (harn
 	if err != nil {
 		return harness.ProbeResult{}, err
 	}
-	return control.ProbeKey(ctx, ref, controlPrincipal)
+	return control.ProbeKey(ctx, ref, harness.InteractivePrincipal(ctx, controlPrincipal))
 }
 
 func (server *Server) applyDirectMCPControl(ctx context.Context, request harness.MCPControlRequest) (harness.ControlResult, error) {
@@ -148,21 +148,22 @@ func (server *Server) applyDirectMCPControl(ctx context.Context, request harness
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
-	capability, err := control.IssueInteractiveCapability(ctx, "", controlPrincipal)
+	capability, err := control.IssueInteractiveCapability(ctx, "", harness.InteractivePrincipal(ctx, controlPrincipal))
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
-	confirmation, err := control.RenderConfirmation(ctx, operation.ID, "", controlPrincipal)
+	confirmation, err := control.RenderConfirmation(ctx, operation.ID, "", harness.InteractivePrincipal(ctx, controlPrincipal))
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
 	return control.ConfirmControlChange(ctx, operation.ID, harness.ControlAuthorization{
-		Source: harness.ControlUserDirect, Principal: controlPrincipal,
+		Source: harness.ControlUserDirect, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 		Code: confirmation.Code, Capability: capability,
 	})
 }
 
 func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Request) bool {
+	ctx := request.Context()
 	path := request.URL.Path
 	if !strings.HasPrefix(path, "/api/control") {
 		return false
@@ -279,9 +280,9 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 		return true
 	case path == "/api/control/confirmation" && request.Method == http.MethodGet:
 		operationID, conversationID := request.URL.Query().Get("operation_id"), request.URL.Query().Get("conversation_id")
-		_, err = server.controlCapability(conversationID)
+		_, err = server.controlCapability(ctx, conversationID)
 		if err == nil {
-			confirmation, confirmationErr := control.RenderConfirmation(request.Context(), operationID, conversationID, controlPrincipal)
+			confirmation, confirmationErr := control.RenderConfirmation(request.Context(), operationID, conversationID, harness.InteractivePrincipal(ctx, controlPrincipal))
 			if confirmationErr == nil {
 				server.writeJSON(writer, http.StatusOK, confirmation)
 				return true
@@ -299,10 +300,10 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
-		capability, err := server.controlCapability(body.ConversationID)
+		capability, err := server.controlCapability(ctx, body.ConversationID)
 		if err == nil {
 			result, applyErr := control.ConfirmControlChange(request.Context(), body.OperationID, harness.ControlAuthorization{
-				Source: harness.ControlUserDirect, ConversationID: body.ConversationID, Principal: controlPrincipal,
+				Source: harness.ControlUserDirect, ConversationID: body.ConversationID, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 				Code: body.Code, Capability: capability,
 			})
 			if applyErr == nil {
@@ -328,10 +329,10 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
-		capability, err := server.controlCapability(body.ConversationID)
+		capability, err := server.controlCapability(ctx, body.ConversationID)
 		if err == nil {
 			result, rejectErr := control.RejectControlChange(request.Context(), body.OperationID, harness.ControlAuthorization{
-				Source: harness.ControlUserDirect, ConversationID: body.ConversationID, Principal: controlPrincipal,
+				Source: harness.ControlUserDirect, ConversationID: body.ConversationID, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 				Capability: capability,
 			})
 			if rejectErr == nil {
@@ -399,6 +400,7 @@ func (server *Server) configProjection() map[string]any {
 		"ok": true, "config_path": filepath.Join(server.tasks.DataDir(), "config.json"),
 		"workspace": config.Workspace, "models": config.Models, "default_model": config.DefaultModel,
 		"default_selection": config.DefaultSelection, "auto": config.Auto,
+		"public_web": config.PublicWeb.Effective(), "attachments": config.Attachments,
 		"enabled_mcp_servers": enabled, "instructions": config.Instructions,
 		"model_capabilities": capabilities, "commands": config.Commands, "http": config.HTTP,
 		"collaboration": config.Collaboration, "memory": config.Memory,

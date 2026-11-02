@@ -31,6 +31,7 @@ type Stream struct {
 
 // Server owns only transport state; TaskService owns execution and persistence.
 type Server struct {
+	public          *PublicServer
 	attachmentSlots chan struct{}
 	tasks           *harness.TaskService
 	origin          string
@@ -225,8 +226,9 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("Cache-Control", "no-store")
 	header.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-	if !validLocalHost(request.Host) || request.Header.Get("Origin") != "" && request.Header.Get("Origin") != "http://"+request.Host ||
-		request.Header.Get("Sec-Fetch-Site") == "cross-site" {
+	_, public := publicRequestFrom(request.Context())
+	if !public && (!validLocalHost(request.Host) || request.Header.Get("Origin") != "" && request.Header.Get("Origin") != "http://"+request.Host ||
+		request.Header.Get("Sec-Fetch-Site") == "cross-site") {
 		server.writeError(writer, http.StatusForbidden, "origin", "请从本地 Chat 地址打开页面。")
 		return
 	}
@@ -241,7 +243,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	}
 	key := request.Header.Get("X-FreeAgent-Key")
 	attachKey := request.Header.Get("X-FreeAgent-Attach")
-	keyOK := subtle.ConstantTimeCompare([]byte(key), []byte(server.token)) == 1
+	keyOK := public || subtle.ConstantTimeCompare([]byte(key), []byte(server.token)) == 1
 	attachOK := subtle.ConstantTimeCompare([]byte(attachKey), []byte(server.attachToken)) == 1
 	if !keyOK && !attachOK {
 		server.writeError(writer, http.StatusUnauthorized, "auth", "需要本次启动的 Chat 地址。")
@@ -286,6 +288,9 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	if server.settingsAPI(writer, request) {
 		return
 	}
+	if server.publicSettingsAPI(writer, request) {
+		return
+	}
 	if server.spacesAPI(writer, request) {
 		return
 	}
@@ -313,6 +318,12 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			models[id] = entry
 		}
 		server.writeJSON(writer, http.StatusOK, map[string]any{
+			"public_entry": public, "remote_max_permission": func() harness.PermissionMode {
+				if public {
+					return config.PublicWeb.Effective().MaxPermission
+				}
+				return ""
+			}(),
 			"workspace": config.Workspace, "environment": server.tasks.EnvironmentID(),
 			"models": models, "auto": config.Auto.Enabled, "default_model": config.DefaultModel,
 			"providers":        config.Providers,
@@ -837,7 +848,7 @@ func (server *Server) executeAttachedOperation(writer http.ResponseWriter, chat 
 }
 
 func (server *Server) executeAttachedOperationBound(writer http.ResponseWriter, chat, binding string, execute func(context.Context) (any, error)) {
-	execution, err := server.reserve(chat, binding)
+	execution, err := server.reserveContext(server.executionContext(writer), chat, binding)
 	if err != nil {
 		server.fail(writer, err)
 		return
@@ -859,7 +870,7 @@ func (server *Server) start(writer http.ResponseWriter, chat string, execute fun
 }
 
 func (server *Server) startBound(writer http.ResponseWriter, chat, binding string, execute func(context.Context) (harness.RunResult, error)) {
-	if err := server.dispatchBound(chat, binding, execute); err != nil {
+	if err := server.dispatchBoundContext(server.executionContext(writer), chat, binding, execute); err != nil {
 		server.fail(writer, err)
 		return
 	}

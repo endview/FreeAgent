@@ -25,6 +25,7 @@ import { spaceChatGroups, spaceSelection, publicationMessage } from './spaces.mj
 import { commandRows, commandOutput, remainingSeconds, directCommandText } from './command-sessions.mjs';
 import { eventStream } from './events.mjs';
 import { inputAccept, attachmentDraft, uploadProblem, attachmentCards } from './attachments.mjs';
+import { apiPath, authHeaders, publicSession, publicSecuritySwitches, publicSecurityNumbers } from './public-auth.mjs';
 
 const icons = { Menu, Plus, MessageSquare, ArrowUp, ArrowDown, Square, Play, X,
   ChevronDown, ChevronRight, Copy, Eye, PencilLine, Check, Settings2, RefreshCw,
@@ -41,7 +42,9 @@ const app = $('#app');
 const baseDocumentTitle = document.title || 'FreeAgent Chat';
 const storage = (() => { try { return localStorage; } catch { return null; } })();
 const session = (() => { try { return sessionStorage; } catch { return null; } })();
-let key = new URLSearchParams(location.hash.slice(1)).get('key') || safeStorage(session, 'freeagent-key');
+const publicMode = location.protocol === 'https:';
+let publicCSRF = '', loginPending = null, lastInteraction = Date.now();
+let key = publicMode ? '' : new URLSearchParams(location.hash.slice(1)).get('key') || safeStorage(session, 'freeagent-key');
 if (key) safeStorage(session, 'freeagent-key', key);
 history.replaceState(null, '', location.pathname + location.search);
 
@@ -97,7 +100,7 @@ app.innerHTML = `
       <label class="chat-search"><span class="sr-only">搜索会话</span>${icon('search')}<input id="chat-search" type="search" placeholder="搜索会话" autocomplete="off"></label>
       <nav id="chats" aria-label="最近对话"></nav>
       <div class="environment"><span class="workspace-label">工作区</span><button id="workspace-change" class="icon" title="更换工作区" aria-label="更换工作区">${icon('folder-open')}</button><span id="workspace-path"></span><span class="local-label">本地</span></div>
-      <div class="sidebar-bottom">${button('key-round', 'Key 管理', 'keys')}${button('blocks', '能力管理', 'capabilities')}${button('settings-2', '设置', 'settings')}</div>
+      <div class="sidebar-bottom">${button('key-round', 'Key 管理', 'keys')}${button('blocks', '能力管理', 'capabilities')}${button('settings-2', '设置', 'settings')}${publicMode ? button('x', '退出登录', 'public-logout') : ''}</div>
     </aside>
     <div class="layout-resizer sidebar-resizer" data-layout-resizer="sidebar" role="separator" aria-orientation="vertical" aria-label="调整会话列表宽度" tabindex="0"></div>
     <main>
@@ -305,12 +308,107 @@ function connection(online) {
   updateConnectionNotice();
   controls();
 }
+function requestHeaders(extra = {}, activity = true) { return authHeaders({ remote: publicMode, key, csrf: publicCSRF, active: activity && Date.now() - lastInteraction < 60000 }, extra); }
+
+for (const name of ['pointerdown', 'keydown']) document.addEventListener(name, () => { lastInteraction = Date.now(); }, { passive: true });
+
+async function loginPublic(force = false) {
+  if (loginPending) return loginPending;
+  loginPending = (async () => {
+    app.hidden = true;
+    let dialog = $('#public-login');
+    if (!dialog) {
+      dialog = document.createElement('dialog'); dialog.id = 'public-login';
+      dialog.setAttribute('aria-labelledby', 'public-login-title');
+      dialog.innerHTML = '<form><h2 id="public-login-title">登录 FreeAgent</h2><p>登录后接续此实例的对话。</p><label>管理员密码<input name="password" type="password" autocomplete="current-password" minlength="12" maxlength="1024" required></label><p role="alert" class="warning"></p><button type="submit" class="primary">登录</button></form>';
+      dialog.addEventListener('cancel', event => event.preventDefault()); document.body.append(dialog);
+    }
+    if (!dialog.open) dialog.showModal();
+    const form = dialog.querySelector('form'), notice = form.querySelector('[role="alert"]'), input = form.elements.password;
+    const check = async () => { const info = await publicSession(); if (info.authenticated && !force) { publicCSRF = info.csrf; return true; } return false; };
+    try { if (await check()) { dialog.close(); app.hidden = false; return; } }
+    catch (failure) { notice.textContent = failure.message; }
+    await new Promise(resolve => {
+      form.onsubmit = async event => {
+        event.preventDefault(); const password = input.value; input.value = ''; form.querySelector('button').disabled = true;
+        try {
+          const response = await fetch('/api/public/login', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+          const info = await response.json();
+          if (!response.ok) throw new Error(info.error || '登录失败。');
+          publicCSRF = info.csrf; force = false; state.approval = null; state.approvalControl = null;
+          notice.textContent = ''; dialog.close(); app.hidden = false; resolve();
+        } catch (failure) {
+          notice.textContent = failure.message;
+          try { await publicSession(); } catch (error) { notice.textContent = error.message; }
+          input.focus();
+        } finally { form.querySelector('button').disabled = false; }
+      };
+      input.focus();
+    });
+  })();
+  try { await loginPending; } finally { loginPending = null; }
+}
+
+function recoverPublicSession() {
+  if (!publicMode || loginPending) return;
+  publicCSRF = ''; sse?.close(); connection(false);
+  loginPublic(true).then(async () => { await refreshEnvironment(); await loadKeys(); await listChats(); if (state.chat) await snapshot(); connectEvents(); }).catch(failure => error(failure.message));
+}
+
+async function openPublicSettings() {
+  const info = await api('public-settings'), config = info.config;
+  let dialog = $('#public-settings-dialog');
+  if (!dialog) { dialog = document.createElement('dialog'); dialog.id = 'public-settings-dialog'; dialog.setAttribute('aria-labelledby', 'public-settings-title'); document.body.append(dialog); }
+  const number = (name, label, min, max, value) => `<label>${esc(label)}<input type="number" name="${esc(name)}" min="${min}" max="${max}" required value="${value}"></label>`;
+  dialog.innerHTML = `<form><header><h2 id="public-settings-title">公网安全设置</h2><button type="button" class="icon" data-public-close aria-label="关闭">${icon('x')}</button></header>
+    <p>Linux 可选入口。Caddy 提供 HTTPS，通过专用 Unix socket 接入同一个 Owner。修改 Origin、socket 或首次启用后需要重启 Owner。</p>
+    <label class="check-line"><input type="checkbox" name="enabled" ${config.enabled ? 'checked' : ''}>启用公网 Web</label>
+    <div class="public-fields"><label>HTTPS Origin<input name="origin" type="text" value="${esc(config.origin)}" placeholder="https://agent.example.com"></label>
+    <label>Unix socket<input name="socket" value="${esc(config.socket)}" required></label><label>专用代理组<input name="socket_group" value="${esc(config.socket_group)}" required></label>
+    <label>远程最高权限<select name="max_permission">${['none', 'ask', 'workspace', 'full'].map(value => `<option value="${value}" ${value === config.max_permission ? 'selected' : ''}>${PERMISSION_LABELS[value]}</option>`).join('')}</select></label>
+    ${number('max_sessions', '最多会话', 1, 8, config.max_sessions)}${number('idle_minutes', '无交互到期（分钟）', 1, 120, config.idle_minutes)}${number('absolute_hours', '绝对时长（小时）', 1, 24, config.absolute_hours)}</div>
+    <p>空间和原发起人的权限继续生效。远程提高最高权限需在服务器本机确认；新空间仍为 None。</p>
+    <fieldset><legend>用户可选的登录保护</legend><div class="public-fields">${publicSecuritySwitches.map(([name, label]) => `<label class="check-line"><input type="checkbox" name="security.${name}" ${config.security[name] ? 'checked' : ''}>${esc(label)}</label>`).join('')}</div>
+    <p>Cookie 检测只检查登录时的回传，不会自动开启会话绑定。HTTPS、密码哈希和口令校验并发上限始终生效。</p>
+    <div class="public-fields">${publicSecurityNumbers.map(([name, label, min, max]) => number(`security.${name}`, label, min, max, config.security[name])).join('')}
+    <label>IP 白名单（每行地址或 CIDR）<textarea name="allowlist" rows="3">${esc(config.security.allowlist?.join('\n') || '')}</textarea></label><label>IP 黑名单（黑名单优先）<textarea name="denylist" rows="3">${esc(config.security.denylist?.join('\n') || '')}</textarea></label></div></fieldset>
+    <p role="status" class="public-policy-notice"></p><button type="submit" class="primary">确认并保存设置</button>
+    <fieldset><legend>管理员密码</legend><p>${info.credential_ready ? '已设置；更换会撤销全部远程会话。' : '启用前先设置密码。密码只从当前安全表单直接提交。'}</p>
+    ${publicMode ? '<label>当前密码<input name="current_password" type="password" autocomplete="current-password"></label>' : ''}<div class="public-fields"><label>新密码<input name="new_password" type="password" autocomplete="new-password" minlength="12" maxlength="1024"></label><label>再次输入<input name="repeat_password" type="password" autocomplete="new-password" minlength="12" maxlength="1024"></label></div><button type="button" class="text-action" data-public-password>更换密码</button></fieldset>
+    <details><summary>安全事件与本机恢复</summary><pre class="public-security-events"></pre>${publicMode ? '<p>名单或锁定阻止登录时，使用 SSH 本机 CLI：public clear-locks / public disable / public password。</p>' : '<button type="button" class="text-action" data-public-unlock>解除临时锁定</button>'}</details></form>`;
+  const form = dialog.querySelector('form'), notice = form.querySelector('.public-policy-notice');
+  form.querySelector('[data-public-close]').onclick = () => dialog.close();
+  form.onsubmit = async event => {
+    event.preventDefault(); const fields = form.elements, next = structuredClone(config);
+    for (const name of ['origin', 'socket', 'socket_group', 'max_permission']) next[name] = fields.namedItem(name).value.trim();
+    for (const name of ['max_sessions', 'idle_minutes', 'absolute_hours']) next[name] = Number(fields.namedItem(name).value);
+    next.enabled = fields.enabled.checked;
+    for (const [name] of publicSecuritySwitches) next.security[name] = fields.namedItem(`security.${name}`).checked;
+    for (const [name] of publicSecurityNumbers) next.security[name] = Number(fields.namedItem(`security.${name}`).value);
+    for (const name of ['allowlist', 'denylist']) next.security[name] = fields.namedItem(name).value.split(/[\n,]+/).map(value => value.trim()).filter(Boolean);
+    if (!confirm('保存这些公网设置？降低权限立即生效；Origin 或认证变化可能需要重新登录。')) return;
+    try { await api('public-settings', next, 'PUT'); notice.textContent = '设置已保存。首次启用或监听地址变化后，请通过服务器本机入口重启 Owner。'; }
+    catch (failure) { notice.textContent = failure.message; }
+  };
+  form.querySelector('[data-public-password]').onclick = async () => {
+    const next = form.elements.new_password.value, repeat = form.elements.repeat_password.value, current = form.elements.current_password?.value || '';
+    form.elements.new_password.value = ''; form.elements.repeat_password.value = ''; if (form.elements.current_password) form.elements.current_password.value = '';
+    if (next.length < 12 || next !== repeat) { notice.textContent = '请输入至少 12 字节的新密码，并保证两次相同。'; return; }
+    try { await api(publicMode ? 'public/password' : 'public-password', publicMode ? { Current: current, Password: next } : { password: next }); notice.textContent = '密码已保存，远程会话已撤销。'; if (publicMode) { dialog.close(); recoverPublicSession(); } }
+    catch (failure) { notice.textContent = failure.message; }
+  };
+  const loadSecurity = async () => { const events = await api(publicMode ? 'public/security' : 'public-recovery'); form.querySelector('.public-security-events').textContent = JSON.stringify(events, null, 2); };
+  const unlock = form.querySelector('[data-public-unlock]'); if (unlock) unlock.onclick = async () => { try { await api('public-recovery', {}); await loadSecurity(); } catch (failure) { notice.textContent = failure.message; } };
+  loadSecurity().catch(failure => { notice.textContent = failure.message; });
+  decorate(); dialog.showModal();
+}
 async function api(path, body, method = '') {
-  const response = await fetch(`/api/${path}`, { method: method || (body === undefined ? 'GET' : 'POST'),
-    headers: { 'X-FreeAgent-Key': key, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+  const response = await fetch(apiPath(path, publicMode), { method: method || (body === undefined ? 'GET' : 'POST'),
+    headers: requestHeaders(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
   const data = await response.json();
   if (!response.ok) {
+    if (publicMode && response.status === 401) recoverPublicSession();
     const failure = new Error(data.error || '请求未完成。');
     failure.code = data.code;
     failure.data = data;
@@ -332,7 +430,9 @@ const PERMISSION_LABELS = {
   full: 'Full access',
 };
 function selectedPermissionMode() {
-  return state.view ? permissionMode(state.view, state.pendingPermission) : (state.pendingPermission || spaceSelection(state.spaces, state.space)?.permission || 'none');
+	const selected = state.view ? permissionMode(state.view, state.pendingPermission) : (state.pendingPermission || spaceSelection(state.spaces, state.space)?.permission || 'none');
+	const ceiling = state.env?.remote_max_permission, ranks = ['none', 'ask', 'workspace', 'full'];
+	return publicMode && ranks.includes(ceiling) && ranks.indexOf(ceiling) < ranks.indexOf(selected) ? ceiling : selected;
 }
 function selectedPermissionSource() {
   return state.pendingPermission ? 'turn' : state.view?.permission?.source || 'default';
@@ -737,7 +837,7 @@ function renderPermissionsView() {
   const sandboxLabel = command.sandbox_supported === false ? '安全沙箱（当前系统不可用）' : '安全沙箱';
   const catalogSandboxLabels = { sandboxed: '沙箱', host_explicit: '宿主机', unsupported: '沙箱不可用', unavailable: '未找到' };
   const commandEnabledLabel = commandEnabled ? '已开启' : '已关闭';
-  root.innerHTML = `<div class="keys-header"><div><button type="button" class="text-action" data-action="attachment-settings">附件设置与文件</button><h2 id="permissions-title">设置</h2><p>全局权限、文件范围和内置工具设置。能力管理保持独立；修改只影响新 Run。</p></div><button class="icon" data-action="close-permissions" title="返回对话" aria-label="返回对话">${icon('arrow-left')}</button></div>
+  root.innerHTML = `<div class="keys-header"><div><button type="button" class="text-action" data-action="attachment-settings">附件设置与文件</button><button type="button" class="text-action" data-action="public-settings">公网安全设置</button><h2 id="permissions-title">设置</h2><p>全局权限、文件范围和内置工具设置。能力管理保持独立；修改只影响新 Run。</p></div><button class="icon" data-action="close-permissions" title="返回对话" aria-label="返回对话">${icon('arrow-left')}</button></div>
     ${activeNotice}
     <div class="permission-layout">
       <section class="permission-section"><header><div><h3>权限模式</h3><p>权限属于空间，影响该空间内所有对话。新空间默认 None；下降会限制旧 Run 并请求停止相关命令。</p></div><span class="permission-badge permission-${esc(currentMode)}">${esc(PERMISSION_LABELS[currentMode] || 'Ask')}</span></header>
@@ -1417,7 +1517,7 @@ async function restartExtension() {
 async function showExtensionLogs() {
   if (!state.extensionId) return;
   const response = await fetch(`/api/extensions/${encodeURIComponent(state.extensionId)}/logs`, {
-    headers: { 'X-FreeAgent-Key': key }, cache: 'no-store',
+    headers: requestHeaders(), cache: 'no-store',
   });
   if (!response.ok) throw new Error('无法读取扩展日志。');
   const root = $('#extension-log');
@@ -1465,7 +1565,7 @@ async function restartMCP() {
 async function showMCPLogs() {
   if (!state.mcpServer) return;
   const response = await fetch(`/api/mcp/${encodeURIComponent(state.mcpServer)}/logs`, {
-    headers: { 'X-FreeAgent-Key': key }, cache: 'no-store',
+    headers: requestHeaders(), cache: 'no-store',
   });
   if (!response.ok) throw new Error('无法读取 MCP 日志。');
   const root = $('#mcp-log');
@@ -2051,7 +2151,8 @@ async function refreshCommands() {
 }
 function connectEvents() {
   sse?.close();
-  sse = eventStream('/api/events', { 'X-FreeAgent-Key': key }, {
+  sse = eventStream('/api/events', requestHeaders({}, false), {
+	unauthorized: () => recoverPublicSession(),
   open: () => { connection(true); queueSnapshot(); },
   error: () => connection(false),
   message: (message) => {
@@ -2549,6 +2650,8 @@ async function act(action, node = null) {
       renderKeysView();
       $('#key-name')?.focus();
       break;
+    case 'public-logout': await api('public/logout', {}); publicCSRF = ''; sse?.close(); await loginPublic(true); await refreshEnvironment(); await listChats(); connectEvents(); break;
+    case 'public-settings': await openPublicSettings(); break;
     case 'key-save': await saveKey(); break;
     case 'key-test': await testKey(); break;
     case 'key-models': await fetchKeyModels(); break;
@@ -2973,7 +3076,7 @@ document.addEventListener('visibilitychange', () => {
 
 async function boot() {
   decorate();
-  if (!key) { error('请使用本次启动输出的本地 Chat 地址。'); connection(false); return; }
+  if (publicMode) { await loginPublic(); } else if (!key) { error('请使用本次启动输出的本地 Chat 地址。'); connection(false); return; }
   await api('connect', {});
   await refreshEnvironment();
   await loadKeys();
@@ -3024,7 +3127,7 @@ async function uploadAttachmentFiles(files) {
   try {
     for (const file of files) {
       const query = new URLSearchParams({ conversation_id: chat, name: file.name, request_key: crypto.randomUUID() });
-      const response = await fetch(`/api/attachments?${query}`, { method: 'POST', headers: { 'X-FreeAgent-Key': key, 'Content-Type': 'application/octet-stream' }, body: file });
+      const response = await fetch(`/api/attachments?${query}`, { method: 'POST', headers: requestHeaders({ 'Content-Type': 'application/octet-stream' }), body: file });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || '附件上传未完成。');
       refs.push(data); setAttachmentDrafts(refs, chat);
     }
@@ -3032,7 +3135,7 @@ async function uploadAttachmentFiles(files) {
   finally { attachmentUploading = false; $('#attachment-input').value = ''; controls(); }
 }
 async function downloadAttachment(chat, id, name = 'attachment', inline = false) {
-  const response = await fetch(`/api/attachments/${encodeURIComponent(id)}?${new URLSearchParams({ conversation_id: chat, ...(inline ? { inline: '1' } : {}) })}`, { headers: { 'X-FreeAgent-Key': key }, cache: 'no-store' });
+  const response = await fetch(`/api/attachments/${encodeURIComponent(id)}?${new URLSearchParams({ conversation_id: chat, ...(inline ? { inline: '1' } : {}) })}`, { headers: requestHeaders(), cache: 'no-store' });
   if (!response.ok) throw new Error('附件已删除、不可用或不属于此对话。');
   if (inline && !['image/png', 'image/jpeg'].includes(response.headers.get('Content-Type'))) throw new Error('此附件仅支持下载。');
   const blob = await response.blob(), url = URL.createObjectURL(blob);

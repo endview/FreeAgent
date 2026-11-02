@@ -600,6 +600,9 @@ func readKeyStdin(stdin io.Reader) ([]byte, error) {
 // promptKey reads one line from the console with echo off. Echo comes back
 // when the line is read, on error, and when the command is interrupted.
 func promptKey(ctx context.Context, stdin io.Reader, stderr io.Writer) ([]byte, error) {
+	return promptSecret(ctx, stdin, stderr, "API key (input hidden): ")
+}
+func promptSecret(ctx context.Context, stdin io.Reader, stderr io.Writer, label string) ([]byte, error) {
 	restore, err := disableEcho(stdin)
 	if errors.Is(err, errNotConsole) {
 		return nil, usageErr("stdin is not a console; pass the key with --key-stdin, or name a variable with --key-env")
@@ -610,7 +613,7 @@ func promptKey(ctx context.Context, stdin io.Reader, stderr io.Writer) ([]byte, 
 	var once sync.Once
 	restoreEcho := func() { once.Do(restore) }
 	defer restoreEcho()
-	_, _ = io.WriteString(stderr, "API key (input hidden): ")
+	_, _ = io.WriteString(stderr, label)
 	type line struct {
 		key []byte
 		err error

@@ -36,6 +36,7 @@ const (
 )
 
 type Store struct {
+	securityMu      sync.Mutex
 	attachmentMu    sync.Mutex
 	replyMu         sync.Mutex
 	dataDir         string

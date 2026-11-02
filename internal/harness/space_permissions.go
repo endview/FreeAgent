@@ -194,6 +194,14 @@ func (service *Service) checkCurrentPermission(ctx context.Context, run Run) err
 		return err
 	}
 	current := space.Mode
+	if selected.RemoteLimit != "" {
+		policy := service.currentPublicPolicy()
+		current = lowerPermission(current, lowerPermission(selected.RemoteLimit, policy.MaxPermission))
+	}
+	if _, remote := PublicEntryFrom(ctx); remote || service.remoteEntry != nil {
+		policy := service.currentPublicPolicy()
+		current = lowerPermission(current, policy.MaxPermission)
+	}
 	if selected.PersonID != "" {
 		person, err := NewTaskService(service).PersonPermission(ctx, selected.PersonID)
 		if err != nil {

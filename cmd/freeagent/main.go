@@ -118,6 +118,9 @@ backup-verify --source <backup-directory>
 restore --source <backup-directory> --data-dir <new-directory>
 --version
 
+Public Web (Linux, default off): public status|configure|disable|password|clear-locks.
+  Passwords use hidden input or --password-stdin; HTTPS proxy setup: docs/PUBLIC_WEB.md.
+
 Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /more /history /sessions /resume <number> /new /status /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
 Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes and sandboxed commands, and Full access auto-runs enabled modifying tools. On Windows commands run in an AppContainer sandbox; Full access runs them on the host. MCP and loopback HTTP are not sandboxed.
 Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
@@ -136,6 +139,8 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runContext(ctx, args[1:], stdout, stderr)
 	case "attachments":
 		return runAttachments(ctx, args[1:], stdout, stderr)
+	case "public":
+		return runPublic(ctx, args[1:], stdin, stdout, stderr)
 	case "commands", "services":
 		return runCommands(ctx, args[1:], stdin, stdout, stderr)
 	case "sessions":
@@ -178,7 +183,7 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 }
 
 func usageError() error {
-	return usageErr("usage: freeagent <init|key|config|control|memory|channel|chat|web|ext|run|continue|sessions|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore> [flags]; use --help")
+	return usageErr("usage: freeagent <init|key|config|control|memory|channel|chat|web|ext|public|attachments|owner|run|continue|sessions|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore> [flags]; use --help")
 }
 
 func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error {

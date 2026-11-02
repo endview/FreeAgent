@@ -39,6 +39,8 @@ type Event struct {
 }
 
 type Service struct {
+	remoteEntry      *PublicEntry
+	approvalBinding  string
 	inputAttachments []AttachmentRef
 	commands         *commandSupervisor
 	Store            *Store

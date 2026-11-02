@@ -1,0 +1,20 @@
+# Set FREEAGENT_PUBLIC_ORIGIN to the exact configured HTTPS origin, and
+# FREEAGENT_PUBLIC_SOCKET to its restricted Unix socket. Use a dedicated
+# hostname where possible; cookies are shared across HTTPS ports on one host.
+# Caddy owns certificate acquisition/renewal. For an IP address, supply a
+# certificate valid for that IP; never assume automatic IP issuance works.
+{$FREEAGENT_PUBLIC_ORIGIN} {
+    request_body {
+        max_size 16777217
+    }
+    reverse_proxy unix/{$FREEAGENT_PUBLIC_SOCKET} {
+        # These values overwrite anything sent by the Internet client.
+        header_up X-FreeAgent-Client-IP {remote_host}
+        header_up X-FreeAgent-Proxy-Proto https
+        header_up -X-FreeAgent-Key
+        header_up -X-FreeAgent-Attach
+        flush_interval -1
+    }
+    # Add an explicit `tls <certificate> <private-key>` when certificate
+    # management is external. Do not enable raw HTTP fallback.
+}

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import grp
 import re
 import shlex
 import shutil
@@ -33,6 +34,8 @@ def main():
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--manager', default='/usr/local/bin/freeagent')
     parser.add_argument('--start', action='store_true')
+    parser.add_argument('--public-proxy-user', help='explicitly prepare a restricted runtime directory for this existing TLS proxy user; does not enable public Web')
+    parser.add_argument('--public-group', default='freeagent-public')
     args=parser.parse_args()
     if os.geteuid()!=0: raise SystemExit('Run the explicit installer as root; the installed service refuses root')
     for value in (args.user,args.unit):
@@ -72,6 +75,15 @@ def main():
         run('useradd','--system','--user-group','--home-dir','/var/lib/'+args.unit,'--shell','/usr/sbin/nologin','--comment','FreeAgent service',args.user)
         account=pwd.getpwnam(args.user)
     if account.pw_uid==0 or account.pw_gecos!='FreeAgent service':raise SystemExit('Refusing to reuse an unrelated account')
+    public_runtime=None
+    if args.public_proxy_user:
+        if not re.fullmatch(r'[a-z_][a-z0-9_-]{1,30}',args.public_group):raise SystemExit('Invalid dedicated public group')
+        proxy=pwd.getpwnam(args.public_proxy_user)
+        if proxy.pw_uid==0 or proxy.pw_uid==account.pw_uid:raise SystemExit('Proxy must have a separate non-root identity')
+        try:grp.getgrnam(args.public_group)
+        except KeyError:run('groupadd','--system',args.public_group)
+        for name in (args.user,args.public_proxy_user):run('usermod','--append','--groups',args.public_group,name)
+        public_runtime=Path('/run')/(args.unit+'-public')
     state=Path('/var/lib')/args.unit;runtime=Path('/run')/args.unit
     for path in (state,state/'workspace',state/'data'):
         if path.exists() and path.stat().st_uid!=account.pw_uid:raise SystemExit('State directory belongs to another user')
@@ -93,6 +105,10 @@ def main():
     if not (data/'config.json').exists():
         run('runuser','-u',args.user,'--',str(target/'bin/freeagent'),'init','--workspace',str(state/'workspace'),env=env,stdout=subprocess.DEVNULL)
     run('runuser','-u',args.user,'--',str(target/'bin/freeagent'),'control','plan','--kind','server.set_policy','--arguments',json.dumps({'port':args.port}),env=env,input='y\n',text=True,stdout=subprocess.DEVNULL)
+    if public_runtime:
+        public=json.loads((data/'config.json').read_text())['public_web']
+        public['socket']=str(public_runtime/'web.sock');public['socket_group']=args.public_group
+        run('runuser','-u',args.user,'--',str(target/'bin/freeagent'),'control','plan','--kind','public_web.set_policy','--arguments',json.dumps(public),env=env,input='y\n',text=True,stdout=subprocess.DEVNULL)
     # Existing deployments must be stopped explicitly before changing binaries.
     if owned and subprocess.run(['systemctl','is-active','--quiet',args.unit]).returncode==0:
         raise SystemExit('Installed service is active; back up and stop it before switching programs')
@@ -113,8 +129,9 @@ User={args.user}
 Group={args.user}
 StateDirectory={args.unit}
 StateDirectoryMode=0700
-RuntimeDirectory={args.unit}
+RuntimeDirectory={args.unit}{' '+args.unit+'-public' if public_runtime else ''}
 RuntimeDirectoryMode=0700
+{('SupplementaryGroups='+args.public_group) if public_runtime else ''}
 UMask=0077
 Environment={systemd('FREEAGENT_DATA_DIR='+str(data))}
 Environment={systemd('FREEAGENT_KEYS_FILE='+str(keys))}
@@ -128,7 +145,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths={state} {runtime}
+ReadWritePaths={state} {runtime}{' '+str(public_runtime) if public_runtime else ''}
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 [Install]
 WantedBy=multi-user.target

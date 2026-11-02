@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/endview/freeagent/internal/harness"
 )
@@ -87,6 +88,9 @@ func (server *Server) attachmentsAPI(w http.ResponseWriter, r *http.Request) boo
 		return true
 	}
 	if path == "/api/attachments" && r.Method == http.MethodPost {
+		controller := http.NewResponseController(w)
+		_ = controller.SetReadDeadline(time.Now().Add(60 * time.Second))
+		defer controller.SetReadDeadline(time.Time{})
 		limit := server.tasks.Config().Attachments.MaxInputBytes
 		if limit == 0 {
 			limit = harness.DefaultAttachmentPolicy().MaxInputBytes
@@ -121,6 +125,8 @@ func (server *Server) attachmentsAPI(w http.ResponseWriter, r *http.Request) boo
 		w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		controller := http.NewResponseController(w)
+		defer controller.SetWriteDeadline(time.Time{})
 		for len(raw) > 0 {
 			select {
 			case <-r.Context().Done():
@@ -128,6 +134,7 @@ func (server *Server) attachmentsAPI(w http.ResponseWriter, r *http.Request) boo
 			default:
 			}
 			size := min(len(raw), 32<<10)
+			_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if _, err := w.Write(raw[:size]); err != nil {
 				return true
 			}

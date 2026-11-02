@@ -68,10 +68,11 @@ def build(target, go, output):
         readme = 'LINUX_PORTABLE.md'
     files = {'docs/' + readme: 'README.md', **{p:p for p in ('VERSION','LICENSE','THIRD_PARTY_NOTICES.md')}}
     files.update({f'docs/{p}': f'docs/{p}' for p in (
-        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md')})
+        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md','PUBLIC_WEB.md')})
     if goos=='linux':
         files.update({'deploy/freeagent.service':'deploy/freeagent.service',
                       'scripts/install-server.py':'deploy/install-server.py',
+                      'deploy/freeagent.Caddyfile':'deploy/freeagent.Caddyfile',
                       'docs/SERVER_DEPLOYMENT.md':'docs/SERVER_DEPLOYMENT.md'})
     for source, destination in files.items():
         (package / destination).parent.mkdir(parents=True,exist_ok=True)
@@ -91,6 +92,7 @@ def build(target, go, output):
         'signed':False,'installer':False,'data_format':'Harness-v8',
         'entry':'FreeAgent.exe' if goos=='windows' else 'FreeAgent',
         'native_desktop':goos=='windows', 'interfaces':['cli','loopback_web'],
+        'optional_interfaces':['public_web_unix_proxy'] if goos=='linux' else [],
         'bundled_credentials':False,'bundled_user_data':False,
         'files':[{'path':p.relative_to(package).as_posix(),'bytes':p.stat().st_size,'sha256':digest(p)}
                  for p in sorted(package.rglob('*')) if p.is_file()],

@@ -13,22 +13,25 @@ import (
 	"github.com/endview/freeagent/internal/chatui"
 	"github.com/endview/freeagent/internal/handoff"
 	"github.com/endview/freeagent/internal/harness"
+	"github.com/endview/freeagent/internal/publicweb"
 )
 
 // localOwner serves the same authenticated surface for both web and terminal
 // owners. The caller retains the runtime lock until Close has drained requests.
 type localOwner struct {
-	address  string
-	client   *handoff.Client
-	handler  *chatui.Server
-	server   *http.Server
-	done     chan struct{}
-	serveErr error
-	once     sync.Once
-	result   error
-	publish  handoff.Published
-	telegram *harness.TelegramRuntime
-	lark, qq *harness.AppChannelRuntime
+	publicSocket  *publicweb.SocketServer
+	publicHandler *chatui.PublicServer
+	address       string
+	client        *handoff.Client
+	handler       *chatui.Server
+	server        *http.Server
+	done          chan struct{}
+	serveErr      error
+	once          sync.Once
+	result        error
+	publish       handoff.Published
+	telegram      *harness.TelegramRuntime
+	lark, qq      *harness.AppChannelRuntime
 }
 
 func startLocalOwner(ctx context.Context, tasks *harness.TaskService, data string, port int, oneShot bool) (*localOwner, error) {
@@ -72,6 +75,35 @@ func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data s
 	}
 	handler.SetGeneration(published.Info.Generation)
 	handler.SetOwnerInfo(published.Info)
+	var publicHandler *chatui.PublicServer
+	var publicSocket *publicweb.SocketServer
+	if tasks.Config().PublicWeb.Effective().Enabled {
+		publicHandler, err = chatui.NewPublicServer(handler)
+		if err == nil {
+			publicSocket, err = publicweb.StartSocket(tasks.Config().PublicWeb.Effective(), publicHandler, publicHandler.Done())
+			if err == nil {
+				publicHandler.SetSocket(publicSocket)
+			}
+		}
+		if err != nil {
+			if publicHandler != nil {
+				publicHandler.Close()
+			}
+			handler.Close()
+			published.Close()
+			return nil, err
+		}
+	}
+	defer func() {
+		if !ready {
+			if publicSocket != nil {
+				_ = publicSocket.Close()
+			}
+			if publicHandler != nil {
+				publicHandler.Close()
+			}
+		}
+	}()
 	telegram := harness.NewTelegramRuntime(tasks)
 	telegram.SetDispatch(handler.DispatchChannel)
 	handler.AddChannelDelivery(telegram.Deliver)
@@ -91,6 +123,7 @@ func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data s
 		return nil, err
 	}
 	owner := &localOwner{address: origin + "/#key=" + chatSecret, client: client, handler: handler, telegram: telegram, lark: lark, qq: qq,
+		publicHandler: publicHandler, publicSocket: publicSocket,
 		server: &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second},
 		done:   make(chan struct{}), publish: published}
 	go func() {
@@ -103,6 +136,12 @@ func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data s
 
 func (owner *localOwner) Close() error {
 	owner.once.Do(func() {
+		if owner.publicSocket != nil {
+			owner.result = errors.Join(owner.result, owner.publicSocket.Close())
+		}
+		if owner.publicHandler != nil {
+			owner.publicHandler.Close()
+		}
 		if owner.telegram != nil {
 			if telegramErr := owner.telegram.Stop(); telegramErr != nil {
 				owner.result = telegramErr

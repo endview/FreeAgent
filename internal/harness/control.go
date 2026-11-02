@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -140,6 +141,7 @@ type ControlCatalogEntry struct {
 }
 
 type ControlOperation struct {
+	RemotePrincipal   string                     `json:"remote_principal,omitempty"`
 	ID                string                     `json:"operation_id"`
 	AttemptID         string                     `json:"attempt_id,omitempty"`
 	Kind              string                     `json:"kind"`
@@ -599,6 +601,7 @@ func (tasks *TaskService) Control() (*ControlService, error) {
 func ControlOperationCatalog() []ControlCatalogEntry {
 	entries := []ControlCatalogEntry{
 		{Kind: ControlSetAttachmentPolicy, ResourceFamily: "config.attachments", Risk: ControlRiskAuthority, Description: "Change bounded attachment input/export/storage limits for future uploads.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetPublicWeb, ResourceFamily: "config.public_web", Risk: ControlRiskAuthority, Description: "Configure optional Linux public HTTPS entrance, permission ceiling and bounded login security. Address/socket changes require restart. Raising the remote ceiling requires local confirmation; passwords use direct secure input.", ModelProposable: true, Reversible: true},
 		{Kind: ControlDeleteAttachment, ResourceFamily: "attachment", Risk: ControlRiskDestructive, Description: "Permanently remove one exact attachment with its visible-reference impact. Requires its conversation, id and sha256.", ModelProposable: true, Reversible: false},
 		{Kind: ControlSetServerPolicy, ResourceFamily: "config.server", Risk: ControlRiskAuthority, Description: "Set the numeric-loopback listener port (0 chooses an available port). Takes effect after an explicit Owner restart; does not change the OS service user or install a service.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetPermission, ResourceFamily: "config.execution", Risk: ControlRiskAuthority, Description: "Change the default permission mode for future Runs.", ModelProposable: true, Reversible: true},
@@ -850,6 +853,9 @@ func (service *ControlService) PlanControlChange(ctx context.Context, request Co
 		}
 	}
 	record.Operation.ID = newID()
+	if entry, remote := PublicEntryFrom(ctx); remote {
+		record.Operation.RemotePrincipal = entry.Principal
+	}
 	record.Operation.CreatedAt = nowText()
 	record.Operation.ExpiresAt = time.Now().UTC().Add(controlConfirmationTTL).Format(time.RFC3339Nano)
 	record.Operation.Status = ControlPending
@@ -1337,6 +1343,16 @@ func (service *ControlService) RenderConfirmation(ctx context.Context, operation
 	if !ok {
 		return ControlConfirmation{}, ErrControlOperationNotFound
 	}
+	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal != "" && entry.Principal != record.Operation.RemotePrincipal {
+		return ControlConfirmation{}, ErrControlUserInteractionRequired
+	}
+	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal == "" {
+		record.Operation.RemotePrincipal = entry.Principal
+		service.operations[operationID] = record
+		if err := service.appendLocked("surface_bound", record); err != nil {
+			return ControlConfirmation{}, err
+		}
+	}
 	if record.Operation.Status != ControlPending {
 		return ControlConfirmation{}, ErrControlAlreadyUsed
 	}
@@ -1415,6 +1431,9 @@ func (service *ControlService) RejectControlChange(ctx context.Context, operatio
 	}
 	if record.Operation.Status != ControlPending {
 		return ControlResult{Operation: cloneControlOperation(record.Operation)}, ErrControlAlreadyUsed
+	}
+	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal != "" && entry.Principal != record.Operation.RemotePrincipal {
+		return ControlResult{}, ErrControlUserInteractionRequired
 	}
 	if err := service.validateCapabilityLocked(auth); err != nil {
 		return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
@@ -1531,7 +1550,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 		}
 	}
 	permissionReduction := spacePermissionReduction(record)
-	providerSwitch := record.Operation.Kind == ControlSetProviderEnabled
+	providerSwitch := record.Operation.Kind == ControlSetProviderEnabled || record.Operation.Kind == ControlSetPublicWeb || len(record.After["config.public_web"]) != 0
 	if !permissionReduction {
 		global := false
 		for _, resource := range record.Operation.ResourceIDs {
@@ -1672,6 +1691,9 @@ func (service *ControlService) newControlCodeLocked(operationID, conversationID 
 }
 
 func (service *ControlService) applyRecordLocked(ctx context.Context, record *controlRecord) error {
+	if err := service.validatePublicOperation(ctx, *record); err != nil {
+		return err
+	}
 	if record.Operation.Kind == ControlRevert {
 		original, ok := service.operations[record.Operation.RevertOf]
 		if !ok {
@@ -1713,9 +1735,11 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 		return service.applyConversationLocked(ctx, *record)
 	}
 	candidate := cloneConfig(service.core.currentConfig())
-	if record.Operation.Kind == ControlSetProviderEnabled {
-		if err := service.validateProvider(record.Arguments); err != nil {
-			return err
+	if record.Operation.Kind == ControlSetProviderEnabled || record.Operation.Kind == ControlSetPublicWeb {
+		if record.Operation.Kind == ControlSetProviderEnabled {
+			if err := service.validateProvider(record.Arguments); err != nil {
+				return err
+			}
 		}
 		if err := applyConfigControl(&candidate, record.Operation.Kind, record.Arguments, ctx, service.core.Store.DataDir()); err != nil {
 			return err
@@ -1724,6 +1748,10 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 			return err
 		}
 		service.core.setConfig(candidate)
+		if record.Operation.Kind == ControlSetPublicWeb {
+			service.core.recordPublicPolicyChange(ctx)
+			return NewTaskService(service.core).stopPublicCommands(ctx)
+		}
 		return nil
 	}
 	if err := applyConfigControl(&candidate, record.Operation.Kind, record.Arguments, ctx, service.core.Store.DataDir()); err != nil {
@@ -1917,6 +1945,17 @@ func (service *ControlService) applyBeforeLocked(ctx context.Context, original c
 		if err := setConfigResource(&candidate, resource, raw); err != nil {
 			return err
 		}
+	}
+	if _, public := original.Before["config.public_web"]; public {
+		if err := validatePublicControl(ctx, service.core.currentConfig().PublicWeb, candidate.PublicWeb); err != nil {
+			return err
+		}
+		if err := WriteConfig(service.core.Store.DataDir(), candidate); err != nil {
+			return err
+		}
+		service.core.setConfig(candidate)
+		service.core.recordPublicPolicyChange(ctx)
+		return NewTaskService(service.core).stopPublicCommands(ctx)
 	}
 	_, err := NewTaskService(service.core).configureRuntimePolicy(ctx, "", func(config *Config) error { *config = candidate; return nil }, true)
 	return err
@@ -2189,6 +2228,8 @@ func buildConfigRecord(record *controlRecord, config *Config, ctx context.Contex
 
 func configControlResource(kind string, raw json.RawMessage) (string, error) {
 	switch kind {
+	case ControlSetPublicWeb:
+		return "config.public_web", nil
 	case ControlSetAttachmentPolicy:
 		return "config.attachments", nil
 	case ControlSetServerPolicy:
@@ -2331,6 +2372,14 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		return errors.New("harness: configuration is required")
 	}
 	switch kind {
+	case ControlSetPublicWeb:
+		wasEnabled := config.PublicWeb.Effective().Enabled
+		if err := decodeControlJSON(raw, &config.PublicWeb); err != nil {
+			return err
+		}
+		if !wasEnabled && config.PublicWeb.Enabled && runtime.GOOS != "linux" {
+			return errors.New("harness: public Web can only be enabled on Linux; local GUI and CLI remain available")
+		}
 	case ControlSetAttachmentPolicy:
 		if err := decodeControlJSON(raw, &config.Attachments); err != nil {
 			return err
@@ -2777,6 +2826,8 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 
 func configResourceValue(config Config, resource string) any {
 	switch resource {
+	case "config.public_web":
+		return config.PublicWeb.Effective()
 	case "config.attachments":
 		return config.Attachments.effective()
 	case "config.server":
@@ -2857,6 +2908,12 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		if err := json.Unmarshal(raw, &config.Attachments); err != nil {
 			return err
 		}
+	case "config.public_web":
+		var next PublicWebConfig
+		if err := json.Unmarshal(raw, &next); err != nil {
+			return err
+		}
+		config.PublicWeb = next
 	case "config.server":
 		if err := json.Unmarshal(raw, &config.Server); err != nil {
 			return err

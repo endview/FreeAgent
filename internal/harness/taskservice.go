@@ -33,7 +33,8 @@ func NewService(store *Store, config Config, adapters Adapters) *Service {
 		extensions = newExtensionHost(store.DataDir(), config.Workspace, config, adapters.Keys)
 	}
 	return &Service{
-		Store: store, Model: adapters.Model, ModelFor: adapters.ModelFor, Tools: adapters.Tools, Config: config,
+		approvalBinding: newID() + newID(),
+		Store:           store, Model: adapters.Model, ModelFor: adapters.ModelFor, Tools: adapters.Tools, Config: config,
 		Approve: adapters.Approve, Emit: adapters.Emit, Refresh: adapters.Refresh, Keys: adapters.Keys,
 		extensions: extensions, controlMu: &sync.Mutex{}, configMu: &sync.RWMutex{},
 	}
@@ -684,6 +685,9 @@ func (tasks *TaskService) execute(ctx context.Context, chat string, call func(co
 		return RunResult{}, ErrActiveRun
 	}
 	core := tasks.core.runCopy()
+	if entry, remote := PublicEntryFrom(ctx); remote {
+		core.remoteEntry = &entry
+	}
 	release, err := core.acquireConversation(chat)
 	if err != nil {
 		tasks.mu.Unlock()
@@ -1108,6 +1112,8 @@ func (tasks *TaskService) ContinueLatest(ctx context.Context, conversationID str
 var ErrApprovalChanged = errors.New("harness: confirmation no longer matches the exact operation; preview again")
 
 type Confirmation struct {
+	RemotePrincipal    string         `json:"remote_principal,omitempty"`
+	RemoteMAC          string         `json:"remote_mac,omitempty"`
 	RunID              string         `json:"run_id"`
 	Attempt            string         `json:"attempt_id"`
 	CallID             string         `json:"call_id"`
@@ -1138,6 +1144,11 @@ func (tasks *TaskService) Preview(ctx context.Context, runID string) (Confirmati
 }
 
 func previewConfirmation(ctx context.Context, core *Service, runID string) (Confirmation, error) {
+	if entry, remote := PublicEntryFrom(ctx); remote {
+		copy := core.runCopy()
+		copy.remoteEntry = &entry
+		core = &copy
+	}
 	run, err := core.Store.GetRun(ctx, runID)
 	if err != nil {
 		return Confirmation{}, err
@@ -1190,7 +1201,9 @@ func previewConfirmation(ctx context.Context, core *Service, runID string) (Conf
 			return Confirmation{}, errors.New("harness: operation was denied by an extension")
 		}
 		if prepared.controlProposal || core.needsApproval(prepared) || extensionAsk {
-			return confirmationFor(runID, attempt.ID, call, prepared), nil
+			decision := confirmationFor(runID, attempt.ID, call, prepared)
+			core.bindPublicConfirmation(ctx, &decision)
+			return decision, nil
 		}
 	}
 	return Confirmation{}, errors.New("harness: no consequential operation awaiting confirmation")
@@ -1198,6 +1211,9 @@ func previewConfirmation(ctx context.Context, core *Service, runID string) (Conf
 
 // Confirm grants exactly one decision, never authority for later model edits.
 func (tasks *TaskService) Confirm(ctx context.Context, runID string, decision Confirmation, approved bool) (RunResult, error) {
+	if err := tasks.core.validatePublicConfirmation(ctx, decision); err != nil {
+		return RunResult{}, err
+	}
 	return tasks.executeRun(ctx, runID, func(ctx context.Context, core *Service) (RunResult, error) {
 		run, err := core.Store.GetRun(ctx, runID)
 		if err != nil {
@@ -1237,6 +1253,9 @@ func (tasks *TaskService) Confirm(ctx context.Context, runID string, decision Co
 // are supplied by the interactive GUI card or CLI prompt; the model never
 // receives either value.
 func (tasks *TaskService) ConfirmControl(ctx context.Context, runID string, decision Confirmation, auth ControlAuthorization, approved bool) (RunResult, error) {
+	if err := tasks.core.validatePublicConfirmation(ctx, decision); err != nil {
+		return RunResult{}, err
+	}
 	return tasks.executeRun(ctx, runID, func(ctx context.Context, core *Service) (RunResult, error) {
 		run, err := core.Store.GetRun(ctx, runID)
 		if err != nil {

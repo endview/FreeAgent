@@ -19,6 +19,7 @@ const (
 )
 
 type Config struct {
+	PublicWeb        PublicWebConfig            `json:"public_web"`
 	Attachments      AttachmentPolicy           `json:"attachments"`
 	Server           ServerConfig               `json:"server,omitempty"`
 	Providers        map[string]bool            `json:"providers,omitempty"`
@@ -210,6 +211,7 @@ func DefaultConfig(workspace string) Config {
 	return Config{
 		Version:         ConfigVersion,
 		Attachments:     DefaultAttachmentPolicy(),
+		PublicWeb:       DefaultPublicWebConfig(),
 		Models:          map[string]ModelConfig{},
 		Auto:            AutoConfig{MaxCandidates: 8, MaxAssessments: 1, MaxUpgrades: 1},
 		Collaboration:   DefaultCollaborationSettings(),
@@ -545,6 +547,9 @@ func Configure(ctx context.Context, dataDir string, edit func(*Config) error) (C
 }
 
 func (config Config) Validate() error {
+	if err := config.PublicWeb.Validate(); err != nil {
+		return err
+	}
 	return config.validate(true)
 }
 
@@ -963,6 +968,7 @@ func safetyConfig(config Config) Config {
 	config.Providers = nil
 	config.Server = ServerConfig{}
 	config.Attachments = AttachmentPolicy{}
+	config.PublicWeb = PublicWebConfig{}
 	config.Models, config.DefaultModel, config.DefaultSelection = nil, "", ""
 	config.Auto = AutoConfig{}
 	config.Collaboration = CollaborationSettings{}

@@ -608,3 +608,7 @@ dialog > label input:focus { border-color: var(--focus-border); box-shadow: 0 0 
 #attachment-preview-image{display:block;max-width:min(82vw,1100px);max-height:78vh;object-fit:contain}
 #attachment-settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#attachment-settings-fields label{display:flex;flex-direction:column;gap:6px}#attachment-catalog{max-height:260px;overflow:auto}
 @media(max-width:600px){#attachment-settings-fields{grid-template-columns:1fr}.attachment-card{flex-wrap:wrap}}
+#public-login{max-width:420px;width:calc(100vw - 40px)}#public-login form{display:grid;gap:14px}#public-login label{display:grid;gap:8px}
+#public-settings-dialog{width:min(850px,calc(100vw - 32px));max-height:90vh;overflow:auto}#public-settings-dialog header{display:flex;align-items:center;justify-content:space-between}#public-settings-dialog fieldset{margin:18px 0;padding:14px;border:1px solid var(--border);border-radius:10px}
+.public-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}.public-fields>label{display:flex;flex-direction:column;gap:7px}.public-fields .check-line{flex-direction:row;align-items:center}.public-fields input,.public-fields textarea,.public-fields select{max-width:100%;min-width:0}.public-security-events{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto}
+@media(max-width:600px){.public-fields{grid-template-columns:1fr}}

@@ -7,9 +7,9 @@ Baseline: 6b9e0ae with retained v7.5–v7.7 working changes. Existing work is pr
 |---|---|
 | v7.7 continuation, safety, Provider switches | IMPLEMENTED; focused and ordinary regression PASS |
 | v7.7 repeatable build and release | PASS; v7.7.0-dev.2 published from 421c25b |
-| v7.8 server lifecycle and Linux sandbox | IN_PROGRESS; Debian namespace/negative tests PASS; unit/soak pending |
-| v7.9 attachments, delivery and backup | PENDING |
-| v7.10 optional public Web and configurable login protection | PENDING |
+| v7.8 server lifecycle and Linux sandbox | IMPLEMENTED; actual unit functional gate PASS; eight-hour soak RUNNING |
+| v7.9 attachments, delivery and backup | IMPLEMENTED; Windows ordinary/race and Debian full race PASS; final clean package gate pending |
+| v7.10 optional public Web and configurable login protection | IMPLEMENTED; targeted API/auth/JS PASS; actual TLS/deployment/package gates pending |
 
 Historical acceptance is not acceptance of these changes. Real Provider/channel,
 live HTTPS and eight-hour service checks must be recorded separately. Runtime
@@ -84,3 +84,35 @@ format/catalog/tool-count expectations; these were corrected and targeted
 regression PASS. Final full/race and actual package checks are still gates.
 Real vision Provider and real channel file accounts remain NOT_RUN. QQ generic
 file upload is explicitly NOT_SUPPORTED; no anonymous public file hosting added.
+
+v7.9 final ordinary Go PASS (harness 191.488s); affected complete Windows race
+PASS (harness 371.261s, ChatUI 37.482s), ordinary-user Debian full race PASS
+(harness 384.179s). Native WebView2 selected a Chinese/special-name input file,
+submitted its actual body in None, saved an assistant reply as Markdown and
+displayed a CLI continuation of the same conversation, PASS. Download SHA-256:
+`ae9d12e8bf8194bff3aa82dca23c9b9d65d194ac4c04187fd56a347171bd7dae`.
+The initial race failures came from an incorrect SQL edit in this work's
+channel recovery change; both UNKNOWN paths were corrected, with no relaxed
+assertions. Export now uses live quota, CLI chat switches clear pending input,
+and Anthropic hard image limits cannot be widened by a declaration. Attachment
+turns explicitly require collaboration off, rather than silently disabling it.
+
+## v7.10 implementation checkpoint
+
+Optional Linux-only public Unix listener, single-admin Argon2id credential,
+bounded memory sessions, CSRF, exact external Host/Origin, source-header trust,
+cookie login detection, independent optional binding, IP lists and login
+protection are implemented. Security events reuse a bounded existing SQLite
+meta value. No local launch/attach capability is sent to the public browser.
+Control and tool confirmations bind the Owner/session/Run/digest; permission
+snapshots retain their original remote ceiling on local continuation. Ordinary
+admitted mutations settle under the Owner lifetime while revoked readers close.
+
+GUI public login/settings/password/recovery, local CLI recovery, installer
+proxy-group preparation and a Caddy template are implemented. 83 JS tests and
+production build PASS. Initial full ordinary Go PASS (harness 198.247s),
+affected full Windows race PASS (harness 372.687s). Further targeted checks cover
+subsequent security refinements. A Windows credential replacement/read-handle
+race was found and fixed using serialized file access and bounded rename retry.
+Actual Caddy/TLS, browser, final package and repeatable release checks remain
+separate gates; no trusted public certificate or real platform result is claimed.

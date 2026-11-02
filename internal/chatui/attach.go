@@ -16,6 +16,9 @@ func (server *Server) isAttachRequest(request *http.Request) bool {
 }
 
 func (server *Server) isInteractiveAttachRequest(request *http.Request) bool {
+	if _, public := publicRequestFrom(request.Context()); public {
+		return true
+	}
 	return subtle.ConstantTimeCompare([]byte(request.Header.Get("X-FreeAgent-Key")), []byte(server.token)) == 1
 }
 

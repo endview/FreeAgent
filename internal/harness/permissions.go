@@ -30,6 +30,7 @@ func (mode PermissionMode) Validate() error {
 
 // This is part of the existing run snapshot, not another execution object.
 type PermissionSelection struct {
+	RemoteLimit       PermissionMode `json:"remote_limit,omitempty"`
 	SpaceID           string         `json:"space_id,omitempty"`
 	PersonID          string         `json:"person_id,omitempty"`
 	Entry             string         `json:"entry,omitempty"`
@@ -47,6 +48,9 @@ type PermissionSelection struct {
 }
 
 func (selection PermissionSelection) validate() error {
+	if selection.RemoteLimit != "" && selection.RemoteLimit.Validate() != nil {
+		return ErrPermissionDenied
+	}
 	if len(selection.SpaceID) > 128 || strings.ContainsAny(selection.SpaceID, "\x00\r\n") {
 		return ErrInvalidSpace
 	}
@@ -258,6 +262,14 @@ func (service *Service) resolvePermission(ctx context.Context, conversationID st
 	}
 	if selected.FileScope != "" && selected.FileScope != FileScopeWorkspace {
 		selected.ComputerFiles = true
+	}
+	if _, remote := PublicEntryFrom(ctx); remote {
+		policy := service.currentPublicPolicy()
+		if !policy.Enabled {
+			return ErrPermissionDenied
+		}
+		selected.RemoteLimit = policy.MaxPermission
+		selected.Mode = lowerPermission(selected.Mode, policy.MaxPermission)
 	}
 	if _, err := buildExecutionProfile(service.Config, selected); err != nil {
 		return err

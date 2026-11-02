@@ -28,12 +28,15 @@ func (server *Server) firstActiveLocked() (string, string) {
 	return ids[0], server.running[ids[0]].binding
 }
 func (server *Server) reserve(chat, binding string) (*ownerExecution, error) {
+	return server.reserveContext(server.ctx, chat, binding)
+}
+func (server *Server) reserveContext(parent context.Context, chat, binding string) (*ownerExecution, error) {
 	server.mu.Lock()
 	defer server.mu.Unlock()
 	if chat == "" || server.closed || server.stopping || server.running[chat] != nil || len(server.running) >= harness.MaxForegroundRuns {
 		return nil, harness.ErrActiveRun
 	}
-	ctx, cancel := context.WithCancel(server.ctx)
+	ctx, cancel := context.WithCancel(parent)
 	item := &ownerExecution{ctx: ctx, cancel: cancel, binding: binding}
 	server.running[chat] = item
 	server.wg.Add(1)
@@ -67,7 +70,10 @@ func (server *Server) DispatchChannel(chat string, execute func(context.Context)
 	return server.dispatchBound(chat, "", execute)
 }
 func (server *Server) dispatchBound(chat, binding string, execute func(context.Context) (harness.RunResult, error)) error {
-	item, err := server.reserve(chat, binding)
+	return server.dispatchBoundContext(server.ctx, chat, binding, execute)
+}
+func (server *Server) dispatchBoundContext(parent context.Context, chat, binding string, execute func(context.Context) (harness.RunResult, error)) error {
+	item, err := server.reserveContext(parent, chat, binding)
 	if err != nil {
 		return err
 	}

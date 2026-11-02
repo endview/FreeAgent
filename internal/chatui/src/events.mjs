@@ -6,6 +6,7 @@ export function eventStream(url, headers, callbacks) {
   async function connect() {
     try {
       const response = await fetch(url, { headers, signal: controller.signal, cache: 'no-store' });
+	  if (response.status === 401 && callbacks.unauthorized) { closed = true; await response.body?.cancel(); callbacks.unauthorized(); return; }
       if (!response.ok || !response.body) throw new Error('Event connection failed');
       callbacks.open();
       const reader = response.body.getReader();
