@@ -80,6 +80,11 @@ func runCommands(ctx context.Context, args []string, stdin io.Reader, stdout, st
 			if err = client.Confirm(ctx, pending, strings.EqualFold(strings.TrimSpace(line), "y")); err != nil {
 				return err
 			}
+			// Confirm is accepted asynchronously. The persisted Run can still
+			// show its previous approval state until this owner execution settles.
+			if err = waitAttachedIdle(ctx, client, result.Run.ConversationID); err != nil {
+				return err
+			}
 			result, err = waitAttachedRun(ctx, client, result.Run.ID)
 			if err != nil {
 				return err

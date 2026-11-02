@@ -187,7 +187,7 @@ func waitAttachedIdle(ctx context.Context, client *handoff.Client, conversationI
 		if err != nil {
 			return err
 		}
-		if state.ActiveChat != conversationID {
+		if _, active := state.ActiveBindings[conversationID]; !active {
 			return nil
 		}
 		select {

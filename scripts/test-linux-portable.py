@@ -263,18 +263,21 @@ def main():
             input_text='y\n')
         api('PUT', '/api/commands/rules', {'rules': [{'program': shell, 'decision': 'allow'}]})
         run('spaces', 'permission', '--space', 'local', '--mode', 'workspace', '--yes')
-        arguments = {'command': shell, 'args': ['-c', 'printf denied > sandbox-denied.txt'], 'cwd': '.'}
+        arguments = {'command': shell, 'args': ['-c', 'printf sandbox-proof > portable-sandbox.txt'], 'cwd': '.'}
         refused = run('commands', 'start', '--session', chat, '--arguments', json.dumps(arguments), '--json',
                       success=False)
-        require(refused.returncode != 0 and not (workspace / 'sandbox-denied.txt').exists(),
-                'Linux sandbox request fell back to host execution')
         denied_result = json.loads(refused.stdout)
-        require(any(receipt['status'] == 'unsupported' and not receipt.get('host_escape_hatch', False)
-                    for receipt in denied_result.get('evidence', {}).get('commands_run', [])),
-                'Sandbox refusal lacks an explicit unsupported runtime receipt')
+        receipts=denied_result.get('evidence', {}).get('commands_run', [])
+        if doctor.get('sandbox',{}).get('status')=='ready':
+            require(refused.returncode==0 and (workspace/'portable-sandbox.txt').read_text()=='sandbox-proof', 'Available Linux sandbox did not execute')
+            require(any(receipt.get('backend')=='bubblewrap' and not receipt.get('host_escape_hatch',False) and receipt.get('cleanup')=='confirmed' for receipt in receipts),'Sandbox lacks real backend/cleanup evidence')
+            checks['actual_linux_sandbox']=True
+        else:
+            require(refused.returncode!=0 and not (workspace/'portable-sandbox.txt').exists(),'Unavailable sandbox fell back to the host')
+            require(any(receipt['status']=='unsupported' and not receipt.get('host_escape_hatch',False) for receipt in receipts),'Missing explicit unsupported receipt')
+            checks['sandbox_refusal_without_host_fallback']=True
         if denied_result['run']['status'] not in ('completed', 'failed', 'abandoned'):
             api('POST', f'/api/chats/{chat}/end', {'acknowledge': True})
-        checks['sandbox_refusal_without_host_fallback'] = True
         run('spaces', 'permission', '--space', 'local', '--mode', 'full', '--yes')
         arguments['args'] = ['-c', 'printf command-proof > portable-command.txt; printf command-ok']
         command = run('commands', 'start', '--session', chat, '--arguments', json.dumps(arguments), '--json')

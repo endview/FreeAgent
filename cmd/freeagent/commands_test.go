@@ -99,3 +99,38 @@ func TestCommandsCLIJSONPendingKeepsWaitingExitCode(t *testing.T) {
 		t.Fatalf("waiting exit %s %v", raw, err)
 	}
 }
+
+func TestCommandsCLIInteractiveWaitsForOwnerDecision(t *testing.T) {
+	data := commandCLIConfig(t, true)
+	config, err := harness.LoadConfig(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.Commands.Rules[0].Decision = harness.CommandRuleAsk
+	if err := harness.WriteConfig(data, config); err != nil {
+		t.Fatal(err)
+	}
+	_, _, _ = startTestWeb(t, data)
+	client, err := interactiveOwner(t.Context(), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat, err := client.NewConversation(t.Context(), "Confirmed command")
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, _ := os.Executable()
+	arguments := fmt.Sprintf(`{"command":%q,"args":["-test.run=TestCLICommandHelper","--","--cli-command-helper"],"cwd":".","background":true}`, program)
+	raw, diagnostic, err := invoke(t, "y\n", "commands", "start", "--data-dir", data, "--session", chat.ID, "--request", "approved", "--arguments", arguments, "--interactive", "--json")
+	var result harness.RunResult
+	if err != nil || json.Unmarshal([]byte(raw), &result) != nil || result.Run.Status != "completed" {
+		t.Fatalf("confirmed command returned before settlement: %s %s %v", raw, diagnostic, err)
+	}
+	var record harness.CommandRecord
+	if json.Unmarshal([]byte(result.Answer), &record) != nil || record.ID == "" {
+		t.Fatal("missing command receipt")
+	}
+	if _, err := client.StopCommand(t.Context(), record.ID); err != nil {
+		t.Fatal(err)
+	}
+}
