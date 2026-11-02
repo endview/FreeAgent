@@ -244,14 +244,25 @@ func TestCollaborationParentActiveTimeExcludesApprovalWaitAndEnforcesDeadline(t 
 			plan.Roles["reviewer"] = role
 			plan.Children = plan.Children[:1]
 			plan.Budget.MaxActiveSeconds = 1
+			if mode == "approval" {
+				// SQLite sync and race instrumentation on a hosted Windows runner
+				// can legitimately consume over a second of active execution. Check
+				// that the persisted clock freezes during approval, independently of
+				// that overhead; the timeout case keeps its actual one-second limit.
+				plan.Budget.MaxActiveSeconds = 30
+			}
 			id := createCollaboration(t, collab, plan)
 			collab.tasks.SetApproval(func(ctx context.Context, _ ToolCall, _ PreparedTool) (bool, error) {
-				run, _ := core.Store.GetRun(ctx, id)
-				if run.ActiveSince != "" {
-					t.Error("approval wait left parent clock running")
+				run, err := core.Store.GetRun(ctx, id)
+				if err != nil || run.ActiveSince != "" {
+					return false, fmt.Errorf("approval wait left parent clock running: %v", err)
 				}
 				select {
 				case <-time.After(1200 * time.Millisecond):
+					after, err := core.Store.GetRun(ctx, id)
+					if err != nil || after.ActiveSince != "" || after.ElapsedMS != run.ElapsedMS {
+						return false, fmt.Errorf("approval idle time was charged: before=%d after=%d active=%q err=%v", run.ElapsedMS, after.ElapsedMS, after.ActiveSince, err)
+					}
 					return true, nil
 				case <-ctx.Done():
 					return false, ctx.Err()
@@ -259,7 +270,7 @@ func TestCollaborationParentActiveTimeExcludesApprovalWaitAndEnforcesDeadline(t 
 			})
 			report, err := collab.Continue(t.Context(), id)
 			if mode == "approval" {
-				if err != nil || report.Parent.Status != "completed" || report.Usage.ActiveMS >= 1000 {
+				if err != nil || report.Parent.Status != "completed" {
 					t.Fatalf("idle approval billed: usage=%+v status=%s err=%v", report.Usage, report.Parent.Status, err)
 				}
 			} else {

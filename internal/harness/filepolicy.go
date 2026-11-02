@@ -126,7 +126,8 @@ func protectedPath(dataDir, target string) bool {
 	if err != nil {
 		return true
 	}
-	if within(data, resolved) {
+	private, err := privateApplicationPaths(data)
+	if err != nil || insidePrivatePath(private, resolved) {
 		return true
 	}
 	name := strings.ToLower(filepath.Base(resolved))

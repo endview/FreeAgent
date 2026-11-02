@@ -145,6 +145,28 @@ func WebView2Dir() (string, error) {
 		cacheDir, "webview2")
 }
 
+// PrivateStateDirs includes browser storage and shared credentials outside the
+// selected Harness directory. Protect the enclosing directories so atomic file
+// replacement cannot publish a new credential into a sandbox's parent grant.
+func PrivateStateDirs() ([]string, error) {
+	where, err := locate()
+	if err != nil {
+		return nil, err
+	}
+	if where.portable {
+		return []string{filepath.Join(where.root, "data")}, nil
+	}
+	config, err := configDir()
+	if err != nil {
+		return nil, err
+	}
+	cache, err := cacheDir()
+	if err != nil {
+		return nil, err
+	}
+	return []string{filepath.Join(config, "FreeAgent"), filepath.Join(cache, "FreeAgent")}, nil
+}
+
 func LogDir() (string, error) {
 	return choose(func(root string) string { return filepath.Join(root, "data") }, cacheDir, "")
 }

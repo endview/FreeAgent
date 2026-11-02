@@ -116,6 +116,10 @@ func TestAppPathsUserLocations(t *testing.T) {
 	if err != nil {
 		t.Skip("no user cache directory:", err)
 	}
+	private, err := PrivateStateDirs()
+	if err != nil || len(private) != 2 || private[0] != filepath.Join(config, "FreeAgent") || private[1] != filepath.Join(cache, "FreeAgent") {
+		t.Fatalf("private state directories=%q err=%v", private, err)
+	}
 	// The test binary is never inside a portable package.
 	for name, check := range map[string]struct {
 		call func() (string, error)

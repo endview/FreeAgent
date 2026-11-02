@@ -79,6 +79,13 @@ func TestCommandHelper(t *testing.T) {
 	case "ok":
 		fmt.Print("check really ran")
 		os.Exit(0)
+	case "private-browser":
+		if raw, err := os.ReadFile(args[1]); err == nil {
+			fmt.Print(string(raw))
+			os.Exit(3)
+		}
+		fmt.Print("PRIVATE_BROWSER_DENIED")
+		os.Exit(0)
 	case "fail":
 		fmt.Print("check failed")
 		os.Exit(7)

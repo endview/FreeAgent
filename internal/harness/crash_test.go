@@ -28,6 +28,7 @@ func TestCrashHelperProcess(t *testing.T) {
 	}
 	files, err := NewFileTools(config.Workspace, data)
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "crash fixture file tools:", err)
 		os.Exit(4)
 	}
 	phase := os.Getenv("PHASE")
@@ -112,6 +113,10 @@ func TestActualProcessKillRecovery(t *testing.T) {
 			command := exec.Command(executable, "-test.run=^TestCrashHelperProcess$")
 			serverConfig := MCPServerConfig{Env: map[string]string{
 				"HARNESS_CRASH_FIXTURE": "1", "DATA": data, "SESSION": id, "PHASE": phase,
+				// This helper hosts a complete Harness, unlike an MCP server.
+				// Supply isolated application directories rather than inheriting
+				// the user's environment or leaving its private paths unknown.
+				"APPDATA": filepath.Join(data, "user-config"), "LOCALAPPDATA": filepath.Join(data, "user-cache"), "HOME": data,
 			}}
 			command.Env, _, err = mcpEnvironment(serverConfig, nil)
 			if err != nil {

@@ -485,18 +485,38 @@ func (tools *CommandTools) startProcess(ctx context.Context, args commandArgumen
 	spec := winlaunch.Spec{Command: args.Command, Args: args.Args, Dir: receipt.WorkingDir,
 		Env: commandEnvironment(tools.Config.InheritEnv), Mode: winlaunch.ModeHost, Network: winlaunch.NetworkOff}
 	if tools.executionMode() == CommandExecutionSandboxed {
-		spec.PrivatePaths = append([]string{tools.DataDir}, tools.Profile.BlockedPaths...)
-		if inv, ok := ctx.Value(commandInvocationKey{}).(commandInvocation); ok && inv.service.Keys != nil {
-			spec.PrivatePaths = append(spec.PrivatePaths, inv.service.Keys.Path())
+		private, err := privateApplicationPaths(tools.DataDir)
+		if err != nil {
+			return nil, err
 		}
+		if tools.Files != nil {
+			private = appendPrivatePaths(private, tools.Files.private...)
+		}
+		if inv, ok := ctx.Value(commandInvocationKey{}).(commandInvocation); ok && inv.service.Keys != nil {
+			private = appendPrivatePaths(private, inv.service.Keys.Path())
+		}
+		spec.PrivatePaths = appendPrivatePaths(append([]string(nil), private...), tools.Profile.BlockedPaths...)
 		if err := tools.sandboxSpec(&spec); err != nil {
 			return nil, err
+		}
+		for _, grant := range spec.Grants {
+			if insidePrivatePath(spec.PrivatePaths, grant.Root) {
+				return nil, errors.New("sandbox grant is private application state or a blocked path")
+			}
+			for _, path := range private {
+				if within(grant.Root, path) {
+					info, err := os.Lstat(path)
+					if err != nil || !info.IsDir() {
+						return nil, errors.New("sandbox grant overlaps absent private state or a replaceable private file; select a narrower root")
+					}
+				}
+			}
 		}
 		for _, root := range args.executionRoots {
 			if grantRootPresent(spec.Grants, root) {
 				continue
 			}
-			for _, protected := range append([]string{tools.DataDir}, tools.Profile.BlockedPaths...) {
+			for _, protected := range spec.PrivatePaths {
 				if protected != "" && (within(root, protected) || within(protected, root)) {
 					return nil, errors.New("sandbox installation set overlaps protected path")
 				}
@@ -504,8 +524,7 @@ func (tools *CommandTools) startProcess(ctx context.Context, args commandArgumen
 			spec.Grants = append(spec.Grants, winlaunch.Grant{Root: root, Access: winlaunch.AccessRead})
 		}
 		if args.installationRoot != "" && !grantRootPresent(spec.Grants, args.installationRoot) {
-			protectedPaths := append([]string{tools.DataDir}, tools.Profile.BlockedPaths...)
-			for _, protected := range protectedPaths {
+			for _, protected := range spec.PrivatePaths {
 				if protected == "" {
 					continue
 				}

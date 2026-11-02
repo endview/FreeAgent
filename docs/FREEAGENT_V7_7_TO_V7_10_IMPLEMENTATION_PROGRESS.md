@@ -226,3 +226,26 @@ or failed assertion in that timeout. Its ordinary suite allowance is now ten
 minutes, matching the release workflow; product Run/service limits and test
 assertions are unchanged. Matrix fail-fast is disabled so an independent Linux
 job can finish and report its own outcome when Windows fails.
+
+Source d39fb3c passed Windows ordinary/full native race, Debian ordinary/vet/full
+race (harness 409.756s), both repeatable archive builds, Windows CLI portable and
+all sixteen Debian portable checks. Its native GUI retained both GUI/CLI turns
+and the Echo configuration after closing and reopening. Hosted Windows race
+reported 1408ms of real active work against a one-second approval test allowance;
+the paused clock itself was empty. Approval coverage now directly verifies that
+persisted elapsed time remains unchanged throughout the actual wait, allowing
+bounded active I/O overhead; the separate one-second deadline test is retained.
+
+Final private-state review reproduced file-tool access to WebView2 session
+storage outside the Harness directory, and Windows short-name access to that
+same protected directory. Application state now includes the enclosing portable
+data or per-user config/cache directories and explicit data/key overrides, with
+shared enforcement in the file broker and sandbox launch. Broad-root Windows
+paths resolve short names; application directories containing a workspace are
+rejected. Parent grants over absent private paths or individually replaceable
+private files fail closed. Read/edit/delete/create/export/search and an actual
+AppContainer read refusal have focused regressions. The crash helper now supplies
+isolated application-directory environment values, without widening the MCP
+environment whitelist. Five native race repetitions of the privacy, crash and
+approval-clock regressions PASS. Final full regression and rebuilt archives are
+required for this runtime change. The real eight-hour retry remains RUNNING.

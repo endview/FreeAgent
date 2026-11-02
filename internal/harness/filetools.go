@@ -24,13 +24,14 @@ const maxFileBytes = 256 << 10
 var fileMutationMu sync.Mutex
 
 type FileTools struct {
-	root            *os.Root
-	workspace       string
-	dataDir         string
-	denied          string
-	blocked         []string
-	removeFile      func(string) error
-	postDeleteLstat func(string) (fs.FileInfo, error)
+	root               *os.Root
+	workspace          string
+	dataDir            string
+	private            []string
+	privateDescendants bool
+	blocked            []string
+	removeFile         func(string) error
+	postDeleteLstat    func(string) (fs.FileInfo, error)
 }
 
 func NewFileTools(workspace, dataDir string) (*FileTools, error) {
@@ -38,23 +39,30 @@ func NewFileTools(workspace, dataDir string) (*FileTools, error) {
 	if err != nil {
 		return nil, err
 	}
+	workspace, err = filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return nil, err
+	}
 	dataDir, err = canonicalDir(dataDir)
 	if err != nil {
 		return nil, err
 	}
-	if within(dataDir, workspace) {
-		return nil, errors.New("harness: workspace cannot be inside the harness data directory")
+	private, err := privateApplicationPaths(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	if insidePrivatePath(private, workspace) {
+		return nil, errors.New("harness: workspace cannot be inside private application state")
 	}
 	root, err := os.OpenRoot(workspace)
 	if err != nil {
 		return nil, err
 	}
-	denied := ""
-	if within(workspace, dataDir) {
-		relative, _ := filepath.Rel(workspace, dataDir)
-		denied = filepath.ToSlash(relative)
+	tools := &FileTools{root: root, workspace: workspace, dataDir: dataDir, private: private}
+	for _, path := range private {
+		tools.privateDescendants = tools.privateDescendants || within(workspace, path)
 	}
-	return &FileTools{root: root, workspace: workspace, dataDir: dataDir, denied: denied}, nil
+	return tools, nil
 }
 
 func (tools *FileTools) Close() error { return tools.root.Close() }
@@ -306,10 +314,10 @@ func (tools *FileTools) validatePath(input string) (string, error) {
 		return "", errors.New("file path must be relative to the workspace")
 	}
 	name := path.Clean(input)
-	if tools.denied != "" && (strings.EqualFold(name, tools.denied) || strings.HasPrefix(strings.ToLower(name), strings.ToLower(tools.denied)+"/")) {
-		return "", errors.New("harness data is not accessible to file tools")
-	}
 	absolute := filepath.Clean(filepath.Join(tools.workspace, filepath.FromSlash(name)))
+	if tools.isPrivatePath(absolute) {
+		return "", ErrProtectedPath
+	}
 	for _, blocked := range tools.blocked {
 		if within(blocked, absolute) {
 			return "", ErrPathBlocked

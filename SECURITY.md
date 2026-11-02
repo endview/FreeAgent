@@ -1,8 +1,8 @@
 # Security
 
-This is an unreleased local single-user harness. It has no production security
-support window, multi-user isolation, hostile-code sandbox or exactly-once
-execution guarantee.
+This is a preview single-user harness with no production security support
+window, multi-user isolation or exactly-once execution guarantee. Command OS
+isolation is available only when the selected backend's readiness checks pass.
 
 ## Boundaries
 
@@ -11,7 +11,10 @@ execution guarantee.
   Secrets pasted by a user remain part of their history.
 - Built-in file tools are limited to the selected workspace unless allowed
   roots or all non-protected paths are explicitly selected. They reject links,
-  hardlinks, `.git` and harness state. Select an appropriate, non-sensitive
+  hardlinks, `.git` and private application state, including browser profiles,
+  shared credentials and the selected Harness directory. Parent-root grants
+  do not expose that state; Windows short-name aliases are checked too.
+  Select an appropriate, non-sensitive
   workspace. Avoid concurrent edits to the same file.
 - The default Ask mode requires confirmation for file changes, commands, HTTP
   GET and MCP calls. Workspace mode allows built-in file changes inside the
@@ -19,7 +22,7 @@ execution guarantee.
   Full access skips tool approval. Confirmation authorizes an operation, not its
   correctness or reversibility.
 - Model-proposed persistent settings changes always need user confirmation
-  through the Chat card, the CLI prompt or a short expiring code. The attach
+  through the Chat card or the CLI prompt. The attach
   observation secret cannot change settings.
 - MCP programs are trusted local processes. They can ignore workspace boundaries
   and use their account's files and network. They do not run in the command
@@ -34,7 +37,11 @@ execution guarantee.
   from provider/MCP responses; this is not a guarantee of general secret
   detection.
 - `command_run` is disabled by default. On Windows, sandboxed commands run in
-  an AppContainer only after its readiness checks pass. Host execution requires
+  an AppContainer; on Linux they require Bubblewrap, working namespaces and
+  pidfds. Failed sandbox readiness never falls back to host execution. Linux
+  sandbox networking and host-visible sandbox service ports are unavailable.
+  Explicit bounded background commands and services share the same execution
+  policy and retained outcome records. Host execution requires
   Full access, runs as the current user and is recorded with
   `host_escape_hatch`; it can change anything that user can change, including
   FreeAgent settings, and is not a control-plane boundary. The default
@@ -57,16 +64,29 @@ execution guarantee.
 - Current-format backups use SQLite snapshots, hashes and private staging.
   Hashes detect accidental damage; they are not authenticated signatures.
   Restore only trusted backups into a new directory.
-- There is no HTTP control platform, implicit shell, automatic installer or
-  background worker. Explicit `web` starts a foreground loopback-only Chat with
-  a per-launch key, same-origin checks and no CORS. Keep that launch address
+- Explicit `web` defaults to a loopback Chat with a per-launch key,
+  same-origin checks and no CORS. Keep that launch address
   private; it authorizes access to this local caller. Browser storage holds
   drafts and pending submission keys and may contain sensitive text. Closing
   the browser does not cancel work. Unknown stores are rejected, not upgraded.
+- Optional Linux public Web is disabled by default. It requires a TLS reverse
+  proxy, a restricted Unix socket, a local administrator password setup and
+  explicit public Origin. Argon2id, bounded sessions, secure cookies, Origin and
+  CSRF checks are always enforced; login lockout, IP lists, cookie login
+  detection and source binding are individually configurable. Remote permission
+  ceilings default to Full and intersect the space and initiating actor's
+  permissions. A remote session cannot raise its own ceiling. Full host commands
+  retain the same service-user escape hatch described above. See
+  [public Web deployment](docs/PUBLIC_WEB.md) for TLS and recovery requirements.
+- Uploaded text/images are immutable, conversation-bound attachments with size,
+  storage and context limits. Image previews are validated PNG/JPEG bytes;
+  other files download as attachments. Provider image capability is explicit.
+  Published tool results require the current file policy and exact content
+  binding; transport delivery is a separate recorded outcome.
 - Markdown HTML and external images remain literal; math has trust disabled
   and finite expansion/source/depth/size limits. Links can open HTTP(S) targets
   only by user action and do not authorize execution. This is not an HTML app
-  runner, remote hosting service or multi-user security boundary.
+  runner or multi-user security boundary.
 - Optional collaboration shares these same boundaries. Roles are explicit plan
   data, not OS identities or sandboxes. Built-in file scopes restrict assigned
   paths; commands, HTTP and MCP still need exact approval and can use their

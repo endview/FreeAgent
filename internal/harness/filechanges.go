@@ -260,14 +260,14 @@ func (tools *FileTools) validateCreatePath(input string) (string, error) {
 		return "", errors.New("creation requires a relative workspace path")
 	}
 	name := path.Clean(input)
+	if tools.isPrivatePath(filepath.Join(tools.workspace, filepath.FromSlash(name))) {
+		return "", ErrProtectedPath
+	}
 	if name == "." || strings.EqualFold(path.Base(name), ".git") {
 		return "", errors.New("protected creation path")
 	}
 	if _, err := tools.validatePath(path.Dir(name)); err != nil {
 		return "", err
-	}
-	if tools.denied != "" && (strings.EqualFold(name, tools.denied) || strings.HasPrefix(strings.ToLower(name), strings.ToLower(tools.denied)+"/")) {
-		return "", errors.New("harness data is not accessible")
 	}
 	if _, err := tools.root.Lstat(filepath.FromSlash(name)); !errors.Is(err, os.ErrNotExist) {
 		return "", errors.New("creation target already exists or cannot be inspected")

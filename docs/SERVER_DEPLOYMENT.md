@@ -69,6 +69,13 @@ Linux sandbox Internet and host-visible service ports are NOT_SUPPORTED in this
 release. Full is an explicit same-user host escape hatch, limited by the service
 user and outer systemd restrictions; it is never described as root/admin access.
 
+Private state includes the application's portable `data` directory or per-user
+FreeAgent config/cache directories, plus explicit data/key overrides. Selecting
+a parent root never authorizes browser session storage or management credentials.
+Choose a narrower root when a grant overlaps absent application state or an
+individually replaceable private file. An explicit Full host operation keeps its
+documented same-user authority.
+
 Protected application files must each have exactly one hardlink. Preflight
 checks private-directory regular files, including administrator credentials,
 attachments and blocked directory contents. It does not read their bodies or
