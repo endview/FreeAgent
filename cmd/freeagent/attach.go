@@ -254,10 +254,33 @@ func attachedControlDecision(ctx context.Context, dataDir string, run harness.Ru
 		if err != nil || !approve || result.Run.Status != "waiting_confirmation" {
 			return result, err
 		}
+		// An asynchronous apply can fail while the Run remains waiting. Read
+		// its existing receipt before Preview can prepare a fresh proposal.
+		operations, operationErr := client.ControlOperations(ctx)
+		if operationErr != nil {
+			return result, operationErr
+		}
+		found := false
+		for _, operation := range operations {
+			if operation.ID != pending.ControlOperationID {
+				continue
+			}
+			found = true
+			if operation.Status != harness.ControlPending {
+				return result, fmt.Errorf("setting change %s ended with %s (%s); inspect the operation before trying again", operation.ID, operation.Status, operation.ErrorCode)
+			}
+			break
+		}
+		if !found {
+			return result, harness.ErrControlOperationNotFound
+		}
 		// The owner decides asynchronously; a proposal still waiting on the
 		// same operation means the code was refused.
 		current, previewErr := client.Preview(ctx, run.ID)
-		if previewErr != nil || current.ControlOperationID != pending.ControlOperationID {
+		if previewErr != nil {
+			return result, previewErr
+		}
+		if current.ControlOperationID != pending.ControlOperationID {
 			return result, nil
 		}
 		if !prompted || try == controlPromptTries {
@@ -347,6 +370,9 @@ func runAttachedSubmit(ctx context.Context, client *handoff.Client, dataDir, con
 func runAttachedContinue(ctx context.Context, client *handoff.Client, dataDir, conversationID, runID string,
 	interactive bool, stdin io.Reader, stdout, stderr io.Writer, asJSON bool) error {
 	if err := client.Continue(ctx, conversationID, runID); err != nil {
+		return err
+	}
+	if err := waitAttachedIdle(ctx, client, conversationID); err != nil {
 		return err
 	}
 	result, err := waitAttachedRun(ctx, client, runID)

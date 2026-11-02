@@ -128,16 +128,19 @@ func runConfirm(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		if err := codeOnlyForControl(current); err != nil {
 			return err
 		}
+		run, _, _, inspectErr := client.Inspect(ctx, *runID)
+		if inspectErr != nil {
+			return inspectErr
+		}
 		if current.ControlOperationID != "" {
-			run, _, _, err := client.Inspect(ctx, *runID)
-			if err != nil {
-				return err
-			}
 			result, decideErr := attachedControlDecision(ctx, *dataDir, run, current, strings.TrimSpace(*code), *approve,
 				newTerminalInput(ctx, stdin).read, stderr)
 			return finishControlDecision(stdout, stderr, result, decideErr, *asJSON, false)
 		}
 		if err := client.Confirm(ctx, current, *approve); err != nil {
+			return err
+		}
+		if err := waitAttachedIdle(ctx, client, run.ConversationID); err != nil {
 			return err
 		}
 		result, waitErr := waitAttachedRun(ctx, client, *runID)

@@ -44,9 +44,10 @@ See [server deployment](docs/SERVER_DEPLOYMENT.md), [attachments](docs/ATTACHMEN
 
 Linux amd64 has a separate portable archive with the same CLI and embedded Web
 UI. It starts with `./FreeAgent`, uses package-local data, and needs no Go or
-Node installation. See [Linux instructions](docs/LINUX_PORTABLE.md). Windows
-AppContainer is unavailable on Linux; sandboxed commands refuse without host
-fallback. Linux command execution requires explicit Full/host permission.
+Node installation. See [Linux instructions](docs/LINUX_PORTABLE.md). Linux uses
+optional Bubblewrap isolation; unavailable sandbox requests refuse without host
+fallback. Full explicitly selects host execution. Linux sandbox networking and
+host-visible sandbox service ports remain unsupported.
 
 ## Start
 
@@ -78,9 +79,10 @@ $data = Join-Path $env:LOCALAPPDATA 'FreeAgent-Harness-Preview'
 $project = (Get-Location).Path
 
 & $exe init --data-dir $data --workspace $project
-& $exe key add --name main --url 'https://your-provider.example/v1'
+& $exe key add --data-dir $data --name main --url 'https://your-provider.example/v1'
 & $exe key test main
 & $exe config model --data-dir $data --id main --key main --model 'your-tool-capable-model'
+& $exe key enable main --data-dir $data
 & $exe --data-dir $data
 ```
 
@@ -152,13 +154,15 @@ key edit <id|name> [--name <name>] [--url <address>] [--note <text>] [--key-prom
 key remove <id|name> [--force | --disable-models [--new-default <id>]] [--data-dir <directory>]
 key test <id|name> [--json]
 key models <id|name> [--json]
+key enable <id|name> [--data-dir <directory>]
+key disable <id|name> [--data-dir <directory>]
 config show
 config model --id <name> [--default] --key <key profile id|name> --model <name>
 config model --id <name> [--default] --provider echo
 config model --id <name> --default
 config model --id <name> --remove [--new-default <id>]
 config workspace --path <directory>
-config commands --enabled [--allow <absolute-executable>] [--timeout 120 --output-bytes 32768] [--inherit-environment] [--git-write]
+config commands --enabled [--allow <absolute-executable>] [--timeout 120 --output-bytes 32768] [--inherit-environment]
 config http --enabled --origin <scheme://host[:port]> [--timeout 20 --output-bytes 32768]
 config context --summary-bytes <0-16384>
 config collaboration --mode off|ask|auto
@@ -166,7 +170,7 @@ config memory [--knowledge] [--max-entries 16 --context-bytes 16384 --document-b
 control <state|catalog|list|plan|confirm|reject|revert-plan|review> [--kind <kind> --arguments <json>] [--operation <id>] [--code <code>]
 chat [--resume <session>]
 web [--port <loopback-port>]
-run [--session <id>] [--model <id>] [--permission ask|workspace|full] [--confirm-full-access] [--request <key>] [--template <workspace-file>] [--json] [--interactive] <task>
+run [--session <id>] [--model <id>] [--permission none|ask|workspace|full] [--confirm-full-access] [--request <key>] [--template <workspace-file>] [--json] [--interactive] <task>
 continue --run <id> [--model <id>] [--max-steps <n>] [--max-seconds <n>] [--interactive] [--json]
 sessions [--show <id>]
 inspect --run <id>

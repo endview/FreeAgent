@@ -10,19 +10,33 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2025
             target: windows-amd64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: linux-amd64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.13'
+          python-version: '3.13.7'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.1'
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.25.0
+          package_json_file: internal/chatui/package.json
+      - run: pnpm install --frozen-lockfile
+        working-directory: internal/chatui
+      - run: pnpm test
+        working-directory: internal/chatui
+      - run: pnpm build
+        working-directory: internal/chatui
+      - run: git diff --exit-code -- internal/chatui/dist
       - run: go mod verify
       - run: go test -count=1 -timeout=10m -skip 'Live|RealProvider' ./...
       - run: python scripts/release_package.py --target ${{ matrix.target }} --output-directory bin/repeat-a
@@ -38,7 +52,7 @@ jobs:
           archive=$(find bin/repeat-a -maxdepth 1 -name '*.tar.gz')
           digest=$(sha256sum "$archive" | cut -d' ' -f1)
           python scripts/test-linux-portable.py --archive "$archive" --sha256 "$digest" --root /tmp/freeagent-release-check
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: portable-${{ matrix.target }}
           path: |

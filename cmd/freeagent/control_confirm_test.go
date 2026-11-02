@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -263,8 +266,66 @@ func TestAttachedPreviewShowsCodeForConfirm(t *testing.T) {
 	}
 	code := strings.ToLower(match[1])
 	raw, stderr, err := invoke(t, "", "confirm", "--data-dir", data, "--run", id, "--digest", digest, "--approve", "--code", code, "--json")
+	if err != nil {
+		status, diagnostic := webRequest(t, origin, token, "/api/attach/events?after=0", "")
+		t.Logf("owner events: HTTP %d %s", status, diagnostic)
+	}
 	result := decodeRun(t, raw, stderr, err)
 	if result.Run.Status != "completed" || permissionMode(t, data) != harness.PermissionWorkspace || calls.Load() != 1 {
 		t.Fatalf("status=%s permission=%s calls=%d", result.Run.Status, permissionMode(t, data), calls.Load())
+	}
+}
+
+func TestAttachedControlConfirmationSurvivesShortConfigReader(t *testing.T) {
+	testAttachedControlConfigReader(t, true)
+}
+
+func TestAttachedControlConfirmationReportsBlockedConfig(t *testing.T) {
+	testAttachedControlConfigReader(t, false)
+}
+
+func testAttachedControlConfigReader(t *testing.T, transient bool) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows replacement must wait for a reader without delete sharing")
+	}
+	data, calls := controlProposalCLI(t)
+	origin, token, stop := startTestWeb(t, data)
+	defer stop()
+	pending, confirmation := waitingControl(t, data)
+	status, body := webRequest(t, origin, token, "/api/control/confirmation?operation_id="+url.QueryEscape(confirmation.ControlOperationID)+
+		"&conversation_id="+url.QueryEscape(pending.Run.ConversationID), "")
+	var card harness.ControlConfirmation
+	if status != http.StatusOK || json.Unmarshal(body, &card) != nil || card.Code == "" {
+		t.Fatalf("confirmation: HTTP %d %s", status, body)
+	}
+	reader, err := os.Open(filepath.Join(data, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reader.Close() })
+	closed := make(chan struct{})
+	if transient {
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			_ = reader.Close()
+			close(closed)
+		}()
+		t.Cleanup(func() { <-closed })
+	}
+	var diagnostic bytes.Buffer
+	result, err := attachedControlDecision(t.Context(), data, pending.Run, confirmation, card.Code, true, nil, &diagnostic)
+	if !transient {
+		if err == nil || result.Run.Status != "waiting_confirmation" || permissionMode(t, data) != harness.PermissionAsk || calls.Load() != 1 {
+			t.Fatalf("blocked replacement: status=%s permission=%s calls=%d err=%v", result.Run.Status, permissionMode(t, data), calls.Load(), err)
+		}
+		return
+	}
+	if err != nil || result.Run.Status != "completed" {
+		status, events := webRequest(t, origin, token, "/api/attach/events?after=0", "")
+		t.Logf("owner events: HTTP %d %s", status, events)
+	}
+	if err != nil || result.Run.Status != "completed" || permissionMode(t, data) != harness.PermissionWorkspace || calls.Load() != 1 {
+		t.Fatalf("status=%s permission=%s calls=%d err=%v", result.Run.Status, permissionMode(t, data), calls.Load(), err)
 	}
 }

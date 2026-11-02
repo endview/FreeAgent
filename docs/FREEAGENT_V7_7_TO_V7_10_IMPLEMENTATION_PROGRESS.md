@@ -153,3 +153,24 @@ fixed; its clean repeat against the final package is still pending. The latest
 login-cookie change is not yet deployed. A public system-trusted certificate,
 real visual Provider semantics and real channel file accounts remain NOT_RUN.
 Temporary-CA TLS acceptance is not a claim of publicly trusted deployment.
+
+Source 6425353 passed two clean duplicate builds for each platform, Windows
+portable startup/reopen/CLI checks, all sixteen ordinary-user Debian portable
+checks including actual sandbox and explicit host execution, and Debian full
+race (harness 418.854s). Its actual HTTPS repeat passed all ten checks and a real
+62.275s idle expiry. Two test-only issues were corrected: successful sandbox
+results must remain CompletedProcess values before decoding, and intentional
+SSE revocation may raise Python HTTPException while closing chunked input.
+
+The Windows full race found an intermittent setting-confirmation failure. A
+held config reader reproduced it: destination replacement failed while the Run
+remained waiting; a subsequent Preview could prepare another proposal and hide
+the failed apply. Config publication now retries only bounded Windows sharing,
+locking or access failures without removing the old file. Attached confirmation
+reads the original operation receipt before any fresh preview; a sustained
+failure returns an error. Short-reader and permanently-blocked cases each PASS
+five native race repetitions; existing attached/confirm regression PASS.
+One-shot ordinary confirmation and continuation also wait for Owner settlement.
+These changes require rebuilding the final candidate; the earlier Windows race
+failure is not relabeled PASS. Release workflows now pin verified action commits
+and frontend/Python versions, rebuild and compare embedded dist before packaging.

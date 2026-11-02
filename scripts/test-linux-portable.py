@@ -265,7 +265,7 @@ def main():
         run('spaces', 'permission', '--space', 'local', '--mode', 'workspace', '--yes')
         arguments = {'command': shell, 'args': ['-c', 'printf sandbox-proof > portable-sandbox.txt'], 'cwd': '.'}
         refused = run('commands', 'start', '--session', chat, '--arguments', json.dumps(arguments), '--json',
-                      success=False)
+                      success=False, parse=False)
         denied_result = json.loads(refused.stdout)
         receipts=denied_result.get('evidence', {}).get('commands_run', [])
         if doctor.get('sandbox',{}).get('status')=='ready':

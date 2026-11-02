@@ -9,6 +9,7 @@ import argparse
 import copy
 import hashlib
 import http.cookiejar
+import http.client
 import http.server
 import json
 import secrets
@@ -288,7 +289,7 @@ def main():
             def drain():
                 try:
                     stream.read()
-                except (OSError, ValueError):
+                except (OSError, ValueError, http.client.HTTPException):
                     pass
                 finally:
                     stream.close()
