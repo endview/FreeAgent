@@ -232,7 +232,7 @@ def main():
 
         fixture = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Provider)
         threading.Thread(target=fixture.serve_forever, daemon=True).start()
-        run('key', 'add', '--name', 'loopback-fixture', '--url', f'http://127.0.0.1:{fixture.server_port}/v1', '--no-key')
+        run('key', 'add', '--name', 'loopback-fixture', '--url', f'http://127.0.0.1:{fixture.server_port}/v1', '--no-key', '--enable', input_text='y\n')
         run('config', 'model', '--id', 'fixture', '--key', 'loopback-fixture', '--model', 'fixture', '--default',
             input_text='y\n')
         a, b, c = (new_chat('parallel ' + name) for name in ('A', 'B', 'C'))
