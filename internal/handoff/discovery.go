@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/endview/freeagent/internal/fileops"
 )
 
 const (
@@ -90,7 +92,13 @@ func (published Published) Close() error {
 	if published.dataDir == "" {
 		return nil
 	}
-	return errors.Join(os.Remove(filepath.Join(published.dataDir, EngineFile)), os.Remove(filepath.Join(published.dataDir, SecretFile)), os.Remove(filepath.Join(published.dataDir, ChatFile)))
+	var failures []error
+	for _, name := range []string{EngineFile, SecretFile, ChatFile} {
+		if err := fileops.Remove(filepath.Join(published.dataDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
 }
 
 func Read(dataDir string) (EngineInfo, string, string, error) {
@@ -195,7 +203,7 @@ func atomicWrite(path string, raw []byte, mode os.FileMode) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tempPath, path)
+	return fileops.Rename(tempPath, path)
 }
 
 func mustJSON(value any) []byte {

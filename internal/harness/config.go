@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/endview/freeagent/internal/fileops"
 )
 
 const (
@@ -337,7 +339,7 @@ func WriteConfig(dataDir string, config Config) error {
 	if err := temp.Close(); err != nil {
 		return fmt.Errorf("harness: close config: %w", err)
 	}
-	if err := publishConfigFile(tempPath, target); err != nil {
+	if err := fileops.Rename(tempPath, target); err != nil {
 		return fmt.Errorf("harness: publish config: %w", err)
 	}
 	published = true

@@ -211,3 +211,18 @@ directory symlinks. Critical state symlink checks remain. All Linux winlaunch
 race tests PASS after the fix, including these three refusals, ordinary project
 hardlink sharing, network denial, setsid cleanup and Owner death cleanup. This
 Linux runtime change requires its own final regression and rebuilt release.
+
+Hosted CI on 020c0c0 passed both repeatable-package jobs. Its Windows ordinary
+test exposed another real sharing race: Owner handoff could leave discovery
+files because removal errors were discarded. Config replacement, administrator
+credential replacement and discovery replacement/removal now reuse one small
+bounded Windows sharing-retry utility. Discovery close is idempotent; Owner
+close retains cleanup errors. A held-reader discovery test, handoff promotion,
+control confirmation and password regressions PASS five native race repetitions.
+
+The 404da64 hosted Windows suite reached its five-minute global package timeout
+while starting a final test and syncing SQLite; there was no blocked test loop
+or failed assertion in that timeout. Its ordinary suite allowance is now ten
+minutes, matching the release workflow; product Run/service limits and test
+assertions are unchanged. Matrix fail-fast is disabled so an independent Linux
+job can finish and report its own outcome when Windows fails.

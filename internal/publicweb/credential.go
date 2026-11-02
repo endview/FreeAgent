@@ -15,8 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/endview/freeagent/internal/fileops"
 	"github.com/endview/freeagent/internal/harness"
 	"golang.org/x/crypto/argon2"
 )
@@ -127,17 +127,7 @@ func SetPassword(data string, password []byte) error {
 	if err != nil {
 		return err
 	}
-	for attempt := 0; attempt < 10; attempt++ {
-		err = os.Rename(temporary, path)
-		if err == nil {
-			return nil
-		}
-		if runtime.GOOS != "windows" || !os.IsPermission(err) {
-			return err
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	return err
+	return fileops.Rename(temporary, path)
 }
 
 func CredentialReady(data string) bool { _, err := loadCredential(data); return err == nil }

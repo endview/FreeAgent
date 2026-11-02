@@ -3,7 +3,9 @@ package handoff
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestPublishReadAndRemoveDiscoveryKeepsSecretsSeparate(t *testing.T) {
@@ -36,5 +38,46 @@ func TestPublishReadAndRemoveDiscoveryKeepsSecretsSeparate(t *testing.T) {
 	}
 	if _, _, _, err := Read(dir); err == nil {
 		t.Fatal("removed discovery remained readable")
+	}
+}
+
+func TestCloseDiscoveryWaitsForBriefWindowsReader(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows deletion sharing")
+	}
+	dir := t.TempDir()
+	secret, err := NewSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := Publish(dir, EngineInfo{Origin: "http://127.0.0.1:4567", Workspace: filepath.Join(dir, "workspace"), Generation: "generation", OwnerKind: "interactive"}, secret, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readers := make([]*os.File, 0, 3)
+	for _, name := range []string{EngineFile, SecretFile, ChatFile} {
+		reader, err := os.Open(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		readers = append(readers, reader)
+	}
+	closed := make(chan struct{})
+	go func() {
+		time.Sleep(80 * time.Millisecond)
+		for _, reader := range readers {
+			_ = reader.Close()
+		}
+		close(closed)
+	}()
+	t.Cleanup(func() { <-closed })
+	if err := published.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := Read(dir); err == nil {
+		t.Fatal("closed Owner discovery is still attachable")
+	}
+	if err := published.Close(); err != nil {
+		t.Fatalf("repeated close: %v", err)
 	}
 }

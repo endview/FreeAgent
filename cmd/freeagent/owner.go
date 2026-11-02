@@ -144,7 +144,7 @@ func (owner *localOwner) Close() error {
 		}
 		if owner.telegram != nil {
 			if telegramErr := owner.telegram.Stop(); telegramErr != nil {
-				owner.result = telegramErr
+				owner.result = errors.Join(owner.result, telegramErr)
 			}
 		}
 		for _, runtime := range []*harness.AppChannelRuntime{owner.lark, owner.qq} {
@@ -164,8 +164,7 @@ func (owner *localOwner) Close() error {
 		if errors.Is(serveErr, http.ErrServerClosed) {
 			serveErr = nil
 		}
-		owner.publish.Close()
-		owner.result = errors.Join(owner.result, err, serveErr)
+		owner.result = errors.Join(owner.result, err, serveErr, owner.publish.Close())
 	})
 	return owner.result
 }
