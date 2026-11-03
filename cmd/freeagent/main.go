@@ -902,6 +902,7 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
+	textOutput := flags.Bool("text", false, "show checks and recovery steps as readable text (default: JSON)")
 	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
@@ -911,49 +912,15 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	if err := resolveDataDir(dataDir); err != nil {
 		return err
 	}
-	config, err := harness.LoadConfig(*dataDir)
-	if err != nil {
-		return err
-	}
-	if err := harness.VerifyData(ctx, *dataDir); err != nil {
-		return err
-	}
-	report := map[string]any{"ok": true, "data_dir": *dataDir, "workspace": config.Workspace, "models": config.Models,
-		"default_model": config.DefaultModel, "network_tested": false, "encrypted": harness.KeysEncrypted()}
-	// Key profiles are listed without secrets; a broken keys file is reported
-	// instead of hiding the rest of the diagnosis.
-	var keysErr error
-	store, err := keyStore()
-	if err == nil {
-		report["keys_file"] = store.Path()
-		var views []harness.KeyProfileView
-		views, keysErr = store.List()
-		keys := make([]map[string]any, 0, len(views))
-		for _, view := range views {
-			keys = append(keys, map[string]any{"name": view.Name, "source": keySourceText(view), "last_check": view.LastCheck})
+	report, checks, ok := doctorReport(ctx, *dataDir)
+	if *textOutput {
+		if err := writeDoctorText(stdout, *dataDir, checks); err != nil {
+			return err
 		}
-		report["keys"] = keys
-	} else {
-		keysErr = err
-	}
-	if keysErr != nil {
-		report["ok"], report["keys_error"] = false, keysErr.Error()
-	}
-	// The sandbox only matters when command_run would use it.
-	sandbox := harness.CheckSandbox(ctx)
-	report["sandbox"] = sandbox
-	sandboxNeeded := config.Commands.Enabled && config.Commands.Execution != harness.CommandExecutionHostExplicit
-	sandboxFailed := sandboxNeeded && sandbox.Status != "ready"
-	if sandboxFailed {
-		report["ok"] = false
-	}
-	if err := writeJSON(stdout, report); err != nil {
+	} else if err := writeJSON(stdout, report); err != nil {
 		return err
 	}
-	if keysErr != nil {
-		return &exitError{code: exitCode(keysErr)}
-	}
-	if sandboxFailed {
+	if !ok {
 		return &exitError{code: 1}
 	}
 	return nil

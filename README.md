@@ -4,7 +4,7 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v7.10.0-dev.1 development preview**. Download published Windows and Linux portable
+This is the **v7.11.0-dev.1 development preview**. Download published Windows and Linux portable
 builds from [Releases](https://github.com/endview/FreeAgent/releases).
 [简体中文](README.zh-CN.md).
 It uses a new
@@ -41,7 +41,14 @@ isolation. v7.9 adds bounded text/image input, immutable file exports and reply
 downloads. v7.10 adds optional single-administrator HTTPS access through a
 restricted Unix socket. Provider connections and public Web default off.
 See [server deployment](docs/SERVER_DEPLOYMENT.md), [attachments](docs/ATTACHMENTS.md),
-[public Web](docs/PUBLIC_WEB.md) and [current acceptance](docs/FREEAGENT_V7_7_TO_V7_10_IMPLEMENTATION_PROGRESS.md).
+[public Web](docs/PUBLIC_WEB.md) and [v7.7–v7.10 acceptance](docs/FREEAGENT_V7_7_TO_V7_10_IMPLEMENTATION_PROGRESS.md).
+
+v7.11 reduces repeated path validation in bounded workspace observation/search,
+adds `doctor --text` with independent checks and recovery actions, and provides
+a read-only server installer `--check`. Existing file/handle checks still run
+for every read; credentials and Provider connections are not tested by doctor.
+See [v7.11 progress](docs/FREEAGENT_V7_11_EXECUTION_DIAGNOSTICS_PROGRESS.md) and
+[diagnosis/recovery](docs/RECOVERY.md).
 
 Linux amd64 has a separate portable archive with the same CLI and embedded Web
 UI. It starts with `./FreeAgent`, uses package-local data, and needs no Go or

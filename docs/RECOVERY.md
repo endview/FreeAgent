@@ -1,5 +1,41 @@
 # Recovery And Backup
 
+## Offline diagnosis
+
+Run `doctor --text` before changing configuration or restoring data. JSON remains
+the default for scripts (`doctor` without `--text`). In a Windows portable
+directory use `.\bin\freeagent.exe doctor --text`; in Linux portable mode use
+`./bin/freeagent doctor --text`. On a managed server, use the installer-provided
+management command, normally `/usr/local/bin/freeagent doctor --text`.
+
+The report checks configuration, database integrity, key metadata, selected
+Provider switches and the command sandbox. Independent errors are retained in
+one report, including when config.json is invalid. Each error or warning has a
+next action. It does not resolve/decrypt saved credentials, send Provider
+requests, start MCP, initialize missing data or change permissions/settings.
+The sandbox probe is a temporary local process.
+
+`ok` means no blocking local integrity/backend error was found. It does not
+certify a Provider connection. No model, a disabled Provider or an unavailable
+optional sandbox is explained separately; disabled features remain disabled.
+JSON includes local paths and model/key-profile names, but no configuration
+prompt bodies, environment values, credentials or database row contents.
+
+| Check | Next action |
+| --- | --- |
+| Missing/invalid configuration | Check the data directory, current format, workspace and instruction paths; retain existing data before recovery |
+| Store integrity/format error | Verify a backup and restore into a new empty directory; keep the original database |
+| Unreadable key metadata | Check the keys-file override, permissions and current format; keep the original file |
+| Provider disabled or model missing | Open Key management, select/configure the model and explicitly enable the intended Provider |
+| Required sandbox unavailable | Check Bubblewrap/namespaces on Linux or AppContainer on Windows; an explicit Full/host choice uses the OS user's authority |
+| Public Web configured | Check `public status`, `owner status`, the proxy configuration and unit journal; TLS/public reachability require separate verification |
+
+For a server install/update, run the installer with `--check` first. It verifies
+the package and installation prerequisites without modifying the service.
+See [server deployment](SERVER_DEPLOYMENT.md).
+
+## Run recovery
+
 `inspect --run <id>` shows the Run, model/tool Attempts and known responses.
 It can include conversation and file contents; do not paste it into public
 reports without reviewing it.

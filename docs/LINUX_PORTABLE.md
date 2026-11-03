@@ -1,6 +1,6 @@
 # FreeAgent Linux portable preview
 
-Candidate: v7.10.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
+Candidate: v7.11.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
 the native Windows desktop/WebView2 executable is not included. Go, Node,
 Python and a system web server are not needed to run this package.
 
@@ -10,8 +10,8 @@ Verify the outer SHA256SUMS.txt, extract the complete archive into a writable
 directory, then start:
 
 ```sh
-tar -xzf FreeAgent-v7.10.0-dev.1-linux-amd64-portable.tar.gz
-cd FreeAgent-v7.10.0-dev.1-linux-amd64-portable
+tar -xzf FreeAgent-v7.11.0-dev.1-linux-amd64-portable.tar.gz
+cd FreeAgent-v7.11.0-dev.1-linux-amd64-portable
 ./FreeAgent
 ```
 
@@ -97,7 +97,7 @@ Do not infer compatibility with untested architectures or distributions.
 Debian 12 amd64 is the acceptance platform. Optional Bubblewrap isolation
 requires a root-owned non-setuid `/usr/bin/bwrap`, working user/PID/mount/network
 namespaces and kernel pidfds. Install `bubblewrap` explicitly as the
-administrator, then inspect `./bin/freeagent doctor`. Missing capabilities refuse
+administrator, then inspect `./bin/freeagent doctor --text`. Missing capabilities refuse
 sandbox dispatch without host fallback. Ask uses read-only authorization;
 Workspace permits the selected writable roots. Protected application state is
 hidden, `.git` is read-only, and sandbox processes use isolated HOME/tmp.

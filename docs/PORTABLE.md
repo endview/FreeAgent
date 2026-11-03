@@ -2,7 +2,7 @@
 
 For the separate Linux amd64 CLI/Web archive, see [Linux portable](https://github.com/endview/FreeAgent/blob/main/docs/LINUX_PORTABLE.md).
 
-Current candidate: `v7.10.0-dev.1`, Windows amd64. This is an unsigned
+Current candidate: `v7.11.0-dev.1`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are bundled with the engine.
 
@@ -68,6 +68,11 @@ outside shared or hostile writable directories.
 
 ## Command Line
 
+For installation/configuration problems, run `.\bin\freeagent.exe doctor --text`.
+It shows independent local checks and next actions, including disabled Provider
+switches. It makes no Provider request and does not change settings. JSON remains
+available as `doctor` without `--text`; see `docs\RECOVERY.md`.
+
 `bin\freeagent.exe` is the professional and scripting entry point. It supports
 Key management, model configuration, `run`, `preview`, `confirm`, `doctor`,
 backup/restore and the optional bounded tools and collaboration controls.
@@ -110,7 +115,7 @@ in the package. One Provider and one model passing does not certify all
 Providers, model quality or every external failure mode.
 Current package, Windows race, Debian, attachment/UI and HTTPS evidence and
 unrun external tests are recorded in
-[current acceptance](https://github.com/endview/FreeAgent/blob/main/docs/FREEAGENT_V7_7_TO_V7_10_IMPLEMENTATION_PROGRESS.md).
+[current acceptance](https://github.com/endview/FreeAgent/blob/main/docs/FREEAGENT_V7_11_EXECUTION_DIAGNOSTICS_PROGRESS.md).
 The v7.0 live DeepSeek record is historical evidence, not acceptance of every
 later Provider or visual feature.
 

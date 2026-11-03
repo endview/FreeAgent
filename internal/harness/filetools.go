@@ -515,6 +515,7 @@ func (tools *FileTools) list(ctx context.Context, name string, offset, pageSize 
 
 func (tools *FileTools) search(ctx context.Context, name, query string) (ToolResult, error) {
 	matches := make([]map[string]any, 0)
+	needle := []byte(query)
 	visited := 0
 	bytesRead := 0
 	truncated := false
@@ -530,20 +531,25 @@ func (tools *FileTools) search(ctx context.Context, name, query string) (ToolRes
 		if walkErr != nil {
 			return nil
 		}
-		if _, err := tools.validatePath(current); err != nil {
-			if entry.IsDir() {
+		if entry.IsDir() {
+			if _, err := tools.validatePath(current); err != nil {
 				return fs.SkipDir
 			}
 			return nil
 		}
-		if entry.IsDir() || !entry.Type().IsRegular() {
+		if !entry.Type().IsRegular() {
 			return nil
 		}
+		// read validates the current path and handle, including private paths
+		// and links. Avoid a second identical per-file path walk here.
 		raw, _, err := tools.read(current)
 		if err != nil {
 			return nil
 		}
 		bytesRead += len(raw)
+		if !bytes.Contains(raw, needle) {
+			return nil
+		}
 		for line, text := range strings.Split(string(raw), "\n") {
 			if strings.Contains(text, query) {
 				if len(text) > 1000 {

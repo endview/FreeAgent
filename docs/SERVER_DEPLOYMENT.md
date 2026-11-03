@@ -7,10 +7,25 @@ It does not expose the Owner listener on the public network.
 Extract a clean Linux release (without its own data/workspace), then as root:
 
 ```sh
+python3 deploy/install-server.py --package "$PWD" --check
 python3 deploy/install-server.py --package "$PWD" --start
+/usr/local/bin/freeagent doctor --text
 /usr/local/bin/freeagent owner status
 /usr/local/bin/freeagent owner url
 ```
+
+`--check` requires root to inspect the same protected installation state, but
+does not create users/directories, change configuration or start/stop services.
+It verifies the complete clean package inventory and checksums, dependencies,
+paths, account ownership, existing managed files and the loopback port. An active
+owned service produces backup/stop guidance. Missing Bubblewrap is an optional
+warning; it does not prevent an explicit Full/host installation. The actual
+sandbox probe is performed by `doctor` after installation.
+
+Repeat the same options without `--check` to install. With `--start`, successful
+completion requires a responding Owner; `systemctl active` alone is insufficient.
+If readiness is not confirmed within 15 seconds, the installer reports the
+management and journal commands to investigate. It retains user data on failure.
 
 The management command runs as the service user. It sets `FREEAGENT_DATA_DIR`
 and `FREEAGENT_KEYS_FILE`; an explicit `--data-dir` still overrides the former.
@@ -43,6 +58,10 @@ allow a separate validation installation; the program prefix must be under
 `server.set_policy`. GUI Settings and CLI/AI control proposals use that same
 operation. Changes require an explicit Owner restart; no automatic restart or
 account privilege change is implied. A direct `web --port` is a launch override.
+
+When updating a deployment prepared for a public proxy, repeat its
+`--public-proxy-user` and `--public-group` options. Omitting them is refused with
+an explanation instead of removing the proxy's runtime directory/group setup.
 
 For updates: settle/stop active work, create and verify an online backup, stop
 the unit and confirm its cgroup is empty, install/select a new clean program,

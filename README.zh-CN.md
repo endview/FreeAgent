@@ -4,9 +4,13 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 SQLite Store，基础文件操作不需要安装 MCP。
 
-当前版本为已发布的 **v7.10.0-dev.1 开发预览**。
-[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v7.10.0-dev.1)
-· [English](README.md) · [发行说明](docs/releases/v7.10.0-dev.1.md)。
+当前开发候选为 **v7.11.0-dev.1**。
+[已发布的 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases)
+· [English](README.md) · [v7.11 实施与验收](docs/FREEAGENT_V7_11_EXECUTION_DIAGNOSTICS_PROGRESS.md)。
+
+v7.11 重点减少命令观察和文件搜索的重复扫描工作，增加 `doctor --text`
+离线诊断与下一步处理建议，以及服务器安装器的 `--check` 预检。每次文件读取
+仍检查实际路径和句柄；Provider 测试与配置开关由用户显式操作。
 
 使用独立的 `Harness-v8` 数据目录、Store v10 和 backup-v4。不导入旧配置、
 数据库或备份；请解压到新目录，保留旧程序自己的数据。便携包未签名，
@@ -88,13 +92,15 @@ pnpm --dir internal/chatui build
 go build -o ./bin/freeagent.exe ./cmd/freeagent
 ```
 
-本轮实际通过 Windows / Debian 普通与原生 race、84 项 JS 测试、WebView2
+已发布的 v7.10 实际通过 Windows / Debian 普通与原生 race、84 项 JS 测试、WebView2
 接续、真实 systemd / Bubblewrap、附件和临时 CA 下的 HTTPS / JSON / SSE。
 独立 v7.8 生命周期构建完成 28,800 秒长测，480 次采样、无额外重启；最终
 v7.10 二进制另有功能、归档和 HTTPS 验收，未宣称它也运行了八小时。
-两个便携包均两次干净构建一致，公开 Release 的 6 个资产已回下载校验。
+该版两个便携包均两次干净构建一致，公开 Release 的 6 个资产已回下载校验。
+v7.11 的针对性测试、性能对比和交付结果单独记录在其实施文档中。
 
 真实视觉 Provider、真实 Telegram/Lark/QQ 文件账号和系统信任公网证书仍为
 NOT_RUN。临时 CA 验证不等于公网可信证书验收。完整结果、来源与限制见
-[当前实施记录](docs/FREEAGENT_V7_7_TO_V7_10_IMPLEMENTATION_PROGRESS.md)及
-[发布验收 JSON](https://github.com/endview/FreeAgent/releases/download/v7.10.0-dev.1/FreeAgent-v7.10.0-dev.1-acceptance.json)。
+[v7.11 实施记录](docs/FREEAGENT_V7_11_EXECUTION_DIAGNOSTICS_PROGRESS.md)。
+[v7.10 发布验收 JSON](https://github.com/endview/FreeAgent/releases/download/v7.10.0-dev.1/FreeAgent-v7.10.0-dev.1-acceptance.json)
+作为对应旧提交的历史证据保留。

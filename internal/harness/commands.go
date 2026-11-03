@@ -828,16 +828,14 @@ func (tools *CommandTools) observe(ctx context.Context) (map[string]string, bool
 			complete = false
 			return nil
 		}
-		if _, err := tools.Files.validatePath(name); err != nil {
-			if entry.IsDir() {
+		if entry.IsDir() {
+			if _, err := tools.Files.validatePath(name); err != nil {
 				return fs.SkipDir
 			}
-			complete = false
 			return nil
 		}
-		if entry.IsDir() {
-			return nil
-		}
+		// read rechecks the path and opened handle. Directory checks above
+		// prune protected trees; repeating them for each file adds no coverage.
 		raw, _, err := tools.Files.read(name)
 		if err != nil {
 			complete = false
