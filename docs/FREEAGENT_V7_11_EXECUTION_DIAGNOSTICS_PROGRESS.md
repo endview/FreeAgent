@@ -4,6 +4,10 @@
 执行效率、安装与排障体验。Linux 沙箱联网暂缓；Full/host 在服务 OS 用户与
 systemd 限制范围内使用宿主网络，不自动增加管理员权限。
 
+状态：2026-11-03 已发布
+[v7.11.0-dev.1 开发预览](https://github.com/endview/FreeAgent/releases/tag/v7.11.0-dev.1)。
+发行源码固定为 `e64d999eaf919a157b2d61c3b9680f5799331902`。
+
 ## 实现
 
 - 命令前后文件观察、文件搜索移除重复的逐文件路径验证。目录仍在遍历前检查，
@@ -17,13 +21,13 @@ systemd 限制范围内使用宿主网络，不自动增加管理员权限。
   不阻塞 Full/host 使用。程序链接原子替换，拷贝后再次校验，Owner 就绪等待有界。
 - 安装器回归进入 Windows/Linux CI，复用当前数据格式和发行流程。
 
-## 已运行与待完成
+## 实际验证
 
 Windows 针对性 Go、完整普通、vet 与完整 native race PASS；race 的 Harness
 包实测 326.869 秒。最后修正的 Auto 可选评估模型为空时诊断误报已包含在 race 中。
 Debian 12 普通用户的完整普通/vet/race PASS（race 总耗时含编译 542.176 秒）。
 最终安装器 17 项用例在 Debian 全部 PASS；Windows 为 15 PASS，目录符号链接
-权限和 Linux TIME_WAIT 两项未运行。实际服务器安装与最终便携包仍需完成。
+权限和 Linux TIME_WAIT 两项未运行。实际服务器安装与最终便携包验证结果见下文。
 
 首次 Windows 扫描对比（相同输入、每项 3 次、暖文件系统缓存）：
 
@@ -46,7 +50,57 @@ Debian 12 同机普通用户对比（每项 3 组、每组 5 次，取组中位�
 | 千文件嵌套目录观察 | 175.262 | 107.873 | 38.5% |
 | 千文件嵌套目录无匹配搜索 | 167.200 | 116.082 | 30.6% |
 
-实际命令链路、干净便携包和发行校验尚在进行。
+实际发行包在同一 Debian 主机、普通用户、真实 Owner/Bubblewrap 下的完整
+命令链路对比（每项 3 次取中位数，未清理 OS 缓存）：
+
+| 一万工作区文件 / 一万私有文件 | v7.10 ms | v7.11 ms | 耗时下降 |
+| --- | ---: | ---: | ---: |
+| Shell | 1034.503 | 786.886 | 23.9% |
+| Git | 1028.883 | 798.882 | 22.4% |
+| Python | 1080.212 | 906.843 | 16.0% |
+| Go | 1116.150 | 914.802 | 18.0% |
+
+20/20 文件的小目录场景，耗时变化为约 -8% 至 +8%，没有稳定收益。
+基线实际二进制为 `51c539fa3a806bddad79d3b3848357f3249555d1`，候选为上述 e64d999；
+两者都用对应的真实便携程序。完整样本、内存口径和测量条件见
+[性能 JSON](https://github.com/endview/FreeAgent/releases/download/v7.11.0-dev.1/FreeAgent-v7.11.0-dev.1-performance.json)。
+
+## 安装、包与发布
+
+Debian 真实 root 安装器 / 非 root 服务验收 9 项 PASS：只读预检不创建账号、
+目录或 unit；无效代理和占用端口在系统改动前拒绝；全新安装与 Owner 就绪；
+无模型时离线诊断有处理建议；运行中更新被拒绝且管理文件保留；停止后重装保留
+配置与对话；实际沙箱命令写入与文件变化证据；原 v7.10 Owner 保持同一 generation。
+本轮专用服务已停用、cgroup 清空，数据与证据保留，原有服务和公网开关未改动。
+
+Windows 便携包 CLI/manifest/engine 回归 PASS；包内 `doctor --text` 能同时报告
+缺失配置/数据库并保留未初始化目录。Debian 普通用户包级 16 项全部 PASS。
+解压后的两包通过凭据、验证主机地址和捆绑运行状态检查。
+
+Windows/Linux 两份独立干净 checkout 各构建一次，双方归档及完整源码输入清单
+均一致。最终源码的两平台 CI
+[Tests](https://github.com/endview/FreeAgent/actions/runs/41603173974) 与
+[Repeatable packages](https://github.com/endview/FreeAgent/actions/runs/41604642527)
+均 PASS。
+
+Release 于 2026-11-03T09:08:18Z 发布。先下载草稿的 6 个资产校验，发布后再下载
+到另一个目录；每个资产与本地验收文件一致，合并 SHA256SUMS.txt 全部匹配。
+
+| 发行包 | SHA-256 |
+| --- | --- |
+| Windows amd64 ZIP | 02c55f6e2d956adba1f815e2d2ab86b9ace5433d625334ca1559e1c93418d8b6 |
+| Linux amd64 tar.gz | efbd4064d2cf6c8863f80e558b6153ca95837da401f0a3d9f400206a10cd59db |
+
+另外四个资产为验收 JSON、性能 JSON、SOURCE_SHA256SUMS.txt 和 SHA256SUMS.txt。
+结果记录的后续文档提交不移动发行标签，也不重写已验收归档。
+
+## 未运行与限制
+
+原生 Windows GUI 手动启动/重开/交互为 NOT_RUN：Computer Use 窗口枚举两次
+超时，重建 JavaScript/工具连接后再次超时，依恢复规则停止，未发送 GUI 输入。
+Windows 原生 race 和包内 CLI/engine 检查通过，各自证据不扩展为 GUI 交互验收。
 
 本轮不进行真实 Provider/视觉、真实渠道账号或公网证书验收；不将旧版本的
-八小时长测描述为本候选的持续运行结果。最终结果按实际证据补充。
+八小时长测描述为本候选的持续运行结果。Linux 沙箱联网、宿主可见沙箱端口、
+Windows 公网入口、QQ 任意文件上传仍不支持。Full/host 保留服务 OS 用户权限；
+普通项目硬链接可共享目录外 inode。此版本为未签名的 amd64 预览，其他平台未验。

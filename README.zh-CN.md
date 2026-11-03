@@ -4,8 +4,8 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 SQLite Store，基础文件操作不需要安装 MCP。
 
-当前开发候选为 **v7.11.0-dev.1**。
-[已发布的 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases)
+当前已发布 **v7.11.0-dev.1 开发预览**。
+[Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v7.11.0-dev.1)
 · [English](README.md) · [v7.11 实施与验收](docs/FREEAGENT_V7_11_EXECUTION_DIAGNOSTICS_PROGRESS.md)。
 
 v7.11 重点减少命令观察和文件搜索的重复扫描工作，增加 `doctor --text`
