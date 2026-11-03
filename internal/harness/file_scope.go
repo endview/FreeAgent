@@ -87,7 +87,7 @@ func (tools *FileTools) prepareWithPolicy(ctx context.Context, call ToolCall, po
 	if err != nil {
 		return PreparedTool{}, err
 	}
-	scoped.blocked = append([]string(nil), policy.BlockedPaths...)
+	scoped.blocked = appendPrivatePaths(nil, policy.BlockedPaths...)
 	prepared, err := scoped.Prepare(ctx, rewritten)
 	if err != nil {
 		_ = scoped.Close()

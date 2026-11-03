@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/endview/freeagent/internal/fileops"
 )
 
 var ErrComputerFilesDisabled = errors.New("harness: computer file access is disabled")
@@ -128,6 +130,9 @@ func protectedPath(dataDir, target string) bool {
 	}
 	private, err := privateApplicationPaths(data)
 	if err != nil || insidePrivatePath(private, resolved) {
+		return true
+	}
+	if canonical, err := fileops.CanonicalPath(resolved); err == nil && insidePrivatePath(private, canonical) {
 		return true
 	}
 	name := strings.ToLower(filepath.Base(resolved))

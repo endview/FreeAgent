@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/endview/freeagent/internal/apppaths"
+	"github.com/endview/freeagent/internal/fileops"
 )
 
 // Browser session storage can contain the local launch capability. It stays
@@ -22,7 +23,7 @@ func privateApplicationPaths(dataDir string) ([]string, error) {
 
 func appendPrivatePaths(paths []string, more ...string) []string {
 	for _, path := range more {
-		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		if resolved, err := fileops.CanonicalPath(path); err == nil {
 			path = resolved
 		}
 		if path == "" || insidePrivatePath(paths, path) {
@@ -57,6 +58,6 @@ func (tools *FileTools) isPrivatePath(target string) bool {
 	}
 	// Windows 8.3 names can reach the same directory under another spelling.
 	// Only broad roots containing private state need this additional lookup.
-	resolved, err := filepath.EvalSymlinks(target)
+	resolved, err := fileops.CanonicalPath(target)
 	return err == nil && insidePrivatePath(tools.private, resolved)
 }

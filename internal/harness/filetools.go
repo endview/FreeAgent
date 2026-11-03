@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/endview/freeagent/internal/fileops"
 )
 
 const maxFileBytes = 256 << 10
@@ -39,7 +41,7 @@ func NewFileTools(workspace, dataDir string) (*FileTools, error) {
 	if err != nil {
 		return nil, err
 	}
-	workspace, err = filepath.EvalSymlinks(workspace)
+	resolvedWorkspace, err := filepath.EvalSymlinks(workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +53,7 @@ func NewFileTools(workspace, dataDir string) (*FileTools, error) {
 	if err != nil {
 		return nil, err
 	}
-	if insidePrivatePath(private, workspace) {
+	if insidePrivatePath(private, resolvedWorkspace) {
 		return nil, errors.New("harness: workspace cannot be inside private application state")
 	}
 	root, err := os.OpenRoot(workspace)
@@ -60,7 +62,7 @@ func NewFileTools(workspace, dataDir string) (*FileTools, error) {
 	}
 	tools := &FileTools{root: root, workspace: workspace, dataDir: dataDir, private: private}
 	for _, path := range private {
-		tools.privateDescendants = tools.privateDescendants || within(workspace, path)
+		tools.privateDescendants = tools.privateDescendants || within(resolvedWorkspace, path)
 	}
 	return tools, nil
 }
@@ -72,7 +74,7 @@ func (tools *FileTools) withBlockedPaths(paths []string) *FileTools {
 		return tools
 	}
 	copy := *tools
-	copy.blocked = append([]string(nil), paths...)
+	copy.blocked = appendPrivatePaths(nil, paths...)
 	return &copy
 }
 
@@ -318,8 +320,16 @@ func (tools *FileTools) validatePath(input string) (string, error) {
 	if tools.isPrivatePath(absolute) {
 		return "", ErrProtectedPath
 	}
+	blockedTarget := absolute
+	if len(tools.blocked) != 0 {
+		var err error
+		blockedTarget, err = fileops.CanonicalPath(absolute)
+		if err != nil {
+			return "", err
+		}
+	}
 	for _, blocked := range tools.blocked {
-		if within(blocked, absolute) {
+		if within(blocked, blockedTarget) {
 			return "", ErrPathBlocked
 		}
 	}

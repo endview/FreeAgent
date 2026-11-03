@@ -464,6 +464,50 @@ func expectProbe(t *testing.T, output, label string, allowed bool) {
 	}
 }
 
+func TestAppContainerRejectsNestedOrMissingPrivateGrantAcrossAliases(t *testing.T) {
+	root := t.TempDir()
+	private := filepath.Join(root, "private")
+	if err := os.Mkdir(private, 0700); err != nil {
+		t.Fatal(err)
+	}
+	canonicalPrivate, err := filepath.EvalSymlinks(private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootPtr, err := windows.UTF16PtrFromString(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]uint16, 32768)
+	length, err := windows.GetShortPathName(rootPtr, &buffer[0], uint32(len(buffer)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shortRoot := windows.UTF16ToString(buffer[:length])
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, missing := range []bool{false, true} {
+		spec := Spec{Command: executable, Dir: root, Mode: ModeAppContainer, Network: NetworkOff,
+			Grants:       []Grant{{Root: shortRoot, Access: AccessWrite}, {Root: private, Access: AccessRead}},
+			PrivatePaths: []string{canonicalPrivate}}
+		if missing {
+			spec.Grants = spec.Grants[:1]
+			spec.PrivatePaths = []string{filepath.Join(filepath.Dir(canonicalPrivate), "not-yet-created", "private")}
+		}
+		process, err := Start(t.Context(), spec)
+		if process != nil {
+			_ = process.Kill()
+			_ = process.Close()
+			t.Fatal("unsafe grant dispatched a process")
+		}
+		if err == nil || !strings.Contains(err.Error(), "private") {
+			t.Fatalf("missing=%t: unsafe private grant was not refused: %v", missing, err)
+		}
+	}
+}
+
 func TestAppContainerPrivatePathsDenyReadAndWrite(t *testing.T) {
 	root := t.TempDir()
 	private := filepath.Join(root, "private")

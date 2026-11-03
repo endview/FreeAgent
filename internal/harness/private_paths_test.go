@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/endview/freeagent/internal/apppaths"
+	"github.com/endview/freeagent/internal/winlaunch"
 )
 
 func privateWebViewFixture(t *testing.T) (string, string) {
@@ -73,6 +74,14 @@ func TestFileToolsCannotReadPrivateBrowserProfile(t *testing.T) {
 }
 
 func TestSandboxedCommandCannotReadPrivateBrowserProfile(t *testing.T) {
+	testPrivateBrowserSandbox(t, func(path string) string { return path })
+}
+
+func testPrivateBrowserSandbox(t *testing.T, grantRoot func(string) string) {
+	t.Helper()
+	if !winlaunch.SandboxSupported() {
+		t.Skip("actual OS sandbox is unavailable; fail-closed behavior is covered separately")
+	}
 	originalCache := os.Getenv("LOCALAPPDATA")
 	cache, secret := privateWebViewFixture(t)
 	_, commands, workspace := commandFixture(t)
@@ -88,7 +97,7 @@ func TestSandboxedCommandCannotReadPrivateBrowserProfile(t *testing.T) {
 	commands.Config.Execution = CommandExecutionSandboxed
 	commands.Profile = ExecutionProfile{PermissionMode: PermissionWorkspace, ApprovalPolicy: ApprovalAutoInSandbox,
 		SandboxMode: SandboxWorkspaceWrite, WorkspaceRoot: workspace, FileScope: FileScopeWorkspacePlusAllowedRoots,
-		AdditionalRoots: []string{cache}, NetworkPolicy: NetworkPolicy{Mode: NetworkOff},
+		AdditionalRoots: []string{grantRoot(cache)}, NetworkPolicy: NetworkPolicy{Mode: NetworkOff},
 		CommandPolicy: CommandExecutionPolicy{Enabled: true, Execution: CommandExecutionSandboxed}, Generation: "1"}
 	prepared, err := commands.Prepare(t.Context(), helperCall(t, "private-browser", secret))
 	if err != nil {

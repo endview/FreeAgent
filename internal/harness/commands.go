@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/endview/freeagent/internal/fileops"
 	"github.com/endview/freeagent/internal/winlaunch"
 )
 
@@ -500,11 +501,15 @@ func (tools *CommandTools) startProcess(ctx context.Context, args commandArgumen
 			return nil, err
 		}
 		for _, grant := range spec.Grants {
-			if insidePrivatePath(spec.PrivatePaths, grant.Root) {
+			root, err := fileops.CanonicalPath(grant.Root)
+			if err != nil {
+				return nil, err
+			}
+			if insidePrivatePath(spec.PrivatePaths, root) {
 				return nil, errors.New("sandbox grant is private application state or a blocked path")
 			}
 			for _, path := range private {
-				if within(grant.Root, path) {
+				if within(root, path) {
 					info, err := os.Lstat(path)
 					if err != nil || !info.IsDir() {
 						return nil, errors.New("sandbox grant overlaps absent private state or a replaceable private file; select a narrower root")
@@ -565,12 +570,12 @@ func (tools *CommandTools) sandboxSpec(spec *winlaunch.Spec) error {
 		spec.Grants = append(spec.Grants, winlaunch.Grant{Root: directory, Access: winlaunch.AccessRead})
 	}
 	if tools.DataDir != "" {
-		dataRoot, err := filepath.Abs(filepath.Clean(tools.DataDir))
+		dataRoot, err := fileops.CanonicalPath(tools.DataDir)
 		if err != nil {
 			return fmt.Errorf("%w: data directory: %v", ErrSandboxUnsupported, err)
 		}
 		for _, grant := range spec.Grants {
-			root, err := filepath.Abs(filepath.Clean(grant.Root))
+			root, err := fileops.CanonicalPath(grant.Root)
 			if err != nil || within(dataRoot, root) || within(root, dataRoot) {
 				return fmt.Errorf("%w: grant overlaps the data directory", ErrSandboxUnsupported)
 			}

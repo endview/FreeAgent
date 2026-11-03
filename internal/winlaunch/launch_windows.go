@@ -18,6 +18,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/endview/freeagent/internal/fileops"
 	"golang.org/x/sys/windows"
 )
 
@@ -98,22 +99,47 @@ func Start(ctx context.Context, spec Spec) (started *Process, failure error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := validateSpec(spec); err != nil {
+		return nil, fmt.Errorf("process launcher: validate spec: %w", err)
+	}
 	if spec.Mode == ModeAppContainer {
 		for _, private := range spec.PrivatePaths {
 			if private == "" {
 				continue
 			}
+			if !filepath.IsAbs(private) {
+				return nil, errors.New("process launcher: private path must be absolute")
+			}
+			if err := rejectReparsePoint(private); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, fmt.Errorf("process launcher: private path: %w", err)
+			}
+			canonicalPrivate, err := fileops.CanonicalPath(private)
+			if err != nil {
+				return nil, err
+			}
+			visible := false
 			for _, grant := range spec.Grants {
-				rel, err := filepath.Rel(strings.ToLower(filepath.Clean(grant.Root)), strings.ToLower(filepath.Clean(private)))
-				if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-					spec.ProtectedPaths = append(spec.ProtectedPaths, ProtectedPath{Path: private, Mode: ProtectNone})
-					break
+				if !filepath.IsAbs(grant.Root) {
+					return nil, errors.New("process launcher: grant root must be absolute")
+				}
+				canonicalRoot, err := fileops.CanonicalPath(grant.Root)
+				if err != nil {
+					return nil, err
+				}
+				if rel, err := filepath.Rel(canonicalPrivate, canonicalRoot); err == nil && filepath.IsLocal(rel) {
+					return nil, errors.New("process launcher: grant is inside private state")
+				}
+				if rel, err := filepath.Rel(canonicalRoot, canonicalPrivate); err == nil && filepath.IsLocal(rel) {
+					if _, err := os.Lstat(private); err != nil {
+						return nil, fmt.Errorf("process launcher: grant overlaps unavailable private state: %w", err)
+					}
+					visible = true
 				}
 			}
+			if visible {
+				spec.ProtectedPaths = append(spec.ProtectedPaths, ProtectedPath{Path: canonicalPrivate, Mode: ProtectNone})
+			}
 		}
-	}
-	if err := validateSpec(spec); err != nil {
-		return nil, fmt.Errorf("process launcher: validate spec: %w", err)
 	}
 
 	var p *profile

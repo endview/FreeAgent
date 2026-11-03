@@ -249,3 +249,16 @@ isolated application-directory environment values, without widening the MCP
 environment whitelist. Five native race repetitions of the privacy, crash and
 approval-clock regressions PASS. Final full regression and rebuilt archives are
 required for this runtime change. The real eight-hour retry remains RUNNING.
+
+The hosted runner's `RUNNER~1` paths revealed another actual alias defect:
+normalizing private state without normalizing grant comparisons could leave its
+AppContainer parent grant readable. A local test using a real short-name parent
+reproduced the disclosure. Both launcher and Harness checks now compare physical
+paths, including nonexistent suffixes, while retaining the caller's logical
+workspace spelling in file labels and authorization. Nested private grants are
+checked even after another grant already contains the private directory.
+Blocked file-tool paths also reject short-name aliases. Actual short-parent
+isolation, missing-state creation, blocked alias and nested/missing grant tests
+are added. Ubuntu's missing optional Bubblewrap dependency marks the actual
+sandbox privacy test skipped; existing unsupported/no-host-fallback tests remain
+mandatory, and actual Debian sandbox acceptance stays a separate required gate.
