@@ -6,6 +6,7 @@ installing an MCP server. An optional loopback Chat uses the same TaskService.
 
 This is the **v7.10.0-dev.1 development preview**. Download published Windows and Linux portable
 builds from [Releases](https://github.com/endview/FreeAgent/releases).
+[简体中文](README.zh-CN.md).
 It uses a new
 current-only `Harness-v8` data directory and the v10 store format. Old
 configurations, databases, backups, commands, and SDKs are not supported or

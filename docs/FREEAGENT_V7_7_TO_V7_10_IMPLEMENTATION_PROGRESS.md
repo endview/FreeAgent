@@ -7,9 +7,9 @@ Baseline: 6b9e0ae with retained v7.5–v7.7 working changes. Existing work is pr
 |---|---|
 | v7.7 continuation, safety, Provider switches | IMPLEMENTED; focused and ordinary regression PASS |
 | v7.7 repeatable build and release | PASS; v7.7.0-dev.2 published from 421c25b |
-| v7.8 server lifecycle and Linux sandbox | IMPLEMENTED; actual unit functional gate PASS; first soak FAIL, complete retry RUNNING |
+| v7.8 server lifecycle and Linux sandbox | PASS actual unit/sandbox and complete 28,800-second retry; the earlier failed soak remains recorded below |
 | v7.9 attachments, delivery and backup | PASS local/real-host gates; real visual Provider/channel file checks NOT_RUN |
-| v7.10 optional public Web and configurable login protection | PASS API/auth/race, native UI and real Caddy HTTPS fixture gates; publication waits for the complete v7.8 soak |
+| v7.10 optional public Web and configurable login protection | PASS local/real-host gates; v7.10.0-dev.1 published from 51c539f with six downloaded assets verified; external NOT_RUN conditions remain explicit |
 
 Historical acceptance is not acceptance of these changes. Real Provider/channel,
 live HTTPS and eight-hour service checks must be recorded separately. Runtime
@@ -301,3 +301,73 @@ optional public setup explicit. These are documentation-only changes; final
 archives/source inventories and package smoke checks are regenerated from the
 documentation commit. Eight-hour retry is still RUNNING; no final publication
 or current-v7.10 eight-hour binary claim is made here.
+
+## Final release and complete service soak (2026-11-03)
+
+The complete retry PASS: exactly 28,800 actual monotonic seconds, from
+2026-11-02T22:06:45Z to 2026-11-03T06:06:45Z, with 480 resource samples and no
+additional service restart. Observed memory ranges 24,342,528–31,539,200 bytes.
+During the same run, actual CLI disconnect/reconnect retained its conversation
+and Owner; a finite host service expired with confirmed cleanup in 2.191 seconds.
+That host operation retains `host_escape_hatch=true` and is not sandbox evidence.
+The original max_messages value 40 was restored and read back. Only the dedicated
+soak unit was stopped/disabled; its cgroup is empty, data and evidence retained.
+Its journal after cleanup contains 4,276 bytes.
+
+This eight-hour result belongs to the independent v7.8 lifecycle build
+`ecb751ce54d177d72cd4ac9500e71a811c8fb144`. It is not a claim that the final v7.10
+binary ran for eight hours. Its earlier failed attempt remains FAIL and its time
+is not included. Runtime UNKNOWN retention is a tested behavior, not the label
+for missing external credentials.
+
+Shipping source is `51c539fa3a806bddad79d3b3848357f3249555d1`; its only change from
+the fully regressed runtime `cc37d0f25a41cb9a47dfad18a3973cf4e9aee07a` is packaged
+documentation. Final source hosted Windows/Ubuntu tests PASS in run
+[41554436472](https://github.com/endview/FreeAgent/actions/runs/41554436472), and
+both repeatable-package jobs PASS in run
+[41555109185](https://github.com/endview/FreeAgent/actions/runs/41555109185).
+The tag-triggered repeat also PASS on both platforms: tests
+[41588136881](https://github.com/endview/FreeAgent/actions/runs/41588136881) and
+repeatable packages
+[41588136814](https://github.com/endview/FreeAgent/actions/runs/41588136814).
+Both final archives were independently built twice with matching source inputs.
+Windows CLI/native first-start, GUI/CLI continuation and reopen, all sixteen
+ordinary-user Debian portable checks, real installed service recovery/sandbox,
+actual temporary-CA HTTPS and Windows network JSON/SSE checks PASS. The final
+HTTPS test includes 62.236 seconds of actual idle expiry. All 84 JS tests and
+the embedded production build PASS; subsequent documentation does not change
+those frontend or runtime inputs.
+
+[v7.10.0-dev.1](https://github.com/endview/FreeAgent/releases/tag/v7.10.0-dev.1)
+was published at 2026-11-03T06:11:43Z, after all six draft assets were downloaded
+and checked. The public assets were downloaded again into a separate directory;
+every file matches its accepted local bytes, and all five entries in the
+published SHA256SUMS.txt match. The annotated tag resolves to the shipping source.
+
+| Archive | SHA-256 |
+|---|---|
+| FreeAgent-v7.10.0-dev.1-windows-amd64-portable.zip | f7cb070eba31257413ad8e42864fd9b5761666df3e80b2540a296760c348cb83 |
+| FreeAgent-v7.10.0-dev.1-linux-amd64-portable.tar.gz | f73e89af8358a27abe858f2a4d30378c5ddb640e3d75d98786bebd3a8193085d |
+
+The Release also contains the complete SOURCE_SHA256SUMS.txt,
+FreeAgent-v7.10.0-dev.1-acceptance.json, FreeAgent-v7.10.0-dev.1-service-soak.json
+and merged SHA256SUMS.txt. New evidence files were checked for credentials,
+validation-host addresses and local private paths before upload. Package payloads
+already passed a decompressed credential/runtime-state scan, with unchanged
+archive hashes. Own native/browser previews are closed. The temporary public
+entrance is disabled, its dedicated proxy is stopped and mock Provider profiles
+are disabled; the final local v7.10 service remains available with None and Echo.
+Other services were not changed.
+
+NOT_RUN: real visual Provider semantics, real Telegram/Lark/QQ file accounts,
+system-trusted public certificates and conditional Windows file-symlink cases
+without OS privilege. Actual Debian link boundaries were exercised.
+NOT_SUPPORTED: Linux sandbox Internet/host-visible service ports, Windows public
+Web and QQ generic file upload. Full/host has service-user OS authority; ordinary
+Linux project hardlinks share writable inodes. This is an unsigned amd64 preview,
+with other architectures/distributions unverified. No implementation blocker is
+currently known; unavailable external tests remain explicitly deferred.
+
+The final follow-up synchronizes the previously stale Chinese README and records
+these publication results. It is documentation only: published tags and accepted
+archives are retained unchanged.
