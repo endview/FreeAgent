@@ -54,8 +54,9 @@ GUI 或服务在线时，CLI 经 attach 连接同一 Owner。断开 attach 或�
   Responses、Anthropic 协议适配。联网能力必须由所选 Provider 或工具实际提供。
 - 可选协作默认关闭，子任务与父任务累计预算同时约束；中断或事实不明的执行
   保留 UNKNOWN，不自动重放。
-- 可选 Telegram、Lark、QQ 使用同一空间和权限核心。当前真实平台账号验收未运行；
-  本地协议模拟不等于真实接入通过，QQ 任意文件上传不支持。
+- 可选 Telegram、Lark、QQ 使用同一空间和权限核心。
+  [Telegram 私聊文字与真实模型回传已验收](docs/FREEAGENT_TELEGRAM_PRIVATE_LIVE_ACCEPTANCE_2026-11-03.md)；
+  群聊、第二账号和真实文件收发仍待验，Lark/QQ 保留本地模拟结果。QQ 任意文件上传不支持。
 
 Windows 命令隔离使用 AppContainer；Linux 可选 Bubblewrap。沙箱不可用时
 拒绝该请求，不回退宿主执行。沙箱内 Git 元数据只读。

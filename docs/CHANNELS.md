@@ -1,8 +1,10 @@
-# Optional channels in v7.7
+# Optional channels
 
-Updated 2026-10-29. Local implementation and deterministic fixtures only;
-Telegram, Lark and QQ real platform acceptance remain NOT_RUN. The user confirmed
-that authorized live chats and controlled test accounts are not available yet.
+Updated 2026-11-03. Telegram private-text pairing, real DeepSeek replies and
+confirmed delivery passed on Debian 12 with v7.11.0-dev.1. See the
+[scoped live record](FREEAGENT_TELEGRAM_PRIVATE_LIVE_ACCEPTANCE_2026-11-03.md).
+Telegram groups, second-account permissions, live file delivery and recovery
+checks remain NOT_RUN. Lark and QQ still have local/mock acceptance only.
 
 ## Setup
 
@@ -66,7 +68,7 @@ existing pending operation. There are no chat confirmation codes.
 
 | Platform | Local implementation | Limits | Real acceptance |
 |---|---|---|---|
-| Telegram | Bot polling, private/group text, mentions/replies/commands, buttons | Only received text; Privacy Mode applies; attachments and edited-input execution unsupported | NOT_RUN |
+| Telegram | Bot polling, private/group text, mentions/replies/commands, buttons; bounded media adapters | Only received updates; Privacy Mode applies; edited-input execution unsupported; attachment rules in ATTACHMENTS.md | Private text PASS; groups, second account, media and callbacks NOT_RUN |
 | Lark/Feishu | App websocket, bounded multipart/acks, private/group text, cards | Internal app credentials; app+tenant identity scope; group visibility depends on event permissions | NOT_RUN |
 | QQ official | Ed25519 webhook; C2C and GROUP_AT_MESSAGE_CREATE; passive replies | Ordinary group text, guild/channel types, edits and approval buttons unsupported; approvals remain local | NOT_RUN |
 
@@ -115,6 +117,6 @@ Read on 2026-10-29; wire contracts do not establish real account acceptance.
 - [Official Lark Go websocket implementation](https://github.com/larksuite/oapi-sdk-go/tree/v3_main/ws).
 - [Official QQ SDK](https://github.com/tencent-connect/botgo), [webhook](https://github.com/tencent-connect/botgo/tree/master/interaction/webhook) and [signature](https://github.com/tencent-connect/botgo/tree/master/interaction/signature).
 
-Real acceptance needs authorized apps, private/group targets, two controlled
-members and a current Provider for representative group chat/summary. These
-checks remain NOT_RUN; local mocks do not prove platform capabilities.
+Further acceptance needs authorized group targets, two controlled members and
+a current Provider for representative group chat/summary, callbacks and media.
+The private-text pass does not certify those remaining platform cases.

@@ -31,8 +31,10 @@ v7.7 adds unified spaces, optional Telegram/Lark/QQ channels and two foreground
 conversations in one workspace. New spaces and people default to None; external
 operation permission is the lower of space and actual requester. GUI/CLI share
 the same Owner and records. Commands/services keep their original Owner quotas.
-Channel implementations have local mock acceptance; real platform and current
-Provider group/summary checks remain NOT_RUN. QQ supports official C2C and group
+Channel implementations have local mock acceptance; Telegram private text also
+passed [real acceptance](docs/FREEAGENT_TELEGRAM_PRIVATE_LIVE_ACCEPTANCE_2026-11-03.md)
+with DeepSeek Flash on v7.11. Group/summary and remaining platform checks stay
+NOT_RUN. QQ supports official C2C and group
 @ text with local approvals. See [setup and limitations](docs/CHANNELS.md) and
 [v7.7 acceptance](docs/FREEAGENT_V7_7_IMPLEMENTATION_PROGRESS.md).
 
