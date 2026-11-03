@@ -1,15 +1,14 @@
 # FreeAgent Windows Portable Preview
 
-For the separate Linux amd64 CLI/Web archive, see [Linux portable](LINUX_PORTABLE.md).
+For the separate Linux amd64 CLI/Web archive, see [Linux portable](https://github.com/endview/FreeAgent/blob/main/docs/LINUX_PORTABLE.md).
 
-Current candidate: `v7.7.0-dev.1` (spaces, optional channels and parallel conversations), Windows amd64. This is an unsigned
+Current candidate: `v7.10.0-dev.1`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
-not required to run it. The Chat UI and KaTeX assets are embedded in the
-desktop executable.
+not required to run it. The Chat UI and KaTeX assets are bundled with the engine.
 
 Settings includes optional Telegram, Lark/Feishu and official QQ connections.
 Save channel credentials in Key management, select the matching saved profile,
-then enable and pair from Settings. See [Channel setup](docs/CHANNELS.md).
+then enable and pair from Settings. See [Channel setup](https://github.com/endview/FreeAgent/blob/main/docs/CHANNELS.md).
 Real app/chat acceptance remains NOT_RUN; the package is a local development
 preview. Two foreground conversations share one workspace; command and service
 quotas do not increase. Global configuration commits require idle execution,
@@ -26,8 +25,10 @@ unavailable, it opens the same local Chat in the default browser and shows a
 stop prompt. Closing that prompt stops FreeAgent. The launch address and token
 are private to that local process.
 
-The first start has no configured model. Open the Key page, add a Key, test it,
-fetch the provider's models, and enable one. Keys are stored in
+The first start has no configured model. Open Key management, save a Provider
+profile, explicitly enable its switch, and add/select a model. Test connection
+and model discovery are optional explicit requests; saving or enabling a
+Provider makes no request. Keys are stored in
 `data\keys.json`, encrypted with Windows DPAPI for the current Windows user.
 Another Windows user or another computer must enter the Key again.
 
@@ -40,6 +41,14 @@ Clear. `/compact` works in both Chat surfaces; the one-shot CLI is
 the selected model and consume its quota. Clear removes only the saved summary.
 All original messages remain inspectable. Automatic compaction stays off by
 default, independently of these manual operations.
+
+The composer accepts text/code and verified PNG/JPEG attachments. Explicit
+uploads can be read in None; image understanding requires a vision-capable
+model and an enabled local declaration. Download published file results from
+their cards, or save an assistant reply as Markdown. Existing permission rules
+still protect computer files and exports. See `docs\ATTACHMENTS.md` in the ZIP.
+Windows uses AppContainer for sandboxed commands and explicit Full for host
+execution. The optional public HTTPS entrance is available on Linux servers.
 
 ## Data And Workspace
 
@@ -68,11 +77,13 @@ Examples:
 .\bin\freeagent.exe key add --name main --url 'https://your-provider.example/v1'
 .\bin\freeagent.exe key test main
 .\bin\freeagent.exe key models main
+.\bin\freeagent.exe config model --id main --key main --model MODEL_NAME --default
+.\bin\freeagent.exe key enable main
 .\bin\freeagent.exe web --open-browser
 ```
 
 With the desktop app running, `chat --resume <session>` attaches to its owner.
-Use `sessions --json` to find the session ID, or `/sessions` and `/resume` inside
+Use `sessions` to find the session ID, or `/sessions` and `/resume` inside
 Chat. With no owner, `chat` publishes the same API in the terminal process so
 the desktop app can attach. Closing an attached client leaves the owner running;
 exiting the owning terminal drains and stops it. Drafts are not shared.
@@ -97,9 +108,11 @@ not a publisher signature.
 The live Provider evidence is maintained in the repository, not distributed
 in the package. One Provider and one model passing does not certify all
 Providers, model quality or every external failure mode.
-The v7.0 live DeepSeek results, packaged CLI checklist, native Windows race
-run and manual desktop checks are recorded in
-`FREEAGENT_V7_0_IMPLEMENTATION_PROGRESS.md` in the repository.
+Current package, Windows race, Debian, attachment/UI and HTTPS evidence and
+unrun external tests are recorded in
+[current acceptance](https://github.com/endview/FreeAgent/blob/main/docs/FREEAGENT_V7_7_TO_V7_10_IMPLEMENTATION_PROGRESS.md).
+The v7.0 live DeepSeek record is historical evidence, not acceptance of every
+later Provider or visual feature.
 
 
 Provider profiles are disabled by default. Saving a Key, enabling a Provider or

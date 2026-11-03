@@ -8,8 +8,8 @@ Baseline: 6b9e0ae with retained v7.5–v7.7 working changes. Existing work is pr
 | v7.7 continuation, safety, Provider switches | IMPLEMENTED; focused and ordinary regression PASS |
 | v7.7 repeatable build and release | PASS; v7.7.0-dev.2 published from 421c25b |
 | v7.8 server lifecycle and Linux sandbox | IMPLEMENTED; actual unit functional gate PASS; first soak FAIL, complete retry RUNNING |
-| v7.9 attachments, delivery and backup | IMPLEMENTED; Windows ordinary/race and Debian full race PASS; final clean package gate pending |
-| v7.10 optional public Web and configurable login protection | IMPLEMENTED; API/auth/race and real Caddy HTTPS fixture checks PASS; final package gates pending |
+| v7.9 attachments, delivery and backup | PASS local/real-host gates; real visual Provider/channel file checks NOT_RUN |
+| v7.10 optional public Web and configurable login protection | PASS API/auth/race, native UI and real Caddy HTTPS fixture gates; publication waits for the complete v7.8 soak |
 
 Historical acceptance is not acceptance of these changes. Real Provider/channel,
 live HTTPS and eight-hour service checks must be recorded separately. Runtime
@@ -262,3 +262,42 @@ isolation, missing-state creation, blocked alias and nested/missing grant tests
 are added. Ubuntu's missing optional Bubblewrap dependency marks the actual
 sandbox privacy test skipped; existing unsupported/no-host-fallback tests remain
 mandatory, and actual Debian sandbox acceptance stays a separate required gate.
+
+Runtime cc37d0f gates PASS: Windows complete ordinary/race with an actual 8.3
+temporary-directory parent (215.303s/408.821s including builds; race harness
+390.468s), Debian ordinary/vet/full ordinary-user race (race harness 415.796s),
+and both hosted test jobs in run 41551193583. Both hosted repeatable-package
+jobs in run 41551880682 PASS. The final source has no runtime changes after this
+checkpoint unless separately recorded.
+
+Both cc37d0f platform archives repeat byte-for-byte with matching source
+inventories. Windows CLI portable and all sixteen ordinary-user Debian portable
+checks PASS. Actual WebView2 first startup has None and zero models; a CLI model
+change appears after refresh, GUI chat and CLI continuation both complete, and
+closing/reopening retains both turns and the same configuration hash. Native
+attachment input/export checks use unchanged frontend assets from the earlier
+recorded actual UI acceptance; protocol fixtures remain separate from visual
+Provider understanding.
+
+The cc37d0f installed release passed its actual hardened-unit sandbox, stop and
+setsid cleanup, crash/on-failure restart with UNKNOWN/no replay, finite expiry,
+online backup/verify/restore and journal-privacy checks. The first HTTPS repeat
+correctly failed its None precondition because the service functional fixture
+had left the existing local space in Full. That failure is retained. After a
+local explicit reduction to None, all ten HTTPS checks PASS, with empty stderr,
+actual 62.203s idle expiry and successful final cleanup.
+
+The final binary also ran actual shell, Git, Python and Go in Bubblewrap three
+times per size. With workspace/private file counts of 20/20, median full CLI
+operation times range 58.063–107.811ms; at 10,000/10,000 they range
+1083.259–1164.057ms. Maximum child RSS was 36160 KiB. OS caches were not cleared,
+so these are fresh-process observations rather than cold-disk claims. The prior
+factorial comparison attributes most large-tree cost to workspace observation.
+
+Final packaged-instruction review corrected stale v7.7 filenames, the former
+Linux sandbox limitation, the obsolete online-abandon restriction and an invalid
+sessions --json example. It also makes Provider opt-in, attachments, service and
+optional public setup explicit. These are documentation-only changes; final
+archives/source inventories and package smoke checks are regenerated from the
+documentation commit. Eight-hour retry is still RUNNING; no final publication
+or current-v7.10 eight-hour binary claim is made here.

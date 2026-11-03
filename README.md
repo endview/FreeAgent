@@ -127,8 +127,9 @@ Use `chat --resume <session>` to continue an existing conversation.
 ```
 
 Open the launch address printed by that process. It binds only to `127.0.0.1`,
-requires that launch's key, and is a foreground single-Agent caller, not an
-HTTP control platform or hosted service. Keep the address private. Closing a
+requires that launch's key, and shares the same single-user core as CLI and GUI.
+Persistent Linux service and optional public HTTPS setup have separate explicit
+steps in the deployment guides. Keep the loopback launch address private. Closing a
 browser does not stop its task; use the page's Stop control. Closing the server
 stops new dispatch but does not undo effects or resolve UNKNOWN calls.
 

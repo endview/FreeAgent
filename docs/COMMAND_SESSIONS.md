@@ -29,8 +29,11 @@ drained into a bounded UTF-8 tail; pages are at most 16 KiB, with stream labels,
 byte cursors and explicit gaps. It does not write a row per poll.
 
 Owner shutdown/handoff stops its commands. Windows uses an owned kill-on-close
-Job and verifies its active-process count; Linux uses a process group and cannot
-promise cleanup after owner crash. PID and owner generation are diagnostic,
+Job and verifies its active-process count. Linux Bubblewrap commands use an
+owned PID namespace and pidfds; explicit host commands use process groups and
+cannot promise containment after owner crash or deliberate escape. A systemd
+installation also applies its service cgroup to owned descendants.
+PID and owner generation are diagnostic,
 never credentials for attaching or killing a recovered process.
 
 Recovery marks unfinished projections UNKNOWN, without reopening the parent
@@ -110,5 +113,7 @@ Job owner-kill testing confirmed controlled child termination.
 Linux supports explicit Full/host with active process-group cleanup. It does
 not guarantee cleanup after owner crash or containment of a deliberately
 escaping host process. A restart reports uncertainty and never reuses a PID.
-No actual eight-hour endurance run or real Provider acceptance was performed
-for this release. Controlled-time and real short expiry checks are separate.
+Actual Bubblewrap owner-kill and tree-cleanup checks are separate from host
+execution. Controlled-time and short expiry checks do not establish eight-hour
+endurance. Consult the current implementation/release acceptance for the actual
+soak duration, tested source commit and unrun Provider/platform checks.

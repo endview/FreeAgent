@@ -1,6 +1,6 @@
 # FreeAgent Linux portable preview
 
-Candidate: v7.7.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
+Candidate: v7.10.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
 the native Windows desktop/WebView2 executable is not included. Go, Node,
 Python and a system web server are not needed to run this package.
 
@@ -10,8 +10,8 @@ Verify the outer SHA256SUMS.txt, extract the complete archive into a writable
 directory, then start:
 
 ```sh
-tar -xzf FreeAgent-v7.7.0-dev.1-linux-amd64-portable.tar.gz
-cd FreeAgent-v7.7.0-dev.1-linux-amd64-portable
+tar -xzf FreeAgent-v7.10.0-dev.1-linux-amd64-portable.tar.gz
+cd FreeAgent-v7.10.0-dev.1-linux-amd64-portable
 ./FreeAgent
 ```
 
@@ -20,7 +20,9 @@ The first start creates `data/Harness-v8` and `workspace`. Open the printed
 Keep that address private. Ctrl+C or SIGTERM stops the Owner and its owned
 commands/services. Closing a browser tab does not stop execution.
 
-The package starts without a model. Add a Provider key and model in the Web UI.
+The package starts without a model. Add a Provider profile and model in the Web
+UI, and explicitly enable the Provider switch. Saving/enabling does not probe
+the network; connection tests and model discovery are explicit operations.
 The default local space has None permission: it can chat but cannot operate
 tools until explicitly granted. Keys live in `data/keys.json`. Linux saved
 keys use a mode-0600 plaintext file; they are not Windows DPAPI-encrypted.
@@ -40,6 +42,23 @@ ports are supported. Use the numeric loopback address, not `localhost`.
 The local capability is sent in a header, never a cookie. Closing the SSH tunnel
 does not stop the remote Owner; stop FreeAgent explicitly on the server.
 
+For a persistent non-root systemd service, Python 3 is needed only for the
+explicit installer:
+
+```sh
+# As the server administrator, from a clean extracted package:
+python3 deploy/install-server.py --package "$PWD" --start
+/usr/local/bin/freeagent owner status
+```
+
+See `docs/SERVER_DEPLOYMENT.md` for startup, logs, backup and safe updates.
+Optional public Web stays off until locally configured with an administrator
+password, exact HTTPS Origin and restricted Unix socket. Caddy supplies TLS;
+the certificate must cover the actual domain or IP. Follow `docs/PUBLIC_WEB.md`
+instead of forwarding the private Owner routes or token. Remote maximum
+permission defaults to Full and intersects the space/requester's permission;
+new spaces still default to None. The CLI remains a local recovery entrance.
+
 ## CLI and shared records
 
 ```sh
@@ -58,9 +77,16 @@ The `FreeAgent` launcher also accepts `web` or `chat` plus normal arguments,
 initializing the selected data directory when it has no configuration. Other
 subcommands pass directly to `bin/freeagent`. The binary itself retains explicit
 CLI initialization semantics; run `./FreeAgent` first or use `init --workspace`.
-While an Owner is running, use the Web end-task action or `/abandon` inside
-interactive `chat` to end an uncertain task. The one-shot `abandon --run` command
-currently requires the Owner to be stopped.
+`abandon --run ID` and online `backup --out ABSOLUTE_PATH` reuse authenticated
+interactive attach while the Owner is running. Backup reports busy during
+active execution; it does not silently make a weaker copy. Observer credentials
+cannot mutate or back up the instance.
+
+The composer and CLI accept bounded text/code and validated PNG/JPEG inputs.
+Explicit uploads work in None; images require declared model vision support.
+Use `/attach`, `/attachments`, `/save-reply`, the `attachments` CLI commands or
+GUI file cards to exchange results. `file_export` obeys the current file policy
+and publishes an immutable snapshot. See `docs/ATTACHMENTS.md`.
 
 ## Linux execution limits
 
@@ -68,18 +94,29 @@ The binary is built with CGO disabled; it does not need a matching system glibc.
 It still needs a supported Linux kernel and normal file/process/socket support.
 Do not infer compatibility with untested architectures or distributions.
 
-The Windows AppContainer sandbox is NOT_SUPPORTED on Linux. Sandboxed command
-requests refuse; there is no automatic host fallback. Explicit Full/host mode
-can execute allowed commands as the current OS user. Prefer a normal user and
-grant Full only deliberately. File publication locking, bounded output, stop,
-runtime receipts and UNKNOWN handling remain shared with the core. Linux
-crash-time process-tree cleanup is not a guaranteed containment boundary.
+Debian 12 amd64 is the acceptance platform. Optional Bubblewrap isolation
+requires a root-owned non-setuid `/usr/bin/bwrap`, working user/PID/mount/network
+namespaces and kernel pidfds. Install `bubblewrap` explicitly as the
+administrator, then inspect `./bin/freeagent doctor`. Missing capabilities refuse
+sandbox dispatch without host fallback. Ask uses read-only authorization;
+Workspace permits the selected writable roots. Protected application state is
+hidden, `.git` is read-only, and sandbox processes use isolated HOME/tmp.
 
-Command rules and the executable allowlist still apply in Full. Debian's
-`/bin/sh` is a symlink; when configuring an exact executable allowlist, use
-`readlink -f /bin/sh` to obtain its actual regular file (normally `/usr/bin/dash`).
-Permit that exact executable in command rules, enable command tools, and grant
-the space Full before submitting a command. Full does not enable disabled tools.
+Linux sandbox Internet and host-visible sandbox service ports are NOT_SUPPORTED.
+Explicit Full/host can execute commands with the current OS user's authority;
+it has no sandbox guarantee. Ordinary host process-group cleanup cannot contain
+a process deliberately escaping that group. Bubblewrap uses an owned PID
+namespace and pidfds; the installed service also has its own systemd cgroup.
+Stop cannot undo effects. Unproven cleanup remains UNKNOWN and is not replayed.
+
+Command rules and executable allowlists still apply in Full. Normal Debian
+program aliases such as `/bin/sh` resolve before launch; `readlink -f /bin/sh`
+shows its regular target (normally `/usr/bin/dash`). Enable command tools and
+grant the required space permission before submission. Workspace is sufficient
+for supported sandbox work; Full explicitly selects host execution. Permission
+does not enable a disabled tool. Ordinary project hardlinks can share writable
+inodes outside the selected tree; use copied dependencies when isolation of
+those files is required. See `docs/SERVER_DEPLOYMENT.md` for the full boundary.
 
 Telegram/Lark/QQ are optional and disabled by default. See `docs/CHANNELS.md`.
 Real platform and Provider acceptance are independent of offline portable
