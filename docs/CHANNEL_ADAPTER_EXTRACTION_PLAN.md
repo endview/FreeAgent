@@ -2,6 +2,7 @@
 
 状态：设计草案，尚未实施渠道拆分。依据 2026-11-05 用户提出的轻内核与多核心需求。
 本轮输入交互修正独立完成，不将渠道重构混入补丁。
+统一的后续版本安排见[设置、恢复与 PostgreSQL 计划](FREEAGENT_NEXT_CORE_SETTINGS_RECOVERY_POSTGRESQL_PLAN_2026-11-05.md)。
 
 ## 目标与已核实的现状
 
