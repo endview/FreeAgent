@@ -1197,8 +1197,13 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	if err := service.Store.dispatchGuardedTool(ctx, attempt, service.childSteps(), service.guard); err != nil {
 		return err
 	}
+	var observedOutcome *ToolOutcome
 	toolEvent := func(kind string) {
-		service.event(Event{Kind: kind, Tool: call.Name, RunID: run.ID,
+		var activity map[string]any
+		if observedOutcome != nil {
+			_ = json.Unmarshal(mustJSON(observedOutcome), &activity)
+		}
+		service.event(Event{Kind: kind, Tool: call.Name, RunID: run.ID, Activity: activity,
 			ConversationID: run.ConversationID, AttemptID: attempt.ID})
 	}
 	toolEvent("tool_started")
@@ -1229,6 +1234,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		if len(result.Memory) != 0 {
 			service.event(Event{Kind: "memory_sources", Sources: result.Memory})
 		}
+		observedOutcome = result.Outcome
 		toolEvent("tool_finished")
 		return err
 	}
@@ -1253,6 +1259,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		result, callErr = prepared.Execute(ctx)
 	}
 	result = normalizeToolOutcome(ctx, result, callErr, toolStarted, service.limits().MaxToolResult)
+	observedOutcome = result.Outcome
 	persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
 	defer done()
 	rawOutput, _ := json.Marshal(result)

@@ -333,7 +333,27 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		if len(answer) > 12000 {
 			answer = string([]rune(answer)[:min(len([]rune(answer)), 3000)]) + "\n[已截断]"
 		}
-		return s.plain(ctx, e, "当前对话="+chat+"，Run="+run.ID+"，状态="+run.Status+"\n"+answer)
+		activity := ""
+		if run.Permission != nil && run.Permission.PersonID == e.Person && s.tasks.checkTelegramRun(ctx, run) == nil {
+			activity = fmt.Sprintf("\n步骤=%d，活动耗时=%dms", run.Steps, activeElapsed(run))
+			if view, err := s.tasks.Chat(ctx, chat, ""); err == nil {
+				for _, turn := range view.Turns {
+					if turn.Key == run.ID {
+						start := max(0, len(turn.Activity)-8)
+						for _, a := range turn.Activity[start:] {
+							if a.Kind == "tool" {
+								duration := "耗时未记录"
+								if a.DurationMS != nil {
+									duration = fmt.Sprintf("%dms", *a.DurationMS)
+								}
+								activity += fmt.Sprintf("\n%s：%s，%s", a.Name, a.Status, duration)
+							}
+						}
+					}
+				}
+			}
+		}
+		return s.plain(ctx, e, "当前对话="+chat+"，Run="+run.ID+"，状态="+run.Status+activity+"\n"+answer)
 	case "/multi", "/new", "/switch", "/default", "/sessions":
 		if cmd == "/sessions" {
 			if !space.MultiConversation {

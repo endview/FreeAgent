@@ -970,8 +970,18 @@ func terminalEvents(stdout, stderr io.Writer, asJSON bool, streamed *bool) harne
 			}
 		case "tool_started", "tool_finished":
 			if event.Tool != "" {
-				_, _ = fmt.Fprintf(stderr, "[%s] %s\n", event.Kind, event.Tool)
+				timing := ""
+				if event.Activity != nil {
+					if known, _ := event.Activity["duration_recorded"].(bool); known {
+						timing = fmt.Sprintf(" %vms (%v)", event.Activity["duration_ms"], event.Activity["status"])
+					}
+				}
+				_, _ = fmt.Fprintf(stderr, "[%s] %s%s\n", event.Kind, event.Tool, timing)
 			}
+		case "input_adopted":
+			_, _ = fmt.Fprintln(stderr, "\n[steering] New user requirements adopted; earlier output is retained.")
+		case "context_compacting", "context_compacted", "context_compaction_failed":
+			_, _ = fmt.Fprintf(stderr, "[%s] %s\n", event.Kind, event.Message)
 		case "model_selected":
 			_, _ = fmt.Fprintln(stderr, event.Message)
 		case "confirmation":
