@@ -36,8 +36,9 @@ Skill/扩展是按权限与位置插入：手动 Skill 和本轮 tail 扩展位�
 TG 不携带本机 `system_prompt` 或指令文件。公网 Web 的行为还取决于当前有效权限，
 不能简单把“公网访问”和上述渠道公开上下文模式等同。
 
-因此未来把简单经验固定到 TG，需要先明确发布到该对话的公开范围，再由通用上下文
-选择接口带入；当前并非把本机 Memory 选中后就会自动同步到 TG。
+以上入口差异是当前实现限制。后续目标是 core 统一处理上下文，渠道只传递消息：
+同一会话、身份授权和能力选择使用同一套 Memory/Skill/固定内容规则，内容可见性仍由
+core 统一检查。不会另外建设 TG 固定经验系统，当前也尚未完成这项入口统一。
 
 主要实现位置：`internal/harness/service.go` 的 `buildContextWithSummary`，
 `context.go` 的能力装配，`context_prepare.go` 的附件/扩展后预算检查，
