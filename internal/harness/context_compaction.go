@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 type compactionPlan struct {
@@ -104,7 +102,15 @@ func (service *Service) planCompactionFor(ctx context.Context, run Run, command 
 				return plan, err
 			}
 			if assistant.Valid {
+				firstMessage := retain
 				retain = assistant.Int64
+				var latestUser sql.NullInt64
+				if err := service.Store.db.QueryRowContext(ctx, `SELECT max(id) FROM messages WHERE run_id=? AND json_extract(body_json,'$.Role')='user'`, latest).Scan(&latestUser); err != nil {
+					return plan, err
+				}
+				if latestUser.Valid && latestUser.Int64 > firstMessage {
+					retain = min(retain, latestUser.Int64)
+				}
 			}
 		}
 		var bound sql.NullInt64
@@ -154,7 +160,7 @@ func (service *Service) summaryChunk(ctx context.Context, run Run, prefix source
 		return nil, prefix, ModelRequest{}, err
 	}
 	rows, err := service.Store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
-		WHERE conversation_id=? AND id>? AND id<=? ORDER BY id LIMIT 1001`, run.ConversationID, prefix.Through, through)
+		WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND id<=? ORDER BY id LIMIT 1001`, run.ConversationID, prefix.Through, through)
 	if err != nil {
 		return nil, prefix, ModelRequest{}, err
 	}
@@ -180,12 +186,17 @@ func (service *Service) summaryChunk(ctx context.Context, run Run, prefix source
 			projected = service.projectPublicMessages(candidate)
 		}
 		candidateRequest := summaryRequest(binding, limits, limit, previous, projected)
-		raw, marshalErr := json.Marshal(candidateRequest)
+		_, marshalErr := json.Marshal(candidateRequest)
 		if marshalErr != nil {
 			err = marshalErr
 			return false
 		}
-		if len(raw)+candidateRequest.MaxOutputTokens*4 > limits.MaxContextBytes || len(candidateRequest.Messages)-1 > limits.MaxMessages {
+		usage, usageErr := service.requestUsage(run, candidateRequest)
+		if usageErr != nil {
+			err = usageErr
+			return false
+		}
+		if usage.OverLimit {
 			if len(chunk) == 0 {
 				err = ErrContextLimit
 			}
@@ -216,7 +227,7 @@ func (service *Service) summaryChunk(ctx context.Context, run Run, prefix source
 			groupBytes = 0
 		}
 		groupBytes += len(raw)
-		if groupBytes > min(16<<20, limits.MaxContextBytes*2) {
+		if groupBytes > 16<<20 {
 			return nil, prefix, request, ErrContextLimit
 		}
 		group, groupBodies = append(group, item), append(groupBodies, raw)
@@ -232,7 +243,7 @@ func (service *Service) summaryChunk(ctx context.Context, run Run, prefix source
 	return chunk, prefix, request, err
 }
 
-func (service *Service) applyCompaction(ctx context.Context, run Run, plan compactionPlan, automatic bool) (result ContextResult, err error) {
+func (service *Service) applyCompaction(ctx context.Context, run Run, plan compactionPlan, automatic bool, validate ...func(*ConversationSummary) error) (result ContextResult, err error) {
 	result.RunID = run.ID
 	result.BeforeBytes = plan.source.Bytes - plan.base.Bytes
 	if plan.old != nil && plan.command.Action != "refresh" {
@@ -248,6 +259,13 @@ func (service *Service) applyCompaction(ctx context.Context, run Run, plan compa
 	prefix := plan.base
 	for prefix.Through < plan.source.Through {
 		chunk, advanced, request, loadErr := service.summaryChunk(ctx, run, prefix, plan.source.Through, previous, plan.limit)
+		if errors.Is(loadErr, ErrContextLimit) {
+			previous, prefix, loadErr = service.summarizeLargeGroup(ctx, run, prefix, plan.source.Through, previous, plan.limit, &result.ModelCalls)
+			if loadErr != nil {
+				return result, loadErr
+			}
+			continue
+		}
 		if loadErr != nil {
 			return result, loadErr
 		}
@@ -256,19 +274,9 @@ func (service *Service) applyCompaction(ctx context.Context, run Run, plan compa
 		}
 		service.event(Event{Kind: "context_compacting", ConversationID: run.ConversationID, RunID: run.ID,
 			Message: fmt.Sprintf("summarizing %d source messages", advanced.Count-prefix.Count)})
-		attempt, response, callErr := service.generate(ctx, run, request)
-		if attempt.ID != "" {
-			result.ModelCalls++
-		}
-		if callErr != nil {
-			return result, callErr
-		}
-		if response.Provider != nil && response.Provider.FinishReason != "stop" {
-			return result, &CallError{Certain: true, Category: "context", Code: "summary_incomplete", Message: "summary response was not complete; previous summary retained"}
-		}
-		previous = strings.TrimSpace(response.Content)
-		if previous == "" || len(previous) > plan.limit || !utf8.ValidString(previous) {
-			return result, &CallError{Certain: true, Category: "context", Code: "summary_limit", Message: "summary did not fit its byte limit; previous summary retained"}
+		previous, err = service.generateSummary(ctx, run, request, plan.limit, &result.ModelCalls)
+		if err != nil {
+			return result, err
 		}
 		prefix = advanced
 	}
@@ -291,11 +299,23 @@ func (service *Service) applyCompaction(ctx context.Context, run Run, plan compa
 	if plan.old != nil && record.SourceDigest == plan.old.SourceDigest && record.TextHash == plan.old.TextHash && record.ByteLimit == plan.old.ByteLimit {
 		return result, nil
 	}
-	if result.AfterBytes >= result.BeforeBytes && !automatic {
+	if result.AfterBytes >= result.BeforeBytes {
 		return result, nil
 	}
-	if automatic {
-		if _, err := service.buildContextWithSummary(ctx, run, &record); err != nil {
+	if len(validate) != 0 {
+		if err := validate[0](&record); err != nil {
+			return result, err
+		}
+	} else if automatic {
+		request, err := service.buildContextWithSummary(ctx, run, &record)
+		if err != nil {
+			return result, err
+		}
+		usage, err := service.requestUsage(run, request)
+		if err != nil {
+			return result, err
+		}
+		if err := usage.budgetError(); err != nil {
 			return result, err
 		}
 	}
@@ -427,7 +447,7 @@ func (tasks *TaskService) manageContext(ctx context.Context, chat string, comman
 		}
 		if core.externalContext() {
 			var visible int
-			if err := core.Store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM messages WHERE conversation_id=? AND id>? AND id<=? AND json_extract(body_json,'$.Public')=1 AND json_extract(body_json,'$.Role') IN ('user','assistant') AND length(json_extract(body_json,'$.Content'))>0 AND coalesce(json_extract(body_json,'$.Channel.purpose'),'')!='command')`, chat, plan.base.Through, plan.source.Through).Scan(&visible); err != nil {
+			if err := core.Store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM messages WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND id<=? AND json_extract(body_json,'$.Public')=1 AND json_extract(body_json,'$.Role') IN ('user','assistant') AND length(json_extract(body_json,'$.Content'))>0 AND coalesce(json_extract(body_json,'$.Channel.purpose'),'')!='command')`, chat, plan.base.Through, plan.source.Through).Scan(&visible); err != nil {
 				return RunResult{}, err
 			}
 			if visible == 0 {
@@ -447,7 +467,7 @@ func (tasks *TaskService) manageContext(ctx context.Context, chat string, comman
 		} else if err := core.Store.FinishRun(ctx, run.ID, "running", ""); err != nil {
 			return RunResult{}, err
 		}
-		clock := &runClock{parent: ctx, store: core.Store, runID: run.ID, limit: time.Duration(core.limits().MaxRunSeconds) * time.Second}
+		clock := &runClock{parent: ctx, store: core.Store, runID: run.ID, limit: time.Duration(core.childSeconds()) * time.Second}
 		var operationErr error
 		if operationErr = clock.resume(); operationErr == nil {
 			result, operationErr = core.applyCompaction(clock.ctx, run, plan, false)

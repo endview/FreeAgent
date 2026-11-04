@@ -552,7 +552,7 @@ func TestExtendedControlCatalogPlansAppliesAndRevertsConfigFamilies(t *testing.T
 		{ControlSetHTTPPolicy, map[string]any{"enabled": true, "allowed_origins": []string{"https://example.test"}, "timeout_seconds": 10, "max_output_bytes": 4096}, func(config Config) bool { return config.HTTP.Enabled && len(config.HTTP.AllowedOrigins) == 1 }},
 		{ControlSetMemoryPolicy, map[string]any{"knowledge_enabled": true, "max_entries": 8, "max_context_bytes": 8192, "max_document_bytes": 16384}, func(config Config) bool { return config.Memory.KnowledgeEnabled && config.Memory.MaxEntries == 8 }},
 		{ControlSetPromptPolicy, map[string]any{"system_prompt": "updated system prompt", "instructions": []string{}}, func(config Config) bool { return config.SystemPrompt == "updated system prompt" }},
-		{ControlSetRuntimeLimits, map[string]any{"max_steps": 20, "max_context_bytes": 65536}, func(config Config) bool { return config.MaxSteps == 20 && config.MaxContextBytes == 65536 }},
+		{ControlSetRuntimeLimits, map[string]any{"history_page_size": 80, "max_context_bytes": 65536}, func(config Config) bool { return config.HistoryPageSize == 80 && config.MaxContextBytes == 65536 }},
 		{ControlSetSkillPolicy, map[string]any{"id": "notes", "enabled": true, "trusted_workspace": workspace, "trusted": true}, func(config Config) bool {
 			return config.Skills.Enabled["notes"] && config.Skills.TrustedWorkspaces[workspace]
 		}},
@@ -629,13 +629,13 @@ func TestRuntimeLimitsRevertRestoresExactSnapshot(t *testing.T) {
 		return operation
 	}
 	apply(ControlSetRuntimeLimits, map[string]any{
-		"max_steps": 20, "max_messages": 80, "max_context_bytes": 65536,
-		"max_output_tokens": 2048, "max_run_seconds": 120, "max_tool_result_bytes": 32768,
+		"history_page_size": 80, "max_context_bytes": 65536,
+		"max_output_tokens": 2048, "max_tool_result_bytes": 32768,
 		"task_summary_bytes": 4096,
 	})
 	before := service.Config
-	changed := apply(ControlSetRuntimeLimits, map[string]any{"max_steps": 30})
-	if service.Config.MaxSteps != 30 || service.Config.MaxMessages != before.MaxMessages ||
+	changed := apply(ControlSetRuntimeLimits, map[string]any{"history_page_size": 90})
+	if service.Config.HistoryPageSize != 90 || service.Config.MaxContextBytes != before.MaxContextBytes ||
 		service.Config.TaskSummaryBytes != before.TaskSummaryBytes {
 		t.Fatalf("partial limits update changed the wrong fields: before=%+v after=%+v", before, service.Config)
 	}
@@ -655,9 +655,9 @@ func TestRuntimeLimitsRevertRestoresExactSnapshot(t *testing.T) {
 		ConversationID: conversationID, Principal: "user", Code: code, Capability: capability}); err != nil {
 		t.Fatalf("exact limits revert failed: %v", err)
 	}
-	if service.Config.MaxSteps != before.MaxSteps || service.Config.MaxMessages != before.MaxMessages ||
+	if service.Config.HistoryPageSize != before.HistoryPageSize ||
 		service.Config.MaxContextBytes != before.MaxContextBytes || service.Config.MaxOutputTokens != before.MaxOutputTokens ||
-		service.Config.MaxRunSeconds != before.MaxRunSeconds || service.Config.MaxToolResult != before.MaxToolResult ||
+		service.Config.MaxToolResult != before.MaxToolResult ||
 		service.Config.TaskSummaryBytes != before.TaskSummaryBytes {
 		t.Fatalf("limits revert did not restore exact snapshot: before=%+v after=%+v", before, service.Config)
 	}

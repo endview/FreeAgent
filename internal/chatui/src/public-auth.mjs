@@ -1,7 +1,7 @@
 export function apiPath(path, remote) {
   if (!remote || !path.startsWith('attach/')) return `/api/${path}`;
   const name = path.slice(7).split('?')[0];
-  if (!['context', 'commands', 'cancel'].includes(name)) throw new Error('此本机接口不向公网开放。');
+  if (!['context', 'commands', 'cancel', 'inputs', 'branch'].includes(name)) throw new Error('此本机接口不向公网开放。');
   return `/api/remote/${path.slice(7)}`;
 }
 

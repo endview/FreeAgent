@@ -211,7 +211,7 @@ func TestModelSelectionDuringActiveBoundaries(t *testing.T) {
 	}
 }
 
-func TestSafeRunSwitchAndFiniteIncreasePreserveConsumption(t *testing.T) {
+func TestSafeStoppedRunSwitchAndContextIncreasePreserveConsumption(t *testing.T) {
 	for _, selection := range []string{"second", "new-revision"} {
 		t.Run(selection, func(t *testing.T) {
 			var calls atomic.Int32
@@ -224,12 +224,18 @@ func TestSafeRunSwitchAndFiniteIncreasePreserveConsumption(t *testing.T) {
 				}
 				return ModelResponse{Content: "continued without replay"}, nil
 			}))
-			core.Config.MaxSteps = 2
 			if err := WriteConfig(core.Store.DataDir(), core.Config); err != nil {
 				t.Fatal(err)
 			}
-			limited, err := tasks.Submit(t.Context(), "", "limited", "read then answer")
-			if !errors.Is(err, ErrStepLimit) || limited.Run.Steps != 2 || limited.Run.Status != "limited" {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			tasks.SetEvents(func(event Event) {
+				if event.Kind == "tool_finished" {
+					cancel()
+				}
+			})
+			limited, err := tasks.Submit(ctx, "", "limited", "read then answer")
+			if !errors.Is(err, context.Canceled) || limited.Run.Steps != 2 || limited.Run.Status != "stopped" {
 				t.Fatalf("limited=%+v err=%v", limited, err)
 			}
 			old, _ := core.Store.ListAttempts(t.Context(), limited.Run.ID)
@@ -248,11 +254,12 @@ func TestSafeRunSwitchAndFiniteIncreasePreserveConsumption(t *testing.T) {
 			}
 			current, _ := core.Store.GetRun(t.Context(), limited.Run.ID)
 			if current.Steps != limited.Run.Steps || current.ElapsedMS != limited.Run.ElapsedMS ||
-				current.Status != "limited" || current.InitialModel != "default" || current.ModelRevision == limited.Run.ModelRevision {
+				current.Status != "stopped" || current.InitialModel != "default" || current.ModelRevision == limited.Run.ModelRevision {
 				t.Fatalf("switch reset facts: %+v", current)
 			}
 			limits, _ := tasks.Limits(t.Context(), limited.Run.ID)
-			limits.MaxSteps = 4
+			limits.MaxContextBytes += 4096
+			tasks.SetEvents(nil)
 			if err := tasks.IncreaseLimits(t.Context(), limited.Run.ID, limits); err != nil {
 				t.Fatal(err)
 			}
@@ -296,8 +303,7 @@ func TestUnknownCannotBeReplayedBySelectionLimitsOrReopen(t *testing.T) {
 		t.Fatalf("UNKNOWN switched: %v", err)
 	}
 	limits, _ := tasks.Limits(t.Context(), result.Run.ID)
-	limits.MaxSteps++
-	limits.MaxRunSeconds++
+	limits.MaxContextBytes += 4096
 	if err := tasks.IncreaseLimits(t.Context(), result.Run.ID, limits); err != nil {
 		t.Fatal(err)
 	}
@@ -318,12 +324,12 @@ func TestUnknownCannotBeReplayedBySelectionLimitsOrReopen(t *testing.T) {
 		t.Fatalf("UNKNOWN retry=%+v calls=%d err=%v", duplicate, calls.Load(), err)
 	}
 	lower := limits
-	lower.MaxSteps--
+	lower.MaxContextBytes--
 	if err := tasks.IncreaseLimits(t.Context(), current.ID, lower); err == nil {
 		t.Fatal("decreased a saved limit")
 	}
 	invalid := limits
-	invalid.MaxRunSeconds = 0
+	invalid.MaxContextBytes = 0
 	if err := tasks.IncreaseLimits(t.Context(), current.ID, invalid); err == nil {
 		t.Fatal("unbounded limit accepted")
 	}
@@ -403,7 +409,7 @@ func TestApprovalWaitExcludedFromActiveExecution(t *testing.T) {
 		}
 		return ModelResponse{Content: "both complete"}, nil
 	}))
-	core.Config.MaxRunSeconds = 1
+	core.childBudget = &ChildBudget{MaxSteps: 100, MaxSeconds: 1, MaxOutputBytes: 16 << 20, MaxCallOutputBytes: 1 << 20}
 	if err := WriteConfig(core.Store.DataDir(), core.Config); err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +447,7 @@ func TestApprovalCancellationAndReopenPreserveIdleBoundary(t *testing.T) {
 		}
 		return ModelResponse{Content: "created"}, nil
 	}))
-	core.Config.MaxRunSeconds = 1
+	core.childBudget = &ChildBudget{MaxSteps: 100, MaxSeconds: 1, MaxOutputBytes: 16 << 20, MaxCallOutputBytes: 1 << 20}
 	if err := WriteConfig(core.Store.DataDir(), core.Config); err != nil {
 		t.Fatal(err)
 	}
@@ -485,7 +491,7 @@ func TestActiveModelStillTimesOutWithoutReplay(t *testing.T) {
 		<-ctx.Done()
 		return ModelResponse{}, ctx.Err()
 	}))
-	core.Config.MaxRunSeconds = 1
+	core.childBudget = &ChildBudget{MaxSteps: 100, MaxSeconds: 1, MaxOutputBytes: 16 << 20, MaxCallOutputBytes: 1 << 20}
 	if err := WriteConfig(core.Store.DataDir(), core.Config); err != nil {
 		t.Fatal(err)
 	}

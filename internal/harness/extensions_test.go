@@ -1533,7 +1533,6 @@ func TestExtensionStepPrepareUsesRealProcessAndDoesNotLeakTurnOrPreviousStep(t *
 	}
 	service.Config.Extensions.Enabled = map[string]bool{extensionID: true}
 	service.Config.Extensions.Required = map[string]bool{extensionID: true}
-	service.Config.MaxSteps = 4
 	service.capabilities = &CapabilitySelection{Extensions: []string{extensionID}}
 	service.extensions = newExtensionHost(service.Store.DataDir(), workspace, service.Config, nil)
 	t.Cleanup(func() { _ = service.extensions.close() })

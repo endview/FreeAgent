@@ -34,6 +34,7 @@ type configInvocation struct {
 	HTTP               harness.HTTPConfig
 	AllowedOrigins     []string
 	SummaryBytes       int
+	AutoCompactAt      int
 
 	Auto       harness.AutoConfig
 	AutoModels []string
@@ -227,6 +228,9 @@ func (inv configInvocation) controlPlan(ctx context.Context, dataDir string) (st
 		limits := map[string]any{}
 		if visited("summary-bytes") {
 			limits["task_summary_bytes"] = inv.SummaryBytes
+		}
+		if visited("auto-percent") {
+			limits["auto_compact_percent"] = inv.AutoCompactAt
 		}
 		return marshalControlArgs(harness.ControlSetRuntimeLimits, limits)
 	case "memory":

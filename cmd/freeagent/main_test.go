@@ -159,7 +159,7 @@ func TestCLIHelpExcludesRetiredCommandsAndDependencyClosure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"config model --id", "[--default]", "[--model <id>]", "--max-steps", "--max-seconds", "/model", "/more"} {
+	for _, command := range []string{"config model --id", "[--default]", "[--model <id>]", "/model", "/steer", "/queue", "/branch"} {
 		if !strings.Contains(raw, command) {
 			t.Errorf("current command missing from help: %s", command)
 		}

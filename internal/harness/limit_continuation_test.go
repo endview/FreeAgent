@@ -2,7 +2,6 @@ package harness
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 	"testing"
 )
@@ -16,10 +15,20 @@ func limitedFixture(t *testing.T) (*Service, *TaskService, Run, *atomic.Int32) {
 		}
 		return ModelResponse{Content: "remaining work complete; saved tool was not repeated"}, nil
 	}))
-	service.Config.MaxSteps = 2
 	tasks := NewTaskService(service)
 	result, err := tasks.Submit(t.Context(), "", "limited", "inspect then finish")
-	if !errors.Is(err, ErrStepLimit) || result.Run.Status != "limited" || !result.Run.LimitSettled {
+	if err != nil || result.Run.Status != "completed" {
+		t.Fatal("fixture execution failed", err)
+	}
+	// Retain a determinately finished partial round, as an explicitly observed
+	// output limit would. Task-wide step/time limits no longer exist.
+	if err := service.Store.FinishRun(t.Context(), result.Run.ID, "limited", "output budget reached"); err != nil {
+		t.Fatal(err)
+	}
+	result.Run, _ = service.Store.GetRun(t.Context(), result.Run.ID)
+	_, err = service.Store.settleLimited(t.Context(), result.Run)
+	result.Run, _ = service.Store.GetRun(t.Context(), result.Run.ID)
+	if err != nil || !result.Run.LimitSettled {
 		t.Fatalf("not settled: status=%s settled=%t error=%v", result.Run.Status, result.Run.LimitSettled, err)
 	}
 	return service, tasks, result.Run, calls
@@ -29,7 +38,7 @@ func TestSettledLimitKeepsEvidenceAndStartsOneExplicitSuccessor(t *testing.T) {
 	service, tasks, previous, calls := limitedFixture(t)
 	attempts, _ := service.Store.ListAttempts(t.Context(), previous.ID)
 	result, err := tasks.Submit(t.Context(), previous.ConversationID, "user-continue", "继续")
-	if err != nil || result.Run.Status != "completed" || result.Run.ID == previous.ID || result.Run.ContinuationOf != previous.ID || calls.Load() != 2 {
+	if err != nil || result.Run.Status != "completed" || result.Run.ID == previous.ID || result.Run.ContinuationOf != previous.ID || calls.Load() != 3 {
 		t.Fatalf("successor: status=%s parent=%s calls=%d error=%v", result.Run.Status, result.Run.ContinuationOf, calls.Load(), err)
 	}
 	old, _ := service.Store.GetRun(t.Context(), previous.ID)
@@ -41,11 +50,11 @@ func TestSettledLimitKeepsEvidenceAndStartsOneExplicitSuccessor(t *testing.T) {
 		t.Fatal("previous tool was queued again")
 	}
 	duplicate, err := tasks.Submit(t.Context(), previous.ConversationID, "user-continue", "继续")
-	if err != nil || !duplicate.Duplicate || duplicate.Run.ID != result.Run.ID || calls.Load() != 2 {
+	if err != nil || !duplicate.Duplicate || duplicate.Run.ID != result.Run.ID || calls.Load() != 3 {
 		t.Fatal("input retransmission dispatched", err)
 	}
 	second, err := tasks.Continue(t.Context(), previous.ID)
-	if err != nil || !second.Duplicate || second.Run.ID != result.Run.ID || calls.Load() != 2 {
+	if err != nil || !second.Duplicate || second.Run.ID != result.Run.ID || calls.Load() != 3 {
 		t.Fatal("parent gained multiple successors", err)
 	}
 	view, err := tasks.Chat(t.Context(), previous.ConversationID, "")

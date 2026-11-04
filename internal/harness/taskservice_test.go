@@ -275,7 +275,7 @@ func TestWorkflowUnknownSettlementCompletesAfterNestedRunUnknown(t *testing.T) {
 		t.Fatalf("run=%+v created=%v err=%v", run, created, err)
 	}
 	attempt, err := service.Store.startWorkflow(t.Context(), run, "com.example.host", "nested",
-		map[string]any{"value": "x"}, service.limits().MaxSteps, nil)
+		map[string]any{"value": "x"}, service.childSteps(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,9 +342,9 @@ func TestDurableCompactionKeepsGroupsSourcesAndOriginalRecords(t *testing.T) {
 		return ModelResponse{Content: "done"}, nil
 	}))
 	service.Config.TaskSummaryBytes = 2048
-	service.Config.MaxMessages = 7
-	service.Config.MaxSteps = 30
-	_ = os.WriteFile(filepath.Join(workspace, "note"), []byte("task data"), 0o600)
+	service.Config.HistoryPageSize = 7
+	service.Config.MaxContextBytes, service.Config.MaxOutputTokens = 12000, 128
+	_ = os.WriteFile(filepath.Join(workspace, "note"), []byte("task data "+strings.Repeat("task source content ", 150)), 0o600)
 	result, err := service.Run(t.Context(), conversation(t, service), "long", "long task input")
 	if err != nil || result.Run.Status != "completed" || !summarized {
 		t.Fatalf("result=%+v summarized=%t err=%v", result, summarized, err)

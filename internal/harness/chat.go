@@ -8,10 +8,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ChatView is a read-only projection, not another persisted execution model.
 type ChatView struct {
+	Branch       *BranchOrigin       `json:"branch,omitempty"`
 	Conversation Conversation        `json:"conversation"`
 	ModelID      string              `json:"model_id"`
 	Permission   PermissionSelection `json:"permission"`
@@ -23,6 +25,7 @@ type ChatView struct {
 }
 
 type ChatTurn struct {
+	MessagesEarlier bool                 `json:"messages_has_earlier,omitempty"`
 	Attachments     []AttachmentRef      `json:"attachments,omitempty"`
 	Key             string               `json:"key"`
 	State           string               `json:"state"`
@@ -35,6 +38,7 @@ type ChatTurn struct {
 	Steps           int                  `json:"steps"`
 	ElapsedMS       int64                `json:"elapsed_ms"`
 	Messages        []ChatMessage        `json:"messages"`
+	ActivityEarlier bool                 `json:"activity_has_earlier,omitempty"`
 	Activity        []ChatActivity       `json:"activity"`
 	Evidence        Evidence             `json:"evidence"`
 	Sources         []MemoryUse          `json:"sources"`
@@ -55,16 +59,20 @@ type ChatMessage struct {
 }
 
 type ChatActivity struct {
-	Key       string        `json:"key"`
-	Kind      string        `json:"kind"`
-	Name      string        `json:"name,omitempty"`
-	Target    string        `json:"target,omitempty"`
-	Status    string        `json:"status"`
-	IsError   bool          `json:"is_error,omitempty"`
-	Text      string        `json:"text,omitempty"`
-	Truncated bool          `json:"truncated,omitempty"`
-	Receipts  []ToolReceipt `json:"receipts,omitempty"`
-	Failure   *CallError    `json:"failure,omitempty"`
+	Outcome    *ToolOutcome  `json:"outcome,omitempty"`
+	DurationMS *int64        `json:"duration_ms,omitempty"`
+	StartedAt  string        `json:"started_at,omitempty"`
+	Usage      *ModelUsage   `json:"usage,omitempty"`
+	Key        string        `json:"key"`
+	Kind       string        `json:"kind"`
+	Name       string        `json:"name,omitempty"`
+	Target     string        `json:"target,omitempty"`
+	Status     string        `json:"status"`
+	IsError    bool          `json:"is_error,omitempty"`
+	Text       string        `json:"text,omitempty"`
+	Truncated  bool          `json:"truncated,omitempty"`
+	Receipts   []ToolReceipt `json:"receipts,omitempty"`
+	Failure    *CallError    `json:"failure,omitempty"`
 }
 
 const chatTextBytes = 64 << 10
@@ -194,11 +202,11 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 	}
 	slices.Reverse(runs)
 	for _, run := range runs {
-		attempts, err := listAttempts(ctx, tx, run.ID)
+		attempts, earlier, err := listChatAttempts(ctx, tx, run.ID)
 		if err != nil {
 			return ChatView{}, err
 		}
-		turn := ChatTurn{Key: run.ID, RequestKey: run.RequestKey, State: chatState(run, attempts), Reason: run.StopReason,
+		turn := ChatTurn{ActivityEarlier: earlier, Key: run.ID, RequestKey: run.RequestKey, State: chatState(run, attempts), Reason: run.StopReason,
 			Steps: run.Steps, ElapsedMS: activeElapsed(run),
 			ModelID: run.ModelID, Permission: run.Permission, Messages: make([]ChatMessage, 0), Activity: make([]ChatActivity, 0),
 			Sources: make([]MemoryUse, 0), Evidence: attemptEvidence(attempts), Ended: run.Status == "abandoned"}
@@ -236,7 +244,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		if run.LimitSettled && turn.State != "unknown" {
 			turn.CanEnd = false
 		}
-		messages, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE run_id=? ORDER BY id`, run.ID)
+		messages, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE conversation_id=? AND run_id=? AND (json_extract(body_json,'$.Role')='user' OR json_extract(body_json,'$.Role')='assistant' AND length(json_extract(body_json,'$.Content'))>0 OR json_array_length(json_extract(body_json,'$.Attachments'))>0) ORDER BY id DESC LIMIT 129`, conversationID, run.ID)
 		if err != nil {
 			return ChatView{}, err
 		}
@@ -263,6 +271,12 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		if err := errors.Join(messages.Err(), messages.Close()); err != nil {
 			return ChatView{}, err
 		}
+		if len(turn.Messages) > 128 {
+			turn.Messages = turn.Messages[:128]
+			turn.MessagesEarlier = true
+		}
+		slices.Reverse(turn.Messages)
+		slices.Reverse(turn.Attachments)
 		projectRefs := func(refs []AttachmentRef) {
 			for i := range refs {
 				record, err := loadAttachment(ctx, tx, refs[i].ID)
@@ -285,6 +299,14 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		}
 		for _, attempt := range attempts {
 			activity := ChatActivity{Key: attempt.ID, Kind: attempt.Kind, Status: attempt.Status, Name: attempt.ModelID}
+			var start string
+			if e := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "attempt/time/"+attempt.ID).Scan(&start); e == nil {
+				if _, e := time.Parse(time.RFC3339Nano, start); e == nil {
+					activity.StartedAt = start
+				}
+			} else if !errors.Is(e, sql.ErrNoRows) {
+				return ChatView{}, e
+			}
 			if attempt.Kind == "model" {
 				var request ModelRequest
 				if json.Unmarshal([]byte(attempt.RequestJSON), &request) != nil {
@@ -302,9 +324,16 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 							return ChatView{}, ErrStoreFormat
 						}
 						activity.Text, activity.Truncated = chatText(attempt.ResponseJSON)
-					} else if response.Failure != nil {
-						activity.Failure, activity.IsError = response.Failure, true
-						activity.Text, activity.Truncated = chatText(response.Content)
+					} else {
+						if activity.StartedAt != "" || response.LatencyMS > 0 {
+							duration := response.LatencyMS
+							activity.DurationMS = &duration
+						}
+						activity.Usage = response.Usage
+						if response.Failure != nil {
+							activity.Failure, activity.IsError = response.Failure, true
+							activity.Text, activity.Truncated = chatText(response.Content)
+						}
 					}
 				}
 			} else if attempt.Kind == "workflow" {
@@ -330,6 +359,14 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 				activity.Name, activity.Target, activity.Text, activity.IsError, activity.Receipts =
 					call.Name, activityTarget(call), result.Content, result.IsError, result.Receipts
 				activity.Text, activity.Truncated = chatText(activity.Text)
+				if result.Outcome != nil {
+					activity.Outcome = result.Outcome
+					activity.Status = result.Outcome.Status
+					if result.Outcome.Dispatched && (result.Outcome.DurationKnown || result.Outcome.DurationMS > 0) {
+						duration := result.Outcome.DurationMS
+						activity.DurationMS = &duration
+					}
+				}
 				addSources(result.Memory)
 			}
 			turn.Activity = append(turn.Activity, activity)
@@ -339,8 +376,18 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 	if len(runs) != 0 {
 		view.Before = runs[0].ID
 	}
+	var branchRaw string
+	if e := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "conversation/branch/"+conversationID).Scan(&branchRaw); e == nil {
+		var origin BranchOrigin
+		if json.Unmarshal([]byte(branchRaw), &origin) != nil {
+			return ChatView{}, ErrStoreFormat
+		}
+		view.Branch = &origin
+	} else if !errors.Is(e, sql.ErrNoRows) {
+		return ChatView{}, e
+	}
 	if before == "" {
-		rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE conversation_id=? AND run_id IS NULL AND json_extract(body_json,'$.Channel.purpose') IN ('background','command','request') ORDER BY id DESC LIMIT 100`, conversationID)
+		rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE conversation_id=? AND run_id IS NULL AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND (json_extract(body_json,'$.Channel.purpose') IN ('background','command','request') OR EXISTS(SELECT 1 FROM meta WHERE key='conversation/branch/'||messages.conversation_id)) ORDER BY id DESC LIMIT 100`, conversationID)
 		if err != nil {
 			return ChatView{}, err
 		}
@@ -433,4 +480,31 @@ func (tasks *TaskService) ChatRaw(ctx context.Context, conversationID, kind, key
 	default:
 		return "", errors.New("harness: unknown Chat body kind")
 	}
+}
+
+// Keep snapshots bounded independently of task length. Full saved attempts are
+// available through Inspect and explicit raw reads, not repeated on each tick.
+func listChatAttempts(ctx context.Context, tx *sql.Tx, run string) ([]Attempt, bool, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id,run_id,kind,call_id,status,request_json,response_json,rowid FROM attempts WHERE run_id=? ORDER BY rowid DESC LIMIT 129`, run)
+	if err != nil {
+		return nil, false, err
+	}
+	var attempts []Attempt
+	for rows.Next() {
+		a, err := scanAttempt(rows)
+		if err != nil {
+			rows.Close()
+			return nil, false, err
+		}
+		attempts = append(attempts, a)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, false, err
+	}
+	earlier := len(attempts) > 128
+	if earlier {
+		attempts = attempts[:128]
+	}
+	slices.Reverse(attempts)
+	return attempts, earlier, nil
 }

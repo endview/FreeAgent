@@ -407,24 +407,6 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.writeJSON(writer, http.StatusOK, map[string]string{"raw": raw})
 		return
 	}
-	if len(parts) == 2 && parts[1] == "limits" && request.Method == http.MethodGet {
-		if _, err := server.tasks.Chat(request.Context(), chat, ""); err != nil {
-			server.fail(writer, err)
-			return
-		}
-		run, err := server.tasks.Latest(request.Context(), chat)
-		if err != nil {
-			server.fail(writer, err)
-			return
-		}
-		limits, err := server.tasks.Limits(request.Context(), run.ID)
-		if err != nil {
-			server.fail(writer, err)
-			return
-		}
-		server.writeJSON(writer, http.StatusOK, limits)
-		return
-	}
 	if len(parts) == 2 && parts[1] == "memory" && request.Method == http.MethodGet {
 		selection, err := server.tasks.SelectedMemory(request.Context(), chat)
 		if err != nil {
@@ -672,7 +654,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	case "stop":
 		active := server.cancelConversation(chat, "")
 		server.writeJSON(writer, http.StatusOK, map[string]bool{"requested": active})
-	case "continue", "preview", "confirm", "end", "limits":
+	case "continue", "preview", "confirm", "end":
 		run, err := server.tasks.Latest(request.Context(), chat)
 		if err != nil {
 			server.fail(writer, err)
@@ -725,24 +707,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 				return
 			}
 			server.writeJSON(writer, http.StatusOK, map[string]bool{"ended": true})
-		case "limits":
-			var body struct {
-				Steps   int `json:"steps"`
-				Seconds int `json:"seconds"`
-			}
-			if !server.readBody(writer, request, &body) {
-				return
-			}
-			limits, err := server.tasks.Limits(request.Context(), run.ID)
-			if err == nil {
-				limits.MaxSteps, limits.MaxRunSeconds = body.Steps, body.Seconds
-				err = server.tasks.IncreaseLimits(request.Context(), run.ID, limits)
-			}
-			if err != nil {
-				server.fail(writer, err)
-				return
-			}
-			server.writeJSON(writer, http.StatusOK, map[string]bool{"saved": true})
+
 		}
 	default:
 		http.NotFound(writer, request)
@@ -967,7 +932,9 @@ func userError(err error) (string, string) {
 		return "config", "任务配置已变化，需要先处理原任务。"
 	case errors.Is(err, harness.ErrSnapshotIncomplete):
 		return "snapshot_incomplete", "运行快照缺少当前版本所需的权限信息，未套用当前配置。"
-	case errors.Is(err, harness.ErrModelCapability), errors.Is(err, harness.ErrContextLimit):
+	case errors.Is(err, harness.ErrContextLimit):
+		return "context_budget", err.Error()
+	case errors.Is(err, harness.ErrModelCapability):
 		return "capability", "当前模型能力或上下文限额不足。"
 	case errors.Is(err, harness.ErrActiveRun):
 		return "busy", "存在未完成任务，请先继续、停止或明确结束。"

@@ -52,8 +52,12 @@ func (server *Server) release(chat string, item *ownerExecution) {
 	server.mu.Unlock()
 	server.wg.Done()
 	server.notify("refresh", chat, "")
+	// A queue accepted in another idle conversation may have been waiting for
+	// the same foreground slot. Reuse this Owner dispatch boundary on release.
+	server.advanceInputQueues()
 }
 func (server *Server) cancelConversation(chat, binding string) bool {
+	_ = server.tasks.PauseQueue(server.ctx, chat, true)
 	server.mu.Lock()
 	defer server.mu.Unlock()
 	item := server.running[chat]

@@ -29,6 +29,7 @@ type ModelBinding struct {
 // Model and limit changes remain bounded data in the existing run snapshot.
 // The first binding is immutable; attempts record the actual dispatched binding.
 type runSnapshot struct {
+	InputRequestID      string            `json:"input_request_id,omitempty"`
 	ContinuationOf      string            `json:"continuation_of,omitempty"`
 	CommandRulesVersion int               `json:"command_rules_version"`
 	InputAttachments    []AttachmentRef   `json:",omitempty"`
@@ -37,6 +38,7 @@ type runSnapshot struct {
 	Tools               []ToolDefinition
 	InstructionsHash    string
 	Bindings            []ModelBinding
+	ChildBudget         *ChildBudget         `json:",omitempty"`
 	Limits              *ExecutionLimits     `json:",omitempty"`
 	Auto                *autoRunPolicy       `json:",omitempty"`
 	Routing             []RoutingDecision    `json:",omitempty"`
@@ -52,26 +54,22 @@ type runSnapshot struct {
 }
 
 type ExecutionLimits struct {
-	MaxSteps        int `json:"max_steps"`
-	MaxMessages     int `json:"max_messages"`
+	HistoryPageSize int `json:"history_page_size"`
 	MaxContextBytes int `json:"max_context_bytes"`
 	MaxOutputTokens int `json:"max_output_tokens"`
-	MaxRunSeconds   int `json:"max_run_seconds"`
 	MaxToolResult   int `json:"max_tool_result_bytes"`
 }
 
 func configLimits(config Config) ExecutionLimits {
-	return ExecutionLimits{config.MaxSteps, config.MaxMessages, config.MaxContextBytes,
-		config.MaxOutputTokens, config.MaxRunSeconds, config.MaxToolResult}
+	return ExecutionLimits{config.HistoryPageSize, config.MaxContextBytes, config.MaxOutputTokens, config.MaxToolResult}
 }
 
 func (limits ExecutionLimits) validate() error {
-	if limits.MaxSteps < 1 || limits.MaxSteps > 100 || limits.MaxMessages < 1 || limits.MaxMessages > 1000 ||
+	if limits.HistoryPageSize < 1 || limits.HistoryPageSize > 1000 ||
 		limits.MaxContextBytes < 4096 || limits.MaxContextBytes > 16<<20 ||
 		limits.MaxOutputTokens < 1 || limits.MaxOutputTokens > 32768 ||
-		limits.MaxRunSeconds < 1 || limits.MaxRunSeconds > 3600 ||
 		limits.MaxToolResult < 1 || limits.MaxToolResult > 16<<20 {
-		return errors.New("harness: execution limits must be finite and within supported bounds")
+		return errors.New("harness: context and output limits are out of range")
 	}
 	return nil
 }
@@ -81,6 +79,22 @@ func (service *Service) limits() ExecutionLimits {
 		return *service.runLimits
 	}
 	return configLimits(service.Config)
+}
+
+// Only explicitly composed children have step/time budgets. Ordinary Runs
+// keep their counters without a task-wide termination budget.
+func (service *Service) childSteps() int {
+	if service.childBudget != nil {
+		return service.childBudget.MaxSteps
+	}
+	return 0
+}
+
+func (service *Service) childSeconds() int {
+	if service.childBudget != nil {
+		return service.childBudget.MaxSeconds
+	}
+	return 0
 }
 
 func modelBinding(config Config, id string) (ModelBinding, error) {
@@ -187,6 +201,11 @@ func decodeRunSnapshot(raw string) (runSnapshot, error) {
 	}
 	if snapshot.Limits != nil && snapshot.Limits.validate() != nil {
 		return snapshot, ErrStoreFormat
+	}
+	if snapshot.ChildBudget != nil {
+		if _, err := childConfig(snapshot.Config, RoleProfile{Budget: *snapshot.ChildBudget}); err != nil {
+			return snapshot, ErrStoreFormat
+		}
 	}
 	if snapshot.Permission != nil && snapshot.Permission.validate() != nil {
 		return snapshot, ErrStoreFormat
@@ -365,6 +384,8 @@ func (service *Service) forRun(run Run) (*Service, error) {
 	}
 	copy := *service
 	copy.continuationOf = snapshot.ContinuationOf
+	copy.inputRequestID = snapshot.InputRequestID
+	copy.childBudget = snapshot.ChildBudget
 	if run.Status == "waiting_confirmation" && service.hasPendingToolApproval(run.ID) {
 		// The run owns its configuration snapshot. Rebuild the minimal model
 		// registry from frozen bindings so future-only global changes do not
@@ -673,9 +694,9 @@ func (tasks *TaskService) IncreaseLimits(ctx context.Context, runID string, limi
 	}
 	return tasks.editRun(ctx, runID, func(core *Service, run Run) (string, error) {
 		old := core.limits()
-		if limits.MaxSteps < old.MaxSteps || limits.MaxMessages < old.MaxMessages ||
+		if limits.HistoryPageSize < old.HistoryPageSize ||
 			limits.MaxContextBytes < old.MaxContextBytes || limits.MaxOutputTokens < old.MaxOutputTokens ||
-			limits.MaxRunSeconds < old.MaxRunSeconds || limits.MaxToolResult < old.MaxToolResult {
+			limits.MaxToolResult < old.MaxToolResult {
 			return "", errors.New("harness: limits can only increase without resetting consumption")
 		}
 		core.runLimits = &limits

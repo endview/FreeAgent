@@ -120,9 +120,10 @@ downtime between explicit continuations. Still-running commands and children
 retain their own deadlines. After a crash, the last active interval is
 conservatively charged through recovery, including downtime. Neither
 continuation nor changed config grants the same Run a fresh budget.
-Use `continue --max-steps <n> --max-seconds <n>` or Chat `/more` to explicitly
-increase finite limits. This preserves steps, elapsed time, results and UNKNOWN,
-and requires a separate continuation; it never resumes work implicitly.
+Ordinary tasks have no cumulative step/time cutoff. Queue advancement pauses
+on failure, stop, approval or UNKNOWN. Inspect the saved operation before using
+`/queue-resume`; this never replays an unknown call. See
+[continuous execution and current-data upgrade checks](CONTEXT_AND_CONTINUOUS_EXECUTION.md).
 
 ## Backup
 

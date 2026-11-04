@@ -34,7 +34,7 @@ func shouldReplan(record collaborationRecord, report CollaborationReport) bool {
 
 func (collab *Collaboration) replan(ctx context.Context, core *Service, parentID string, report CollaborationReport) (returnErr error) {
 	clock := &runClock{parent: ctx, store: core.Store, runID: parentID,
-		limit: time.Duration(core.limits().MaxRunSeconds) * time.Second, activity: core.activity}
+		limit: time.Duration(core.childSeconds()) * time.Second, activity: core.activity}
 	defer func() {
 		returnErr = errors.Join(returnErr, clock.pause())
 		if returnErr != nil {
@@ -264,8 +264,8 @@ func authorizeReplan(core *Service, record collaborationRecord, edit Collaborati
 			return err
 		}
 		limit := settings.Child
-		if role.Budget.MaxSteps > min(limit.MaxSteps, core.Config.MaxSteps) ||
-			role.Budget.MaxSeconds > min(limit.MaxSeconds, core.Config.MaxRunSeconds) ||
+		if role.Budget.MaxSteps > limit.MaxSteps ||
+			role.Budget.MaxSeconds > limit.MaxSeconds ||
 			role.Budget.MaxOutputBytes > limit.MaxOutputBytes || role.Budget.MaxCallOutputBytes > limit.MaxCallOutputBytes {
 			return errors.New("harness: replan child limits exceed saved authority")
 		}

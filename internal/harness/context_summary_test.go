@@ -133,7 +133,12 @@ func TestCompactionFailuresRetainPreviousSummaryAndHistory(t *testing.T) {
 			result, err := tasks.ManageContext(t.Context(), chat, ContextCommand{Action: "compact", SummaryBytes: 1024})
 			retained, _ := service.Store.summaryRaw(t.Context(), chat)
 			after, _ := tasks.Messages(t.Context(), chat)
-			if err == nil || result.Changed || raw != retained || !reflect.DeepEqual(before, after) || calls.Load() != 1 {
+			if err == nil || result.Changed || raw != retained || !reflect.DeepEqual(before, after) || calls.Load() != func() int32 {
+				if mode == "oversized" {
+					return 2
+				}
+				return 1
+			}() {
 				t.Fatalf("failure changed state or replayed: %+v %v calls=%d", result, err, calls.Load())
 			}
 			if mode == "unknown" {
@@ -179,7 +184,17 @@ func TestCompactionIntegrityRefreshAndClear(t *testing.T) {
 
 func TestManualCompactionRestoresLimitedRunAndRetainsBudget(t *testing.T) {
 	service, tasks, chat, _ := summaryFixture(t)
-	service.Config.MaxMessages = 3
+	service.Config.HistoryPageSize = 3
+	service.Config.MaxOutputTokens = 128
+	probe, probeErr := service.buildContext(t.Context(), Run{ConversationID: chat, Prompt: "new task needing retained context"})
+	if probeErr != nil {
+		t.Fatal(probeErr)
+	}
+	measured, probeErr := service.requestUsage(Run{}, probe)
+	if probeErr != nil {
+		t.Fatal(probeErr)
+	}
+	service.Config.MaxContextBytes = measured.Bytes + measured.ReservedBytes - 200
 	result, err := service.Run(t.Context(), chat, "limited", "new task needing retained context")
 	if !errors.Is(err, ErrContextLimit) || result.Run.Status != "limited" {
 		t.Fatalf("limit: %+v %v", result, err)
@@ -197,7 +212,7 @@ func TestManualCompactionRestoresLimitedRunAndRetainsBudget(t *testing.T) {
 
 func TestCompactionChunksKeepSemanticContinuityAndBoundedMetadata(t *testing.T) {
 	service, tasks, chat, calls := summaryFixture(t)
-	service.Config.MaxMessages, service.Config.MaxSteps = 200, 100
+	service.Config.HistoryPageSize = 200
 	for i := 0; i < 16; i++ {
 		if _, err := service.Run(t.Context(), chat, fmt.Sprintf("long-%d", i), strings.Repeat("source context; ", 30)+lateContextConstraint); err != nil {
 			t.Fatal(err)
@@ -299,7 +314,7 @@ func TestAutomaticCompactionRebuildsStalePrefixAndExtendsAtomically(t *testing.T
 		t.Fatalf("stale: %+v %v", state, err)
 	}
 	before, _ := tasks.Messages(t.Context(), chat)
-	service.Config.TaskSummaryBytes, service.Config.MaxMessages = 1024, 3
+	service.Config.TaskSummaryBytes, service.Config.HistoryPageSize = 1024, 3
 	result, err := service.Run(t.Context(), chat, "automatic-recovery", "continue after changed source")
 	if err != nil || result.Run.Status != "completed" {
 		t.Fatalf("automatic recovery: %+v %v", result, err)

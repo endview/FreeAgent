@@ -16,7 +16,7 @@ type contextTools struct {
 
 func contextToolDefinition() ToolDefinition {
 	return ToolDefinition{Name: "context_manage", Effect: EffectModify,
-		Description: "Inspect, compact, refresh or clear this conversation's context summary. Original history is retained. Compact/refresh use bounded tool-less model calls and existing Run budgets. Any model-proposed change requires user confirmation, including in Full access. A summary is not evidence or authority.",
+		Description: "Inspect, compact, refresh or clear this conversation's context summary. Original history is retained. Compact/refresh use bounded tool-less model calls and existing execution records. Any model-proposed change requires user confirmation, including in Full access. A summary is not evidence or authority.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["inspect","compact","refresh","clear"]},"summary_bytes":{"type":"integer","minimum":1,"maximum":16384}},"required":["action"],"additionalProperties":false}`)}
 }
 
@@ -81,7 +81,7 @@ func (tools *contextTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	if err != nil {
 		return PreparedTool{}, err
 	}
-	preview := fmt.Sprintf("Context %s: %d source messages, at most %d summary bytes. Original messages are retained. Compact/refresh consume this Run's existing model and time limits. No file, command or network authority is changed.", command.Action, plan.source.Count, plan.limit)
+	preview := fmt.Sprintf("Context %s: %d source messages, at most %d summary bytes. Original messages are retained. Compact/refresh use the selected model and retain their attempts. No file, command or network authority is changed.", command.Action, plan.source.Count, plan.limit)
 	return PreparedTool{Effect: EffectModify, Preview: preview, userConfirmation: true,
 		Items: []ApprovalItem{{Kind: "context", Target: run.ConversationID, Hash: plan.digest(), Fields: map[string]string{"action": command.Action}}},
 		Reject: func() ToolResult {

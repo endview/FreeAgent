@@ -26,7 +26,7 @@ var (
 	ErrActiveRun     = errors.New("harness: conversation has an unfinished run")
 	ErrUnknownResult = errors.New("harness: unresolved call; automatic replay is forbidden")
 	ErrRequestKey    = errors.New("harness: request key was already used for a different request")
-	ErrStepLimit     = errors.New("harness: step limit reached")
+	ErrStepLimit     = errors.New("harness: explicit child step budget reached")
 	ErrPinnedLimit   = errors.New("harness: pinned conversation limit reached")
 )
 
@@ -36,6 +36,7 @@ const (
 )
 
 type Store struct {
+	inputMu          sync.Mutex
 	cancelMu         sync.Mutex
 	requestCancels   map[string]context.CancelFunc
 	telegramMu       sync.Mutex
@@ -524,7 +525,10 @@ func (store *Store) createRun(ctx context.Context, conversationID, requestKey, p
 func (store *Store) createRunWithTool(ctx context.Context, conversationID, requestKey, prompt, configJSON string, maintenance bool, call *ToolCall) (Run, bool, error) {
 	store.attachmentMu.Lock()
 	defer store.attachmentMu.Unlock()
-	var input struct{ InputAttachments []AttachmentRef }
+	var input struct {
+		InputAttachments []AttachmentRef
+		InputRequestID   string `json:"input_request_id"`
+	}
 	if json.Unmarshal([]byte(configJSON), &input) != nil {
 		return Run{}, false, ErrStoreFormat
 	}
@@ -560,6 +564,19 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 			return run, false, err
 		}
 	}
+	var branchRaw string
+	branchErr := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "conversation/branch/"+conversationID).Scan(&branchRaw)
+	if branchErr == nil {
+		var origin BranchOrigin
+		if json.Unmarshal([]byte(branchRaw), &origin) != nil {
+			return Run{}, false, ErrStoreFormat
+		}
+		if err := branchSourceReady(ctx, tx, origin.Source); err != nil {
+			return Run{}, false, err
+		}
+	} else if !errors.Is(branchErr, sql.ErrNoRows) {
+		return Run{}, false, branchErr
+	}
 	var blocked int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND `+activeRunPredicate, conversationID).Scan(&blocked); err != nil {
 		return Run{}, false, err
@@ -567,15 +584,56 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 	if blocked > 0 {
 		return Run{}, false, ErrActiveRun
 	}
+	var deferred *PendingInput
+	if input.InputRequestID != "" {
+		item, e := loadInput(ctx, tx, conversationID, input.InputRequestID)
+		if e != nil {
+			return Run{}, false, e
+		}
+		if item.Action != "queue" || item.Status != "pending" || item.Key != requestKey {
+			return Run{}, false, ErrRequestKey
+		}
+		var first string
+		if e := tx.QueryRowContext(ctx, `SELECT json_extract(value,'$.key') FROM meta WHERE key LIKE ? AND json_extract(value,'$.action')='queue' AND json_extract(value,'$.status')='pending' ORDER BY CAST(json_extract(value,'$.message_id') AS INTEGER) LIMIT 1`, inputPrefix(conversationID)+"%").Scan(&first); e != nil {
+			return Run{}, false, e
+		}
+		if first != item.Key {
+			return Run{}, false, ErrInputPending
+		}
+		var pause string
+		_ = tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "input-paused/"+conversationID).Scan(&pause)
+		if pause == "true" {
+			return Run{}, false, ErrQueuePaused
+		}
+		deferred = &item
+	}
 	result := Run{ID: newID(), ConversationID: conversationID, RequestKey: requestKey, Prompt: prompt, ConfigJSON: configJSON, Status: "running", CreatedAt: nowText(), UpdatedAt: nowText()}
+	if deferred != nil && deferred.Channel != nil {
+		// The input message moves to adoption order. Freeze that new boundary
+		// before publishing the new Run snapshot.
+		var next int64
+		if err := tx.QueryRowContext(ctx, `SELECT coalesce(max(id),0)+1 FROM messages`).Scan(&next); err != nil {
+			return Run{}, false, err
+		}
+		var frozen runSnapshot
+		if json.Unmarshal([]byte(result.ConfigJSON), &frozen) != nil || frozen.Channel == nil {
+			return Run{}, false, ErrStoreFormat
+		}
+		frozen.Channel.InputMessageID, frozen.Channel.HistoryThrough = next, next
+		result.ConfigJSON = string(mustJSON(frozen))
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO runs(`+runColumns+`) VALUES(?,?,?,?,?,'running','',0,0,'',?,?,'')`,
-		result.ID, conversationID, requestKey, prompt, configJSON, result.CreatedAt, result.UpdatedAt); err != nil {
+		result.ID, conversationID, requestKey, prompt, result.ConfigJSON, result.CreatedAt, result.UpdatedAt); err != nil {
 		return Run{}, false, err
 	}
 	if err := bindAttachments(ctx, tx, conversationID, result.ID, input.InputAttachments); err != nil {
 		return Run{}, false, err
 	}
-	if maintenance {
+	if deferred != nil {
+		if err := moveInputMessage(ctx, tx, deferred, result.ID); err != nil {
+			return Run{}, false, err
+		}
+	} else if maintenance {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, maintenanceMetaPrefix+result.ID, "compaction"); err != nil {
 			return Run{}, false, err
 		}
@@ -891,6 +949,9 @@ func saveToolTxMode(ctx context.Context, tx *sql.Tx, run Run, attempt Attempt, c
 		if result.IsError {
 			kind = "failed"
 		}
+		if status == "pending" {
+			kind = "not_run"
+		}
 		result.Outcome = &ToolOutcome{Status: kind, Dispatched: status == "dispatched", CompletionKnown: true, Truncated: result.Truncated}
 	}
 	raw, err := json.Marshal(result)
@@ -1044,6 +1105,19 @@ func (store *Store) startGuardedModel(ctx context.Context, run Run, request stri
 		return Attempt{}, err
 	}
 	defer tx.Rollback()
+	var requestPurpose struct{ Purpose string }
+	if json.Unmarshal([]byte(request), &requestPurpose) != nil {
+		return Attempt{}, ErrStoreFormat
+	}
+	if requestPurpose.Purpose == "" {
+		pending, e := pendingSteer(ctx, tx, run.ID)
+		if e != nil {
+			return Attempt{}, e
+		}
+		if pending {
+			return Attempt{}, ErrInputPending
+		}
+	}
 	if err := incrementStep(ctx, tx, run.ID, maxSteps); err != nil {
 		return Attempt{}, err
 	}
@@ -1076,6 +1150,9 @@ func (store *Store) startGuardedModel(ctx context.Context, run Run, request stri
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO attempts VALUES(?,?,'model','','dispatched',?,'')`, attempt.ID, run.ID, request); err != nil {
+		return Attempt{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "attempt/time/"+attempt.ID, nowText()); err != nil {
 		return Attempt{}, err
 	}
 	return attempt, tx.Commit()
@@ -1115,7 +1192,11 @@ func (store *Store) saveGuardedModel(ctx context.Context, run Run, attempt Attem
 				return err
 			}
 		}
-		if len(response.ToolCalls) == 0 {
+		steered, err := pendingSteer(ctx, tx, run.ID)
+		if err != nil {
+			return err
+		}
+		if len(response.ToolCalls) == 0 && !steered {
 			if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='completed', output=?, stop_reason='', updated_at=? WHERE id=?`, response.Content, nowText(), run.ID); err != nil {
 				return err
 			}
@@ -1237,6 +1318,13 @@ func (store *Store) dispatchGuardedTool(ctx context.Context, attempt Attempt, ma
 		return err
 	}
 	defer tx.Rollback()
+	steered, err := pendingSteer(ctx, tx, attempt.RunID)
+	if err != nil {
+		return err
+	}
+	if steered {
+		return ErrInputPending
+	}
 	if guard != nil {
 		if err := guard.Reserve(ctx, tx, attempt); err != nil {
 			return err
@@ -1251,6 +1339,9 @@ func (store *Store) dispatchGuardedTool(ctx context.Context, attempt Attempt, ma
 	}
 	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
 		return errors.New("harness: tool attempt is not pending")
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "attempt/time/"+attempt.ID, nowText()); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -1316,6 +1407,7 @@ func (store *Store) executeLocalToolMode(ctx context.Context, run Run, attempt A
 	if _, err := tx.ExecContext(ctx, `SAVEPOINT local_tool`); err != nil {
 		return ToolResult{}, err
 	}
+	started := time.Now()
 	result, callErr := execute(ctx, tx)
 	if callErr != nil {
 		if _, err := tx.ExecContext(ctx, `ROLLBACK TO local_tool`); err != nil {
@@ -1326,6 +1418,9 @@ func (store *Store) executeLocalToolMode(ctx context.Context, run Run, attempt A
 	if _, err := tx.ExecContext(ctx, `RELEASE local_tool`); err != nil {
 		return ToolResult{}, err
 	}
+	// Transaction rollback makes local callback errors definite; duration still
+	// measures the actual callback rather than approval waiting.
+	result = normalizeToolOutcome(ctx, result, nil, started, maxResult)
 	raw, err := json.Marshal(result)
 	if err != nil {
 		return ToolResult{}, err
@@ -1472,11 +1567,14 @@ func insertMessage(ctx context.Context, tx *sql.Tx, run Run, message ModelMessag
 }
 
 func incrementStep(ctx context.Context, tx *sql.Tx, runID string, maxSteps int) error {
-	result, err := tx.ExecContext(ctx, `UPDATE runs SET steps=steps+1 WHERE id=? AND steps<? AND status='running'`, runID, maxSteps)
+	result, err := tx.ExecContext(ctx, `UPDATE runs SET steps=steps+1 WHERE id=? AND (?=0 OR steps<?) AND status='running'`, runID, maxSteps, maxSteps)
 	if err != nil {
 		return err
 	}
 	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		if maxSteps == 0 {
+			return errors.Join(ErrActiveRun, err)
+		}
 		return ErrStepLimit
 	}
 	return nil
@@ -1699,4 +1797,21 @@ func nowText() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 func contentHash(raw []byte) string {
 	hash := sha256.Sum256(raw)
 	return hex.EncodeToString(hash[:])
+}
+
+func (store *Store) unresolvedAttempts(ctx context.Context, run string) ([]Attempt, error) {
+	rows, err := store.db.QueryContext(ctx, `SELECT id,run_id,kind,call_id,status,request_json,response_json,rowid FROM attempts WHERE run_id=? AND status IN ('pending','dispatched','unknown') ORDER BY rowid`, run)
+	if err != nil {
+		return nil, err
+	}
+	var attempts []Attempt
+	for rows.Next() {
+		a, err := scanAttempt(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		attempts = append(attempts, a)
+	}
+	return attempts, errors.Join(rows.Err(), rows.Close())
 }

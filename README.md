@@ -197,7 +197,7 @@ control <state|catalog|list|plan|confirm|reject|revert-plan|review> [--kind <kin
 chat [--resume <session>]
 web [--port <loopback-port>]
 run [--session <id>] [--model <id>] [--permission none|ask|workspace|full] [--confirm-full-access] [--request <key>] [--template <workspace-file>] [--json] [--interactive] <task>
-continue --run <id> [--model <id>] [--max-steps <n>] [--max-seconds <n>] [--interactive] [--json]
+continue --run <id> [--model <id>] [--interactive] [--json]
 sessions [--show <id>]
 inspect --run <id>
 preview --run <id> [--json]
@@ -233,10 +233,10 @@ in the given data directory use the key; `--disable-models` removes those
 models in the same step and `--force` leaves them to fail at dispatch. Other
 data directories are not checked. `run --model`
 binds only that new Run. `continue --model` switches an unfinished Run only at
-a safe complete model/tool boundary; `--max-steps` and `--max-seconds` add
-finite capacity without resetting consumption. Chat accepts `/model` to list or
-select the model for subsequent tasks and `/more` to explicitly increase finite
-limits, in addition to `/history`, `/sessions`, `/resume
+a safe complete model/tool boundary. Ordinary tasks have no total-step or
+cumulative-time cutoff. Chat accepts `/model`, running-task steering, FIFO
+`/queue`, and message branches. See [v7.13 execution/context guide](docs/CONTEXT_AND_CONTINUOUS_EXECUTION.md),
+in addition to `/history`, `/sessions`, `/resume
 <number>`, `/new`, `/status`, `/continue`, `/abandon`, `/file <path>`, `/begin`
 ... `/end`, and `/exit`. Ctrl+C during a task cancels that task and returns to
 input when possible; Ctrl+C while idle exits chat.

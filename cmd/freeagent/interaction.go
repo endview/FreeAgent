@@ -6,7 +6,6 @@ import (
 	"io"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/endview/freeagent/internal/harness"
@@ -51,35 +50,6 @@ func chatModelSelection(ctx context.Context, tasks chatTasks, conversationID, ch
 	}
 	_, err = fmt.Fprintf(stderr, "Model for subsequent tasks: %s. Any unfinished task retains its saved model and operations.\n", choice)
 	return err
-}
-
-func chatIncreaseLimits(ctx context.Context, tasks chatTasks, conversationID string, reader *terminalInput, writer io.Writer) error {
-	run, err := tasks.Latest(ctx, conversationID)
-	if err != nil {
-		return err
-	}
-	if run.Status == "unknown" {
-		return harness.ErrUnknownResult
-	}
-	limits, err := tasks.Limits(ctx, run.ID)
-	if err != nil {
-		return err
-	}
-	oldSteps, oldSeconds := limits.MaxSteps, limits.MaxRunSeconds
-	limits.MaxSteps = min(100, limits.MaxSteps+12)
-	limits.MaxRunSeconds = min(3600, limits.MaxRunSeconds+300)
-	if limits.MaxSteps == oldSteps && limits.MaxRunSeconds == oldSeconds {
-		return fmt.Errorf("supported finite limits have already been reached")
-	}
-	_, _ = fmt.Fprintf(writer, "Continue with limits of %d steps and %d seconds of active execution? Existing consumption is retained. [y/N] ", limits.MaxSteps, limits.MaxRunSeconds)
-	answer, err := reader.read(ctx)
-	if err != nil {
-		return err
-	}
-	if !strings.EqualFold(strings.TrimSpace(answer), "y") {
-		return fmt.Errorf("execution limits unchanged")
-	}
-	return tasks.IncreaseLimits(ctx, run.ID, limits)
 }
 
 func printChatResult(stdout, stderr io.Writer, result harness.RunResult, streamed bool) error {

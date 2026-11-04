@@ -208,12 +208,11 @@ func (plan CollaborationPlan) validate(core *Service) error {
 
 func childConfig(base Config, role RoleProfile) (Config, error) {
 	b := role.Budget
-	if b.MaxSteps < 1 || b.MaxSteps > base.MaxSteps || b.MaxSeconds < 1 || b.MaxSeconds > base.MaxRunSeconds ||
+	if b.MaxSteps < 1 || b.MaxSteps > 100 || b.MaxSeconds < 1 || b.MaxSeconds > 3600 ||
 		b.MaxOutputBytes < 1024 || b.MaxOutputBytes > 16<<20 ||
 		b.MaxCallOutputBytes < 256 || b.MaxCallOutputBytes > 1<<20 || b.MaxCallOutputBytes > b.MaxOutputBytes {
 		return Config{}, errors.New("harness: child budgets must be bounded within the selected runtime")
 	}
-	base.MaxSteps, base.MaxRunSeconds = b.MaxSteps, b.MaxSeconds
 	base.MaxOutputTokens = min(base.MaxOutputTokens, max(1, b.MaxCallOutputBytes/8))
 	base.MaxToolResult = min(base.MaxToolResult, b.MaxCallOutputBytes)
 	base.SystemPrompt, base.instructionText, base.Instructions = role.Instructions, "", nil

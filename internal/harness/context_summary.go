@@ -42,6 +42,9 @@ type ContextCommand struct {
 }
 
 type ContextState struct {
+	Window        ContextWindow        `json:"window"`
+	LastRequest   *ContextUsage        `json:"last_request,omitempty"`
+	LastUsage     *ModelUsage          `json:"last_reported_usage,omitempty"`
 	Status        string               `json:"status"`
 	Revision      string               `json:"revision"`
 	Summary       *ConversationSummary `json:"summary,omitempty"`
@@ -86,7 +89,7 @@ func readSourcePrefix(ctx context.Context, reader interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }, chat string, through int64, prefix sourcePrefix) (sourcePrefix, error) {
 	rows, err := reader.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
-		WHERE conversation_id=? AND id>? AND id<=? ORDER BY id`, chat, prefix.Through, through)
+		WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND id<=? ORDER BY id`, chat, prefix.Through, through)
 	if err != nil {
 		return prefix, err
 	}
@@ -202,34 +205,45 @@ func (store *Store) contextTail(ctx context.Context, run Run, through int64, max
 		filter = " AND (run_id=? OR (" + visible + "))"
 		args = append(args, run.ID)
 	}
-	args = append(args, maxMessages+1)
-	rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
-		WHERE conversation_id=? AND id>? AND (id<=? OR run_id=?)`+filter+` ORDER BY id LIMIT ?`, args...)
-	if err != nil {
-		return nil, err
-	}
 	var messages []Message
-	total := 0
-	for rows.Next() {
-		var item Message
-		var body string
-		if err := rows.Scan(&item.ID, &item.RunID, &body); err != nil {
-			rows.Close()
+	total, cursor := 0, through
+	pageSize := min(1000, max(1, maxMessages))
+	for {
+		pageArgs := append([]any(nil), args...)
+		pageArgs[1] = cursor
+		pageArgs = append(pageArgs, pageSize)
+		rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
+   WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND (id<=? OR run_id=?)`+filter+` ORDER BY id LIMIT ?`, pageArgs...)
+		if err != nil {
 			return nil, err
 		}
-		total += len(body)
-		if total > maxBytes || len(messages) >= maxMessages {
-			rows.Close()
-			return nil, ErrContextLimit
+		count := 0
+		for rows.Next() {
+			var item Message
+			var body string
+			if err := rows.Scan(&item.ID, &item.RunID, &body); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			total += len(body)
+			if total > maxBytes || len(messages) >= 65536 {
+				rows.Close()
+				return nil, &ContextBudgetError{Code: "history_read_bound", Usage: ContextUsage{Bytes: total, Window: ContextWindow{ByteLimit: maxBytes}, OverLimit: true}}
+			}
+			if json.Unmarshal([]byte(body), &item.ModelMessage) != nil {
+				rows.Close()
+				return nil, ErrStoreFormat
+			}
+			messages = append(messages, item)
+			cursor = item.ID
+			count++
 		}
-		if json.Unmarshal([]byte(body), &item.ModelMessage) != nil {
-			rows.Close()
-			return nil, ErrStoreFormat
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return nil, err
 		}
-		messages = append(messages, item)
-	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return nil, err
+		if count < pageSize {
+			break
+		}
 	}
 	if through > 0 && run.ID != "" {
 		var prompt Message
@@ -294,5 +308,8 @@ func (tasks *TaskService) contextState(ctx context.Context, chat, callerRun, cal
 		state.BlockingRunID = blocked
 	}
 	state.CanPropose = state.Blocked == ""
+	if err == nil {
+		err = tasks.populateContextUsage(ctx, chat, &state)
+	}
 	return state, err
 }

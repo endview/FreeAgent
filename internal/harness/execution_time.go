@@ -39,10 +39,10 @@ func (clock *runClock) resume() (returnErr error) {
 				return err
 			}
 			remaining := clock.limit - time.Duration(activeElapsed(run))*time.Millisecond
-			if remaining <= 0 {
+			if clock.limit > 0 && remaining <= 0 {
 				return ErrTimeLimit
 			}
-			clock.ctx, clock.cancel = context.WithTimeout(clock.parent, remaining)
+			clock.startContext(remaining)
 			return nil
 		}
 	}
@@ -54,7 +54,7 @@ func (clock *runClock) resume() (returnErr error) {
 		return err
 	}
 	remaining := clock.limit - time.Duration(run.ElapsedMS)*time.Millisecond
-	if remaining <= 0 {
+	if clock.limit > 0 && remaining <= 0 {
 		return ErrTimeLimit
 	}
 	clock.started, clock.since = time.Now(), nowText()
@@ -62,12 +62,23 @@ func (clock *runClock) resume() (returnErr error) {
 		clock.since = ""
 		return err
 	}
-	clock.ctx, clock.cancel = context.WithTimeout(clock.parent, remaining)
+	clock.startContext(remaining)
 	return nil
+}
+
+func (clock *runClock) startContext(remaining time.Duration) {
+	if clock.limit > 0 {
+		clock.ctx, clock.cancel = context.WithTimeoutCause(clock.parent, remaining, ErrTimeLimit)
+	} else {
+		clock.ctx, clock.cancel = context.WithCancel(clock.parent)
+	}
 }
 
 func (clock *runClock) pause() (returnErr error) {
 	defer func() {
+		if clock.ctx != nil && errors.Is(context.Cause(clock.ctx), ErrTimeLimit) {
+			returnErr = errors.Join(returnErr, ErrTimeLimit)
+		}
 		if clock.registered {
 			clock.registered = false
 			returnErr = errors.Join(returnErr, clock.activity.release())
@@ -92,9 +103,6 @@ func (clock *runClock) pause() (returnErr error) {
 
 func activeTimeout(parent context.Context, err error) error {
 	if err != nil && errors.Is(context.Cause(parent), ErrTimeLimit) {
-		return errors.Join(ErrTimeLimit, err)
-	}
-	if parent.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
 		return errors.Join(ErrTimeLimit, err)
 	}
 	return err

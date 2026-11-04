@@ -99,7 +99,7 @@ ext run [--data-dir <directory>] [--path <directory>] --workflow <name> [--input
   ext run [--path <directory>] --fixture <file> [--host mock] (fixture compatibility)
 ext logs [--data-dir <directory>] [--json] <id>
 run [--session <id>] [--model <id>] [--permission <ask|workspace|full>] [--confirm-full-access] [--request <key>] [--template <file>] [--json] [--interactive] <task>
-continue --run <id> [--model <id>] [--max-steps <n>] [--max-seconds <n>] [--interactive] [--json]
+continue --run <id> [--model <id>] [--interactive] [--json]
 sessions [--show <id>]
 inspect --run <id>
 preview --run <id> [--json]
@@ -123,7 +123,7 @@ restore --source <backup-directory> --data-dir <new-directory>
 Public Web (Linux, default off): public status|configure|disable|password|clear-locks.
   Passwords use hidden input or --password-stdin; HTTPS proxy setup: docs/PUBLIC_WEB.md.
 
-Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /more /history /sessions /resume <number> /new /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
+Chat commands: /steer <text> /queue [text] /inputs /queue-pause /queue-resume /queue-cancel <key> /branch <message-id> [text] /branch-reply <message-id> /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /history /sessions /resume <number> /new /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
 Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes and sandboxed commands, and Full access auto-runs enabled modifying tools. On Windows commands run in an AppContainer sandbox; Full access runs them on the host. MCP and loopback HTTP are not sandboxed.
 Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
 		return err
@@ -320,7 +320,7 @@ func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	}
 	_, _, service, closeAll, err := openRuntime(ctx, *dataDir)
 	if errors.Is(err, harness.ErrOwnerActive) {
-		if err := rejectAttachedOptions(*template, *modelID, 0, 0); err != nil {
+		if err := rejectAttachedOptions(*template, *modelID); err != nil {
 			return err
 		}
 		if *collaborationMode != "" {
@@ -411,8 +411,6 @@ func runContinue(ctx context.Context, args []string, stdin io.Reader, stdout, st
 	interactive := flags.Bool("interactive", false, "prompt to approve file edits")
 	asJSON := flags.Bool("json", false, "write structured output")
 	modelID := flags.String("model", "", "switch at a complete saved model/tool group before continuing")
-	maxSteps := flags.Int("max-steps", 0, "explicitly increase this run's finite step limit")
-	maxSeconds := flags.Int("max-seconds", 0, "explicitly increase this run's effective execution time limit")
 	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
@@ -427,7 +425,7 @@ func runContinue(ctx context.Context, args []string, stdin io.Reader, stdout, st
 	}
 	_, _, service, closeAll, err := openRuntime(ctx, *dataDir)
 	if errors.Is(err, harness.ErrOwnerActive) {
-		if err := rejectAttachedOptions("", *modelID, *maxSteps, *maxSeconds); err != nil {
+		if err := rejectAttachedOptions("", *modelID); err != nil {
 			return err
 		}
 		client, attachErr := attachedOwner(ctx, *dataDir)
@@ -447,21 +445,6 @@ func runContinue(ctx context.Context, args []string, stdin io.Reader, stdout, st
 	tasks := harness.NewTaskService(service)
 	if *modelID != "" {
 		if err := tasks.SwitchModel(ctx, *runID, *modelID); err != nil {
-			return err
-		}
-	}
-	if *maxSteps != 0 || *maxSeconds != 0 {
-		limits, err := tasks.Limits(ctx, *runID)
-		if err != nil {
-			return err
-		}
-		if *maxSteps != 0 {
-			limits.MaxSteps = *maxSteps
-		}
-		if *maxSeconds != 0 {
-			limits.MaxRunSeconds = *maxSeconds
-		}
-		if err := tasks.IncreaseLimits(ctx, *runID, limits); err != nil {
 			return err
 		}
 	}
@@ -546,6 +529,11 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	}
 	reader := newTerminalInput(ctx, stdin)
 	tasks := &remoteChat{Client: client, data: *dataDir, reader: reader, stderr: stderr, space: *spaceID}
+	if terminal, ok := stdin.(*os.File); ok {
+		if info, e := terminal.Stat(); e == nil {
+			tasks.liveInputEnabled = info.Mode()&os.ModeCharDevice != 0
+		}
+	}
 	if err := tasks.refresh(ctx); err != nil {
 		return err
 	}
@@ -564,7 +552,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		}
 		tasks.space = view.Conversation.SpaceID
 	}
-	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /compact /context [inspect|refresh|clear] /status /mode /continue /more /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit\n", config.Workspace)
+	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /compact /context [inspect|refresh|clear] /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit\n", config.Workspace)
 	var references []string
 	var inputAttachments []string
 	var nextCollaboration *harness.CollaborationSettings
@@ -591,6 +579,12 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		if prompt == "/exit" || prompt == "/quit" {
 			return nil
 		}
+		if handled, inputErr := chatInputs(ctx, tasks, prompt, conversationID, &inputAttachments, stderr); handled {
+			if inputErr != nil {
+				fmt.Fprintln(stderr, inputErr)
+			}
+			continue
+		}
 		previousChat := *conversationID
 		if handled, err := handleChatSpaces(ctx, tasks, prompt, conversationID, reader, stdout, stderr); handled {
 			if previousChat != *conversationID {
@@ -607,7 +601,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 				return err
 			}
 			for _, item := range messages {
-				_, _ = fmt.Fprintf(stdout, "%s: %s\n", item.Role, item.Content)
+				_, _ = fmt.Fprintf(stdout, "[%d] %s: %s\n", item.ID, item.Role, item.Content)
 			}
 			continue
 		}
@@ -750,14 +744,6 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 				_, _ = fmt.Fprintln(stderr, err)
 			}
 			continue
-		}
-		if prompt == "/more" {
-			err := chatIncreaseLimits(ctx, tasks, *conversationID, reader, stderr)
-			if err != nil {
-				_, _ = fmt.Fprintln(stderr, err)
-				continue
-			}
-			prompt = "/continue"
 		}
 		if strings.HasPrefix(prompt, "/attach ") {
 			path := strings.TrimSpace(strings.TrimPrefix(prompt, "/attach "))

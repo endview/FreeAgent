@@ -68,6 +68,30 @@ func rejectChannelModelKey(key harness.KeyProfileView) bool {
 func (server *Server) keysAPI(writer http.ResponseWriter, request *http.Request) bool {
 	path := request.URL.Path
 	switch {
+	case path == "/api/models/context" && request.Method == http.MethodPost:
+		var body struct {
+			ID     string `json:"id"`
+			Tokens int    `json:"tokens"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		model, ok := server.tasks.Config().Models[body.ID]
+		if !ok {
+			server.writeError(writer, http.StatusNotFound, "model", "模型不存在。")
+			return true
+		}
+		model.Capabilities.ContextTokens = body.Tokens
+		model.Capabilities.ContextSource = ""
+		if body.Tokens > 0 {
+			model.Capabilities.ContextSource = "manual"
+		}
+		if _, err := server.applyDirectControl(request.Context(), "", "", harness.ControlSetModelProfile, map[string]any{"id": body.ID, "provider": model.Provider, "key": model.Key, "model": model.Model, "capabilities": model.Capabilities, "default": false}); err != nil {
+			server.fail(writer, err)
+		} else {
+			server.writeJSON(writer, http.StatusOK, map[string]bool{"saved": true})
+		}
+		return true
 	case path == "/api/models/vision" && request.Method == http.MethodPost:
 		var body struct {
 			ID     string                     `json:"id"`

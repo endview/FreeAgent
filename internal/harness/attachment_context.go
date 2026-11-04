@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -56,6 +57,21 @@ func (service *Service) prepareAttachmentRequest(ctx context.Context, run Run, m
 	current := map[string]bool{}
 	for _, ref := range service.inputAttachments {
 		current[ref.ID] = true
+	}
+	if run.ID != "" {
+		var body string
+		err := service.Store.db.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE run_id=? AND json_extract(body_json,'$.Role')='user' ORDER BY id DESC LIMIT 1`, run.ID).Scan(&body)
+		if err == nil {
+			var message ModelMessage
+			if json.Unmarshal([]byte(body), &message) != nil {
+				return request, ErrStoreFormat
+			}
+			for _, ref := range message.Attachments {
+				current[ref.ID] = true
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return request, err
+		}
 	}
 	count, total := 0, 0
 	// Pick newest images first. Older images retain a visible textual reference

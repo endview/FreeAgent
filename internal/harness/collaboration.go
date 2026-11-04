@@ -81,6 +81,7 @@ func (collab *Collaboration) childService(core *Service, record collaborationRec
 	if err != nil {
 		return nil, err
 	}
+	service.childBudget = &role.Budget
 	service.permission = core.permission
 	service.channel = core.channel
 	service.ownsLease = true

@@ -174,6 +174,7 @@ export function turnSignature(turn = {}) {
     ['remaining_uncertainty', evidence.remaining_uncertainty],
   ].map(([key, items]) => [key, Array.isArray(items) ? items.length : 0]);
   return JSON.stringify({
+    messages_has_earlier:turn.messages_has_earlier,activity_has_earlier:turn.activity_has_earlier,
     key: turn.key || '',
     state: turn.state || '',
     reason: turn.reason || '',
@@ -187,7 +188,7 @@ export function turnSignature(turn = {}) {
     ]),
     activity: (turn.activity || []).map((activity) => [
       activity.key || '', activity.status || '', String(activity.text ?? '').length,
-      Boolean(activity.truncated), Boolean(activity.is_error),
+      Boolean(activity.truncated), Boolean(activity.is_error), activity.duration_ms, activity.started_at, activity.usage,activity.outcome,
     ]),
     evidence: evidenceCounts, attachments: turn.attachments || [],
     sources: Array.isArray(turn.sources) ? turn.sources.length : 0,
@@ -243,7 +244,7 @@ export function restoreRawBodies(turns, raw) {
     ...turn,
     messages: turn.messages.map((message) => raw.has(`message:${message.key}`)
       ? { ...message, raw: raw.get(`message:${message.key}`), truncated: false } : message),
-    activity: turn.activity.map((activity) => activity.status === 'finished' && raw.has(`activity:${activity.key}`)
+    activity: turn.activity.map((activity) => ['finished','completed','failed','truncated','not_run'].includes(activity.status) && raw.has(`activity:${activity.key}`)
       ? { ...activity, text: raw.get(`activity:${activity.key}`), truncated: false } : activity),
   }));
 }

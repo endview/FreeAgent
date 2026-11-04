@@ -405,10 +405,11 @@ func (server *Server) configProjection() map[string]any {
 		"model_capabilities": capabilities, "commands": config.Commands, "http": config.HTTP,
 		"collaboration": config.Collaboration, "memory": config.Memory,
 		"limits": map[string]int{
-			"max_steps": config.MaxSteps, "max_messages": config.MaxMessages,
+			"history_page_size": config.HistoryPageSize,
 			"max_context_bytes": config.MaxContextBytes, "max_output_tokens": config.MaxOutputTokens,
-			"max_run_seconds": config.MaxRunSeconds, "max_tool_result_bytes": config.MaxToolResult,
-			"task_summary_bytes": config.TaskSummaryBytes,
+			"max_tool_result_bytes": config.MaxToolResult,
+			"task_summary_bytes":    config.TaskSummaryBytes,
+			"auto_compact_percent":  config.AutoCompactAt,
 		},
 		"changed": false, "network_tested": false, "credentials_resolved": false,
 	}

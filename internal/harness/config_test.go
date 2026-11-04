@@ -19,7 +19,7 @@ func TestConfigureModelPreservesHistoryAndOtherSettings(t *testing.T) {
 	}
 	config := service.Config
 	config.Instructions = []string{"selected.txt"}
-	config.MaxSteps = 17
+	config.HistoryPageSize = 17
 	config.MCPServers = map[string]MCPServerConfig{
 		"trusted": {Enabled: true, Command: filepath.Join(data, "must-not-start"), EnvFrom: map[string]string{"TOKEN": "MISSING_CONFIG_TEST_KEY"}},
 	}
@@ -34,7 +34,7 @@ func TestConfigureModelPreservesHistoryAndOtherSettings(t *testing.T) {
 	}
 	model := ModelConfig{Provider: "openai-compatible", Key: "k-0badc0de", Model: "selected-model"}
 	updated, err := ConfigureModel(ctx, data, "new", model, true)
-	if err != nil || updated.Models["new"] != model || updated.DefaultModel != "new" || updated.MaxSteps != 17 || len(updated.MCPServers) != 1 {
+	if err != nil || updated.Models["new"] != model || updated.DefaultModel != "new" || updated.HistoryPageSize != 17 || len(updated.MCPServers) != 1 {
 		t.Fatalf("configuration=%+v error=%v", updated, err)
 	}
 	loaded, err := LoadConfig(data)
@@ -249,12 +249,12 @@ func TestConfigureModelsReusesStore(t *testing.T) {
 	if err := tasks.ConfigureModels(ctx, addModel("standard", "standard")); err != nil {
 		t.Fatalf("models-only edit refused with an unfinished run: %v", err)
 	}
-	steps := tasks.Config().MaxSteps
-	err = tasks.ConfigureModels(ctx, func(config *Config) error { config.MaxSteps = steps + 1; return nil })
+	steps := tasks.Config().HistoryPageSize
+	err = tasks.ConfigureModels(ctx, func(config *Config) error { config.HistoryPageSize = steps + 1; return nil })
 	if !errors.Is(err, ErrActiveRun) {
 		t.Fatalf("safety edit with an unfinished run error=%v", err)
 	}
-	if loaded, err := LoadConfig(data); err != nil || loaded.MaxSteps != steps || tasks.Config().MaxSteps != steps || loaded.Models["standard"].Provider != "echo" {
+	if loaded, err := LoadConfig(data); err != nil || loaded.HistoryPageSize != steps || tasks.Config().HistoryPageSize != steps || loaded.Models["standard"].Provider != "echo" {
 		t.Fatalf("configuration changed: loaded=%+v err=%v", loaded, err)
 	}
 }

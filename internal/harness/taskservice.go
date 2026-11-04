@@ -739,7 +739,13 @@ func (tasks *TaskService) execute(ctx context.Context, chat string, call func(co
 		tasks.mu.Unlock()
 		release()
 	}()
-	return call(child, &core)
+	result, callErr := call(child, &core)
+	if callErr != nil || result.Run.ID != "" && result.Run.Status != "completed" {
+		persist, done := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = tasks.PauseQueue(persist, chat, true)
+		done()
+	}
+	return result, callErr
 }
 
 func (tasks *TaskService) executeRun(ctx context.Context, runID string, call func(context.Context, *Service) (RunResult, error)) (RunResult, error) {
@@ -788,6 +794,7 @@ func (tasks *TaskService) Cancel() bool {
 }
 
 type RunOptions struct {
+	inputKey          string
 	continuationKey   string
 	Attachments       []string `json:"attachments,omitempty"`
 	channel           *ChannelRunOrigin
@@ -814,7 +821,7 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 	if strings.TrimSpace(prompt) == "" {
 		return RunResult{}, errors.New("harness: task prompt is required")
 	}
-	if conversationID != "" && isExplicitContinuation(prompt) {
+	if options.inputKey == "" && conversationID != "" && isExplicitContinuation(prompt) {
 		if requestKey != "" {
 			if prior, exists, err := tasks.core.Store.repeatedRun(ctx, conversationID, requestKey, limitContinuationPrompt); err == nil && exists {
 				return RunResult{Run: prior, Answer: prior.Output, Duplicate: true}, nil
@@ -847,6 +854,7 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 			return RunResult{}, err
 		}
 		core.inputAttachments = refs
+		core.inputRequestID = options.inputKey
 		core.selection = options.ModelID
 		if err := core.validate(ctx); err != nil {
 			return RunResult{}, err
@@ -861,6 +869,9 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 		if options.channel != nil {
 			if err := core.resolveRequestPermission(ctx, conversationID, options.personID, options.channel.Source); err != nil {
 				return RunResult{}, err
+			}
+			if options.inputKey != "" {
+				core.permission.Mode = lowerPermission(core.permission.Mode, options.Permission)
 			}
 		}
 		if err := core.bindChannel(ctx, conversationID, options.channel); err != nil {
@@ -1023,7 +1034,7 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 		}
 		bound.event(Event{Kind: "run_started", Message: run.ID, RunID: run.ID, ConversationID: run.ConversationID})
 		clock := &runClock{parent: ctx, store: bound.Store, runID: run.ID,
-			limit: time.Duration(bound.limits().MaxRunSeconds) * time.Second, activity: bound.activity}
+			limit: time.Duration(bound.childSeconds()) * time.Second, activity: bound.activity}
 		if err := clock.resume(); err != nil {
 			persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
 			defer done()
@@ -1031,7 +1042,7 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 			return RunResult{Run: run}, err
 		}
 		attempt, err := bound.Store.startWorkflow(clock.ctx, run, extensionID, workflowName, input,
-			bound.limits().MaxSteps, nil)
+			bound.childSteps(), nil)
 		if err != nil {
 			_ = clock.pause()
 			persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1134,15 +1145,6 @@ func (tasks *TaskService) ContinueWithOptions(ctx context.Context, runID string,
 			return tasks.continueComposition(ctx, core, run, options.Review)
 		}
 		if run.LimitSettled {
-			if snapshot, err := decodeRunSnapshot(run.ConfigJSON); err == nil {
-				limits := configLimits(snapshot.Config)
-				if snapshot.Limits != nil {
-					limits = *snapshot.Limits
-				}
-				if run.Steps < limits.MaxSteps && run.ElapsedMS < int64(limits.MaxRunSeconds)*1000 {
-					return core.Continue(ctx, runID)
-				}
-			}
 			return tasks.startLimitSuccessor(ctx, core, run, options)
 		}
 		return core.Continue(ctx, runID)

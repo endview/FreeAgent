@@ -116,6 +116,7 @@ func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data s
 		_ = runtime.Start(ctx)
 	}
 	handler.SetAppChannels(lark, qq)
+	handler.StartInputQueues()
 	client, err := handoff.NewInteractiveClient(published.Info, chatSecret)
 	if err != nil {
 		handler.Close()

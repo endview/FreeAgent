@@ -427,7 +427,7 @@ func TestRecoveryUnknownNeverReplaysAndKnownResultContinues(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			attempt, err := service.Store.startModel(ctx, run, `{}`, service.Config.MaxSteps)
+			attempt, err := service.Store.startModel(ctx, run, `{}`, service.childSteps())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -437,7 +437,7 @@ func TestRecoveryUnknownNeverReplaysAndKnownResultContinues(t *testing.T) {
 			}
 			attempts, _ := service.Store.ListAttempts(ctx, run.ID)
 			toolAttempt := attempts[1]
-			if err := service.Store.dispatchTool(ctx, toolAttempt, service.Config.MaxSteps); err != nil {
+			if err := service.Store.dispatchTool(ctx, toolAttempt, service.childSteps()); err != nil {
 				t.Fatal(err)
 			}
 			if known {
@@ -494,17 +494,23 @@ func TestCancellationBeforeDispatchDoesNotModifyFile(t *testing.T) {
 	}
 }
 
-func TestContextKeepsToolGroupsAndStepLimitSurvivesContinue(t *testing.T) {
+func TestContextKeepsToolGroupsWithoutTaskStepLimit(t *testing.T) {
+	calls := 0
 	service, _, _ := testHarness(t, modelFunc(func(ctx context.Context, request ModelRequest, emit func(string)) (ModelResponse, error) {
-		return ModelResponse{ToolCalls: []ToolCall{makeCall("one", "file_list", map[string]string{"path": "."})}}, nil
+		if err := completeMessageGroups(request.Messages); err != nil {
+			t.Fatal(err)
+		}
+		calls++
+		if calls <= 70 {
+			return ModelResponse{ToolCalls: []ToolCall{makeCall(fmt.Sprintf("list-%d", calls), "file_list", map[string]string{"path": "."})}}, nil
+		}
+		return ModelResponse{Content: "complete after 140 calls"}, nil
 	}))
-	service.Config.MaxSteps = 2
-	id := conversation(t, service)
-	result, err := service.Run(context.Background(), id, "limit", "loop")
-	if !errors.Is(err, ErrStepLimit) {
-		t.Fatalf("limit error=%v", err)
-	}
-	if _, err := service.Continue(context.Background(), result.Run.ID); !errors.Is(err, ErrStepLimit) {
-		t.Fatalf("continue reset limit: %v", err)
+	service.Config.HistoryPageSize = 1000
+	service.Config.MaxContextBytes = 16 << 20
+	service.Config.TaskSummaryBytes = 0
+	result, err := service.Run(t.Context(), conversation(t, service), "long", "finish the work")
+	if err != nil || result.Run.Status != "completed" || result.Run.Steps != 141 {
+		t.Fatalf("status=%s steps=%d err=%v", result.Run.Status, result.Run.Steps, err)
 	}
 }

@@ -291,7 +291,7 @@ func TestTelegramInvisibleCommandsDoNotConsumeEffectiveContextOrTriggerSummary(t
 		}
 		return ModelResponse{Content: "public reply"}, nil
 	}))
-	service.Config.MaxMessages = 4
+	service.Config.HistoryPageSize = 4
 	tasks := NewTaskService(service)
 	target := ChannelTarget{SpaceSourceTelegram, "1", "90"}
 	grantTelegramFixture(t, tasks, TelegramAccessChange{Target: target, Kind: "private", Enabled: true, Members: []string{"telegram:user:7"}})

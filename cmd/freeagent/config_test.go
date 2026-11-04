@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -71,7 +72,7 @@ func TestCLIConfigShowIsOfflineAndOmitsSensitiveContent(t *testing.T) {
 	}
 	if !shown.OK || shown.Changed || shown.NetworkTested || shown.CredentialsResolved ||
 		shown.Models[shown.DefaultModel] != config.DefaultModelConfig() || shown.ConfigPath != filepath.Join(data, "config.json") ||
-		shown.Workspace != workspace || shown.Limits["max_steps"] != config.MaxSteps ||
+		shown.Workspace != workspace || shown.Limits["history_page_size"] != config.HistoryPageSize ||
 		!reflect.DeepEqual(shown.EnabledMCPServers, []string{"alpha", "zeta"}) ||
 		!reflect.DeepEqual(shown.Instructions, config.Instructions) {
 		t.Fatalf("unexpected config summary: %+v", shown)
@@ -503,7 +504,7 @@ func TestConfigWorkspaceUsesExecutionLeaseSemantics(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		call := calls.Add(1)
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"list` + string(rune('0'+call)) +
+		_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"list` + fmt.Sprint(call) +
 			`","type":"function","function":{"name":"file_list","arguments":"{\"path\":\".\"}"}}]},"finish_reason":"tool_calls"}]}`))
 	}))
 	defer server.Close()
@@ -511,7 +512,9 @@ func TestConfigWorkspaceUsesExecutionLeaseSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config.MaxSteps = 1
+	config.TaskSummaryBytes = 0
+	config.MaxContextBytes = 12000
+	config.MaxOutputTokens = 128
 	config.Models["looping"] = harness.ModelConfig{Provider: "openai-compatible", Model: "fixture",
 		Key: fixtureKey(t, server.URL, harness.KeySourceNone, "", "")}
 	enableTestProviders(&config)

@@ -27,7 +27,8 @@ func TestLiveProviderAutomaticCompactionRetainsConstraint(t *testing.T) {
 	service.Keys = keys
 	service.Config.Models[service.Config.DefaultModel] = config
 	enableTestProviders(&service.Config)
-	service.Config.MaxMessages = 6
+	service.Config.HistoryPageSize = 6
+	service.Config.MaxContextBytes = 6800
 	service.Config.TaskSummaryBytes = 2048
 	service.Config.MaxOutputTokens = 512
 	tasks := NewTaskService(service)

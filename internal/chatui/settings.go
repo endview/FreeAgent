@@ -56,15 +56,23 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 		var body struct {
 			settingsPatch
 			TaskSummaryBytes *int `json:"task_summary_bytes"`
+			AutoCompactAt    *int `json:"auto_compact_percent"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
-		if body.TaskSummaryBytes == nil {
+		if body.TaskSummaryBytes == nil && body.AutoCompactAt == nil {
 			server.writeError(writer, http.StatusBadRequest, "input", "task_summary_bytes is required (0 disables automatic compaction)")
 			return true
 		}
-		if _, err := server.applyDirectControl(request.Context(), body.ExpectedRevision, "", harness.ControlSetRuntimeLimits, map[string]int{"task_summary_bytes": *body.TaskSummaryBytes}); err != nil {
+		args := map[string]int{}
+		if body.TaskSummaryBytes != nil {
+			args["task_summary_bytes"] = *body.TaskSummaryBytes
+		}
+		if body.AutoCompactAt != nil {
+			args["auto_compact_percent"] = *body.AutoCompactAt
+		}
+		if _, err := server.applyDirectControl(request.Context(), body.ExpectedRevision, "", harness.ControlSetRuntimeLimits, args); err != nil {
 			server.runtimePolicyFailure(writer, err)
 			return true
 		}
@@ -88,7 +96,7 @@ func (server *Server) settingsProjection() map[string]any {
 	return map[string]any{
 		"schema_version": 1,
 		"revision":       policy.Generation,
-		"context":        map[string]any{"automatic": config.TaskSummaryBytes > 0, "task_summary_bytes": config.TaskSummaryBytes},
+		"context":        map[string]any{"automatic": config.TaskSummaryBytes > 0, "task_summary_bytes": config.TaskSummaryBytes, "auto_compact_percent": config.AutoCompactAt},
 		"default_permission_mode": func() harness.PermissionMode {
 			if config.Execution.PermissionMode == "" {
 				return harness.PermissionAsk

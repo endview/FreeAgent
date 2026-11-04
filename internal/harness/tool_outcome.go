@@ -9,6 +9,7 @@ import (
 // ToolOutcome describes dispatch/completion facts; backend receipts retain
 // their file, HTTP and process details. Cancellation cannot erase completion.
 type ToolOutcome struct {
+	DurationKnown   bool   `json:"duration_recorded,omitempty"`
 	Status          string `json:"status"`
 	Dispatched      bool   `json:"dispatched"`
 	CompletionKnown bool   `json:"completion_known"`
@@ -39,7 +40,7 @@ func normalizeToolOutcome(ctx context.Context, result ToolResult, callErr error,
 	if !known {
 		status = "unknown"
 	}
-	outcome := &ToolOutcome{Status: status, Dispatched: true, CompletionKnown: known, DurationMS: max(0, time.Since(started).Milliseconds()), Truncated: result.Truncated}
+	outcome := &ToolOutcome{Status: status, Dispatched: true, CompletionKnown: known, DurationKnown: true, DurationMS: max(0, time.Since(started).Milliseconds()), Truncated: result.Truncated}
 	outcome.Cancelled = errors.Is(ctx.Err(), context.Canceled)
 	outcome.TimedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
 	if result.Truncated {

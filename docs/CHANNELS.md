@@ -56,6 +56,14 @@ spaces/history remain but are **not authorized** until an administrator verifies
 the numeric identities in Settings. Missing/ambiguous identities must apply
 again. Old pairing records and `/start` parameters never grant access.
 
+## v7.13 running inputs
+
+Running-task steering, FIFO `/queue`, `/inputs`, `/queue-cancel`, explicit
+queue pause/resume and `/history` message branches use the same TaskService.
+See [continuous execution and context](CONTEXT_AND_CONTINUOUS_EXECUTION.md).
+TG multi-account/group changes in this version are simulated, not new live
+platform acceptance.
+
 ## Commands and routing
 
 `/help`, `/mode` (read only), `/status`, `/stop`, `/continue`, `/abandon`,

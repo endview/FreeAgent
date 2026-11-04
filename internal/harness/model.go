@@ -8,6 +8,7 @@ import (
 )
 
 type ModelMessage struct {
+	Deferred    bool            `json:",omitempty"`
 	Attachments []AttachmentRef `json:",omitempty"`
 	Images      []ModelImage    `json:"-"`
 	// Channel records verified transport provenance. It is source data, never

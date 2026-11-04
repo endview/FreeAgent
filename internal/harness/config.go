@@ -32,13 +32,12 @@ type Config struct {
 	DefaultSelection string                     `json:"default_selection,omitempty"`
 	Auto             AutoConfig                 `json:"auto"`
 	Workspace        string                     `json:"workspace"`
-	MaxSteps         int                        `json:"max_steps"`
-	MaxMessages      int                        `json:"max_messages"`
+	HistoryPageSize  int                        `json:"history_page_size"`
 	MaxContextBytes  int                        `json:"max_context_bytes"`
 	MaxOutputTokens  int                        `json:"max_output_tokens"`
-	MaxRunSeconds    int                        `json:"max_run_seconds"`
 	MaxToolResult    int                        `json:"max_tool_result_bytes"`
 	TaskSummaryBytes int                        `json:"task_summary_bytes,omitempty"`
+	AutoCompactAt    int                        `json:"auto_compact_percent,omitempty"`
 	SystemPrompt     string                     `json:"system_prompt,omitempty"`
 	Instructions     []string                   `json:"instructions,omitempty"`
 	MCPServers       map[string]MCPServerConfig `json:"mcpServers,omitempty"`
@@ -161,6 +160,8 @@ type ModelCapabilities struct {
 	Embeddings    string             `json:"embeddings,omitempty"`
 	ParallelTools string             `json:"parallel_tools,omitempty"`
 	ContextBytes  int                `json:"context_bytes,omitempty"`
+	ContextTokens int                `json:"context_window_tokens,omitempty"`
+	ContextSource string             `json:"context_window_source,omitempty"`
 	OutputTokens  int                `json:"output_tokens,omitempty"`
 	Strength      string             `json:"strength,omitempty"`
 	FinishReason  string             `json:"finish_reason,omitempty"`
@@ -219,12 +220,11 @@ func DefaultConfig(workspace string) Config {
 		Collaboration:    DefaultCollaborationSettings(),
 		Memory:           defaultMemoryConfig(),
 		Workspace:        workspace,
-		MaxSteps:         12,
-		MaxMessages:      40,
+		HistoryPageSize:  40,
 		TaskSummaryBytes: 4096,
+		AutoCompactAt:    80,
 		MaxContextBytes:  128 << 10,
 		MaxOutputTokens:  4096,
-		MaxRunSeconds:    300,
 		MaxToolResult:    64 << 10,
 		Commands:         CommandConfig{TimeoutSecs: 120, MaxOutput: 32768, Rules: defaultCommandRules(), Services: DefaultServicePolicy()},
 		Tools:            defaultBuiltinToolSettings(),
@@ -596,11 +596,8 @@ func (config Config) validate(requireWorkspace bool) error {
 			return errors.New("harness: workspace is not a directory")
 		}
 	}
-	if config.MaxSteps <= 0 || config.MaxSteps > 100 {
-		return errors.New("harness: max_steps must be between 1 and 100")
-	}
-	if config.MaxMessages <= 0 || config.MaxMessages > 1000 {
-		return errors.New("harness: max_messages must be between 1 and 1000")
+	if config.HistoryPageSize <= 0 || config.HistoryPageSize > 1000 {
+		return errors.New("harness: history_page_size must be between 1 and 1000")
 	}
 	if config.MaxToolResult <= 0 || config.MaxToolResult > 16<<20 {
 		return errors.New("harness: max_tool_result_bytes is out of range")
@@ -608,10 +605,12 @@ func (config Config) validate(requireWorkspace bool) error {
 	if config.TaskSummaryBytes < 0 || config.TaskSummaryBytes > 16384 {
 		return errors.New("harness: task_summary_bytes must be between 0 and 16384")
 	}
+	if config.AutoCompactAt != 0 && (config.AutoCompactAt < 50 || config.AutoCompactAt > 95) {
+		return errors.New("harness: auto_compact_percent must be between 50 and 95")
+	}
 	if config.MaxContextBytes < 4096 || config.MaxContextBytes > 16<<20 ||
-		config.MaxOutputTokens < 1 || config.MaxOutputTokens > 32768 ||
-		config.MaxRunSeconds < 1 || config.MaxRunSeconds > 3600 {
-		return errors.New("harness: context, output, or run time limit is out of range")
+		config.MaxOutputTokens < 1 || config.MaxOutputTokens > 32768 {
+		return errors.New("harness: context or output limit is out of range")
 	}
 	if len(config.MCPServers) > 16 || len(config.Instructions) > 16 {
 		return errors.New("harness: too many instructions or MCP servers")
@@ -908,6 +907,8 @@ func (caps ModelCapabilities) validate() error {
 		(caps.Embeddings != "" && caps.Embeddings != "supported" && caps.Embeddings != "none") ||
 		(caps.ParallelTools != "" && caps.ParallelTools != "supported" && caps.ParallelTools != "none") ||
 		(caps.ContextBytes != 0 && (caps.ContextBytes < 4096 || caps.ContextBytes > 16<<20)) ||
+		(caps.ContextTokens != 0 && (caps.ContextTokens < 1024 || caps.ContextTokens > 16<<20)) ||
+		(caps.ContextSource != "" && caps.ContextSource != "manual" && caps.ContextSource != "preset") ||
 		caps.OutputTokens < 0 || caps.OutputTokens > 32768 ||
 		(caps.Strength != "" && caps.Strength != "light" && caps.Strength != "standard" && caps.Strength != "strong") ||
 		(caps.FinishReason != "" && caps.FinishReason != "standard") ||

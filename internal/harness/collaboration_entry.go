@@ -264,8 +264,6 @@ func (suggestion CollaborationSuggestion) plan(core *Service, objective string, 
 			}
 		}
 		budget := settings.Child
-		budget.MaxSteps = min(budget.MaxSteps, core.Config.MaxSteps)
-		budget.MaxSeconds = min(budget.MaxSeconds, core.Config.MaxRunSeconds)
 		plan.Roles[expert.Name] = RoleProfile{Instructions: "Complete the assigned objective. Preserve disagreements and source limitations.",
 			ModelID: expert.ModelID, Tools: expert.Tools, Paths: expert.Paths, OutputFormat: "text", Budget: budget,
 			Memory: RoleMemory{Shared: settings.SharedMemory}}
@@ -369,7 +367,7 @@ func (collab *Collaboration) planGoal(ctx context.Context, core *Service, run Ru
 	activity := newExecutionActivity(ctx, core.Store, run.ID, settings.Budget.MaxActiveSeconds)
 	core.activity, ctx = activity, activity.ctx
 	clock := &runClock{parent: ctx, store: core.Store, runID: run.ID,
-		limit: time.Duration(core.limits().MaxRunSeconds) * time.Second, activity: activity}
+		limit: time.Duration(core.childSeconds()) * time.Second, activity: activity}
 	defer func() {
 		returnErr = errors.Join(activeTimeout(ctx, returnErr), clock.pause(), activity.close())
 		persist, done := context.WithTimeout(context.Background(), 5*time.Second)

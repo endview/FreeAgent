@@ -19,6 +19,7 @@ import { commandEntries, commandQuery, filterCommands, commandNeedsInput, comman
 import { installDesktopBridge, setDesktopBusy, notifyDesktopAttention, selectDesktopFolder, selectDesktopFile } from './desktop.mjs';
 import { approvalHTML, approvalRawHTML } from './approval.mjs';
 import { bindLayoutResizers } from './layout.mjs';
+import { activityTime, windowText, inputDisposition } from './execution-context.mjs';
 import { summaryByteLimit, contextActions, contextStatus } from './context.mjs';
 import { channelSections } from './channels.mjs';
 import { spaceChatGroups, spaceSelection, publicationMessage } from './spaces.mjs';
@@ -74,7 +75,7 @@ let earlierObserver;
 let earlierVisible = false;
 let desktopBusy = false;
 let titleAttention = false;
-const statuses = { pending: '待执行', dispatched: '运行中', finished: '已完成',
+const statuses = { not_run: '未运行（已被插话替代）', cancelled: '已取消', truncated: '输出截断', adopted: '已采用', target_ended: '目标已结束，输入保留', pending: '待执行', dispatched: '运行中', finished: '已完成',
   failed: '失败', unknown: '结果未知', applied: '已应用', rejected: '已拒绝',
   skipped: '已跳过', not_launched: '未运行', failed_to_start: '未启动',
   completed: '已完成', interrupted: '已中断', timed_out: '超时', conflict: '冲突' };
@@ -143,7 +144,7 @@ app.innerHTML = `
             ${button('pencil-line', '编辑草稿', 'edit', 'aria-pressed="true"')}
             ${button('eye', '预览草稿', 'preview', 'aria-pressed="false"')}
             <button type="button" class="icon" data-action="attachment-pick" aria-label="添加文本或图片" title="添加文本或图片">${icon('file-plus')}</button><input id="attachment-input" type="file" multiple accept="${inputAccept}" hidden>
-          </div><button id="capability-trigger" type="button" class="icon capability-trigger" title="本对话能力" aria-label="本对话能力" aria-haspopup="menu" aria-expanded="false">${icon('blocks')}<span id="capability-count"></span></button><div id="capability-menu" class="model-menu capability-menu" role="menu" hidden></div><span id="input-state"></span><button id="send" class="send" data-action="send" title="发送" aria-label="发送">${icon('arrow-up')}<span id="send-label" class="send-label">发送</span></button></div>
+          </div><button id="capability-trigger" type="button" class="icon capability-trigger" title="本对话能力" aria-label="本对话能力" aria-haspopup="menu" aria-expanded="false">${icon('blocks')}<span id="capability-count"></span></button><div id="capability-menu" class="model-menu capability-menu" role="menu" hidden></div><span id="input-state"></span><select id="input-disposition" aria-label="发送方式"><option value="steer">运行中插话</option><option value="queue">排队</option></select><button type="button" class="text-action" data-action="inputs-open">输入队列</button><button id="send" class="send" data-action="send" title="发送" aria-label="发送">${icon('arrow-up')}<span id="send-label" class="send-label">发送</span></button></div>
         </div>
       </footer>
     </main>
@@ -166,12 +167,6 @@ app.innerHTML = `
     <div id="ending-content"></div>
     <label id="end-ack-line" class="end-ack" hidden><input id="end-ack" type="checkbox">我已核对记录</label>
     <footer><button class="text-action" data-action="close-end">取消</button><button class="danger" data-action="end">确认结束</button></footer>
-  </dialog>
-  <dialog id="limits" aria-labelledby="limits-title">
-    <header><h2 id="limits-title">任务限额</h2>${button('x', '关闭限额', 'close-limits')}</header>
-    <label>最大调用步数<input id="limit-steps" type="number" min="1" max="100" step="1"></label>
-    <label>最大运行秒数<input id="limit-seconds" type="number" min="1" max="3600" step="1"></label>
-    <footer><button class="primary" data-action="save-limits">${icon('check')}保存限额</button></footer>
   </dialog>
   <dialog id="permission-dialog" aria-labelledby="permission-dialog-title">
     <header><h2 id="permission-dialog-title">启用 Full access？</h2>${button('x', '取消', 'close-permission-dialog')}</header>
@@ -203,10 +198,11 @@ app.innerHTML = `
       <footer><button class="primary" data-action="command-start">${icon('play')}启动</button></footer>
     </details>
   </dialog>
+  <dialog id="inputs-dialog" aria-label="输入队列"><header><h2>插话与队列</h2><button data-action="inputs-close">关闭</button></header><p id="inputs-state"></p><div id="inputs-list"></div><footer><button data-action="inputs-refresh">刷新</button><button data-action="inputs-pause">暂停队列</button><button data-action="inputs-resume">恢复队列</button></footer></dialog>
   <dialog id="context-dialog" aria-labelledby="context-title">
     <header><h2 id="context-title">上下文</h2>${button('x', '关闭上下文', 'context-close')}</header>
     <p id="context-status" role="status" aria-live="polite"></p>
-    <p id="context-auto" class="subtle-note"></p>
+    <p id="context-auto" class="subtle-note"></p><pre id="context-window" class="subtle-note"></pre><div id="context-parts"></div><button class="text-action" data-action="model-context">设置当前模型窗口</button>
     <label>本次摘要上限（字节）<input id="context-bytes" type="number" min="1" max="16384" step="256" value="4096"></label>
     <label id="context-body-label" hidden>当前摘要<textarea id="context-body" rows="7" readonly></textarea></label>
     <p class="subtle-note">压缩和重新生成会调用当前模型，使用模型额度。原始记录保留。</p>
@@ -891,7 +887,7 @@ function renderPermissionsView() {
       ${channelSections({...state.channels,telegram_access:{...state.channels?.telegram_access,busy:Boolean(state.telegramAccessBusy)}}, state.keys?.profiles || [])}
 	  <section class="permission-section"><h3>上下文压缩</h3><p>在新 Run 组装输入将超限时自动压缩。保留原始历史，摘要调用计入运行预算。关闭不会删除已有摘要。</p>
 	    <label class="check-line"><input id="context-automatic" type="checkbox" ${settings.context?.automatic ? 'checked' : ''} ${state.contextSettingsBusy ? 'disabled' : ''}>自动压缩上下文</label>
-	    <label>摘要上限（UTF-8 字节）<input id="context-summary-limit" type="number" min="1" max="16384" value="${Number(settings.context?.task_summary_bytes) || 4096}" ${state.contextSettingsBusy ? 'disabled' : ''}></label>
+	    <label>自动触发占比（50–95%）<input id="context-trigger-percent" type="number" min="50" max="95" value="${Number(settings.context?.auto_compact_percent) || 80}"></label><label>摘要上限（UTF-8 字节）<input id="context-summary-limit" type="number" min="1" max="16384" value="${Number(settings.context?.task_summary_bytes) || 4096}" ${state.contextSettingsBusy ? 'disabled' : ''}></label>
 	    <button class="primary" data-action="save-context-settings" ${state.contextSettingsBusy ? 'disabled' : ''}>${state.contextSettingsBusy ? '正在保存压缩设置…' : '保存压缩设置'}</button><p class="subtle-note">当前对话的手动压缩、刷新、清除可从对话顶部“上下文”打开。</p>
 	  </section>
     </div>`;
@@ -982,7 +978,7 @@ async function saveAutomaticContextSettings() {
   button.disabled = true; button.textContent = '正在保存压缩设置…';
   $('#context-automatic').disabled = true; $('#context-summary-limit').disabled = true;
   try {
-    state.settings = await api('settings/context', {task_summary_bytes: limit, expected_revision: state.settings?.revision || ''}, 'PATCH');
+    state.settings = await api('settings/context', {task_summary_bytes: limit, auto_compact_percent:Number($('#context-trigger-percent').value), expected_revision: state.settings?.revision || ''}, 'PATCH');
     await loadPermissions(); renderPermissionsView();
     error('压缩设置已保存，下次新 Run 生效。');
   } finally {
@@ -1112,6 +1108,8 @@ function renderContextDialog() {
   const current = state.context;
   $('#context-status').textContent = state.contextBusy ? '正在压缩上下文…' : contextStatus(current);
   $('#context-auto').textContent = current?.automatic ? '自动压缩已开启' : '自动压缩已关闭';
+  $('#context-window').textContent = windowText(current);
+  $('#context-parts').textContent = (current?.last_request?.parts || []).map(part => `${part.kind}: ${part.bytes} 字节 / 估算 ${part.estimated_tokens} tokens`).join('；');
   $('#context-bytes').disabled = state.contextBusy;
   $('#context-body-label').hidden = !current?.summary;
   $('#context-body').value = current?.summary?.text || '';
@@ -1686,14 +1684,15 @@ function controls() {
   const noModels = !hasModels(state.env);
   const mode = submitMode(turn, state.busy || state.elsewhere);
   $('#send').disabled = !state.online || noModels || !hasView() || state.mutation || state.creating || !!pending ||
-    mode === 'blocked' || attachmentUploading || !$('#prompt').value.trim();
+    (mode === 'blocked' && !state.busy && $('#input-disposition').value !== 'queue') || attachmentUploading || !$('#prompt').value.trim();
   $('#send').classList.toggle('end-send', mode === 'end_and_send');
   $('#send').title = mode === 'end_and_send' ? '结束并发送' : '发送';
   $('#send').setAttribute('aria-label', mode === 'end_and_send' ? '结束并发送' : '发送');
-  $('#send-label').textContent = mode === 'end_and_send' ? '结束并发送' : '发送';
+  $('#send-label').textContent = state.busy ? ($('#input-disposition').value === 'queue' ? '排队' : '插话') : $('#input-disposition').value==='queue' ? '排队' : mode === 'end_and_send' ? '结束并发送' : '发送';
   $('#model-trigger').disabled = !state.env || noModels || state.creating;
   $('#permission-trigger').disabled = !state.env || state.creating;
   $('#context-trigger').disabled = !state.chat || !state.online || state.creating;
+  $('#context-trigger').hidden = !state.chat || ['keys','capabilities','permissions','settings'].includes(state.page);
   $('#workspace-change').disabled = state.mutation || desktopBusy || attachmentUploading;
   $('#prompt').disabled = state.workspaceChanging;
   $('#input-state').innerHTML = noModels ? '请先添加 Key 和模型' :
@@ -1706,7 +1705,6 @@ function controls() {
   if (!state.busy && !state.elsewhere && turn && !turn.ended) {
     if (turn.state === 'awaiting_approval') actions.push(`<button class="text-action" data-action="approval" ${state.online ? '' : 'disabled'}>查看待确认变更</button>`);
     else if (turn.can_continue) actions.push(button('play', '继续任务', 'continue', state.online ? '' : 'disabled'));
-    if (turn.state === 'needs_attention') actions.push(button('settings2', '调整限额', 'limits', state.online ? '' : 'disabled'));
     if (turn.can_end) actions.push(button('x', '结束任务', 'ask-end', state.online ? '' : 'disabled'));
   }
   if (pending) {
@@ -1808,7 +1806,6 @@ function resetView() {
   earlierObserver = null;
   clearTimeout(runTimer);
   runTimer = 0;
-  $('#limits').close();
   $('#ending').close();
   $('#permission-dialog').close();
   $('#workflow-input-dialog').close();
@@ -2049,7 +2046,7 @@ function activityHTML(activity, turnKey) {
   const meta = activityLabel(activity.kind === 'model' ? 'model' : activity.name || activity.kind);
   const failed = activity.is_error || ['failed', 'unknown'].includes(activity.status);
   const bodyKey = `${turnKey}:body:${activity.key}`;
-  return `<li><div class="activity-line"><span class="activity-name">${icon(meta.icon)}<strong>${esc(meta.label)}</strong>${activity.target ? `<span class="activity-target" title="${esc(activity.target)}">${esc(activity.target)}</span>` : ''}</span><span class="${failed ? 'warning' : ''}">${esc(statusText(failed && activity.status === 'finished' ? 'failed' : activity.status))}</span></div>${activity.failure ? `<p class="warning">${esc(providerFailureText(activity.failure))}</p>` : ''}${activity.text ? `<details data-section="${esc(bodyKey)}" ${state.expanded.has(bodyKey) ? 'open' : ''}><summary>${activity.kind === 'tool' ? '工具返回' : '未完成响应'}</summary><pre class="tool-output">${esc(activity.text)}</pre>${activity.truncated ? `<button class="text-action" data-full-activity="${esc(activity.key)}">加载完整返回</button>` : ''}</details>` : ''}${activity.receipts?.length ? `<ul class="receipts">${activity.receipts.map(receiptHTML).join('')}</ul>` : ''}</li>`;
+  return `<li><div class="activity-line"><span class="activity-name">${icon(meta.icon)}<strong>${esc(meta.label)}</strong>${activity.target ? `<span class="activity-target" title="${esc(activity.target)}">${esc(activity.target)}</span>` : ''}</span><span class="${failed ? 'warning' : ''}">${esc(statusText(failed && activity.status === 'finished' ? 'failed' : activity.status))} · <span data-activity-clock="${esc(activity.started_at || '')}" data-activity-status="${esc(activity.status)}" ${activity.duration_ms === undefined ? '' : `data-duration="${activity.duration_ms}"`}>${esc(activityTime(activity))}</span>${activity.outcome?.cancelled ? ' · 已请求取消' : ''}${activity.outcome?.timed_out ? ' · 本次调用超时' : ''}${activity.usage ? ` · 输入 ${activity.usage.input_tokens} / 输出 ${activity.usage.output_tokens} tokens` : ''}</span></div>${activity.failure ? `<p class="warning">${esc(providerFailureText(activity.failure))}</p>` : ''}${activity.text ? `<details data-section="${esc(bodyKey)}" ${state.expanded.has(bodyKey) ? 'open' : ''}><summary>${activity.kind === 'tool' ? '工具返回' : '未完成响应'}</summary><pre class="tool-output">${esc(activity.text)}</pre>${activity.truncated ? `<button class="text-action" data-full-activity="${esc(activity.key)}">加载完整返回</button>` : ''}</details>` : ''}${activity.receipts?.length ? `<ul class="receipts">${activity.receipts.map(receiptHTML).join('')}</ul>` : ''}</li>`;
 }
 function activitySummary(turn) {
   const recent = turn.activity.at(-1);
@@ -2065,8 +2062,10 @@ function section(turn, name, title, content) {
 function turnHTML(turn) {
   let html = turn.messages.map((message) => {
     const content=turn.reason==='explicit user command'?`<pre class="command-message">${esc(directCommandText(message.raw,message.role))}</pre>`:message.role==='user'?`<p class="user-text">${esc(message.raw)}</p>`:renderMarkdown(message.raw);
-    return `<article class="message ${esc(message.role)}" data-message="${esc(message.key)}"><div class="message-heading"><span>${message.role === 'user' ? '你' : 'FreeAgent'}</span><button type="button" class="icon" data-copy-message="${esc(message.key)}" title="复制原始 Markdown" aria-label="复制原始 Markdown">${icon('copy')}</button></div><div class="markdown">${content}</div>${attachmentCards(message.attachments, state.chat)}${message.role === 'assistant' ? `<button type="button" class="text-action" data-reply-save="${esc(turn.key)}" data-attachment-chat="${esc(state.chat)}">另存为 Markdown</button>` : ''}${message.truncated ? `<button class="text-action" data-full-message="${esc(message.key)}">加载完整原文</button>` : ''}</article>`;
+    return `<article class="message ${esc(message.role)}" data-message="${esc(message.key)}"><div class="message-heading"><span>${message.role === 'user' ? '你' : 'FreeAgent'}</span><button type="button" class="icon" data-copy-message="${esc(message.key)}" title="复制原始 Markdown" aria-label="复制原始 Markdown">${icon('copy')}</button><button type="button" class="text-action" data-branch-message="${esc(message.key)}" data-branch-mode="${message.role==='user'?'rerun':'continue'}">${message.role==='user'?'从这里重新执行':'从此回复继续'}</button></div><div class="markdown">${content}</div>${attachmentCards(message.attachments, state.chat)}${message.role === 'assistant' ? `<button type="button" class="text-action" data-reply-save="${esc(turn.key)}" data-attachment-chat="${esc(state.chat)}">另存为 Markdown</button>` : ''}${message.truncated ? `<button class="text-action" data-full-message="${esc(message.key)}">加载完整原文</button>` : ''}</article>`;
   }).join('');
+  if(turn.messages_has_earlier)html+='<p class="subtle-note">本轮较早消息保留在原始记录，可在 CLI /history 查看。</p>';
+  if(turn.activity_has_earlier)html+='<p class="subtle-note">仅显示最近 128 项活动，完整记录可用 inspect 查看。</p>';
   html += attachmentCards(turn.attachments,state.chat);
   html += `<div class="turn-state" data-state="${esc(turn.state)}">${icon(stateMeta(turn.state).icon)}${esc(stateMeta(turn.state).label)}${turn.ended ? '<span>任务已结束</span>' : ''}${turn.model_id ? `<span>${esc(turn.model_id)}</span>` : ''}</div>`;
   if (turn.state === 'unknown') html += '<div class="warning-strip">结果未知，可能已有作用。请核对执行记录；未自动重试。</div>';
@@ -2246,14 +2245,16 @@ function connectEvents() {
       if (event.kind !== 'model_text') queueSnapshot();
       return;
     }
+    if ((event.kind==='input_changed'||event.kind==='input_adopted') && $('#inputs-dialog').open) refreshInputs().catch(() => {});
     if (event.kind === 'attachment_omitted') error(`本轮未发送历史图片：${event.message}。可重新选择原图。`);
     if (event.kind === 'request_error') error(event.message.slice(event.message.indexOf(': ') + 2));
     if (event.kind === 'context_compacting' && state.contextBusy) {
       $('#context-status').textContent = '正在生成摘要';
     }
-	if (event.kind === 'context_compacting' || event.kind === 'context_compacted') {
+	if (event.kind === 'context_usage' && state.contextChat === state.chat && $('#context-dialog').open) openContextDialog().catch(() => {});
+	if (event.kind === 'context_compacting' || event.kind === 'context_compacted' || event.kind === 'context_compaction_failed') {
 	  if (!$('#context-progress')) $('#context-trigger').insertAdjacentHTML('afterend', '<span id="context-progress" role="status" class="subtle-note"></span>');
-	  $('#context-progress').textContent = event.kind === 'context_compacting' ? '正在压缩上下文…' : '上下文已压缩，原始历史保留';
+	  $('#context-progress').textContent = event.kind === 'context_compacting' ? '正在压缩上下文…' : event.kind==='context_compaction_failed' ? `上下文压缩失败：${event.message}` : '上下文已压缩，原始历史保留';
 	}
 	if (event.kind === 'run_settled' && $('#context-progress')) $('#context-progress').remove();
     if (event.kind.startsWith('model_') && event.attempt_id) {
@@ -2404,6 +2405,7 @@ async function send() {
     await runContextAction('compact');
     return;
   }
+  if (inputDisposition(state.busy,$('#input-disposition').value)!=='send') {await submitDeferredInput(prompt);return;}
   if (new TextEncoder().encode(prompt).length > state.env.max_prompt_bytes) {
     error('任务超过当前输入限额，草稿已保留。');
     return;
@@ -2675,6 +2677,11 @@ async function act(action, node = null) {
       error('服务器设置已保存，重启 Owner 后生效。');
       break;
     case 'context-open': await openContextDialog(); break;
+    case 'model-context': await editModelContext(); break;
+    case 'inputs-open': $('#inputs-dialog').showModal(); await refreshInputs(); break;
+    case 'inputs-close': $('#inputs-dialog').close(); break;
+    case 'inputs-refresh': await refreshInputs(); break;
+    case 'inputs-pause': case 'inputs-resume': await api('attach/inputs',{conversation_id:state.chat,operation:action==='inputs-pause'?'pause':'resume'}); await refreshInputs(); break;
     case 'commands-open': $('#commands-dialog').showModal();
       clearInterval(commandClock);commandClock=setInterval(()=>{if(!$('#commands-dialog').open){clearInterval(commandClock);return;} document.querySelectorAll('[data-service-expiry]').forEach((el)=>el.textContent=remainingSeconds(el.dataset.serviceExpiry));},1000);
       await refreshCommands(); break;
@@ -2803,28 +2810,16 @@ async function act(action, node = null) {
       draft();
       if (!state.preview) $('#prompt').focus();
       break;
-    case 'limits': {
-      const limits = await chatAPI('limits');
-      $('#limit-steps').value = limits.max_steps;
-      $('#limit-seconds').value = limits.max_run_seconds;
-      $('#limit-steps').min = limits.max_steps;
-      $('#limit-seconds').min = limits.max_run_seconds;
-      $('#limits').showModal();
-      break;
-    }
-    case 'close-limits': $('#limits').close(); break;
-    case 'save-limits':
-      if (!$('#limit-steps').reportValidity() || !$('#limit-seconds').reportValidity()) return;
-      await mutate('limits', { steps: Number($('#limit-steps').value), seconds: Number($('#limit-seconds').value) });
-      $('#limits').close();
-      break;
+
   }
 }
 document.addEventListener('click', async (event) => {
   const node = event.target.closest('button, [data-action]');
   if (!node || node.disabled) return;
   try {
-    if (node.dataset.modelVision) { openVision(node.dataset.modelVision); }
+    if (node.dataset.cancelInput) {await api('attach/inputs',{conversation_id:state.chat,operation:'cancel',key:node.dataset.cancelInput});await refreshInputs();}
+    else if(node.dataset.branchMessage) {await branchMessage(node.dataset.branchMessage,node.dataset.branchMode);}
+    else if (node.dataset.modelVision) { openVision(node.dataset.modelVision); }
     else if (node.dataset.attachmentDownload || node.dataset.attachmentPreview) {
       const id=node.dataset.attachmentDownload || node.dataset.attachmentPreview;
       await downloadAttachment(node.dataset.attachmentChat,id,node.dataset.attachmentName,!!node.dataset.attachmentPreview);
@@ -3273,3 +3268,46 @@ async function saveVision(){
   await api('models/vision',{id:$('#vision-form').dataset.model,vision});$('#vision-dialog').close();state.env=await api("environment");await loadKeys();
 }
 
+
+async function refreshInputs(){
+  const chat=state.chat;if(!chat)return;
+  const inputs=await api(`attach/inputs?conversation_id=${encodeURIComponent(chat)}`);
+  if(chat!==state.chat)return;
+  $('#inputs-state').textContent=inputs.paused?'队列已暂停，处理当前任务后可恢复':'队列按接收顺序，在当前任务正常完成后推进';
+  $('#inputs-list').innerHTML=inputs.entries.map(i=>`<p>${esc(i.action)} · ${esc(statusText(i.status))} · ${esc(i.prompt)} ${i.status==='pending'?`<button data-cancel-input="${esc(i.key)}">取消未采用输入</button>`:''}</p>`).join('') || '暂无输入';
+}
+async function submitDeferredInput(prompt){
+  if(!state.chat && !await createChat(prompt))return;
+  const action=inputDisposition(state.busy,$('#input-disposition').value),chat=state.chat;
+  const storageKey=`${pendingKey()}:input`;
+  let command;try{command=JSON.parse(safeStorage(storage,storageKey)||'null');}catch{}
+  const attachments=currentAttachments().map(i=>i.id).filter(Boolean);
+  if(command&&(command.prompt!==prompt||command.action!==action)){error('上条插话的接收结果尚未核对，请先打开输入队列；原草稿保留。');return;}
+  command ||= {action,run_id:action==='steer'?latest()?.key:'',request_key:crypto.randomUUID(),prompt,attachments};
+  safeStorage(storage,storageKey,JSON.stringify(command));
+  const receipt=await api('attach/inputs',{conversation_id:chat,operation:'accept',command});
+  safeStorage(storage,storageKey,'');
+  if(chat!==state.chat)return;
+  if(receipt.status==='target_ended'){error('目标任务已结束；输入已保留在队列记录中，请明确作为新任务发送。');return;}
+  if($('#prompt').value===prompt){$('#prompt').value='';draft();setAttachmentDrafts([]);}
+  error(action==='steer'?'插话已接收，将在安全边界采用。':'输入已排队。');
+  if($('#inputs-dialog').open)await refreshInputs();controls();
+}
+async function branchMessage(id,mode){
+  const message=state.turns.flatMap(t=>t.messages).find(m=>m.key===id);if(!message)return;
+  const text=window.prompt(mode==='rerun'?'编辑后在新分支执行。工作区文件不会回滚。':'从此回复创建分支，输入下一条要求。',mode==='rerun'?message.raw:'');
+  if(text===null)return;
+  const result=await api('attach/branch',{conversation_id:state.chat,command:{request_key:crypto.randomUUID(),message_id:Number(id),mode,prompt:text}});
+  await listChats();await selectChat(result.conversation.id);
+  $('#prompt').value=result.prompt||'';setAttachmentDrafts((result.attachments||[]).map(ref=>({...ref,status:'ready'})));draft();controls();
+  if(result.prompt?.trim())await submitPrompt(result.prompt,true);
+}
+async function editModelContext(){
+  if(!state.context?.window)return;
+  const input=window.prompt('模型总窗口 tokens（未知填 0）。仅填写服务商声明值。',String(state.context.window.tokens||0));
+  if(input===null)return;
+  if(!/^\d+$/.test(input))throw new Error('请输入整数');
+  await api('models/context',{id:state.context.window.model_id,tokens:Number(input)});await refreshEnvironment();await openContextDialog();
+}
+$('#input-disposition').addEventListener('change',controls);
+setInterval(()=>{document.querySelectorAll('[data-activity-clock][data-activity-status="dispatched"]').forEach(el=>{el.textContent=activityTime({status:'dispatched',started_at:el.dataset.activityClock});});},1000);

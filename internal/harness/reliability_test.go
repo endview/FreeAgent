@@ -44,13 +44,12 @@ func TestConfigChangeDuringApprovalPreventsDispatch(t *testing.T) {
 	}
 }
 
-func TestRunTimeBudgetSurvivesRestartAndContinue(t *testing.T) {
+func TestActiveTimeIsRetainedWithoutTaskTimeLimit(t *testing.T) {
 	modelCalls := 0
 	service, _, _ := testHarness(t, modelFunc(func(context.Context, ModelRequest, func(string)) (ModelResponse, error) {
 		modelCalls++
 		return ModelResponse{Content: "should not run"}, nil
 	}))
-	service.Config.MaxRunSeconds = 1
 	ctx := context.Background()
 	snapshot, _ := service.snapshot()
 	run, _, err := service.Store.CreateRun(ctx, conversation(t, service), "time", "task", snapshot)
@@ -58,16 +57,16 @@ func TestRunTimeBudgetSurvivesRestartAndContinue(t *testing.T) {
 		t.Fatal(err)
 	}
 	active := time.Now().Add(-2 * time.Second).UTC().Format(time.RFC3339Nano)
-	if _, err := service.Store.db.ExecContext(ctx, `UPDATE runs SET elapsed_ms=50,active_since=? WHERE id=?`, active, run.ID); err != nil {
+	if _, err := service.Store.db.ExecContext(ctx, `UPDATE runs SET elapsed_ms=360000,active_since=? WHERE id=?`, active, run.ID); err != nil {
 		t.Fatal(err)
 	}
 	reopenHarness(t, service)
 	recovered, err := service.Store.GetRun(ctx, run.ID)
-	if err != nil || recovered.ElapsedMS < 2050 || recovered.ActiveSince != "" || recovered.Status != "stopped" {
+	if err != nil || recovered.ElapsedMS < 362000 || recovered.ActiveSince != "" || recovered.Status != "stopped" {
 		t.Fatalf("recovered=%+v error=%v", recovered, err)
 	}
 	result, err := service.Continue(ctx, run.ID)
-	if !errors.Is(err, ErrTimeLimit) || modelCalls != 0 {
+	if err != nil || modelCalls != 1 || result.Run.Status != "completed" {
 		t.Fatalf("continue=%+v error=%v calls=%d", result, err, modelCalls)
 	}
 }
@@ -145,11 +144,11 @@ func TestContextLimitDoesNotSilentlyDropWholeRuns(t *testing.T) {
 	if err := service.Store.saveModel(ctx, prior, final, ModelResponse{Content: "finished"}); err != nil {
 		t.Fatal(err)
 	}
-	service.Config.MaxMessages = 3
+	service.Config.HistoryPageSize = 3
 	current, _, _ := service.Store.CreateRun(ctx, id, "new", "next task", snapshot)
 	request, err := service.buildContext(ctx, current)
-	if !errors.Is(err, ErrContextLimit) || len(request.Messages) != 0 {
-		t.Fatalf("old Run silently dropped: context=%+v error=%v", request, err)
+	if err != nil || len(request.Messages) != 7 || completeMessageGroups(request.Messages) != nil {
+		t.Fatalf("page size dropped a complete prior Run: messages=%d error=%v", len(request.Messages), err)
 	}
 	all, _ := service.Store.ListMessages(ctx, id)
 	if len(all) != 6 {
@@ -180,8 +179,12 @@ func TestContextByteTailNeverSplitsPriorToolRun(t *testing.T) {
 	service.Config.MaxOutputTokens = 32
 	current, _, _ := service.Store.CreateRun(ctx, id, "new-small", "next task", snapshot)
 	request, err := service.buildContext(ctx, current)
-	if !errors.Is(err, ErrContextLimit) || len(request.Messages) != 0 {
-		t.Fatalf("partial tool group leaked into byte tail: %+v error=%v", request, err)
+	if err != nil || completeMessageGroups(request.Messages) != nil {
+		t.Fatal("assembly split prior tool group", err)
+	}
+	usage, err := service.requestUsage(current, request)
+	if err != nil || !errors.Is(usage.budgetError(), ErrContextLimit) {
+		t.Fatal("full oversized request was not rejected", err)
 	}
 }
 

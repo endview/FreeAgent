@@ -634,7 +634,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSetMemoryPolicy, ResourceFamily: "config.memory", Risk: ControlRiskAuthority, Description: "Change local memory and knowledge bounds.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetPromptPolicy, ResourceFamily: "config.prompt", Risk: ControlRiskAuthority, Description: "Change the bounded system prompt and instruction file selection for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetCollaboration, ResourceFamily: "config.collaboration", Risk: ControlRiskAuthority, Description: "Change bounded collaboration authorization and budgets.", ModelProposable: true, Reversible: true},
-		{Kind: ControlSetRuntimeLimits, ResourceFamily: "config.limits", Risk: ControlRiskOrdinary, Description: "Change finite context, output and Run limits for future Runs.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetRuntimeLimits, ResourceFamily: "config.limits", Risk: ControlRiskOrdinary, Description: "Change context and output bounds for future requests.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetSkillPolicy, ResourceFamily: "config.skills", Risk: ControlRiskAuthority, Description: "Enable or trust a named Skill without changing its content.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetExtensionPolicy, ResourceFamily: "config.extensions", Risk: ControlRiskAuthority, Description: "Enable, require or trust a named Extension without accepting secrets.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetMCPPolicy, ResourceFamily: "config.mcp", Risk: ControlRiskAuthority, Description: "Enable or change safe metadata for an existing MCP server.", ModelProposable: true, Reversible: true},
@@ -660,6 +660,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSpaceActive, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Choose the external channel's active conversation.", ModelProposable: true},
 		{Kind: ControlSpaceMulti, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Explicitly enable or disable multiple channel conversations.", ModelProposable: true},
 		{Kind: ControlPersonPermission, ResourceFamily: "people", Risk: ControlRiskAuthority, Description: "Change a platform person's permission across connected spaces; local confirmation only.", ModelProposable: true},
+		{Kind: ControlBranchConversation, ResourceFamily: "conversation.branch", Risk: ControlRiskOrdinary, Description: "Create an independent conversation branch at a verified user or completed assistant message. No filesystem rollback and no automatic branch execution.", ModelProposable: true},
 		{Kind: ControlRenameConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Rename one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlPinConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Pin or unpin one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetConversationCapabilities, ResourceFamily: "conversation.capabilities", Risk: ControlRiskAuthority, Description: "Select the Skills, MCP servers and Extensions available to one conversation.", ModelProposable: true, Reversible: true},
@@ -668,7 +669,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 	for i := range entries {
 		if entries[i].Kind == ControlSetRuntimeLimits {
 			entries[i].Description += " task_summary_bytes: 0 disables automatic compaction; 1..16384 enables it and bounds the summary bytes. Existing summaries are retained."
-			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"max_steps":{"type":"integer","minimum":1,"maximum":100},"max_messages":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_run_seconds":{"type":"integer","minimum":1,"maximum":3600},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
+			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
 		}
 	}
 	return entries
@@ -785,9 +786,9 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 			EnabledTools: effectiveBuiltinToolSettings(config), CommandReady: commands.Status == "ready", Commands: commands,
 			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled,
 			Memory: config.Memory, Collaboration: redactCollaborationSettings(config.Collaboration), Limits: map[string]int{
-				"max_steps": config.MaxSteps, "max_messages": config.MaxMessages, "max_context_bytes": config.MaxContextBytes,
-				"max_output_tokens": config.MaxOutputTokens, "max_run_seconds": config.MaxRunSeconds, "max_tool_result_bytes": config.MaxToolResult,
-				"task_summary_bytes": config.TaskSummaryBytes}, EnabledSkills: enabledMapKeys(config.Skills.Enabled), EnabledExts: enabledMapKeys(config.Extensions.Enabled), EnabledMCP: enabledMCPNames(config.MCPServers)}}
+				"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
+				"max_output_tokens": config.MaxOutputTokens, "max_tool_result_bytes": config.MaxToolResult,
+				"auto_compact_percent": autoCompactPercent(config), "task_summary_bytes": config.TaskSummaryBytes}, EnabledSkills: enabledMapKeys(config.Skills.Enabled), EnabledExts: enabledMapKeys(config.Extensions.Enabled), EnabledMCP: enabledMCPNames(config.MCPServers)}}
 	service.baselineMu.Lock()
 	state.ExternalChangePending = service.externalChange
 	if state.ExternalChangePending {
@@ -1816,6 +1817,9 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 		record.Operation.Kind == ControlRestartExtension || record.Operation.Kind == ControlClearExtensionData {
 		return service.applyCapabilityLifecycleLocked(ctx, record)
 	}
+	if record.Operation.Kind == ControlBranchConversation {
+		return service.applyBranchControl(ctx, record)
+	}
 	if record.Operation.Kind == ControlDeleteAttachment {
 		return service.applyAttachmentDelete(ctx, record)
 	}
@@ -2161,7 +2165,11 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		record.Arguments = json.RawMessage(`{}`)
 	}
 	config := cloneConfig(service.core.currentConfig())
-	if request.Kind == ControlTelegramAccess {
+	if request.Kind == ControlBranchConversation {
+		if err := service.buildBranchControl(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlTelegramAccess {
 		if err := service.buildTelegramAccess(ctx, &record); err != nil {
 			return controlRecord{}, err
 		}
@@ -2732,31 +2740,27 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		config.Collaboration = args
 	case ControlSetRuntimeLimits:
 		var args struct {
-			MaxSteps         *int `json:"max_steps"`
-			MaxMessages      *int `json:"max_messages"`
+			AutoCompactAt    *int `json:"auto_compact_percent"`
+			HistoryPageSize  *int `json:"history_page_size"`
 			MaxContextBytes  *int `json:"max_context_bytes"`
 			MaxOutputTokens  *int `json:"max_output_tokens"`
-			MaxRunSeconds    *int `json:"max_run_seconds"`
 			MaxToolResult    *int `json:"max_tool_result_bytes"`
 			TaskSummaryBytes *int `json:"task_summary_bytes"`
 		}
 		if err := decodeControlJSON(raw, &args); err != nil {
 			return err
 		}
-		if args.MaxSteps != nil {
-			config.MaxSteps = *args.MaxSteps
+		if args.AutoCompactAt != nil {
+			config.AutoCompactAt = *args.AutoCompactAt
 		}
-		if args.MaxMessages != nil {
-			config.MaxMessages = *args.MaxMessages
+		if args.HistoryPageSize != nil {
+			config.HistoryPageSize = *args.HistoryPageSize
 		}
 		if args.MaxContextBytes != nil {
 			config.MaxContextBytes = *args.MaxContextBytes
 		}
 		if args.MaxOutputTokens != nil {
 			config.MaxOutputTokens = *args.MaxOutputTokens
-		}
-		if args.MaxRunSeconds != nil {
-			config.MaxRunSeconds = *args.MaxRunSeconds
 		}
 		if args.MaxToolResult != nil {
 			config.MaxToolResult = *args.MaxToolResult
@@ -2951,8 +2955,8 @@ func configResourceValue(config Config, resource string) any {
 	case "config.collaboration":
 		return config.Collaboration
 	case "config.limits":
-		return map[string]any{"max_steps": config.MaxSteps, "max_messages": config.MaxMessages, "max_context_bytes": config.MaxContextBytes,
-			"max_output_tokens": config.MaxOutputTokens, "max_run_seconds": config.MaxRunSeconds, "max_tool_result_bytes": config.MaxToolResult, "task_summary_bytes": config.TaskSummaryBytes}
+		return map[string]any{"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
+			"max_output_tokens": config.MaxOutputTokens, "max_tool_result_bytes": config.MaxToolResult, "auto_compact_percent": autoCompactPercent(config), "task_summary_bytes": config.TaskSummaryBytes}
 	case "config.workspace":
 		return config.Workspace
 	case "config." + ControlSetPermission:
@@ -3127,19 +3131,19 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		return decodeAndAssign(raw, &config.Collaboration)
 	case "config.limits":
 		var data struct {
-			MaxSteps         int `json:"max_steps"`
-			MaxMessages      int `json:"max_messages"`
+			AutoCompactAt    int `json:"auto_compact_percent"`
+			HistoryPageSize  int `json:"history_page_size"`
 			MaxContextBytes  int `json:"max_context_bytes"`
 			MaxOutputTokens  int `json:"max_output_tokens"`
-			MaxRunSeconds    int `json:"max_run_seconds"`
 			MaxToolResult    int `json:"max_tool_result_bytes"`
 			TaskSummaryBytes int `json:"task_summary_bytes"`
 		}
 		if err := json.Unmarshal(raw, &data); err != nil {
 			return err
 		}
-		config.MaxSteps, config.MaxMessages, config.MaxContextBytes, config.MaxOutputTokens = data.MaxSteps, data.MaxMessages, data.MaxContextBytes, data.MaxOutputTokens
-		config.MaxRunSeconds, config.MaxToolResult, config.TaskSummaryBytes = data.MaxRunSeconds, data.MaxToolResult, data.TaskSummaryBytes
+		config.HistoryPageSize, config.MaxContextBytes, config.MaxOutputTokens = data.HistoryPageSize, data.MaxContextBytes, data.MaxOutputTokens
+		config.MaxToolResult, config.TaskSummaryBytes = data.MaxToolResult, data.TaskSummaryBytes
+		config.AutoCompactAt = data.AutoCompactAt
 	default:
 		if strings.HasPrefix(resource, "config.model:") {
 			id := strings.TrimPrefix(resource, "config.model:")

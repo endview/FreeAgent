@@ -148,12 +148,12 @@ func applyAttachedControl(ctx context.Context, client *handoff.Client, operation
 	return result, nil
 }
 
-func rejectAttachedOptions(template string, modelID string, maxSteps, maxSeconds int) error {
+func rejectAttachedOptions(template string, modelID string) error {
 	if template != "" {
 		return errors.New("an attached owner must read templates through its own surface; --template is not available in this one-shot CLI attach")
 	}
-	if modelID != "" || maxSteps != 0 || maxSeconds != 0 {
-		return errors.New("model and run-limit changes require the owner control surface; use the attached Chat UI or CLI owner")
+	if modelID != "" {
+		return errors.New("model changes require the owner control surface; use the attached Chat UI or CLI owner")
 	}
 	return nil
 }

@@ -251,9 +251,7 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 			return s.plain(ctx, e, "附件未交给模型："+safeError(err)+"。未自动重试。")
 		}
 	}
-	return s.launch(ctx, e, received.ConversationID, func(ctx context.Context) (RunResult, error) {
-		return s.tasks.SubmitChannel(WithAttachmentIdentity(ctx, "channel:"+e.Person), received)
-	})
+	return s.launchInput(ctx, e, received)
 }
 func (s *channelSession) launch(ctx context.Context, e channelEvent, chat string, call func(context.Context) (RunResult, error)) error {
 	call = s.withFeedback(e, call)
@@ -298,6 +296,9 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		return err
 	}
 	effective := lowerPermission(sp.Mode, person.Mode)
+	if handled, err := s.inputCommand(ctx, e, space, chat, cmd, args, effective); handled {
+		return err
+	}
 	switch cmd {
 	case "/save-reply":
 		return s.saveReplyFile(ctx, e, chat)
@@ -315,7 +316,7 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		}
 		return s.plain(ctx, e, text)
 	case "/help", "/start":
-		return s.plain(ctx, e, "/mode /status /stop /continue /abandon /compact /save-reply；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
+		return s.plain(ctx, e, "/mode /status /stop /continue /abandon /compact /save-reply /steer 文本 /queue 文本 /inputs /queue-cancel key /queue-resume /history /branch 消息ID；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
 	case "/status":
 		run, err := s.tasks.Latest(ctx, chat)
 		if err != nil {
@@ -397,6 +398,7 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 			return s.plain(ctx, e, "你无权操作此 Run。")
 		}
 		if cmd == "/stop" {
+			_ = s.tasks.PauseQueue(ctx, chat, true)
 			s.tasks.CancelConversation(chat)
 			return s.plain(ctx, e, "已请求停止；副作用及 UNKNOWN 请核对运行记录。")
 		}

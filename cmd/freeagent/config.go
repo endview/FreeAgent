@@ -34,6 +34,7 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	var httpConfig harness.HTTPConfig
 	var allowedExecutables, allowedOrigins repeatedStrings
 	summaryBytes := 0
+	autoCompactAt := 80
 	collaboration := harness.DefaultCollaborationSettings()
 	var collaborationMode string
 	var collaborationModels, collaborationTools, collaborationPaths repeatedStrings
@@ -91,6 +92,8 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		flags.StringVar(&model.Capabilities.WebSearch, "web-search", "", "supported or none; Responses provider server-side search")
 		flags.StringVar(&model.Capabilities.Embeddings, "embeddings", "", "supported or none; enables extension model.embed")
 		flags.StringVar(&model.Capabilities.ParallelTools, "parallel-tools", "", "supported or none; none rejects parallel tool history")
+		flags.IntVar(&model.Capabilities.ContextTokens, "context-tokens", 0, "declared total context token window; 0 means unknown")
+		flags.StringVar(&model.Capabilities.ContextSource, "context-source", "", "manual or preset declaration source")
 		flags.IntVar(&model.Capabilities.ContextBytes, "context-bytes", 0, "model context byte bound; 0 inherits the Harness bound")
 		flags.IntVar(&model.Capabilities.OutputTokens, "output-tokens", 0, "model output token bound; 0 inherits the Harness bound")
 		flags.StringVar(&model.Capabilities.Strength, "strength", "", "light, standard or strong; local declaration")
@@ -120,7 +123,8 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		flags.StringVar(&channels.Telegram.Key, "telegram-key", "", "Telegram Bot Key profile id or name")
 	}
 	if args[0] == "context" {
-		flags.IntVar(&summaryBytes, "summary-bytes", 0, "explicit task-local recap bound; 0 disables")
+		flags.IntVar(&summaryBytes, "summary-bytes", 0, "summary byte cap; 0 disables automatic compaction")
+		flags.IntVar(&autoCompactAt, "auto-percent", 80, "automatic compaction trigger, 50-95 percent of available input budget")
 	}
 	if err := parseFlags(flags, args[1:]); err != nil {
 		return err
@@ -156,7 +160,7 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 			ModelID: modelID, Model: model, KeyRef: keyRef, MakeDefault: makeDefault,
 			RemoveModel: removeModel, NewDefault: newDefault, Workspace: workspace,
 			Commands: commands, AllowedExecutables: allowedExecutables,
-			HTTP: httpConfig, AllowedOrigins: allowedOrigins, SummaryBytes: summaryBytes,
+			HTTP: httpConfig, AllowedOrigins: allowedOrigins, SummaryBytes: summaryBytes, AutoCompactAt: autoCompactAt,
 			Auto: auto, AutoModels: autoModels,
 			Collaboration: collaboration, CollaborationMode: collaborationMode,
 			CollaborationModels: collaborationModels, CollaborationTools: collaborationTools,
@@ -267,10 +271,11 @@ func writeConfigResult(stdout io.Writer, path string, config harness.Config, res
 		"collaboration": config.Collaboration,
 		"memory":        config.Memory,
 		"limits": map[string]int{
-			"max_steps": config.MaxSteps, "max_messages": config.MaxMessages,
+			"history_page_size": config.HistoryPageSize,
 			"max_context_bytes": config.MaxContextBytes, "max_output_tokens": config.MaxOutputTokens,
-			"max_run_seconds": config.MaxRunSeconds, "max_tool_result_bytes": config.MaxToolResult,
-			"task_summary_bytes": config.TaskSummaryBytes,
+			"max_tool_result_bytes": config.MaxToolResult,
+			"task_summary_bytes":    config.TaskSummaryBytes,
+			"auto_compact_percent":  config.AutoCompactAt,
 		},
 		"changed": result != nil, "network_tested": false, "credentials_resolved": false,
 	}

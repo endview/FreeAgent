@@ -246,7 +246,7 @@ func TestAutoAssessmentIsBoundedRecordedAndNotConversationAuthority(t *testing.T
 }
 
 func TestAutoAssessmentLimitsAndUnknownDoNotRetry(t *testing.T) {
-	for _, scenario := range []string{"step-limit", "lost", "definite-failure", "illegal-tools"} {
+	for _, scenario := range []string{"lost", "definite-failure", "illegal-tools"} {
 		t.Run(scenario, func(t *testing.T) {
 			var calls atomic.Int32
 			core, tasks := autoHarness(t, modelFunc(func(_ context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
@@ -265,41 +265,26 @@ func TestAutoAssessmentLimitsAndUnknownDoNotRetry(t *testing.T) {
 				return ModelResponse{Content: "done"}, nil
 			}))
 			core.Config.Auto.AssessmentModel = "default"
-			if scenario == "step-limit" {
-				core.Config.MaxSteps = 1
-			}
+
 			saveAutoConfig(t, core)
 			result, err := tasks.Submit(t.Context(), "", "bounded", "consider this situation")
 			if err == nil || calls.Load() != 1 || result.Run.Steps != 1 {
 				t.Fatalf("failure bypassed limits: %+v calls=%d err=%v", result, calls.Load(), err)
 			}
 			reopenHarness(t, core)
-			if scenario == "step-limit" {
-				if result.Run.Status != "limited" || !errors.Is(err, ErrStepLimit) {
-					t.Fatalf("step limit=%+v err=%v", result, err)
-				}
-				limits, _ := tasks.Limits(t.Context(), result.Run.ID)
-				limits.MaxSteps = 2
-				if err := tasks.IncreaseLimits(t.Context(), result.Run.ID, limits); err != nil {
-					t.Fatal(err)
-				}
-				final, err := tasks.Continue(t.Context(), result.Run.ID)
-				if err != nil || final.Run.Status != "completed" || final.Run.ModelID != "light" || calls.Load() != 2 {
-					t.Fatalf("limited assessment was repeated: %+v calls=%d err=%v", final, calls.Load(), err)
-				}
-			} else {
-				if scenario == "definite-failure" && result.Run.Status != "failed" ||
-					scenario != "definite-failure" && result.Run.Status != "unknown" {
-					t.Fatalf("wrong failure certainty: %+v err=%v", result, err)
-				}
-				if _, err := tasks.Continue(t.Context(), result.Run.ID); err == nil || calls.Load() != 1 {
-					t.Fatalf("failed assessment retried: calls=%d err=%v", calls.Load(), err)
-				}
-				duplicate, err := tasks.Submit(t.Context(), result.Run.ConversationID, "bounded", "consider this situation")
-				if err != nil || !duplicate.Duplicate || calls.Load() != 1 {
-					t.Fatalf("failed assessment replayed: %+v err=%v", duplicate, err)
-				}
+
+			if scenario == "definite-failure" && result.Run.Status != "failed" ||
+				scenario != "definite-failure" && result.Run.Status != "unknown" {
+				t.Fatalf("wrong failure certainty: %+v err=%v", result, err)
 			}
+			if _, err := tasks.Continue(t.Context(), result.Run.ID); err == nil || calls.Load() != 1 {
+				t.Fatalf("failed assessment retried: calls=%d err=%v", calls.Load(), err)
+			}
+			duplicate, err := tasks.Submit(t.Context(), result.Run.ConversationID, "bounded", "consider this situation")
+			if err != nil || !duplicate.Duplicate || calls.Load() != 1 {
+				t.Fatalf("failed assessment replayed: %+v err=%v", duplicate, err)
+			}
+
 			attempts, err := core.Store.ListAttempts(t.Context(), result.Run.ID)
 			for _, attempt := range attempts {
 				if attempt.Kind == "tool" {

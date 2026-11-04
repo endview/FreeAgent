@@ -31,6 +31,9 @@ existing omitted/zero settings are not changed. Settings, CLI
 `config context --summary-bytes` and model-proposed `runtime.set_limits` share
 the same control operation. Model-proposed persistent changes need confirmation.
 Manual compaction does not enable automatic compaction or grant tools to None.
+`auto_compact_percent` sets the shared 50–95% trigger (default 80). Model total
+token windows remain separate from local byte limits and reported usage.
+See [the v7.13 guide](CONTEXT_AND_CONTINUOUS_EXECUTION.md).
 
 Telegram uses `/start` applications bound to numeric Bot/chat/person identities
 and administrator approval. The short application code only locates a pending

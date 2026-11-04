@@ -299,6 +299,7 @@ func assignmentSnapshot(core *Service, spec ChildSpec, role RoleProfile, parentI
 		return "", "", err
 	}
 	service := NewService(core.Store, config, Adapters{Model: core.Model, Tools: tools, Keys: core.Keys})
+	service.childBudget = &role.Budget
 	service.controlToolsDisabled = true
 	service.commandManagementDisabled = true
 	if agentID == "" {

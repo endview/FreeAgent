@@ -94,24 +94,6 @@ func validateActiveDelegationPlan(plan CollaborationPlan, core *Service, invocat
 	if err := plan.validate(core); err != nil {
 		return plan, err
 	}
-	limits := core.limits()
-	if limits.MaxSteps < 1 {
-		return plan, ErrStepLimit
-	}
-	maxActive := int(max(int64(1), int64(limits.MaxRunSeconds)-activeElapsed(invocation.run)/1000))
-	if plan.Budget.MaxActiveSeconds > maxActive {
-		return plan, fmt.Errorf("harness: delegated active time exceeds the remaining turn budget")
-	}
-	maxModelCalls := plan.Budget.MaxChildren * limits.MaxSteps
-	maxToolCalls := plan.Budget.MaxChildren * limits.MaxSteps
-	if plan.Budget.MaxModelCalls > maxModelCalls || plan.Budget.MaxToolCalls > maxToolCalls {
-		return plan, errors.New("harness: delegated call budget exceeds finite child step capacity")
-	}
-	for _, role := range plan.Roles {
-		if role.Budget.MaxSeconds > maxActive {
-			return plan, errors.New("harness: delegated child time exceeds the remaining turn budget")
-		}
-	}
 	return plan, nil
 }
 

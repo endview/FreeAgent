@@ -186,7 +186,7 @@ func (service *Service) chooseAuto(ctx context.Context, run Run, minimumStrength
 		}
 		copy := *service
 		copy.bindings, copy.callOverride, copy.Emit = []ModelBinding{binding}, nil, nil
-		if _, err := copy.buildContext(ctx, run); err != nil {
+		if _, err := copy.selectionContext(ctx, run); err != nil {
 			if errors.Is(err, ErrContextLimit) {
 				contextError = true
 				continue
@@ -329,7 +329,7 @@ func (service *Service) prepareAuto(ctx context.Context, run *Run, attempts []At
 				}
 				copy := *service
 				copy.bindings, copy.callOverride, copy.Emit = []ModelBinding{proposed}, nil, nil
-				if _, err := copy.buildContext(ctx, *run); err == nil {
+				if _, err := copy.selectionContext(ctx, *run); err == nil {
 					binding, reason = proposed, "bounded structured assessment: "+assessment.Reason
 				}
 			}
@@ -341,7 +341,7 @@ func (service *Service) prepareAuto(ctx context.Context, run *Run, attempts []At
 		}
 		last = decision
 	}
-	if _, err := service.buildContext(ctx, *run); err == nil {
+	if _, err := service.selectionContext(ctx, *run); err == nil {
 		return nil
 	} else if !errors.Is(err, ErrContextLimit) && !errors.Is(err, ErrModelCapability) {
 		return err

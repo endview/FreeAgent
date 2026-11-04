@@ -38,6 +38,12 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 		return true
 	}
 	switch {
+	case path == "inputs":
+		server.inputsAPI(writer, request)
+		return true
+	case path == "branch":
+		server.branchAPI(writer, request)
+		return true
 	case path == "context" && request.Method == http.MethodGet:
 		state, err := server.tasks.ContextState(request.Context(), request.URL.Query().Get("conversation_id"))
 		if err != nil {

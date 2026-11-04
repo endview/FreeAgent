@@ -70,7 +70,7 @@ def build(target, go, output, allow_dirty=False):
         readme = 'LINUX_PORTABLE.md'
     files = {'docs/' + readme: 'README.md', **{p:p for p in ('VERSION','LICENSE','THIRD_PARTY_NOTICES.md')}}
     files.update({f'docs/{p}': f'docs/{p}' for p in (
-        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md','PUBLIC_WEB.md')})
+        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','CONTEXT_AND_CONTINUOUS_EXECUTION.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md','PUBLIC_WEB.md')})
     if goos=='linux':
         files.update({'deploy/freeagent.service':'deploy/freeagent.service',
                       'scripts/install-server.py':'deploy/install-server.py',

@@ -25,11 +25,9 @@ The initial config is the complete editable example. Important fields:
 | `models.<id>.model` | absent | Explicit provider model name |
 | `models.<id>.capabilities` | absent | Local protocol, streaming, tool, web-search, context, output and strength declaration |
 | `workspace` | selected | Absolute existing directory; linked ancestors rejected; change with `config workspace` |
-| `max_steps` | 12 | Total model/tool dispatches in one Run |
-| `max_messages` | 40 | Historical messages sent, excluding system message |
-| `max_context_bytes` | 131072 | Serialized request plus four bytes per reserved output token |
+| `history_page_size` | 40 | Bounded history-read page size; not a model-request message limit |
+| `max_context_bytes` | 131072 | Local serialized-request resource bound; undeclared token windows also reserve four bytes per output token |
 | `max_output_tokens` | 4096 | Model output request limit |
-| `max_run_seconds` | 300 | Cumulative active execution time across continuation; approval waiting is excluded |
 | `max_tool_result_bytes` | 65536 | Persisted tool output bound |
 | `system_prompt` | supplied | User instructions |
 | `instructions` | absent | Explicit filenames under `instructions/` |
@@ -38,6 +36,9 @@ The initial config is the complete editable example. Important fields:
 | `commands.allowed_executables` | absent | Optional exact absolute-path policy |
 | `http.enabled` | false | Explicit approved HTTP GET |
 | `http.allowed_origins` | absent | Exact origins; required when HTTP is enabled |
+| `auto_compact_percent` | 80 | Trigger at 50–95% of available input budget; output reserve is already deducted |
+| `models.<id>.capabilities.context_window_tokens` | 0 / unknown | Declared total model token window, with separate output/safety reserve |
+| `models.<id>.capabilities.context_window_source` | manual when declared | `manual` or `preset`, never inferred from a model list name |
 | `task_summary_bytes` | 4096 for new installs | 1–16384 enables automatic durable compaction. Existing missing/0 stays off; disabling retains saved summaries and manual operations |
 | `collaboration.mode` | `off` | `off`, `ask` or `auto`; optional foreground collaboration |
 | `collaboration.limits` | finite | Parent cumulative children/calls/output/concurrency/active seconds |
@@ -51,8 +52,8 @@ The initial config is the complete editable example. Important fields:
 | `memory.max_context_bytes` | 16384 | Selected memory input and search-result bound, 1024-65536 bytes |
 | `memory.max_document_bytes` | 65536 | Explicit save/import body bound, 1024-65536 bytes |
 
-The context budget is a byte bound with an approximate output reservation, not
-a provider tokenizer or billing quota. Original history is never deleted by
+Local request bytes, declared model token windows, estimated input tokens and
+Provider-reported usage are separate quantities. See [context and continuous execution](CONTEXT_AND_CONTINUOUS_EXECUTION.md). Original history is never deleted by
 trimming. Instructions are at most 16 simple filenames, each bounded UTF-8 text
 of at most 32 KiB. They cannot enable tools or grant permissions.
 
@@ -440,9 +441,9 @@ Runs freeze a non-secret execution-policy/tool/instruction snapshot plus
 model binding history. Editing execution policy or selected instructions stops
 the next dispatch. Changing another profile or the default does not rewrite
 existing bindings. `continue --model` explicitly adopts a model/revision only
-at a safe boundary. `continue --max-steps <n> --max-seconds <n>` increases
-finite limits without resetting consumption; Chat `/more` asks before the
-same adjustment. Neither operation replays UNKNOWN or grants tool approval.
+at a safe boundary. Ordinary tasks have no total-step or cumulative-time cutoff;
+per-call timeouts and explicit optional collaboration budgets retain their own
+limits. Model changes never replay UNKNOWN or grant tool approval.
 Do not change executable contents during a task: snapshots are not executable
 signatures or a local program sandbox.
 

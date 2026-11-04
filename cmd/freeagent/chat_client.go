@@ -48,17 +48,18 @@ type chatTasks interface {
 
 type remoteChat struct {
 	*handoff.Client
-	config       harness.Config
-	data         string
-	reader       *terminalInput
-	stderr       io.Writer
-	emit         harness.EventFunc
-	cursor       uint64
-	cancelMu     sync.Mutex
-	binding      string
-	requestError string
-	activity     handoff.AttachEvents
-	space        string
+	liveInputEnabled bool
+	config           harness.Config
+	data             string
+	reader           *terminalInput
+	stderr           io.Writer
+	emit             harness.EventFunc
+	cursor           uint64
+	cancelMu         sync.Mutex
+	binding          string
+	requestError     string
+	activity         handoff.AttachEvents
+	space            string
 }
 
 func (remote *remoteChat) bind(binding string) {
@@ -263,6 +264,10 @@ func (remote *remoteChat) events(ctx context.Context, chat string) error {
 }
 
 func (remote *remoteChat) wait(ctx context.Context, chat, key, runID string) (harness.RunResult, error) {
+	var input <-chan inputResult
+	if remote.liveInputEnabled && remote.reader != nil {
+		input = remote.reader.results
+	}
 	ticker := time.NewTicker(attachPollInterval)
 	defer ticker.Stop()
 	for {
@@ -301,6 +306,14 @@ func (remote *remoteChat) wait(ctx context.Context, chat, key, runID string) (ha
 		select {
 		case <-ctx.Done():
 			return harness.RunResult{}, ctx.Err()
+		case result, ok := <-input:
+			if !ok || result.err != nil {
+				input = nil
+				continue
+			}
+			if err := remote.liveInput(ctx, chat, key, runID, result.line); err != nil {
+				fmt.Fprintln(remote.stderr, err)
+			}
 		case <-ticker.C:
 		}
 	}

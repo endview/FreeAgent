@@ -40,9 +40,9 @@ func TestControlCatalogCoversPersistentConfigFields(t *testing.T) {
 	fieldFamilies := map[string]string{
 		"models": "config.models", "default_model": "config.models", "default_selection": "config.models",
 		"auto": "config.auto", "workspace": "config.workspace",
-		"max_steps": "config.limits", "max_messages": "config.limits", "max_context_bytes": "config.limits",
-		"max_output_tokens": "config.limits", "max_run_seconds": "config.limits", "max_tool_result_bytes": "config.limits",
-		"task_summary_bytes": "config.limits", "system_prompt": "config.prompt", "instructions": "config.prompt",
+		"history_page_size": "config.limits", "max_context_bytes": "config.limits",
+		"max_output_tokens": "config.limits", "max_tool_result_bytes": "config.limits",
+		"auto_compact_percent": "config.limits", "task_summary_bytes": "config.limits", "system_prompt": "config.prompt", "instructions": "config.prompt",
 		"mcpServers": "config.mcp", "skills": "config.skills", "extensions": "config.extensions",
 		"tools": "config.tools", "commands": "config.commands", "execution": "config.execution",
 		"computer_files": "config.execution", "computer_roots": "config.execution", "http": "config.http",
