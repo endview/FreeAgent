@@ -1641,6 +1641,13 @@ func schemaIdentity(ctx context.Context, db *sql.DB) (string, error) {
 		if len(entry[3]) > 64<<10 || len(entries) >= 64 {
 			return "", ErrStoreFormat
 		}
+		// The same store format initially counted every limited Run as active.
+		// Verify that exact, more restrictive index without writing; only the
+		// exclusive Owner updates it after every other schema/integrity check.
+		// Any other index definition still fails the complete identity check.
+		if entry[0] == "index" && entry[1] == "one_active_run" && entry[2] == "runs" && entry[3] == unsettledRunIndex {
+			entry[3] = activeRunIndex
+		}
 		entries = append(entries, entry)
 	}
 	if err := rows.Err(); err != nil {

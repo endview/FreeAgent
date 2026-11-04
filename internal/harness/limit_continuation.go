@@ -10,6 +10,7 @@ import (
 const settledLimitPrefix = "settled_limit:"
 const activeRunPredicate = `(status IN ('running','waiting_confirmation','stopped','unknown') OR (status='limited' AND substr(stop_reason,1,14)!='settled_limit:'))`
 const activeRunIndex = `CREATE UNIQUE INDEX one_active_run ON runs(conversation_id) WHERE ` + activeRunPredicate
+const unsettledRunIndex = `CREATE UNIQUE INDEX one_active_run ON runs(conversation_id) WHERE status IN ('running','waiting_confirmation','stopped','unknown','limited')`
 const limitContinuationPrompt = "Continue only the unfinished work from the preceding limited request. Use the saved conversation and confirmed results. Do not repeat completed tools or replay UNKNOWN operations. Report what remains unfinished."
 
 func isExplicitContinuation(prompt string) bool {
