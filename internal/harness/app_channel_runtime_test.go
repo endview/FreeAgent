@@ -221,8 +221,9 @@ func TestChannelApprovalWrongTargetRequesterMessageAndDuplicateAreDenied(t *test
 func TestChannelSendClaimSurvivesUncertainDeliveryWithoutReplay(t *testing.T) {
 	core, _, _ := testHarness(t, EchoModel{})
 	tasks := NewTaskService(core)
-	target := ChannelTarget{SpaceSourceTelegram, "bot", "chat"}
+	target := ChannelTarget{SpaceSourceTelegram, "1", "90"}
 	tasks.PairChannel(t.Context(), target, "private", "receipt")
+	grantTelegramFixture(t, tasks, TelegramAccessChange{Target: target, Kind: "private", Members: []string{"telegram:user:7"}, Enabled: true})
 	input, err := tasks.ReceiveChannelText(t.Context(), ChannelMessageSource{ChannelTarget: target, PersonID: "telegram:user:7", MessageID: "m1", Purpose: "request"}, "hello")
 	if err != nil {
 		t.Fatal(err)

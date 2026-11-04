@@ -122,6 +122,7 @@ func TestAbandonRetainsUnknownAndWarnsAcrossSessions(t *testing.T) {
 
 func TestContextLimitDoesNotSilentlyDropWholeRuns(t *testing.T) {
 	service, _, _ := testHarness(t, EchoModel{})
+	service.Config.TaskSummaryBytes = 0 // This case specifically verifies the disabled policy.
 	ctx := context.Background()
 	id := conversation(t, service)
 	snapshot, _ := service.snapshot()

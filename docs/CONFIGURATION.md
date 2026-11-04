@@ -38,7 +38,7 @@ The initial config is the complete editable example. Important fields:
 | `commands.allowed_executables` | absent | Optional exact absolute-path policy |
 | `http.enabled` | false | Explicit approved HTTP GET |
 | `http.allowed_origins` | absent | Exact origins; required when HTTP is enabled |
-| `task_summary_bytes` | 0 | Automatic durable compaction byte bound; 0 disables automatic changes, retains manual operations |
+| `task_summary_bytes` | 4096 for new installs | 1–16384 enables automatic durable compaction. Existing missing/0 stays off; disabling retains saved summaries and manual operations |
 | `collaboration.mode` | `off` | `off`, `ask` or `auto`; optional foreground collaboration |
 | `collaboration.limits` | finite | Parent cumulative children/calls/output/concurrency/active seconds |
 | `collaboration.child_limits` | finite | Per-expert steps, active seconds and output bounds |

@@ -42,9 +42,13 @@ func (tools *contextTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	}
 	if command.Action == "inspect" {
 		return PreparedTool{Effect: EffectRead, Execute: func(ctx context.Context) (ToolResult, error) {
-			state, err := NewTaskService(tools.service).ContextState(ctx, run.ConversationID)
+			state, err := NewTaskService(tools.service).contextState(ctx, run.ConversationID, run.ID, tools.attemptID)
 			if err != nil {
 				return ToolResult{}, err
+			}
+			if tools.service.publicContext() && state.Summary != nil && state.Summary.Scope != tools.service.publicSummaryScope() {
+				state.Summary = nil
+				state.Status = "different_visibility_scope"
 			}
 			return jsonResult(state)
 		}}, nil

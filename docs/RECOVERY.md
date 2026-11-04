@@ -45,13 +45,22 @@ reports without reviewing it.
 | `completed` | Ask the next question in the same session |
 | `waiting_confirmation` | `continue --run <id> --interactive` |
 | `stopped` | Inspect, then explicitly continue if configuration still matches |
-| `limited` | Inspect; explicitly increase finite limits, then continue, or abandon |
+| `limited` | Inspect the original reason and usage; a settled limit allows an explicit next round, while unresolved work must be recovered first |
 | `unknown` | Check effects yourself; ordinary continuation is forbidden |
 | `failed` | Inspect definitive model error, then start a new request |
 | `abandoned` | Task ended; unknown facts remain |
 
-Use `--data-dir` on these commands. Only one unfinished Run is permitted per
-conversation. Duplicate submission with the same session, request key and text
+Use `--data-dir` on these commands. Only one unresolved Run is permitted per
+conversation. A limit with no pending/unknown calls or active commands can settle
+and release occupancy while retaining `limited`, its reason and consumed budget.
+An explicit whole-message “继续”, `/continue` or the corresponding Chat button
+creates one linked successor with a fresh finite budget and the original
+requester constrained by current permissions. Duplicate continuation does not
+create multiple successors or replay finished tools. Collaboration children
+cannot use this to escape the parent's total budget. An explicit increase of
+the original Run's finite limits can still resume that Run if no successor exists.
+
+Duplicate submission with the same session, request key and text
 returns that Run, including its stopped/unknown state, without another call.
 Use a different key for a genuinely new request, not to bypass recovery.
 
@@ -60,12 +69,27 @@ Use a different key for a genuinely new request, not to bypass recovery.
 For a context-limited conversation, `context inspect --session <id>` shows the
 summary revision, source digest and any blocked work. `context compact --session
 <id>` can reduce completed older groups even when automatic compaction is off.
-Stopped/limited Runs keep their consumed budgets and must then be explicitly
-continued. Refresh rebuilds a stale summary; Clear removes only that selection.
+Stopped/limited Runs keep their consumed budgets. A settled limited round may
+start an explicit successor as described above; unresolved work still blocks it.
+Refresh rebuilds a stale summary; Clear removes only that selection.
 Running calls, unrelated pending approvals and UNKNOWN block these mutations.
 Failed/cancelled compaction retains the previous summary and original history;
 inspect its maintenance Run and model Attempts before deciding the next action.
 Ordinary Stop leaves the owner available to other GUI/CLI requests.
+
+In v7.12, a directly requested settings proposal expires after 10 minutes;
+repeat the intended setting operation to create a new proposal. A model proposal
+stays attached to its waiting Run: reopen its card for a resource/version check
+and fresh confirmation credentials. Rejected or invalid proposals close their
+waiting Attempt and Run rather than leaving permanent occupancy.
+
+When upgrading existing current-format data, resolve unfinished command Runs
+before switching binaries. Old command snapshots cannot continue with the new
+unmatched-rule semantics; inspect their receipts and explicitly start new work.
+Existing Telegram spaces/history are kept, but their old pairing codes do not
+grant access. An administrator must verify and approve the numeric binding in
+the Telegram settings page. Neither step automatically replays work or upgrades
+permissions.
 
 Ctrl+C stops new steps and cancels current work. During chat tasks it returns
 to input when possible; while idle it exits chat. One-shot commands exit.

@@ -351,8 +351,8 @@ func (tasks *TaskService) CompactChannel(ctx context.Context, chat, person strin
 	if r.RunID == "" {
 		return RunResult{}, nil
 	}
-	run, loadErr := tasks.Latest(ctx, chat)
-	return RunResult{Run: run, Answer: "公开上下文压缩已完成；原始记录保留。"}, loadErr
+	run, loadErr := tasks.core.Store.GetRun(ctx, r.RunID)
+	return RunResult{Run: run, Maintenance: true, Answer: "公开上下文压缩已完成；原始记录保留。"}, loadErr
 }
 func (tasks *TaskService) manageContext(ctx context.Context, chat string, command ContextCommand, source *ChannelMessageSource) (result ContextResult, returnErr error) {
 	if command.Action == "inspect" {
@@ -414,9 +414,6 @@ func (tasks *TaskService) manageContext(ctx context.Context, chat string, comman
 			if err := core.resolveRequestPermission(ctx, chat, source.PersonID, source.Source); err != nil {
 				return RunResult{}, err
 			}
-			if core.operationsDenied() {
-				return RunResult{}, ErrPermissionDenied
-			}
 			if err := core.bindChannel(ctx, chat, nil); err != nil {
 				return RunResult{}, err
 			}
@@ -427,6 +424,15 @@ func (tasks *TaskService) manageContext(ctx context.Context, chat string, comman
 		}
 		if plan.source.Count <= plan.base.Count || plan.source.Bytes-plan.base.Bytes <= 256 {
 			return RunResult{}, nil
+		}
+		if core.externalContext() {
+			var visible int
+			if err := core.Store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM messages WHERE conversation_id=? AND id>? AND id<=? AND json_extract(body_json,'$.Public')=1 AND json_extract(body_json,'$.Role') IN ('user','assistant') AND length(json_extract(body_json,'$.Content'))>0 AND coalesce(json_extract(body_json,'$.Channel.purpose'),'')!='command')`, chat, plan.base.Through, plan.source.Through).Scan(&visible); err != nil {
+				return RunResult{}, err
+			}
+			if visible == 0 {
+				return RunResult{}, nil
+			}
 		}
 		if !reuse {
 			core.bindCurrentToolView()
@@ -452,6 +458,9 @@ func (tasks *TaskService) manageContext(ctx context.Context, chat string, comman
 		status, reason := "completed", ""
 		if reuse {
 			status, reason = latest.Status, latest.StopReason
+			if latest.LimitSettled {
+				reason = settledLimitPrefix + reason
+			}
 		}
 		if operationErr != nil && !reuse {
 			status, reason = "failed", safeError(operationErr)

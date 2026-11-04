@@ -316,7 +316,9 @@ func testAttachedControlConfigReader(t *testing.T, transient bool) {
 	var diagnostic bytes.Buffer
 	result, err := attachedControlDecision(t.Context(), data, pending.Run, confirmation, card.Code, true, nil, &diagnostic)
 	if !transient {
-		if err == nil || result.Run.Status != "waiting_confirmation" || permissionMode(t, data) != harness.PermissionAsk || calls.Load() != 1 {
+		// A definite configuration-write failure closes the proposal and its
+		// Run. The saved permission is unchanged; a new operation is required.
+		if result.Run.Status != "failed" || permissionMode(t, data) != harness.PermissionAsk || calls.Load() != 1 {
 			t.Fatalf("blocked replacement: status=%s permission=%s calls=%d err=%v", result.Run.Status, permissionMode(t, data), calls.Load(), err)
 		}
 		return

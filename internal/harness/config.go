@@ -211,27 +211,28 @@ func (model ModelConfig) EffectiveCapabilities() ModelCapabilities {
 
 func DefaultConfig(workspace string) Config {
 	return Config{
-		Version:         ConfigVersion,
-		Attachments:     DefaultAttachmentPolicy(),
-		PublicWeb:       DefaultPublicWebConfig(),
-		Models:          map[string]ModelConfig{},
-		Auto:            AutoConfig{MaxCandidates: 8, MaxAssessments: 1, MaxUpgrades: 1},
-		Collaboration:   DefaultCollaborationSettings(),
-		Memory:          defaultMemoryConfig(),
-		Workspace:       workspace,
-		MaxSteps:        12,
-		MaxMessages:     40,
-		MaxContextBytes: 128 << 10,
-		MaxOutputTokens: 4096,
-		MaxRunSeconds:   300,
-		MaxToolResult:   64 << 10,
-		Commands:        CommandConfig{TimeoutSecs: 120, MaxOutput: 32768, Rules: defaultCommandRules(), Services: DefaultServicePolicy()},
-		Tools:           defaultBuiltinToolSettings(),
-		Execution:       defaultExecutionSettings(workspace),
-		ToolGeneration:  "1",
-		HTTP:            HTTPConfig{TimeoutSecs: 20, MaxOutput: 32768},
-		Extensions:      ExtensionsConfig{MaxContextChars: 16384, MaxModelCallsPerTurn: 10},
-		SystemPrompt:    "You are a concise local file assistant. Use tools when needed. Never claim a file was changed unless the tool result confirms it.",
+		Version:          ConfigVersion,
+		Attachments:      DefaultAttachmentPolicy(),
+		PublicWeb:        DefaultPublicWebConfig(),
+		Models:           map[string]ModelConfig{},
+		Auto:             AutoConfig{MaxCandidates: 8, MaxAssessments: 1, MaxUpgrades: 1},
+		Collaboration:    DefaultCollaborationSettings(),
+		Memory:           defaultMemoryConfig(),
+		Workspace:        workspace,
+		MaxSteps:         12,
+		MaxMessages:      40,
+		TaskSummaryBytes: 4096,
+		MaxContextBytes:  128 << 10,
+		MaxOutputTokens:  4096,
+		MaxRunSeconds:    300,
+		MaxToolResult:    64 << 10,
+		Commands:         CommandConfig{TimeoutSecs: 120, MaxOutput: 32768, Rules: defaultCommandRules(), Services: DefaultServicePolicy()},
+		Tools:            defaultBuiltinToolSettings(),
+		Execution:        defaultExecutionSettings(workspace),
+		ToolGeneration:   "1",
+		HTTP:             HTTPConfig{TimeoutSecs: 20, MaxOutput: 32768},
+		Extensions:       ExtensionsConfig{MaxContextChars: 16384, MaxModelCallsPerTurn: 10},
+		SystemPrompt:     "You are a concise local file assistant. Use tools when needed. Never claim a file was changed unless the tool result confirms it.",
 	}
 }
 
@@ -528,7 +529,7 @@ func Configure(ctx context.Context, dataDir string, edit func(*Config) error) (C
 	}
 	var unfinished int
 	err = store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs
-		WHERE status IN ('running','waiting_confirmation','stopped','unknown','limited')`).Scan(&unfinished)
+		WHERE `+activeRunPredicate+` `).Scan(&unfinished)
 	if err != nil {
 		return Config{}, err
 	}

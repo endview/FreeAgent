@@ -80,6 +80,7 @@ func (source ChannelMessageSource) requestKey() string {
 // ChannelRunOrigin is frozen in the existing Run snapshot. Later messages,
 // routing changes and a different client's selection cannot change it.
 type ChannelRunOrigin struct {
+	AccessRevision uint64 `json:"access_revision,omitempty"`
 	ChannelTarget
 	InputMessageID int64  `json:"input_message_id,omitempty"`
 	HistoryThrough int64  `json:"history_through"`
@@ -131,6 +132,16 @@ func (tasks *TaskService) PairChannel(ctx context.Context, target ChannelTarget,
 		return Space{}, err
 	}
 	defer tx.Rollback()
+	space, err := tasks.bindChannelTx(ctx, tx, target, kind, title)
+	if err != nil {
+		return Space{}, err
+	}
+	return space, tx.Commit()
+}
+
+// bindChannelTx creates organization only. Telegram admission is committed by
+// its control handler in the same transaction; a binding alone grants nothing.
+func (tasks *TaskService) bindChannelTx(ctx context.Context, tx *sql.Tx, target ChannelTarget, kind, title string) (Space, error) {
 	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE source=? AND external_chat=?`, target.Source, target.key()))
 	if err == nil {
 		return space, nil
@@ -157,7 +168,7 @@ func (tasks *TaskService) PairChannel(ctx context.Context, target ChannelTarget,
 	if err != nil {
 		return Space{}, err
 	}
-	return space, tx.Commit()
+	return space, nil
 }
 
 func (tasks *TaskService) ChannelSpace(ctx context.Context, target ChannelTarget) (Space, error) {
@@ -175,6 +186,16 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 		return ChannelReceived{}, ErrInvalidSpace
 	}
 	store := tasks.core.Store
+	var access TelegramAccess
+	if source.Source == SpaceSourceTelegram {
+		store.telegramMu.Lock()
+		defer store.telegramMu.Unlock()
+		var err error
+		access, err = tasks.CheckTelegramAccess(ctx, source.ChannelTarget, source.PersonID)
+		if err != nil {
+			return ChannelReceived{}, err
+		}
+	}
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ChannelReceived{}, err
@@ -236,7 +257,7 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 		return ChannelReceived{}, err
 	}
 	received.origin = &ChannelRunOrigin{ChannelTarget: source.ChannelTarget, InputMessageID: received.MessageID,
-		HistoryThrough: received.MessageID, RequestKey: source.requestKey()}
+		HistoryThrough: received.MessageID, RequestKey: source.requestKey(), AccessRevision: access.Revision}
 	received.source, received.text = source, text
 	return received, nil
 }
@@ -270,6 +291,16 @@ func (service *Service) bindChannel(ctx context.Context, chat string, origin *Ch
 			return ErrConversationSpace
 		}
 		copy := *origin
+		if target.Source == SpaceSourceTelegram {
+			person := ""
+			if service.permission != nil {
+				person = service.permission.PersonID
+			}
+			grant, err := NewTaskService(service).CheckTelegramAccess(ctx, target, person)
+			if err != nil || origin.AccessRevision != grant.Revision {
+				return ErrPermissionRevoked
+			}
+		}
 		service.channel = &copy
 		return nil
 	}
@@ -278,6 +309,13 @@ func (service *Service) bindChannel(ctx context.Context, chat string, origin *Ch
 		return err
 	}
 	service.channel = &ChannelRunOrigin{ChannelTarget: target, HistoryThrough: through}
+	if target.Source == SpaceSourceTelegram && service.permission != nil && service.permission.PersonID != "" {
+		grant, err := NewTaskService(service).CheckTelegramAccess(ctx, target, service.permission.PersonID)
+		if err != nil {
+			return err
+		}
+		service.channel.AccessRevision = grant.Revision
+	}
 	return nil
 }
 
@@ -297,6 +335,14 @@ func (tasks *TaskService) CheckChannelRunAction(ctx context.Context, target Chan
 	run, origin, err := tasks.ChannelRun(ctx, runID)
 	if err != nil || origin == nil || origin.ChannelTarget != target {
 		return Run{}, ErrPermissionDenied
+	}
+	if err := tasks.checkTelegramRun(ctx, run); err != nil {
+		return Run{}, err
+	}
+	if target.Source == SpaceSourceTelegram {
+		if _, err := tasks.CheckTelegramAccess(ctx, target, personID); err != nil {
+			return Run{}, err
+		}
 	}
 	permission := run.Permission
 	if permission == nil {
@@ -353,7 +399,7 @@ func channelSourceLabel(message ModelMessage) ModelMessage {
 
 // Confirmed delivery is a public mirror, not a mutation of the private model
 // message or an execution replay. Partial sends mirror only confirmed text.
-func (tasks *TaskService) RecordChannelDelivery(ctx context.Context, runID, deliveryID, text, state string) error {
+func (tasks *TaskService) RecordChannelDelivery(ctx context.Context, runID, deliveryID, text, state string, maintenance ...bool) error {
 	run, origin, err := tasks.ChannelRun(ctx, runID)
 	if err != nil || origin == nil || !validChannelPart(deliveryID) || len(text) > 128<<10 {
 		return ErrInvalidSpace
@@ -378,6 +424,9 @@ func (tasks *TaskService) RecordChannelDelivery(ctx context.Context, runID, deli
 	}
 	if text != "" {
 		source := &ChannelMessageSource{ChannelTarget: origin.ChannelTarget, MessageID: deliveryID, Purpose: "delivery"}
+		if len(maintenance) > 0 && maintenance[0] {
+			source.Purpose = "command"
+		}
 		body := ModelMessage{Role: "assistant", Content: text, Channel: source, Public: true}
 		_, err = tx.ExecContext(ctx, `INSERT INTO messages(conversation_id,run_id,request_key,body_json) VALUES(?,NULL,?,?)`, run.ConversationID, key, string(mustJSON(body)))
 		if err != nil {

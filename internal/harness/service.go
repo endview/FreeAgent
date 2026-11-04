@@ -39,6 +39,7 @@ type Event struct {
 }
 
 type Service struct {
+	continuationOf   string
 	remoteEntry      *PublicEntry
 	approvalBinding  string
 	inputAttachments []AttachmentRef
@@ -198,10 +199,11 @@ func (service *Service) runCopy() Service {
 }
 
 type RunResult struct {
-	Run       Run      `json:"run"`
-	Answer    string   `json:"answer,omitempty"`
-	Duplicate bool     `json:"duplicate"`
-	Evidence  Evidence `json:"evidence"`
+	Maintenance bool     `json:"maintenance,omitempty"`
+	Run         Run      `json:"run"`
+	Answer      string   `json:"answer,omitempty"`
+	Duplicate   bool     `json:"duplicate"`
+	Evidence    Evidence `json:"evidence"`
 }
 
 func (service *Service) snapshot() (string, error) {
@@ -245,7 +247,9 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 		return "", err
 	}
 	raw, err := json.Marshal(runSnapshot{
-		Config: safetyConfig(config), Tools: service.snapshotToolDefinitions(), InputAttachments: service.inputAttachments,
+		ContinuationOf:      service.continuationOf,
+		CommandRulesVersion: 1,
+		Config:              safetyConfig(config), Tools: service.snapshotToolDefinitions(), InputAttachments: service.inputAttachments,
 		InstructionsHash: contentHash([]byte(config.instructionText)),
 		Bindings:         bindings, Limits: service.runLimits,
 		Auto: service.autoPolicy, Routing: service.routing,
@@ -598,6 +602,13 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 				current, _ = service.Store.GetRun(persistCtx, run.ID)
 			}
 			result.Run = current
+			if current.Status == "limited" {
+				if _, err := service.Store.settleLimited(persistCtx, current); err != nil {
+					returnErr = errors.Join(returnErr, err)
+				}
+				current, _ = service.Store.GetRun(persistCtx, run.ID)
+				result.Run = current
+			}
 			result.Answer = current.Output
 			evidence, err := service.Store.Evidence(persistCtx, run.ID)
 			result.Evidence = evidence
@@ -1281,7 +1292,11 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 	if summary != nil {
 		through = summary.CoveredThrough
 	}
-	history, err := service.Store.contextTail(ctx, run, through, limits.MaxMessages, limits.MaxContextBytes)
+	scope := ""
+	if service.publicContext() {
+		scope = service.publicSummaryScope()
+	}
+	history, err := service.Store.contextTail(ctx, run, through, limits.MaxMessages, limits.MaxContextBytes, scope)
 	if err != nil {
 		return ModelRequest{}, err
 	}

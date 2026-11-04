@@ -128,7 +128,7 @@ func (tasks *TaskService) SetMemoryConfig(ctx context.Context, memory MemoryConf
 	defer tasks.core.Store.runMu.Unlock()
 	var unfinished int
 	if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs
-		WHERE status IN ('running','waiting_confirmation','stopped','unknown','limited')`).Scan(&unfinished); err != nil {
+		WHERE `+activeRunPredicate+` `).Scan(&unfinished); err != nil {
 		return err
 	}
 	if unfinished != 0 {

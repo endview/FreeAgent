@@ -1,6 +1,7 @@
 export const STATES = {
   generating: '生成中', awaiting_approval: '等待确认', stopped: '已停止',
   needs_attention: '需要关注', completed: '已完成', failed: '失败', unknown: '结果未知',
+	limited: '达到限额 · 本轮已结算',
 };
 export const DRAWER_QUERY = '(max-width: 959px)';
 
@@ -50,6 +51,7 @@ const STATE_META = {
   awaiting_approval: { label: STATES.awaiting_approval, icon: 'hand', token: 'wait' },
   stopped: { label: STATES.stopped, icon: 'square', token: 'stop' },
   needs_attention: { label: STATES.needs_attention, icon: 'settings-2', token: 'warn' },
+	limited: {label:STATES.limited,icon:'pause',token:'warn'},
   completed: { label: STATES.completed, icon: 'circle-check', token: 'done' },
   failed: { label: STATES.failed, icon: 'circle-x', token: 'fail' },
   unknown: { label: STATES.unknown, icon: 'circle-question-mark', token: 'unknown' },

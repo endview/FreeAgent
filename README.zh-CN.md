@@ -4,13 +4,16 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 SQLite Store，基础文件操作不需要安装 MCP。
 
-当前已发布 **v7.11.0-dev.1 开发预览**。
-[Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v7.11.0-dev.1)
-· [English](README.md) · [v7.11 实施与验收](docs/FREEAGENT_V7_11_EXECUTION_DIAGNOSTICS_PROGRESS.md)。
+当前源码为 **v7.12.0-dev.1 开发候选**，尚未发布到 GitHub。
+[历史 Windows / Linux 发行包](https://github.com/endview/FreeAgent/releases)
+· [English](README.md) · [v7.12 实施与验收](docs/FREEAGENT_V7_12_IMPLEMENTATION_PROGRESS.md)。
 
-v7.11 重点减少命令观察和文件搜索的重复扫描工作，增加 `doctor --text`
-离线诊断与下一步处理建议，以及服务器安装器的 `--check` 预检。每次文件读取
-仍检查实际路径和句柄；Provider 测试与配置开关由用户显式操作。
+v7.12 使用 Telegram `/start` 身份申请、管理员批准与统一名单替换旧通用配对码。
+接入只授予聊天，不自动提升工具权限；撤权保留空间与历史，阻止后续派发和回传。
+运行状态区分当前 Run 的冻结权限与保存设置；未匹配命令规则按权限模式处理，
+Full 仍遵守显式 deny/ask 和非空可执行文件白名单，旧命令快照不能静默续接。
+新安装默认开启 4096 字节自动压缩，已有关闭设置保持关闭；同时修正提案到期、
+附件最终版本选择和普通限额结算，只有用户明确继续才创建关联的下一轮。
 
 使用独立的 `Harness-v8` 数据目录、Store v10 和 backup-v4。不导入旧配置、
 数据库或备份；请解压到新目录，保留旧程序自己的数据。便携包未签名，
@@ -48,15 +51,18 @@ GUI 或服务在线时，CLI 经 attach 连接同一 Owner。断开 attach 或�
 
 - 新空间和外部发起人默认 None。文件与命令按实际权限模式执行；模型提出的
   产品设置变更需要已有 GUI 卡片或 CLI 提示确认，不要求手打确认码。
-- 持久上下文摘要保留原始历史，支持手动 `/compact` 和可选自动压缩。
+- 持久上下文摘要保留原始历史，支持手动 `/compact` 和可开关的自动压缩。
+  新安装默认开启；已获准聊天的 None 用户可压缩当前渠道公开上下文。
   摘要请求沿用任务预算和调用记录，不隐式学习人格或建立后台知识治理。
 - 支持工作区文件工具、可选命令和网络工具、MCP，以及当前 Chat Completions、
   Responses、Anthropic 协议适配。联网能力必须由所选 Provider 或工具实际提供。
 - 可选协作默认关闭，子任务与父任务累计预算同时约束；中断或事实不明的执行
   保留 UNKNOWN，不自动重放。
-- 可选 Telegram、Lark、QQ 使用同一空间和权限核心。
-  [Telegram 私聊文字与真实模型回传已验收](docs/FREEAGENT_TELEGRAM_PRIVATE_LIVE_ACCEPTANCE_2026-11-03.md)；
-  群聊、第二账号和真实文件收发仍待验，Lark/QQ 保留本地模拟结果。QQ 任意文件上传不支持。
+- 可选 Telegram、Lark、QQ 使用同一空间和权限核心。Telegram 新准入见
+  [渠道说明](docs/CHANNELS.md)；原空间需管理员核对后重新授权，旧码不兑换资格。
+  [v7.11 Telegram 私聊真实回传](docs/FREEAGENT_TELEGRAM_PRIVATE_LIVE_ACCEPTANCE_2026-11-03.md)
+  仅作为历史证据，不能替代本版双账号、群聊、回调及文件实测。
+  Lark/QQ 保留原配对与本地模拟结果，新的鉴权延期；QQ 任意文件上传不支持。
 
 Windows 命令隔离使用 AppContainer；Linux 可选 Bubblewrap。沙箱不可用时
 拒绝该请求，不回退宿主执行。沙箱内 Git 元数据只读。
@@ -99,6 +105,9 @@ go build -o ./bin/freeagent.exe ./cmd/freeagent
 v7.10 二进制另有功能、归档和 HTTPS 验收，未宣称它也运行了八小时。
 该版两个便携包均两次干净构建一致，公开 Release 的 6 个资产已回下载校验。
 v7.11 的针对性测试、性能对比和交付结果单独记录在其实施文档中。
+v7.12 已通过 Windows/Debian 普通测试、Windows 针对性 race、86 项 JS、
+真实浏览器模拟渠道操作、真实 DeepSeek 自动压缩及两平台包级验证；
+尚未完成真实 TG 新准入的双账号/群/回调/文件验证，详见本版实施记录。
 
 真实视觉 Provider、真实 Telegram/Lark/QQ 文件账号和系统信任公网证书仍为
 NOT_RUN。临时 CA 验证不等于公网可信证书验收。完整结果、来源与限制见

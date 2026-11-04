@@ -21,6 +21,7 @@ type chatTasks interface {
 	Conversations(context.Context) ([]harness.Conversation, error)
 	Messages(context.Context, string) ([]harness.Message, error)
 	Latest(context.Context, string) (harness.Run, error)
+	RuntimeFacts(context.Context, string, string) (harness.RuntimeFacts, error)
 	Inspect(context.Context, string) (harness.Run, []harness.Attempt, harness.Evidence, error)
 	SelectedModel(context.Context, string) (string, error)
 	SelectModel(context.Context, string, string) error
@@ -131,6 +132,10 @@ func (remote *remoteChat) Messages(ctx context.Context, chat string) ([]harness.
 }
 func (remote *remoteChat) Latest(ctx context.Context, chat string) (harness.Run, error) {
 	return chatValue[harness.Run](remote, ctx, "latest", chat, "", nil)
+}
+
+func (remote *remoteChat) RuntimeFacts(ctx context.Context, chat, run string) (harness.RuntimeFacts, error) {
+	return chatValue[harness.RuntimeFacts](remote, ctx, "runtime-facts", chat, run, nil)
 }
 func (remote *remoteChat) SelectedModel(ctx context.Context, chat string) (string, error) {
 	return chatValue[string](remote, ctx, "selected-model", chat, "", nil)

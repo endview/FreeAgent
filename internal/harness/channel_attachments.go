@@ -65,6 +65,11 @@ func (r *AppChannelRuntime) sendMedia(ctx context.Context, target ChannelTarget,
 	return api.SendDocument(ctx, target.ChatID, reply, ref.Name, raw)
 }
 func (s *channelSession) receiveFiles(ctx context.Context, e channelEvent, input *ChannelReceived) error {
+	if s.source == SpaceSourceTelegram {
+		if _, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person); err != nil {
+			return err
+		}
+	}
 	if s.download == nil || len(e.Media) > 8 {
 		return errors.New("channel: bounded file download is unavailable")
 	}
@@ -73,6 +78,11 @@ func (s *channelSession) receiveFiles(ctx context.Context, e channelEvent, input
 	var total int64
 	policy := s.tasks.Config().Attachments.effective()
 	for i, media := range e.Media {
+		if s.source == SpaceSourceTelegram {
+			if _, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person); err != nil {
+				return err
+			}
+		}
 		if media.Bytes > policy.MaxInputBytes {
 			return errors.New("channel: attachment exceeds input limit")
 		}
@@ -123,6 +133,9 @@ func (s *channelSession) receiveFiles(ctx context.Context, e channelEvent, input
 }
 
 func (s *channelSession) deliverFiles(ctx context.Context, run Run, origin ChannelRunOrigin) error {
+	if err := s.tasks.checkTelegramRun(ctx, run); err != nil {
+		return err
+	}
 	infos, err := s.tasks.Attachments(ctx, run.ConversationID)
 	if err != nil {
 		return err
@@ -133,7 +146,7 @@ func (s *channelSession) deliverFiles(ctx context.Context, run Run, origin Chann
 		if err != nil {
 			return err
 		}
-		if r.Deleted || r.Ref.Source != "file_export" || r.Request != run.ID {
+		if r.Deleted || r.Ref.Source != "file_export" || r.Request != run.ID || r.ExportSource != "" && !r.ExportSelected {
 			continue
 		}
 		result = errors.Join(result, s.sendFileReceipt(ctx, run.ConversationID, run.ID, origin.ChannelTarget, s.replyMessage(ctx, run), r.Ref))
@@ -141,6 +154,11 @@ func (s *channelSession) deliverFiles(ctx context.Context, run Run, origin Chann
 	return result
 }
 func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding string, target ChannelTarget, reply string, ref AttachmentRef) error {
+	if target.Source == SpaceSourceTelegram {
+		if err := s.withTelegramFileAccess(ctx, target, binding, func() error { return nil }); err != nil {
+			return err
+		}
+	}
 	space, err := s.tasks.ChannelSpace(ctx, target)
 	if err != nil {
 		return err
@@ -150,7 +168,14 @@ func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding stri
 		return ErrConversationSpace
 	}
 	key := "channel/file-send/" + binding + "/" + contentHash(mustJSON([]any{chat, binding, target, ref.ID, ref.SHA256}))
+	s.tasks.core.Store.attachmentMu.Lock()
+	record, loadErr := loadAttachment(ctx, s.tasks.core.Store.db, ref.ID)
+	if loadErr != nil || record.Deleted || record.ExportSource != "" && !record.ExportSelected {
+		s.tasks.core.Store.attachmentMu.Unlock()
+		return loadErr
+	}
 	claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, string(mustJSON(map[string]any{"state": "dispatching", "attachment": ref, "target": target, "replay": false})))
+	s.tasks.core.Store.attachmentMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -165,21 +190,24 @@ func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding stri
 		if s.sendFile == nil {
 			sendErr = &CallError{Certain: true, Message: "channel: file sending unavailable"}
 		} else {
-			select {
-			case s.sendGate <- struct{}{}:
-				if delay := time.Until(s.nextSend); delay > 0 {
-					if !channelDelay(ctx, min(delay, 4*time.Second)) {
-						sendErr = ctx.Err()
+			sendErr = s.withTelegramFileAccess(ctx, target, binding, func() error {
+				select {
+				case s.sendGate <- struct{}{}:
+					if delay := time.Until(s.nextSend); delay > 0 {
+						if !channelDelay(ctx, min(delay, 4*time.Second)) {
+							sendErr = ctx.Err()
+						}
 					}
+					if sendErr == nil {
+						message, sendErr = s.sendFile(ctx, target, reply, ref, raw)
+					}
+					s.nextSend = time.Now().Add(time.Second)
+					<-s.sendGate
+				case <-ctx.Done():
+					sendErr = &CallError{Certain: true, Message: "channel: file send cancelled before dispatch"}
 				}
-				if sendErr == nil {
-					message, sendErr = s.sendFile(ctx, target, reply, ref, raw)
-				}
-				s.nextSend = time.Now().Add(time.Second)
-				<-s.sendGate
-			case <-ctx.Done():
-				sendErr = &CallError{Certain: true, Message: "channel: file send cancelled before dispatch"}
-			}
+				return sendErr
+			})
 		}
 	}
 	state := "sent"
@@ -222,9 +250,16 @@ func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding stri
 	return errors.Join(sendErr, saveErr)
 }
 func (s *channelSession) saveReplyFile(ctx context.Context, e channelEvent, chat string) error {
+	if e.Target.Source == SpaceSourceTelegram {
+		grant, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person)
+		if err != nil {
+			return err
+		}
+		ctx = context.WithValue(ctx, telegramFileAuthorityKey{}, telegramFileAuthority{Target: e.Target, Person: e.Person, Revision: grant.Revision})
+	}
 	// Only actual public reply text may be exported from a channel, including
 	// None. A private Run output is never substituted for a delivered message.
-	query := `SELECT body_json FROM messages WHERE conversation_id=? AND json_extract(body_json,'$.Role')='assistant' AND json_extract(body_json,'$.Public')=1`
+	query := `SELECT body_json FROM messages WHERE conversation_id=? AND json_extract(body_json,'$.Role')='assistant' AND json_extract(body_json,'$.Public')=1 AND coalesce(json_extract(body_json,'$.Channel.purpose'),'')!='command'`
 	args := []any{chat}
 	if e.ReplyTo != "" {
 		query += ` AND json_extract(body_json,'$.Channel.message_id')=?`

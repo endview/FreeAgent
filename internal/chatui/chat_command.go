@@ -49,6 +49,8 @@ func (server *Server) chatCommand(writer http.ResponseWriter, request *http.Requ
 		result, err = tasks.Messages(ctx, command.Chat)
 	case "latest":
 		result, err = tasks.Latest(ctx, command.Chat)
+	case "runtime-facts":
+		result, err = tasks.RuntimeFacts(ctx, command.Chat, command.Run)
 	case "selected-model":
 		result, err = tasks.SelectedModel(ctx, command.Chat)
 	case "select-model":

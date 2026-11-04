@@ -92,6 +92,39 @@ func (tools *controlTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 			if err != nil {
 				return ToolResult{}, err
 			}
+			if tools.runID != "" {
+				facts, err := NewTaskService(tools.service).RuntimeFacts(ctx, "", tools.runID)
+				if err != nil {
+					return ToolResult{}, err
+				}
+				state.CurrentRun = &facts
+				// A channel model needs only its own space and proposals. Resource
+				// revisions and unrelated settings are administrator information.
+				if facts.PersonID != "" {
+					state.TelegramRequests = nil
+					filtered := state.Spaces[:0]
+					for _, space := range state.Spaces {
+						if space.ID == facts.SpaceID {
+							filtered = append(filtered, space)
+						}
+					}
+					state.Spaces = filtered
+					state.ResourceRevisions = nil
+					state.ExternalChangeResources = nil
+					state.Config = ControlConfigState{PermissionMode: state.Config.PermissionMode, Commands: state.Config.Commands, Limits: state.Config.Limits}
+				}
+				run, err := tools.service.Store.GetRun(ctx, tools.runID)
+				if err != nil {
+					return ToolResult{}, err
+				}
+				pending := state.Pending[:0]
+				for _, operation := range state.Pending {
+					if operation.ConversationID == run.ConversationID {
+						pending = append(pending, operation)
+					}
+				}
+				state.Pending = pending
+			}
 			raw, err := json.Marshal(state)
 			if err != nil || len(raw) > tools.service.limits().MaxToolResult {
 				return ToolResult{}, ErrContextLimit

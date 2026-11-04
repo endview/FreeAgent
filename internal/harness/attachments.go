@@ -73,14 +73,17 @@ type AttachmentRef struct {
 	Public      bool   `json:"public,omitempty"`
 }
 type attachmentRecord struct {
-	Ref          AttachmentRef `json:"ref"`
-	Conversation string        `json:"conversation"`
-	Space        string        `json:"space"`
-	Principal    string        `json:"principal"`
-	Created      string        `json:"created"`
-	Committed    bool          `json:"committed"`
-	Deleted      bool          `json:"deleted,omitempty"`
-	Request      string        `json:"request,omitempty"`
+	ExportSource      string        `json:"export_source,omitempty"`
+	ExportSelected    bool          `json:"export_selected,omitempty"`
+	ExportKeepVersion bool          `json:"export_keep_version,omitempty"`
+	Ref               AttachmentRef `json:"ref"`
+	Conversation      string        `json:"conversation"`
+	Space             string        `json:"space"`
+	Principal         string        `json:"principal"`
+	Created           string        `json:"created"`
+	Committed         bool          `json:"committed"`
+	Deleted           bool          `json:"deleted,omitempty"`
+	Request           string        `json:"request,omitempty"`
 }
 
 type attachmentIdentityKey struct{}
@@ -261,7 +264,7 @@ func (service *Service) attachmentPolicy() AttachmentPolicy {
 	return service.currentConfig().Attachments.effective()
 }
 
-func (tasks *TaskService) createAttachment(ctx context.Context, chat, name string, reader io.Reader, source, request string, committed bool) (AttachmentRef, error) {
+func (tasks *TaskService) createAttachment(ctx context.Context, chat, name string, reader io.Reader, source, request string, committed bool, selections ...exportSelection) (AttachmentRef, error) {
 	conversation, err := tasks.attachmentConversation(ctx, chat)
 	if err != nil {
 		return AttachmentRef{}, err
@@ -319,6 +322,17 @@ func (tasks *TaskService) createAttachment(ctx context.Context, chat, name strin
 		return AttachmentRef{}, err
 	}
 	ref.Public = space.Source != SpaceSourceLocal && source == "upload"
+	var selection exportSelection
+	if source == "file_export" && len(selections) > 0 {
+		selection = selections[0]
+	}
+	if selection.Source != "" {
+		if previous, err := store.identicalExport(ctx, chat, request, selection.Source, ref.SHA256, selection.KeepVersion); err != nil {
+			return AttachmentRef{}, err
+		} else if previous.ID != "" {
+			return previous, nil
+		}
+	}
 	if source == "upload" && request != "" {
 		var existing string
 		err := store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key LIKE 'attachment/%' AND json_extract(value,'$.conversation')=? AND json_extract(value,'$.principal')=? AND json_extract(value,'$.request')=? AND json_extract(value,'$.ref.source')='upload' LIMIT 1`, chat, attachmentIdentity(ctx), request).Scan(&existing)
@@ -357,8 +371,22 @@ func (tasks *TaskService) createAttachment(ctx context.Context, chat, name strin
 		return ref, err
 	}
 	record := attachmentRecord{Ref: ref, Conversation: chat, Space: conversation.SpaceID, Principal: attachmentIdentity(ctx), Created: nowText(), Committed: committed, Request: request}
-	_, err = store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, attachmentPrefix+id, string(mustJSON(record)))
+	record.ExportSource, record.ExportKeepVersion = selection.Source, selection.KeepVersion
+	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
+		return ref, err
+	}
+	defer tx.Rollback()
+	if selection.Source != "" {
+		if err := selectExportTx(ctx, tx, &record); err != nil {
+			return ref, err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, attachmentPrefix+id, string(mustJSON(record)))
+	if err != nil {
+		return ref, err
+	}
+	if err := tx.Commit(); err != nil {
 		return ref, err
 	}
 	published = true

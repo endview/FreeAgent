@@ -170,8 +170,22 @@ func (server *Server) writePermissions(writer http.ResponseWriter, request *http
 	server.mu.Lock()
 	active := len(server.running) != 0
 	server.mu.Unlock()
+	facts, factsErr := server.tasks.RuntimeFacts(request.Context(), chatID, "")
+	if factsErr != nil {
+		server.fail(writer, factsErr)
+		return
+	}
+	var current *harness.RuntimeFacts
+	if chatID != "" {
+		if run, err := server.tasks.Latest(request.Context(), chatID); err == nil {
+			if value, err := server.tasks.RuntimeFacts(request.Context(), chatID, run.ID); err == nil {
+				current = &value
+			}
+		}
+	}
 	server.writeJSON(writer, http.StatusOK, map[string]any{
 		"selection": selection, "computer_files": selection.ComputerFiles, "default_computer_files": config.ComputerFiles,
+		"next_run": facts, "current_run": current,
 		"computer_roots": config.ComputerRoots, "commands": policy,
 		"command_catalog": catalog,
 		"profile":         profile, "execution": config.Execution,

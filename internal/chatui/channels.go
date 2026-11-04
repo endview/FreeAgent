@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/endview/freeagent/internal/harness"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -57,6 +58,9 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	source := strings.TrimPrefix(path, "channels/")
+	if source == "telegram/access" {
+		return server.telegramAccessAPI(w, r)
+	}
 	if path == "channels" {
 		source = ""
 	}
@@ -117,9 +121,9 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 		var pair func() (string, time.Time, error)
 		switch source {
 		case "telegram":
-			if telegram != nil {
-				pair = telegram.PairCode
-			}
+			_ = telegram
+			server.writeError(w, 410, "pairing_removed", "Telegram 已改用 /start 申请与管理员批准，请打开接入申请列表。")
+			return true
 		case "lark":
 			if lark != nil {
 				pair = lark.PairCode
@@ -154,6 +158,66 @@ func redactPairing(value any) {
 			redactPairing(child)
 		}
 	}
+}
+
+func (server *Server) telegramAccessAPI(w http.ResponseWriter, r *http.Request) bool {
+	if !server.isInteractiveAttachRequest(r) {
+		server.writeError(w, 403, "user_interaction_required", "Telegram 接入管理需要已认证的管理员交互。")
+		return true
+	}
+	server.mu.Lock()
+	telegram := server.telegram
+	server.mu.Unlock()
+	if r.Method == http.MethodGet {
+		bot := ""
+		if telegram != nil {
+			bot = strconv.FormatInt(telegram.Status().BotID, 10)
+		}
+		grants, err := server.tasks.TelegramAccessList(r.Context(), bot)
+		if err != nil {
+			server.fail(w, err)
+			return true
+		}
+		server.writeJSON(w, 200, map[string]any{"requests": server.tasks.TelegramAccessRequests(), "access": grants})
+		return true
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(405)
+		return true
+	}
+	var body struct {
+		harness.TelegramAccessChange
+		Code string `json:"code,omitempty"`
+	}
+	if !server.readBody(w, r, &body) {
+		return true
+	}
+	if body.Code != "" {
+		request, err := server.tasks.TelegramRequest(body.Code)
+		if err != nil {
+			server.fail(w, err)
+			return true
+		}
+		body.RequestID = request.ID
+		body.Target = request.Target
+		body.Kind = request.Kind
+	}
+	result, err := server.applyDirectControl(r.Context(), "", "", harness.ControlTelegramAccess, body.TelegramAccessChange)
+	if err != nil {
+		server.fail(w, err)
+		return true
+	}
+	var grant harness.TelegramAccess
+	_ = json.Unmarshal(result.Data, &grant)
+	notice := "not_requested"
+	if telegram != nil && body.Enabled {
+		notice = "sent"
+		if err := telegram.NotifyAccess(r.Context(), grant); err != nil {
+			notice = "failed_or_unknown; access remains committed; no automatic retry"
+		}
+	}
+	server.writeJSON(w, 200, map[string]any{"applied": result.Applied, "access": grant, "notification": notice})
+	return true
 }
 
 func (server *Server) reconfigureChannelsIfChanged() {

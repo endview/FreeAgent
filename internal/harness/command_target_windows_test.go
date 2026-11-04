@@ -51,8 +51,9 @@ func TestScoopTargetBindsArgumentsAndInstallationRoot(t *testing.T) {
 	commands.Config.AllowedExecutables = []string{program}
 	commands.Profile.Generation = "rules"
 	commands.Config.Rules = []CommandRule{{Program: "tool.exe", Args: []string{"--unexpanded"}, Decision: CommandRuleAllow}}
-	if _, err := commands.Prepare(t.Context(), call); err == nil {
-		t.Fatal("command rule ignored shim prefix arguments")
+	unmatched, err := commands.Prepare(t.Context(), call)
+	if err != nil || unmatched.ruleAllowed {
+		t.Fatal("unmatched shim arguments acquired explicit allow", err)
 	}
 	commands.Config.Rules[0].Args = []string{"--prefix", "two words"}
 	prepared, err := commands.Prepare(t.Context(), call)

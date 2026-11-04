@@ -151,6 +151,12 @@ app.innerHTML = `
   <dialog id="vision-dialog" aria-label="模型图片能力"><h2>图片能力</h2><p>仅在服务商明确支持时启用。以下为本地限制，不代表服务商验收。</p><form id="vision-form"><label><input type="checkbox" name="enabled">启用图片输入</label><label><input type="checkbox" name="png">PNG</label><label><input type="checkbox" name="jpeg">JPEG</label><div id="vision-fields"></div><button type="button" data-action="vision-save">保存</button><button type="button" data-action="vision-close">取消</button></form></dialog>
   <dialog id="attachment-preview-dialog" aria-label="附件图片"><button type="button" class="text-action" data-action="attachment-preview-close">关闭</button><img id="attachment-preview-image" alt="用户提供的附件图片"></dialog>
   <dialog id="attachment-settings-dialog" aria-label="附件设置"><h2>附件</h2><form id="attachment-settings-form"><div id="attachment-settings-fields"></div><p>仅影响新上传；不自动删除已有附件。输入支持 UTF-8 文本、PNG 与 JPEG。</p><button type="button" data-action="attachment-settings-save">保存</button><button type="button" data-action="attachment-settings-close">取消</button></form><h3>当前对话的附件</h3><div id="attachment-catalog"></div></dialog>
+  <dialog id="telegram-access-dialog" aria-labelledby="telegram-access-title">
+    <header><h2 id="telegram-access-title">确认 Telegram 接入范围</h2><button class="icon" data-action="telegram-access-cancel" aria-label="取消接入变更">${icon('x')}</button></header>
+    <p id="telegram-access-preview" class="command-message"></p>
+    <p id="telegram-access-error" role="status" hidden></p>
+    <footer><button data-action="telegram-access-cancel">取消</button><button class="primary" data-action="telegram-access-confirm">确认保存接入范围</button></footer>
+  </dialog>
   <dialog id="spaces-dialog" aria-labelledby="spaces-title">
     <header><h2 id="spaces-title">空间管理</h2>${button('x', '关闭空间管理', 'spaces-close')}</header>
     <div id="spaces-content"></div>
@@ -791,6 +797,7 @@ async function loadPermissions() {
   state.settings = settings;
   state.permissions = permissions;
   try { [state.channels, state.keys] = await Promise.all([api('channels'), api('keys')]); } catch { state.channels = null; }
+	if (state.channels) { try { state.channels.telegram_access = await api('channels/telegram/access'); } catch { state.channels.telegram_access = {}; } }
   state.permissionRootDraft = [...(settings.file_access?.allowed_roots || permissions.profile?.additional_roots || permissions.computer_roots || [])];
   state.permissionBlockedDraft = [...(settings.file_access?.global_blocked_paths || [])];
   return state.permissions;
@@ -828,15 +835,15 @@ function renderPermissionsView() {
   const protectedRows = protectedPaths.length ? protectedPaths.map((path) => `<div class="permission-root-row protected"><span aria-hidden="true">${icon('lock')}</span><code title="${esc(path)}">${esc(path)}</code><span class="subtle-note">系统保护</span></div>`).join('') : '';
   const permissionMode = data.profile?.permission_mode || settings.default_permission_mode || 'ask';
   const commandEnabled = Boolean(tools.command_run && command.enabled);
-  const effectiveCommandStatus = commandEnabled && command.execution === 'host_explicit'
-    ? (permissionMode === 'full' ? 'ready' : 'permission_denied')
-    : command.status;
-  const statusLabel = effectiveCommandStatus === 'unsupported' ? '后端不可用' : effectiveCommandStatus === 'permission_denied' ? '当前权限不允许' : effectiveCommandStatus === 'ready' ? '可执行' : '已关闭';
+  const effectiveCommandStatus = data.next_run?.commands?.status || command.status;
+  const statusLabel = ['unsupported','backend_unavailable'].includes(effectiveCommandStatus) ? '后端不可用' : effectiveCommandStatus === 'permission_denied' ? '当前权限不允许' : effectiveCommandStatus === 'ready' ? '后端可用（逐命令检查）' : '已关闭';
   const sandboxLabel = command.sandbox_supported === false ? '安全沙箱（当前系统不可用）' : '安全沙箱';
   const catalogSandboxLabels = { sandboxed: '沙箱', host_explicit: '宿主机', unsupported: '沙箱不可用', unavailable: '未找到' };
   const commandEnabledLabel = commandEnabled ? '已开启' : '已关闭';
   root.innerHTML = `<div class="keys-header"><div><button type="button" class="text-action" data-action="attachment-settings">附件设置与文件</button><button type="button" class="text-action" data-action="public-settings">公网安全设置</button><h2 id="permissions-title">设置</h2><p>全局权限、文件范围和内置工具设置。能力管理保持独立；修改只影响新 Run。</p></div><button class="icon" data-action="close-permissions" title="返回对话" aria-label="返回对话">${icon('arrow-left')}</button></div>
     ${activeNotice}
+	${data.current_run ? `<p class="permission-notice">最近 Run ${esc(data.current_run.run_id)} · 入口 ${esc(data.current_run.entry)} · 发起人 ${esc(data.current_run.person_id || '管理员')} · 冻结权限 ${esc(data.current_run.permission)} · 后端 ${esc(data.current_run.commands?.backend)}${data.current_run.dispatch_blocked ? ` · 当前阻断 ${esc(data.current_run.dispatch_blocked)}` : ''}。观察于 ${esc(data.current_run.observed_at)}</p>` : ''}
+	<p class="subtle-note">本页保存的是后续请求设置；下一次管理员请求权限 ${esc(data.next_run?.permission || currentMode)}，后端 ${esc(data.next_run?.commands?.backend || '')}。未匹配命令规则时按实际权限处理，显式 deny / ask 与可执行文件白名单继续生效。</p>
     <div class="permission-layout">
       <section class="permission-section"><header><div><h3>权限模式</h3><p>权限属于空间，影响该空间内所有对话。新空间默认 None；下降会限制旧 Run 并请求停止相关命令。</p></div><span class="permission-badge permission-${esc(currentMode)}">${esc(PERMISSION_LABELS[currentMode] || 'Ask')}</span></header>
         <label hidden>运行时基础模式（不授予空间权限）<select id="settings-default-mode"><option value="ask" ${settings.default_permission_mode === 'ask' ? 'selected' : ''}>Ask</option><option value="workspace" ${settings.default_permission_mode === 'workspace' ? 'selected' : ''}>Workspace access</option><option value="full" ${settings.default_permission_mode === 'full' ? 'selected' : ''}>Full access</option></select></label>
@@ -881,7 +888,12 @@ function renderPermissionsView() {
         <p class="subtle-note">保存后需明确重启 Owner，现有会话记录保留。服务安装和用户身份由 OS 管理。</p>
         <button class="primary" data-action="save-server-policy">${icon('save')}保存服务器设置</button>
       </section>
-      ${channelSections(state.channels, state.keys?.profiles || [])}
+      ${channelSections({...state.channels,telegram_access:{...state.channels?.telegram_access,busy:Boolean(state.telegramAccessBusy)}}, state.keys?.profiles || [])}
+	  <section class="permission-section"><h3>上下文压缩</h3><p>在新 Run 组装输入将超限时自动压缩。保留原始历史，摘要调用计入运行预算。关闭不会删除已有摘要。</p>
+	    <label class="check-line"><input id="context-automatic" type="checkbox" ${settings.context?.automatic ? 'checked' : ''} ${state.contextSettingsBusy ? 'disabled' : ''}>自动压缩上下文</label>
+	    <label>摘要上限（UTF-8 字节）<input id="context-summary-limit" type="number" min="1" max="16384" value="${Number(settings.context?.task_summary_bytes) || 4096}" ${state.contextSettingsBusy ? 'disabled' : ''}></label>
+	    <button class="primary" data-action="save-context-settings" ${state.contextSettingsBusy ? 'disabled' : ''}>${state.contextSettingsBusy ? '正在保存压缩设置…' : '保存压缩设置'}</button><p class="subtle-note">当前对话的手动压缩、刷新、清除可从对话顶部“上下文”打开。</p>
+	  </section>
     </div>`;
   $('#command-allowlist').value = (command.allowed_executables || []).join('\n');
   decorate(root);
@@ -961,6 +973,71 @@ async function channelPairCode(source) {
   state.channels = await api('channels');
   renderPermissionsView();
 }
+
+async function saveAutomaticContextSettings() {
+  if (state.contextSettingsBusy) return;
+  const limit = $('#context-automatic').checked ? summaryByteLimit($('#context-summary-limit').value) : 0;
+  state.contextSettingsBusy = true;
+  const button = $('[data-action="save-context-settings"]');
+  button.disabled = true; button.textContent = '正在保存压缩设置…';
+  $('#context-automatic').disabled = true; $('#context-summary-limit').disabled = true;
+  try {
+    state.settings = await api('settings/context', {task_summary_bytes: limit, expected_revision: state.settings?.revision || ''}, 'PATCH');
+    await loadPermissions(); renderPermissionsView();
+    error('压缩设置已保存，下次新 Run 生效。');
+  } finally {
+    state.contextSettingsBusy = false;
+    for (const selector of ['#context-automatic','#context-summary-limit','[data-action="save-context-settings"]']) { const control = $(selector); if (control) control.disabled = false; }
+    const currentButton = $('[data-action="save-context-settings"]'); if (currentButton) currentButton.textContent = '保存压缩设置';
+  }
+}
+
+async function changeTelegramAccess(action, index) {
+	if (state.telegramAccessBusy) return;
+  const access = state.channels?.telegram_access || {};
+  let change;
+  if (action === 'approve') {
+    const request = access.requests?.[index]; if (!request) return;
+    change = {request_id: request.id, target: request.target, kind: request.kind, enabled: true, whole_group: Boolean($(`#tg-request-whole-${index}`)?.checked), members: [request.person_id]};
+  } else if (action === 'manual') {
+    change = {target: {source: 'telegram', application_id: String(state.channels?.telegram?.bot_id || ''), chat_id: $('#tg-manual-chat').value.trim()}, kind: $('#tg-manual-kind').value, enabled: true, members: $('#tg-manual-members').value.split(',').map(v => `telegram:user:${v.trim()}`).filter(v => v !== 'telegram:user:')};
+  } else {
+    const grant = access.access?.[index]; if (!grant) return;
+    change = {target: grant.target, kind: grant.kind, enabled: action !== 'revoke', whole_group: Boolean($(`#tg-whole-${index}`)?.checked), members: $(`#tg-members-${index}`).value.split(',').map(v => v.trim()).filter(Boolean)};
+  }
+	state.pendingTelegramAccess = structuredClone(change);
+	$('#telegram-access-preview').textContent = `${change.enabled ? '允许 / 修改' : '停用'} Telegram 聊天接入\nBot ${change.target.application_id}\n${change.kind} ${change.target.chat_id}\n人员 ${change.members.join(', ')}${change.whole_group ? '\n该群所有成员可消耗模型额度' : ''}\n工具权限独立；停用保留历史。`;
+	$('#telegram-access-error').hidden = true;
+	$('#telegram-access-dialog').showModal();
+}
+
+async function commitTelegramAccess() {
+	if (state.telegramAccessBusy || !state.pendingTelegramAccess) return;
+	const change = structuredClone(state.pendingTelegramAccess);
+	state.telegramAccessBusy = true;
+	const currentControls = $('.channel-access-controls'); if (currentControls) currentControls.disabled = true;
+	const buttons = [...document.querySelectorAll('[data-action^="telegram-access-"]')].map(button => ({button,disabled:button.disabled}));
+	for (const {button} of buttons) button.disabled = true;
+	try {
+  const result = await api('channels/telegram/access', change, 'POST');
+	state.pendingTelegramAccess = null;
+	$('#telegram-access-dialog').close();
+  await loadPermissions(); renderPermissionsView();
+  error(result.notification?.startsWith('failed') ? '接入已保存；通知失败或结果不确定，未自动重发。' : 'Telegram 接入设置已保存。');
+	} catch (failure) {
+	  $('#telegram-access-error').textContent = failure.message;
+	  $('#telegram-access-error').hidden = false;
+	} finally {
+	  state.telegramAccessBusy = false;
+	  for (const {button,disabled} of buttons) if (button.isConnected) button.disabled = disabled;
+	  const controls = $('.channel-access-controls'); if (controls) { controls.disabled = false; controls.querySelector('[data-saving]')?.remove(); }
+	}
+}
+
+$('#telegram-access-dialog').addEventListener('cancel', (event) => {
+  if (state.telegramAccessBusy) event.preventDefault();
+  else state.pendingTelegramAccess = null;
+});
 async function saveChannel(source) {
   const config = { enabled: $(`#channel-${source}-enabled`).checked, key: $(`#channel-${source}-key`).value };
   if (source !== 'telegram') config.app_id = $(`#channel-${source}-app`).value.trim();
@@ -2174,6 +2251,11 @@ function connectEvents() {
     if (event.kind === 'context_compacting' && state.contextBusy) {
       $('#context-status').textContent = '正在生成摘要';
     }
+	if (event.kind === 'context_compacting' || event.kind === 'context_compacted') {
+	  if (!$('#context-progress')) $('#context-trigger').insertAdjacentHTML('afterend', '<span id="context-progress" role="status" class="subtle-note"></span>');
+	  $('#context-progress').textContent = event.kind === 'context_compacting' ? '正在压缩上下文…' : '上下文已压缩，原始历史保留';
+	}
+	if (event.kind === 'run_settled' && $('#context-progress')) $('#context-progress').remove();
     if (event.kind.startsWith('model_') && event.attempt_id) {
       state.streamRevision++;
       const reduced = reduceStream(state.streams.get(event.attempt_id), event);
@@ -2565,6 +2647,18 @@ async function act(action, node = null) {
     case 'save-computer-files': await saveComputerFiles(); break;
     case 'save-settings-permission': await saveSettingsPermission(); break;
     case 'save-settings-tools': await saveSettingsTools(); break;
+	case 'telegram-access-refresh': await loadPermissions(); renderPermissionsView(); break;
+	case 'telegram-access-approve': await changeTelegramAccess('approve', Number(node.dataset.index)); break;
+	case 'telegram-access-save': await changeTelegramAccess('save', Number(node.dataset.index)); break;
+	case 'telegram-access-revoke': await changeTelegramAccess('revoke', Number(node.dataset.index)); break;
+	case 'telegram-access-manual': await changeTelegramAccess('manual', 0); break;
+	case 'telegram-access-confirm': await commitTelegramAccess(); break;
+	case 'telegram-access-cancel': if (!state.telegramAccessBusy) {state.pendingTelegramAccess = null; $('#telegram-access-dialog').close();} break;
+	case 'telegram-access-tools': {
+	  const grant = state.channels?.telegram_access?.access?.[Number(node.dataset.index)];
+	  if (grant) { state.space = grant.space_id; await listChats(); renderSpaces(); $('#spaces-dialog').showModal(); } break;
+	}
+	case 'save-context-settings': await saveAutomaticContextSettings(); break;
     case 'channel-code': await channelPairCode(node.dataset.source); break;
     case 'channel-save': await saveChannel(node.dataset.source); break;
     case 'add-permission-root': await addPermissionRoot(); break;

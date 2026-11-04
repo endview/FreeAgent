@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 func attachmentExportDefinition() ToolDefinition {
-	return ToolDefinition{Name: "file_export", Effect: EffectModify, Description: "Publish an immutable download snapshot of one authorized regular file (at most 32 MiB by default). Preparation binds the exact source hash; approval follows the current file permission mode. A generated file is not delivered until its attachment receipt is returned.", InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}`)}
+	return ToolDefinition{Name: "file_export", Effect: EffectModify, Description: "Create an immutable downloadable attachment of an authorized regular file (32 MiB default). The download card is ready immediately; channel delivery occurs when this Run ends or reaches a limit. Do not poll or repeat export to wait for delivery. Final channel receipts determine sent/failed/unknown. No hash in the reply or source file is required. Repeated exports of one source select its latest unsent version; keep_version is only for user-requested multiple versions.", InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"keep_version":{"type":"boolean","description":"Retain this version for delivery when the user explicitly requested multiple versions"}},"required":["path"],"additionalProperties":false}`)}
 }
 
 func (files *FileTools) exportBytes(path string) ([]byte, error) {
@@ -39,7 +41,8 @@ func (files *FileTools) exportBytes(path string) ([]byte, error) {
 }
 func (files *FileTools) prepareExport(ctx context.Context, call ToolCall) (PreparedTool, error) {
 	var args struct {
-		Path string `json:"path"`
+		Path        string `json:"path"`
+		KeepVersion bool   `json:"keep_version,omitempty"`
 	}
 	if err := decodeArguments(call.Arguments, &args); err != nil {
 		return PreparedTool{}, err
@@ -49,7 +52,11 @@ func (files *FileTools) prepareExport(ctx context.Context, call ToolCall) (Prepa
 		return PreparedTool{}, err
 	}
 	hash := contentHash(raw)
-	return PreparedTool{Effect: EffectModify, workspaceFile: !files.protectedConfig(args.Path), Preview: fmt.Sprintf("Export immutable copy of %s\n%d bytes\nSHA-256: %s", args.Path, len(raw), hash), Items: []ApprovalItem{{Kind: "file_export", Target: args.Path, Hash: hash}}, exportName: attachmentName(args.Path), exportSize: int64(len(raw)), exportRead: func(ctx context.Context) ([]byte, error) {
+	canonical := filepath.Clean(filepath.Join(files.workspace, filepath.FromSlash(args.Path)))
+	if runtime.GOOS == "windows" {
+		canonical = strings.ToLower(canonical)
+	}
+	return PreparedTool{Effect: EffectModify, exportSource: contentHash([]byte(canonical)), exportKeepVersion: args.KeepVersion, workspaceFile: !files.protectedConfig(args.Path), Preview: fmt.Sprintf("Export immutable copy of %s\n%d bytes\nSHA-256: %s\nKeep separate delivery version: %t", args.Path, len(raw), hash, args.KeepVersion), Items: []ApprovalItem{{Kind: "file_export", Target: args.Path, Hash: hash}}, exportName: attachmentName(args.Path), exportSize: int64(len(raw)), exportRead: func(ctx context.Context) ([]byte, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -94,11 +101,15 @@ func (tools attachmentExportTools) Prepare(ctx context.Context, call ToolCall) (
 		if err != nil {
 			return ToolResult{}, err
 		}
-		ref, err := NewTaskService(tools.service).createAttachment(ctx, run.ConversationID, prepared.exportName, bytes.NewReader(raw), "file_export", run.ID, true)
+		ref, err := NewTaskService(tools.service).createAttachment(ctx, run.ConversationID, prepared.exportName, bytes.NewReader(raw), "file_export", run.ID, true, exportSelection{Source: prepared.exportSource, KeepVersion: prepared.exportKeepVersion})
 		if err != nil {
 			return ToolResult{}, &CallError{Certain: true, Message: err.Error()}
 		}
-		result, _ := jsonResult(map[string]any{"attachment": ref, "published": true, "delivered": false})
+		delivery := map[string]string{"state": "download_ready", "message": "Authenticated download card is ready. No hash needs to be copied into the reply or source file."}
+		if tools.service.channel != nil {
+			delivery = map[string]string{"state": "pending", "when": "run_end_or_limit", "message": "Snapshot ready; channel delivery is scheduled after this Run ends or reaches a limit. Do not repeat export or poll while answering. The final transport receipt is authoritative."}
+		}
+		result, _ := jsonResult(map[string]any{"attachment": ref, "download_ready": true, "delivery": delivery})
 		result.Attachments = []AttachmentRef{ref}
 		result.Receipts = []ToolReceipt{{Kind: "attachment", Path: ref.ID, Status: "applied", AfterHash: ref.SHA256, Detail: "immutable snapshot published; transport delivery is separate"}}
 		return result, nil

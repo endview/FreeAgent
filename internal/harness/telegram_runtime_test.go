@@ -90,15 +90,9 @@ func telegramMessageUpdate(id, messageID, chatID, userID int64, text string, kin
 		Chat: channels.TelegramChat{ID: chatID, Type: kind}, From: &channels.TelegramUser{ID: userID, FirstName: "Fixture"}, Text: text}}
 }
 
-func TestTelegramRuntimePairChatAndDuplicateDelivery(t *testing.T) {
+func TestTelegramRuntimeApprovedChatAndDuplicateDelivery(t *testing.T) {
 	runtime, tasks, store, _, sent := telegramRuntimeFixture(t, EchoModel{})
-	code, _, err := runtime.PairCode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.HandleUpdate(t.Context(), telegramMessageUpdate(1, 10, 90, 7, "/pair "+code, "private")); err != nil {
-		t.Fatal(err)
-	}
+	admitTelegramFixture(t, runtime, 90, 7, "private")
 	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"}
 	space, err := tasks.ChannelSpace(t.Context(), target)
 	if err != nil || space.DefaultConversationID == "" {
@@ -150,13 +144,7 @@ func TestTelegramRuntimeApprovalKeepsExactRequesterAndRejectsOtherUser(t *testin
 		return ModelResponse{Content: "done"}, nil
 	})
 	runtime, tasks, _, workspace, sent := telegramRuntimeFixture(t, model)
-	code, _, err := runtime.PairCode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.HandleUpdate(t.Context(), telegramMessageUpdate(1, 10, 90, 7, "/pair "+code, "private")); err != nil {
-		t.Fatal(err)
-	}
+	admitTelegramFixture(t, runtime, 90, 7, "private")
 	space, err := tasks.ChannelSpace(t.Context(), ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"})
 	if err != nil {
 		t.Fatal(err)
@@ -203,13 +191,7 @@ func TestTelegramRuntimeGroupBackgroundWaitsForExplicitWake(t *testing.T) {
 		return ModelResponse{Content: "group answer"}, nil
 	})
 	runtime, tasks, store, _, sent := telegramRuntimeFixture(t, model)
-	code, _, err := runtime.PairCode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.HandleUpdate(t.Context(), telegramMessageUpdate(1, 10, -100, 7, "/pair "+code, "supergroup")); err != nil {
-		t.Fatal(err)
-	}
+	admitTelegramFixture(t, runtime, -100, 7, "supergroup")
 	space, err := tasks.ChannelSpace(t.Context(), ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "-100"})
 	if err != nil {
 		t.Fatal(err)

@@ -36,18 +36,23 @@ const (
 )
 
 type Store struct {
-	securityMu      sync.Mutex
-	attachmentMu    sync.Mutex
-	replyMu         sync.Mutex
-	dataDir         string
-	db              *sql.DB
-	owner           processFileLock
-	mu              sync.Mutex
-	runMu           executionGate
-	modelMu         sync.Mutex
-	modelSlots      chan struct{}
-	closed          bool
-	summaryVerified map[string]string
+	cancelMu         sync.Mutex
+	requestCancels   map[string]context.CancelFunc
+	telegramMu       sync.Mutex
+	telegramBot      string
+	telegramRequests map[string]TelegramAccessRequest
+	securityMu       sync.Mutex
+	attachmentMu     sync.Mutex
+	replyMu          sync.Mutex
+	dataDir          string
+	db               *sql.DB
+	owner            processFileLock
+	mu               sync.Mutex
+	runMu            executionGate
+	modelMu          sync.Mutex
+	modelSlots       chan struct{}
+	closed           bool
+	summaryVerified  map[string]string
 }
 
 type Conversation struct {
@@ -93,6 +98,8 @@ type Message struct {
 }
 
 type Run struct {
+	LimitSettled     bool                 `json:"limit_settled,omitempty"`
+	ContinuationOf   string               `json:"continuation_of,omitempty"`
 	ID               string               `json:"id"`
 	ConversationID   string               `json:"conversation_id"`
 	RequestKey       string               `json:"request_key"`
@@ -223,6 +230,10 @@ func OpenStore(ctx context.Context, dataDir string) (_ *Store, returnErr error) 
 			_ = db.Close()
 			return nil, err
 		}
+	}
+	if err := store.ensureActiveRunIndex(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 	if err := store.recover(ctx); err != nil {
 		_ = db.Close()
@@ -535,8 +546,22 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Run{}, false, err
 	}
+	var continuation struct {
+		ContinuationOf string `json:"continuation_of"`
+	}
+	_ = json.Unmarshal([]byte(configJSON), &continuation)
+	if continuation.ContinuationOf != "" {
+		next, err := successorTx(ctx, tx, continuation.ContinuationOf, conversationID)
+		if err != nil {
+			return Run{}, false, err
+		}
+		if next != "" {
+			run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, next))
+			return run, false, err
+		}
+	}
 	var blocked int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND status IN ('running','waiting_confirmation','stopped','unknown','limited')`, conversationID).Scan(&blocked); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND `+activeRunPredicate, conversationID).Scan(&blocked); err != nil {
 		return Run{}, false, err
 	}
 	if blocked > 0 {
@@ -586,6 +611,11 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 			return Run{}, false, err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO attempts VALUES(?,?,'tool',?,'pending',?,'')`, newID(), result.ID, call.ID, string(mustJSON(call))); err != nil {
+			return Run{}, false, err
+		}
+	}
+	if continuation.ContinuationOf != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "run/limit-next/"+continuation.ContinuationOf, result.ID); err != nil {
 			return Run{}, false, err
 		}
 	}
@@ -1336,7 +1366,7 @@ func (store *Store) markUnknown(ctx context.Context, attempt Attempt, reason str
 // an external effect. Applied changes complete the proposing Run; a rejection
 // leaves it running so the existing continuation path can produce the next
 // model response.
-func (store *Store) settleControlProposal(ctx context.Context, run Run, attempt Attempt, result ToolResult, completed bool, reason string) error {
+func (store *Store) settleControlProposal(ctx context.Context, run Run, attempt Attempt, result ToolResult, completed bool, reason string, terminal ...string) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1366,6 +1396,9 @@ func (store *Store) settleControlProposal(ctx context.Context, run Run, attempt 
 	nextStatus, stopReason := "running", ""
 	if completed {
 		nextStatus, stopReason = "completed", reason
+	}
+	if len(terminal) > 0 {
+		nextStatus, stopReason = terminal[0], reason
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status=?,stop_reason=?,updated_at=? WHERE id=? AND status IN ('waiting_confirmation','stopped','running')`, nextStatus, stopReason, nowText(), run.ID); err != nil {
 		return err
@@ -1474,7 +1507,7 @@ func createSchema(ctx context.Context, db *sql.DB) error {
 			status TEXT NOT NULL CHECK(status IN ('running','waiting_confirmation','completed','stopped','unknown','limited','failed','abandoned')),
 			stop_reason TEXT NOT NULL, steps INTEGER NOT NULL DEFAULT 0 CHECK(steps>=0), elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK(elapsed_ms>=0), output TEXT NOT NULL,
 			created_at TEXT NOT NULL, updated_at TEXT NOT NULL, active_since TEXT NOT NULL DEFAULT '', UNIQUE(conversation_id,request_key))`,
-		`CREATE UNIQUE INDEX one_active_run ON runs(conversation_id) WHERE status IN ('running','waiting_confirmation','stopped','unknown','limited')`,
+		activeRunIndex,
 		`CREATE TABLE messages(
 			id INTEGER PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id),
 			run_id TEXT REFERENCES runs(id), request_key TEXT NOT NULL DEFAULT '', body_json TEXT NOT NULL CHECK(json_valid(body_json)))`,

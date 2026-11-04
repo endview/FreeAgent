@@ -2,13 +2,13 @@
 
 For the separate Linux amd64 CLI/Web archive, see [Linux portable](https://github.com/endview/FreeAgent/blob/main/docs/LINUX_PORTABLE.md).
 
-Current candidate: `v7.11.0-dev.1`, Windows amd64. This is an unsigned
+Current candidate: `v7.12.0-dev.1`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are bundled with the engine.
 
 Settings includes optional Telegram, Lark/Feishu and official QQ connections.
 Save channel credentials in Key management, select the matching saved profile,
-then enable and pair from Settings. See [Channel setup](https://github.com/endview/FreeAgent/blob/main/docs/CHANNELS.md).
+then enable it in Settings. Telegram uses /start applications and administrator approval; Lark/QQ retain pairing. See [Channel setup](https://github.com/endview/FreeAgent/blob/main/docs/CHANNELS.md).
 Real app/chat acceptance remains NOT_RUN; the package is a local development
 preview. Two foreground conversations share one workspace; command and service
 quotas do not increase. Global configuration commits require idle execution,
@@ -39,8 +39,19 @@ The conversation header's context button provides manual Compact, Refresh and
 Clear. `/compact` works in both Chat surfaces; the one-shot CLI is
 `bin\freeagent.exe context compact --session <id>`. Compact and Refresh call
 the selected model and consume its quota. Clear removes only the saved summary.
-All original messages remain inspectable. Automatic compaction stays off by
-default, independently of these manual operations.
+All original messages remain inspectable. New installations enable automatic
+compaction with a 4096-byte summary. Existing configurations with a zero or
+omitted `task_summary_bytes` remain off. Use Settings or
+`config context --summary-bytes 4096` to enable it; 0 disables automatic
+compaction without deleting an existing summary. These settings do not change
+the limits already frozen into a Run.
+
+Before updating an existing current-format installation, back up and resolve
+unfinished command Runs: pre-v7.12 command snapshots cannot resume under the
+changed rule interpretation. Unmatched rules follow the current permission
+mode; explicit deny/ask rules and executable allowlists still apply in Full.
+Telegram spaces/history remain, but access requires administrator approval in
+the new Telegram page. Old `/pair` codes grant no access. See `docs/CHANNELS.md`.
 
 The composer accepts text/code and verified PNG/JPEG attachments. Explicit
 uploads can be read in None; image understanding requires a vision-capable

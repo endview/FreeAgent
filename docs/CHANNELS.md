@@ -1,50 +1,67 @@
 # Optional channels
 
-Updated 2026-11-03. Telegram private-text pairing, real DeepSeek replies and
-confirmed delivery passed on Debian 12 with v7.11.0-dev.1. See the
-[scoped live record](FREEAGENT_TELEGRAM_PRIVATE_LIVE_ACCEPTANCE_2026-11-03.md).
-Telegram groups, second-account permissions, live file delivery and recovery
-checks remain NOT_RUN. Lark and QQ still have local/mock acceptance only.
+Updated 2026-11-04 for v7.12. Telegram uses identity-bound applications and
+administrator approval. The [v7.11 private-text record](FREEAGENT_TELEGRAM_PRIVATE_LIVE_ACCEPTANCE_2026-11-03.md)
+does not certify this new admission flow. Two real accounts, groups, callbacks
+and live file delivery require separate acceptance. Lark and QQ are unchanged;
+they retain existing local/mock acceptance and their pairing flow.
 
 ## Setup
 
-1. Start the GUI/web/chat Owner. The CLI attaches to that Owner; no second Bot
-   process is created. Disabled connections do no network work.
-2. In Key management, save credentials with protocol telegram, lark or qq.
-   Origins: `https://api.telegram.org`, `https://open.feishu.cn` (or
-   `https://open.larksuite.com`), `https://api.sgroup.qq.com` (or QQ sandbox).
-   Windows uses the existing DPAPI store. Channel keys cannot be model keys.
-3. In Settings, select the saved profile, set Lark/QQ app ID, and enable the
-   connection. Inspect its state/error. Optional connection errors leave local
-   UI usable. QQ needs an explicit numeric loopback listener and your own HTTPS
-   reverse proxy to `/qq/events`; FreeAgent provides no hosted ingress.
-4. Generate a ten-minute one-use pairing code and send `/pair CODE` to the
-   intended chat/group. Five failed attempts invalidate the code. Pairing
-   creates a None space and its first conversation; it grants no tools.
-5. Grant both the space and the actual person a permission locally when needed.
-   Effective authority is the lower of both, frozen for each Run. Increases
-   affect future Runs; reductions block old authority immediately.
+1. Start the GUI/web/chat Owner. The CLI attaches to the same Owner. Disabled
+   connections do no network work; optional transport errors leave local UI usable.
+2. Save a channel credential in Key management (protocol telegram/lark/qq), then
+   select it in Settings and explicitly enable the connection. Channel keys
+   cannot be model keys. Lark/QQ also require their existing official App ID;
+   QQ uses a numeric loopback listener behind your own HTTPS reverse proxy.
+3. Telegram: send `/start` privately or `/start@YourBot` in the target group.
+   Settings → Telegram shows an eight-character application code and the numeric
+   Bot/chat/person identities. Verify them, then click Approve. The code only
+   identifies an application; it cannot redeem access or substitute identities.
+4. Approval grants chat only. Grant space and person tool permissions separately
+   if needed; the effective mode is the lower of both. Increases affect new Runs;
+   reductions restrict old Runs immediately. Group admission defaults to specified
+   people; explicitly allowing everyone permits all group members to consume
+   model quota but grants no tools. Private/group admission does not cross scopes.
+5. Applications last one hour, with 32 pending per Owner. Duplicates retain their
+   original expiry and applicant notifications are paced at 60 seconds. Owner
+   restart/Bot change invalidates applications. Rotating the same Bot's token
+   preserves approvals; a different numeric Bot inherits none. Nicknames never
+   authorize. Lark/QQ retain their ten-minute one-use `/pair CODE` flow.
 
-CLI examples (Owner must be running):
+CLI (Owner running; --confirm explicitly authorizes the displayed numeric scope):
 
 ```powershell
 freeagent channel telegram status --data-dir <data>
 freeagent channel telegram configure --data-dir <data> --key <saved-id> --enabled true
-freeagent channel telegram pair-code --data-dir <data>
+freeagent channel telegram access --data-dir <data>
+freeagent channel telegram access --data-dir <data> --request-code ABCD2345 --confirm
+freeagent channel telegram access --data-dir <data> --chat-id 123456 --kind private --members 123456 --confirm
+freeagent channel telegram access --data-dir <data> --chat-id 123456 --access-enabled=false --confirm
 freeagent channel lark configure --data-dir <data> --key <saved-id> --app-id <app> --enabled true
+freeagent channel lark pair-code --data-dir <data>
 freeagent channel qq configure --data-dir <data> --key <saved-id> --app-id <app> --listen 127.0.0.1:8098 --enabled true
 ```
 
-status/pair-code/configure accept telegram/lark/qq. AI can propose
-`channels.set_policy` with saved key references using existing local
-confirmation. Pairing capabilities are not given to models.
+AI proposals use `channels.set_policy` and `telegram.set_access` with existing
+administrator confirmation. A model cannot approve its own change. Admission
+policy is stored beside the existing external-space binding; no second pairing
+store can bypass it. Stop access retains history. Deleting the external space
+also revokes access and moves conversations to Local; reauthorization does not
+republish that old history.
+
+Upgrade: inspect and resolve old unfinished Runs before switching executables.
+v7.12 refuses continuation of pre-update command snapshots. Existing Telegram
+spaces/history remain but are **not authorized** until an administrator verifies
+the numeric identities in Settings. Missing/ambiguous identities must apply
+again. Old pairing records and `/start` parameters never grant access.
 
 ## Commands and routing
 
 `/help`, `/mode` (read only), `/status`, `/stop`, `/continue`, `/abandon`,
 `/compact`; organization: `/multi on|off`, `/sessions`, `/new title`, `/switch ID`,
-`/default ID`. None may chat and view public state. Organization and manual
-compaction require operation permission. Approval/continue/abandon retain the
+`/default ID`. None may chat and view public state. Organization requires operation permission. Admitted None users may manually
+compact their current public conversation. Approval/continue/abandon retain the
 original requester; stop permits that requester and currently operational
 members. GUI/CLI can continue the same saved Run without changing its requester.
 
@@ -68,7 +85,7 @@ existing pending operation. There are no chat confirmation codes.
 
 | Platform | Local implementation | Limits | Real acceptance |
 |---|---|---|---|
-| Telegram | Bot polling, private/group text, mentions/replies/commands, buttons; bounded media adapters | Only received updates; Privacy Mode applies; edited-input execution unsupported; attachment rules in ATTACHMENTS.md | Private text PASS; groups, second account, media and callbacks NOT_RUN |
+| Telegram | Bot polling, private/group text, mentions/replies/commands, buttons; bounded media adapters | Only received updates; Privacy Mode applies; edited-input execution unsupported; attachment rules in ATTACHMENTS.md | v7.11 private text PASS; v7.12 new admission, groups, second account, media and callbacks NOT_RUN |
 | Lark/Feishu | App websocket, bounded multipart/acks, private/group text, cards | Internal app credentials; app+tenant identity scope; group visibility depends on event permissions | NOT_RUN |
 | QQ official | Ed25519 webhook; C2C and GROUP_AT_MESSAGE_CREATE; passive replies | Ordinary group text, guild/channel types, edits and approval buttons unsupported; approvals remain local | NOT_RUN |
 
@@ -120,3 +137,36 @@ Read on 2026-10-29; wire contracts do not establish real account acceptance.
 Further acceptance needs authorized group targets, two controlled members and
 a current Provider for representative group chat/summary, callbacks and media.
 The private-text pass does not certify those remaining platform cases.
+
+## Runtime clarity, compaction and delivery in v7.12
+
+Admission is checked before history/media/model work, callbacks, command launch
+and outgoing results. A policy revision invalidates old callbacks and frozen
+requests even after reauthorization. Revocation cancels active requests and
+requests command termination; prior effects remain in the evidence. `/status`
+does not publish undelivered administrator results. Full is the service OS
+user's authority, not root. `/mode` distinguishes next-request limits from the
+latest frozen Run, including its original requester and effective backend.
+
+New installations enable automatic compaction with a 4096-byte cap. Existing
+missing/zero settings stay off. Settings → Context compression controls the same
+`task_summary_bytes` value as the confirmed `runtime.set_limits` operation:
+0 disables automatic compaction; 1–16384 enables it. Compression occurs before
+an over-limit model request, uses the Run's finite budget, retains originals,
+and shares no private tool history with channels. `/compact` works for admitted
+None users, without enabling tools or changing this automatic setting.
+
+`file_export` immediately creates an authenticated download card. Telegram sends
+the selected file when the Run ends or reaches a limit; no repeated export or
+poll is required. The receipt determines sent/failed/UNKNOWN. Identical exports
+reuse the snapshot; changed content selects the latest unsent version of that
+source. Dispatched/UNKNOWN versions are frozen. Multiple versions require an
+explicit choice. File replies need no hashes in the prose or file body.
+
+An ordinary settled limit retains status `limited`, reason and consumption,
+releases conversation occupancy and delivers existing files. Only an explicit
+whole “继续”, `/continue` or Continue button creates one linked next Run. Saved
+tools are not requeued. Pending/UNKNOWN calls and background commands prevent
+settlement; collaboration children cannot escape the parent's budget. A manual
+increase of the original Run's limit can still resume that Run without resetting
+its consumption. An interrupted send never retries model or tool execution.

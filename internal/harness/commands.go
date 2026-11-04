@@ -55,7 +55,7 @@ func (tools *CommandTools) Definitions() []ToolDefinition {
 	if !tools.Config.Enabled {
 		return nil
 	}
-	description := "Run one explicitly approved local executable (absolute path), with exact arguments and relative working directory. Commands use the Run's execution profile; host execution is available only in Full access. Set check=true for an actual project check. Stopping cannot undo effects."
+	description := "Run one local executable with exact arguments and working directory under the Run's frozen permission profile. Unmatched rules use that permission mode; explicit deny, ask and executable allowlists still apply, including Full. Host execution requires Full. Set check=true for an actual project check. Stopping cannot undo effects."
 	if len(tools.Config.AllowedExecutables) > 0 {
 		paths, _ := json.Marshal(tools.Config.AllowedExecutables)
 		description += " Allowed exact executable paths: " + string(paths)
@@ -107,11 +107,8 @@ func (tools *CommandTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 	command, args.Args, args.installationRoot = target.program, target.args, target.root
 	args.Command = command
 	decision := commandRuleDecision(tools.Config.Rules, requested, command, args)
-	if decision == "" && tools.Profile.Generation != "" && len(tools.Config.Rules) != 0 {
-		return PreparedTool{}, errors.New("command denied by command rules")
-	}
 	if decision == CommandRuleDeny {
-		return PreparedTool{}, errors.New("command denied by command rules")
+		return PreparedTool{}, errors.New("command denied by an explicit deny rule; Full access does not override it")
 	}
 	for _, arg := range args.Args {
 		if strings.ContainsRune(arg, 0) || len(arg) > 32768 {
@@ -483,6 +480,13 @@ func (tools *CommandTools) execute(parent context.Context, args commandArguments
 }
 
 func (tools *CommandTools) startProcess(ctx context.Context, args commandArguments, receipt ToolReceipt) (*winlaunch.Process, error) {
+	if inv, ok := ctx.Value(commandInvocationKey{}).(commandInvocation); ok && ctx.Value(telegramDispatchLockedKey{}) != true {
+		release, err := inv.service.lockTelegramDispatch(ctx, inv.run)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+	}
 	spec := winlaunch.Spec{Command: args.Command, Args: args.Args, Dir: receipt.WorkingDir,
 		Env: commandEnvironment(tools.Config.InheritEnv), Mode: winlaunch.ModeHost, Network: winlaunch.NetworkOff}
 	if tools.executionMode() == CommandExecutionSandboxed {

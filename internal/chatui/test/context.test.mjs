@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeCurrentTurns } from '../src/state.mjs';
+import { mergeCurrentTurns, stateMeta } from '../src/state.mjs';
 import { summaryByteLimit, contextActions, contextStatus } from '../src/context.mjs';
 
 test('completed maintenance disappears from current snapshots without dropping older history or UNKNOWN', () => {
@@ -10,6 +10,11 @@ test('completed maintenance disappears from current snapshots without dropping o
   const latest = { key: 'latest', state: 'completed' };
   assert.deepEqual(mergeCurrentTurns([old, transient, latest], [latest]), [old, latest]);
   assert.deepEqual(mergeCurrentTurns([old, transient], [latest, unknown]), [old, latest, unknown]);
+});
+
+test('settled limit is visibly incomplete and can continue without a generic end step', () => {
+ assert.match(stateMeta('limited').label,/限额.*已结算/);
+ assert.notEqual(stateMeta('limited').label,stateMeta('completed').label);
 });
 
 test('manual compact remains available when automatic compaction is off', () => {

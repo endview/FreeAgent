@@ -166,13 +166,14 @@ func (client *Client) TelegramStatus(ctx context.Context) (harness.TelegramChann
 	return status, err
 }
 
-func (client *Client) TelegramPairCode(ctx context.Context) (string, time.Time, error) {
-	var response struct {
-		Code      string    `json:"code"`
-		ExpiresAt time.Time `json:"expires_at"`
+func (client *Client) TelegramAccess(ctx context.Context, change any) (json.RawMessage, error) {
+	var out json.RawMessage
+	method := http.MethodGet
+	if change != nil {
+		method = http.MethodPost
 	}
-	err := client.request(ctx, http.MethodPost, "/api/attach/channels/telegram", nil, &response)
-	return response.Code, response.ExpiresAt, err
+	err := client.request(ctx, method, "/api/attach/channels/telegram/access", change, &out)
+	return out, err
 }
 
 func (client *Client) Events(ctx context.Context, after uint64) (AttachEvents, error) {

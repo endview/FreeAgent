@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/endview/freeagent/internal/channels"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,15 +27,13 @@ type telegramPair struct {
 	Used     bool
 }
 type TelegramChannelStatus struct {
-	Key           string    `json:"key,omitempty"`
-	Enabled       bool      `json:"enabled"`
-	Running       bool      `json:"running"`
-	BotID         int64     `json:"bot_id,omitempty"`
-	BotUsername   string    `json:"bot_username,omitempty"`
-	PairCode      string    `json:"pair_code,omitempty"`
-	PairExpiresAt time.Time `json:"pair_expires_at,omitempty"`
-	LastUpdateID  int64     `json:"last_update_id,omitempty"`
-	LastError     string    `json:"last_error,omitempty"`
+	Key          string `json:"key,omitempty"`
+	Enabled      bool   `json:"enabled"`
+	Running      bool   `json:"running"`
+	BotID        int64  `json:"bot_id,omitempty"`
+	BotUsername  string `json:"bot_username,omitempty"`
+	LastUpdateID int64  `json:"last_update_id,omitempty"`
+	LastError    string `json:"last_error,omitempty"`
 }
 type TelegramRuntime struct {
 	tasks     *TaskService
@@ -89,17 +88,10 @@ func (r *TelegramRuntime) SetDispatch(d ChannelDispatch) { r.session.setDispatch
 func (r *TelegramRuntime) Deliver(ctx context.Context, result RunResult) error {
 	return r.session.Deliver(ctx, result)
 }
-func (r *TelegramRuntime) PairCode() (string, time.Time, error) { return r.session.PairCode() }
 func (r *TelegramRuntime) Status() TelegramChannelStatus {
 	r.mu.Lock()
 	v := TelegramChannelStatus{Enabled: r.tasks.Config().Channels.Telegram.Enabled, Key: r.tasks.Config().Channels.Telegram.Key, Running: r.running, BotID: r.bot.ID, BotUsername: r.bot.Username, LastUpdateID: r.lastID, LastError: r.lastErr}
 	r.mu.Unlock()
-	r.session.mu.Lock()
-	if time.Now().Before(r.session.pair.Expires) && !r.session.pair.Used {
-		v.PairCode = r.session.pair.Code
-		v.PairExpiresAt = r.session.pair.Expires
-	}
-	r.session.mu.Unlock()
 	return v
 }
 func (r *TelegramRuntime) setError(err error) { r.mu.Lock(); r.lastErr = safeError(err); r.mu.Unlock() }
@@ -254,7 +246,18 @@ func (r *TelegramRuntime) HandleUpdate(ctx context.Context, u channels.TelegramU
 	if !ok {
 		return nil
 	}
+	r.tasks.core.Store.telegramIdentity(strconv.FormatInt(bot.ID, 10))
+	words := strings.Fields(e.Text)
+	if len(words) > 0 {
+		parts := strings.SplitN(words[0], "@", 2)
+		if strings.HasPrefix(parts[0], "/") && len(parts) == 2 && !strings.EqualFold(parts[1], bot.Username) {
+			return nil
+		}
+	}
 	event := channelEvent{Target: ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10)}, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: e.ChatKind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo}
+	if event.Kind != "private" {
+		event.Kind = "group"
+	}
 	err := r.session.handle(ctx, event)
 	if e.CallbackID != "" && api != nil {
 		message := "已收到。"

@@ -51,7 +51,7 @@ func (service *ControlService) applyAttachmentDelete(ctx context.Context, record
 		return ErrControlStaleRevision
 	}
 	var active int
-	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND status IN ('running','waiting_confirmation','stopped','unknown','limited')`, r.Conversation).Scan(&active); err != nil {
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND `+activeRunPredicate+` `, r.Conversation).Scan(&active); err != nil {
 		return err
 	}
 	if active > 0 {

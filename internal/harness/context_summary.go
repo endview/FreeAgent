@@ -42,12 +42,14 @@ type ContextCommand struct {
 }
 
 type ContextState struct {
-	Status    string               `json:"status"`
-	Revision  string               `json:"revision"`
-	Summary   *ConversationSummary `json:"summary,omitempty"`
-	Automatic bool                 `json:"automatic"`
-	ByteLimit int                  `json:"byte_limit"`
-	Blocked   string               `json:"blocked,omitempty"`
+	Status        string               `json:"status"`
+	Revision      string               `json:"revision"`
+	Summary       *ConversationSummary `json:"summary,omitempty"`
+	Automatic     bool                 `json:"automatic"`
+	ByteLimit     int                  `json:"byte_limit"`
+	Blocked       string               `json:"blocked,omitempty"`
+	BlockingRunID string               `json:"blocking_run_id,omitempty"`
+	CanPropose    bool                 `json:"can_propose"`
 }
 
 type ContextResult struct {
@@ -189,9 +191,20 @@ func summaryInput(summary *ConversationSummary) ModelMessage {
 
 // contextTail never silently drops earlier Runs. A caller must compact or
 // report a context limit when the selected unsummarized history cannot fit.
-func (store *Store) contextTail(ctx context.Context, run Run, through int64, maxMessages, maxBytes int) ([]Message, error) {
+func (store *Store) contextTail(ctx context.Context, run Run, through int64, maxMessages, maxBytes int, scope ...string) ([]Message, error) {
+	filter := ""
+	args := []any{run.ConversationID, through, historyBound(run), run.ID}
+	if len(scope) > 0 && scope[0] != "" {
+		visible := `(json_extract(body_json,'$.Role') IN ('user','assistant') AND length(json_extract(body_json,'$.Content'))>0)`
+		if scope[0] == "channel_public" {
+			visible += ` AND json_extract(body_json,'$.Public')=1 AND coalesce(json_extract(body_json,'$.Channel.purpose'),'')!='command'`
+		}
+		filter = " AND (run_id=? OR (" + visible + "))"
+		args = append(args, run.ID)
+	}
+	args = append(args, maxMessages+1)
 	rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
-		WHERE conversation_id=? AND id>? AND (id<=? OR run_id=?) ORDER BY id LIMIT ?`, run.ConversationID, through, historyBound(run), run.ID, maxMessages+1)
+		WHERE conversation_id=? AND id>? AND (id<=? OR run_id=?)`+filter+` ORDER BY id LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -237,6 +250,10 @@ func (store *Store) contextTail(ctx context.Context, run Run, through int64, max
 }
 
 func (tasks *TaskService) ContextState(ctx context.Context, chat string) (ContextState, error) {
+	return tasks.contextState(ctx, chat, "", "")
+}
+
+func (tasks *TaskService) contextState(ctx context.Context, chat, callerRun, callerAttempt string) (ContextState, error) {
 	if ctx == nil || tasks == nil || tasks.core == nil {
 		return ContextState{}, errors.New("harness: task service and context are required")
 	}
@@ -264,12 +281,18 @@ func (tasks *TaskService) ContextState(ctx context.Context, chat string) (Contex
 	if err != nil {
 		return state, err
 	}
-	var blocked int
-	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs r WHERE conversation_id=?
+	var blocked string
+	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT id FROM runs r WHERE conversation_id=?
 		AND (status IN ('running','waiting_confirmation','unknown') OR
-		(status IN ('stopped','limited') AND EXISTS(SELECT 1 FROM attempts a WHERE a.run_id=r.id AND a.status IN ('pending','dispatched','unknown'))))`, chat).Scan(&blocked)
-	if blocked != 0 {
-		state.Blocked = "a running request, pending approval or UNKNOWN must be resolved first"
+		(status IN ('stopped','limited') AND EXISTS(SELECT 1 FROM attempts a WHERE a.run_id=r.id AND a.status IN ('pending','dispatched','unknown'))))
+		AND (r.id!=? OR r.status='unknown' OR EXISTS(SELECT 1 FROM attempts a WHERE a.run_id=r.id AND a.id!=? AND a.status IN ('pending','dispatched','unknown'))) LIMIT 1`, chat, callerRun, callerAttempt).Scan(&blocked)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
 	}
+	if blocked != "" {
+		state.Blocked = "a running request, pending approval or UNKNOWN must be resolved first"
+		state.BlockingRunID = blocked
+	}
+	state.CanPropose = state.Blocked == ""
 	return state, err
 }

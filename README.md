@@ -4,8 +4,9 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v7.11.0-dev.1 development preview**. Download published Windows and Linux portable
-builds from [Releases](https://github.com/endview/FreeAgent/releases).
+This is the **v7.12.0-dev.1 development candidate**, not yet published to GitHub.
+Previously published Windows and Linux portable builds are available from
+[Releases](https://github.com/endview/FreeAgent/releases).
 [简体中文](README.zh-CN.md).
 It uses a new
 current-only `Harness-v8` data directory and the v10 store format. Old
@@ -51,6 +52,20 @@ a read-only server installer `--check`. Existing file/handle checks still run
 for every read; credentials and Provider connections are not tested by doctor.
 See [v7.11 progress](docs/FREEAGENT_V7_11_EXECUTION_DIAGNOSTICS_PROGRESS.md) and
 [diagnosis/recovery](docs/RECOVERY.md).
+
+v7.12 replaces Telegram bearer pairing with identity-bound `/start` applications,
+administrator approval and one access list. Access alone grants chat, not tools;
+revocation blocks new work and delivery while retaining spaces and history.
+Runtime diagnostics distinguish frozen Run permissions from saved defaults.
+Unmatched command rules now follow the permission mode; explicit deny/ask rules
+and executable allowlists still apply, including in Full. Old command snapshots
+cannot resume under the new interpretation. New installations enable automatic
+context compaction with a 4096-byte summary; existing disabled settings stay off.
+File exports select the latest unsent version of each source, and settled finite
+limits release the conversation without claiming completion. Only an explicit
+user continuation starts a linked successor. See [v7.12 acceptance](docs/FREEAGENT_V7_12_IMPLEMENTATION_PROGRESS.md),
+[v7.12 plan](docs/FREEAGENT_V7_12_CHANNEL_ACCESS_AND_RUNTIME_CLARITY_PLAN_2026-11-04.md)
+and the updated [channel guide](docs/CHANNELS.md).
 
 Linux amd64 has a separate portable archive with the same CLI and embedded Web
 UI. It starts with `./FreeAgent`, uses package-local data, and needs no Go or

@@ -499,7 +499,7 @@ func (tasks *TaskService) ConfigureModels(ctx context.Context, edit func(*Config
 	if before != after {
 		var unfinished int
 		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs
-			WHERE status IN ('running','waiting_confirmation','stopped','unknown','limited')`).Scan(&unfinished); err != nil {
+			WHERE `+activeRunPredicate+` `).Scan(&unfinished); err != nil {
 			return err
 		}
 		if unfinished != 0 {
@@ -695,6 +695,12 @@ func (tasks *TaskService) execute(ctx context.Context, chat string, call func(co
 	}
 	core.ownsLease = true
 	child, cancel := context.WithCancel(ctx)
+	core.Store.cancelMu.Lock()
+	if core.Store.requestCancels == nil {
+		core.Store.requestCancels = map[string]context.CancelFunc{}
+	}
+	core.Store.requestCancels[chat] = cancel
+	core.Store.cancelMu.Unlock()
 	execution := &taskExecution{cancel: cancel}
 	if tasks.running == nil {
 		tasks.running = make(map[string]*taskExecution)
@@ -718,9 +724,21 @@ func (tasks *TaskService) execute(ctx context.Context, chat string, call func(co
 		if emit != nil {
 			emit(event)
 		}
+		if observer, ok := ctx.Value(runEventObserverKey{}).(func(Event)); ok {
+			observer(event)
+		}
 	}
 	tasks.mu.Unlock()
-	defer func() { cancel(); tasks.mu.Lock(); delete(tasks.running, chat); tasks.mu.Unlock(); release() }()
+	defer func() {
+		cancel()
+		core.Store.cancelMu.Lock()
+		delete(core.Store.requestCancels, chat)
+		core.Store.cancelMu.Unlock()
+		tasks.mu.Lock()
+		delete(tasks.running, chat)
+		tasks.mu.Unlock()
+		release()
+	}()
 	return call(child, &core)
 }
 
@@ -743,6 +761,15 @@ func (tasks *TaskService) CancelConversation(chat string) bool {
 		execution.cancel()
 		return true
 	}
+	if tasks.core != nil && tasks.core.Store != nil {
+		store := tasks.core.Store
+		store.cancelMu.Lock()
+		defer store.cancelMu.Unlock()
+		if cancel := store.requestCancels[chat]; cancel != nil {
+			cancel()
+			return true
+		}
+	}
 	return false
 }
 
@@ -761,6 +788,7 @@ func (tasks *TaskService) Cancel() bool {
 }
 
 type RunOptions struct {
+	continuationKey   string
 	Attachments       []string `json:"attachments,omitempty"`
 	channel           *ChannelRunOrigin
 	personID          string
@@ -785,6 +813,17 @@ func (tasks *TaskService) SubmitWithOptions(ctx context.Context, conversationID,
 func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID, requestKey, prompt string, options RunOptions) (RunResult, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return RunResult{}, errors.New("harness: task prompt is required")
+	}
+	if conversationID != "" && isExplicitContinuation(prompt) {
+		if requestKey != "" {
+			if prior, exists, err := tasks.core.Store.repeatedRun(ctx, conversationID, requestKey, limitContinuationPrompt); err == nil && exists {
+				return RunResult{Run: prior, Answer: prior.Output, Duplicate: true}, nil
+			}
+		}
+		if prior, err := tasks.core.Store.GetLatestRun(ctx, conversationID); err == nil && prior.LimitSettled {
+			options.continuationKey = requestKey
+			return tasks.ContinueWithOptions(ctx, prior.ID, options)
+		}
 	}
 	if conversationID == "" {
 		title := strings.SplitN(strings.TrimSpace(prompt), "\n", 2)[0]
@@ -1094,6 +1133,18 @@ func (tasks *TaskService) ContinueWithOptions(ctx context.Context, runID string,
 		} else if controlled == runID {
 			return tasks.continueComposition(ctx, core, run, options.Review)
 		}
+		if run.LimitSettled {
+			if snapshot, err := decodeRunSnapshot(run.ConfigJSON); err == nil {
+				limits := configLimits(snapshot.Config)
+				if snapshot.Limits != nil {
+					limits = *snapshot.Limits
+				}
+				if run.Steps < limits.MaxSteps && run.ElapsedMS < int64(limits.MaxRunSeconds)*1000 {
+					return core.Continue(ctx, runID)
+				}
+			}
+			return tasks.startLimitSuccessor(ctx, core, run, options)
+		}
 		return core.Continue(ctx, runID)
 	})
 }
@@ -1279,7 +1330,7 @@ func (tasks *TaskService) ConfirmControl(ctx context.Context, runID string, deci
 		if approved {
 			result, err = control.confirmRunProposal(ctx, actual.ControlOperationID, auth)
 		} else {
-			result, err = control.RejectControlChange(ctx, actual.ControlOperationID, auth)
+			result, err = control.rejectControlChange(ctx, actual.ControlOperationID, auth, true)
 		}
 		if err != nil {
 			return RunResult{Run: run}, err

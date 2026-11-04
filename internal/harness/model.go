@@ -197,13 +197,15 @@ type ApprovalItem struct {
 }
 
 type PreparedTool struct {
-	exportName string
-	exportSize int64
-	exportRead func(context.Context) ([]byte, error)
-	Effect     ToolEffect
-	Preview    string
-	Items      []ApprovalItem
-	Execute    func(context.Context) (ToolResult, error)
+	exportSource      string
+	exportKeepVersion bool
+	exportName        string
+	exportSize        int64
+	exportRead        func(context.Context) ([]byte, error)
+	Effect            ToolEffect
+	Preview           string
+	Items             []ApprovalItem
+	Execute           func(context.Context) (ToolResult, error)
 	// Compound operations persist progress before dispatching the next effect.
 	ExecuteRecorded func(context.Context, func(ToolResult) error) (ToolResult, error)
 	Reject          func() ToolResult

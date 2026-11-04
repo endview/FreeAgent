@@ -52,6 +52,23 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 		server.patchSettingsTools(writer, request)
 	case path == "/api/settings/command-run" && request.Method == http.MethodPatch:
 		server.patchSettingsCommand(writer, request)
+	case path == "/api/settings/context" && request.Method == http.MethodPatch:
+		var body struct {
+			settingsPatch
+			TaskSummaryBytes *int `json:"task_summary_bytes"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		if body.TaskSummaryBytes == nil {
+			server.writeError(writer, http.StatusBadRequest, "input", "task_summary_bytes is required (0 disables automatic compaction)")
+			return true
+		}
+		if _, err := server.applyDirectControl(request.Context(), body.ExpectedRevision, "", harness.ControlSetRuntimeLimits, map[string]int{"task_summary_bytes": *body.TaskSummaryBytes}); err != nil {
+			server.runtimePolicyFailure(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, server.settingsProjection())
 	case path == "/api/runtime-tools" && request.Method == http.MethodGet:
 		server.writeRuntimeTools(writer, request)
 	default:
@@ -67,9 +84,11 @@ func (server *Server) settingsProjection() map[string]any {
 	scope := harness.EffectiveFileScope(config)
 	command := config.Commands
 	commandEnabled := tools.CommandRun && command.Enabled
+	facts, _ := harness.DefaultRuntimeFacts(config)
 	return map[string]any{
 		"schema_version": 1,
 		"revision":       policy.Generation,
+		"context":        map[string]any{"automatic": config.TaskSummaryBytes > 0, "task_summary_bytes": config.TaskSummaryBytes},
 		"default_permission_mode": func() harness.PermissionMode {
 			if config.Execution.PermissionMode == "" {
 				return harness.PermissionAsk
@@ -85,8 +104,8 @@ func (server *Server) settingsProjection() map[string]any {
 			"protected_paths":      server.tasks.ProtectedPaths(),
 		},
 		"command_run": map[string]any{
-			"enabled": commandEnabled, "available": command.Execution == harness.CommandExecutionHostExplicit || winlaunch.SandboxSupported(),
-			"status": commandStatus(command, tools.CommandRun, config.Execution.PermissionMode), "backend": command.Execution,
+			"enabled": commandEnabled, "available": facts.Commands.Available,
+			"status": facts.Commands.Status, "backend": facts.Commands.Backend, "execution": command.Execution,
 			"sandbox_supported": winlaunch.SandboxSupported(),
 			"sandbox_backend":   winlaunch.SandboxBackend(),
 			"rules":             command.Rules, "allowed_executables": command.AllowedExecutables,
@@ -99,7 +118,7 @@ func (server *Server) settingsProjection() map[string]any {
 }
 
 func commandStatus(command harness.CommandConfig, enabled bool, permission ...harness.PermissionMode) string {
-	if !enabled {
+	if !enabled || !command.Enabled {
 		return "disabled"
 	}
 	if command.Execution == "" || command.Execution == harness.CommandExecutionSandboxed {

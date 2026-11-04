@@ -84,7 +84,9 @@ config auto --enabled [--default] [--allow-model <id>] [--assessment-model <id>]
 config commands --enabled [--allow <absolute-path>] [--timeout 120 --output-bytes 32768 --inherit-environment]
 config http --enabled --origin <scheme://host[:port]> [--timeout 20 --output-bytes 32768]
 config channels --enabled --telegram-key <key profile>
-channel <telegram|lark|qq> <status|pair-code|configure> [--key <profile> --app-id <id> --listen 127.0.0.1:PORT --enabled true|false]
+channel <telegram|lark|qq> <status|configure> [--key <profile> --app-id <id> --listen 127.0.0.1:PORT --enabled true|false]
+channel telegram access [--request-code CODE | --chat-id ID --kind private|group --members USER_IDS] [--whole-group --access-enabled=false --confirm]
+channel <lark|qq> pair-code
 config context --summary-bytes <0-16384>
 config memory [--knowledge] [--max-entries 16 --context-bytes 16384 --document-bytes 65536]
 memory <scopes|list|read|save|save-result|update|disable|enable|delete|copy|import|search|sources|select|clear|agent> [flags]
@@ -121,7 +123,7 @@ restore --source <backup-directory> --data-dir <new-directory>
 Public Web (Linux, default off): public status|configure|disable|password|clear-locks.
   Passwords use hidden input or --password-stdin; HTTPS proxy setup: docs/PUBLIC_WEB.md.
 
-Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /more /history /sessions /resume <number> /new /status /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
+Chat commands: /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /more /history /sessions /resume <number> /new /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
 Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes and sandboxed commands, and Full access auto-runs enabled modifying tools. On Windows commands run in an AppContainer sandbox; Full access runs them on the host. MCP and loopback HTTP are not sandboxed.
 Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
 		return err
@@ -562,7 +564,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		}
 		tasks.space = view.Conversation.SpaceID
 	}
-	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /compact /context [inspect|refresh|clear] /status /continue /more /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit\n", config.Workspace)
+	_, _ = fmt.Fprintf(stderr, "Workspace: %s\n/history /sessions /resume <number> /new /model /collaboration /settings /memory /compact /context [inspect|refresh|clear] /status /mode /continue /more /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit\n", config.Workspace)
 	var references []string
 	var inputAttachments []string
 	var nextCollaboration *harness.CollaborationSettings
@@ -655,6 +657,21 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 				}
 				_ = printChatResult(stdout, stderr, harness.RunResult{Run: last, Answer: last.Output, Evidence: evidence}, false)
 			}
+			continue
+		}
+		if prompt == "/mode" {
+			next, err := tasks.RuntimeFacts(ctx, *conversationID, "")
+			if err != nil {
+				_, _ = fmt.Fprintln(stderr, err)
+				continue
+			}
+			view := map[string]any{"next_run": next}
+			if last, err := tasks.Latest(ctx, *conversationID); err == nil {
+				if facts, err := tasks.RuntimeFacts(ctx, *conversationID, last.ID); err == nil {
+					view["current_run"] = facts
+				}
+			}
+			_ = writeJSON(stdout, view)
 			continue
 		}
 		if prompt == "/commands" || strings.HasPrefix(prompt, "/commands ") || prompt == "/services" || strings.HasPrefix(prompt, "/services ") {

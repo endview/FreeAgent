@@ -139,7 +139,7 @@ func (service *ControlService) buildSpaceControl(ctx context.Context, record *co
 		if space.ID == LocalSpaceID {
 			return ErrLocalSpace
 		}
-		record.Operation.Preview = fmt.Sprintf("Delete space %q. Its conversations return to Local with Local's permission. An external chat is unpaired.", space.Title)
+		record.Operation.Preview = fmt.Sprintf("Delete space %q. Its conversations return to Local with Local's permission. External access is revoked and the binding removed; reauthorizing does not publish this old history.", space.Title)
 	case ControlMoveConversation:
 		chat, err := service.core.Store.GetConversation(ctx, args.ConversationID)
 		if err != nil {

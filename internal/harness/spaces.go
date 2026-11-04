@@ -231,7 +231,7 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 		return tx.Commit()
 	}
 	var active int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND status IN ('running','waiting_confirmation','stopped','unknown','limited')`, conversationID).Scan(&active); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND `+activeRunPredicate+` `, conversationID).Scan(&active); err != nil {
 		return err
 	}
 	if active != 0 {
@@ -331,7 +331,7 @@ func (store *Store) DeleteSpace(ctx context.Context, id string) error {
 		return err
 	}
 	var active int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs r JOIN conversations c ON c.id=r.conversation_id WHERE c.space_id=? AND r.status IN ('running','waiting_confirmation','stopped','unknown','limited')`, id).Scan(&active); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs r JOIN conversations c ON c.id=r.conversation_id WHERE c.space_id=? AND (r.status IN ('running','waiting_confirmation','stopped','unknown') OR (r.status='limited' AND substr(r.stop_reason,1,14)!='settled_limit:'))`, id).Scan(&active); err != nil {
 		return err
 	}
 	if active != 0 {
@@ -354,6 +354,9 @@ func (store *Store) DeleteSpace(ctx context.Context, id string) error {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM spaces WHERE id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key LIKE 'telegram/access/%' AND json_extract(value,'$.space_id')=?`, id); err != nil {
 		return err
 	}
 	if err := refreshSpacePointersTx(ctx, tx, LocalSpaceID); err != nil {

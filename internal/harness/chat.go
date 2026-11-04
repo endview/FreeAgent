@@ -43,6 +43,7 @@ type ChatTurn struct {
 	Ended           bool                 `json:"ended"`
 	Confirmation    *Confirmation        `json:"confirmation,omitempty"`
 	Maintenance     bool                 `json:"maintenance,omitempty"`
+	LimitSettled    bool                 `json:"limit_settled,omitempty"`
 }
 
 type ChatMessage struct {
@@ -222,12 +223,19 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 			}
 		}
 		turn.CanContinue = (run.Status == "stopped" || run.Status == "limited" || run.Status == "waiting_confirmation") && turn.State != "unknown"
+		if run.LimitSettled && turn.State != "unknown" {
+			turn.State = "limited"
+			turn.LimitSettled = true
+		}
 		deliveryNotes, err := channelDeliveryNotes(ctx, tx, run.ID)
 		if err != nil {
 			return ChatView{}, err
 		}
 		turn.Evidence.Uncertainty = append(turn.Evidence.Uncertainty, deliveryNotes...)
 		turn.CanEnd = run.Status != "running" && run.Status != "completed" && run.Status != "failed" && !turn.Ended
+		if run.LimitSettled && turn.State != "unknown" {
+			turn.CanEnd = false
+		}
 		messages, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE run_id=? ORDER BY id`, run.ID)
 		if err != nil {
 			return ChatView{}, err

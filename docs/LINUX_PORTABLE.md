@@ -1,6 +1,6 @@
 # FreeAgent Linux portable preview
 
-Candidate: v7.11.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
+Candidate: v7.12.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
 the native Windows desktop/WebView2 executable is not included. Go, Node,
 Python and a system web server are not needed to run this package.
 
@@ -10,8 +10,8 @@ Verify the outer SHA256SUMS.txt, extract the complete archive into a writable
 directory, then start:
 
 ```sh
-tar -xzf FreeAgent-v7.11.0-dev.1-linux-amd64-portable.tar.gz
-cd FreeAgent-v7.11.0-dev.1-linux-amd64-portable
+tar -xzf FreeAgent-v7.12.0-dev.1-linux-amd64-portable.tar.gz
+cd FreeAgent-v7.12.0-dev.1-linux-amd64-portable
 ./FreeAgent
 ```
 
@@ -72,6 +72,18 @@ new spaces still default to None. The CLI remains a local recovery entrance.
 CLI attaches to an existing Owner. Web and CLI use the same space, conversation,
 permission, Run and approval records. Two foreground conversations share one
 workspace and the same Owner quotas. No old-version migration is performed.
+
+New installations enable automatic compaction with a 4096-byte summary. Existing
+zero/omitted `task_summary_bytes` settings remain off. Use Settings or
+`config context --summary-bytes 4096`; 0 disables automatic compaction and keeps
+saved summaries. A Run retains its frozen limits.
+
+Before updating current-format server data, back up and resolve unfinished
+command Runs. Pre-v7.12 command snapshots cannot resume under the changed rule
+interpretation: unmatched rules now follow the permission mode, while explicit
+deny/ask and executable allowlists continue to constrain Full. Existing Telegram
+spaces and history remain, but an administrator must approve access in the new
+Telegram page; old `/pair` codes grant no access. See `docs/CHANNELS.md`.
 
 The `FreeAgent` launcher also accepts `web` or `chat` plus normal arguments,
 initializing the selected data directory when it has no configuration. Other

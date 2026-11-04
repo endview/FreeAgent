@@ -594,9 +594,16 @@ func (s *commandSupervisor) launch(parent context.Context, tools *CommandTools, 
 	if err != nil {
 		return ToolResult{}, &CallError{Certain: true, Message: "Run metadata unavailable before command start"}
 	}
+	admissionRelease, err := inv.service.lockTelegramDispatch(parent, inv.run)
+	if err != nil {
+		return ToolResult{}, &CallError{Certain: true, Message: safeError(err)}
+	}
+	defer admissionRelease()
 	secrets := knownCommandSecrets(inv.service.Keys, inv.service.currentConfig())
 	receipt.Command = commandRedact(receipt.Command, secrets)
 	ctx, cancel := context.WithCancel(s.ctx)
+	ctx = context.WithValue(ctx, commandInvocationKey{}, inv)
+	ctx = context.WithValue(ctx, telegramDispatchLockedKey{}, true)
 	if tools.executionMode() == CommandExecutionHostExplicit && tools.Gate != nil {
 		if err := tools.Gate.beginHost(); err != nil {
 			cancel()

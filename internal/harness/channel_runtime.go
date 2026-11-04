@@ -99,6 +99,9 @@ func newChannelSession(tasks *TaskService, source string, send channelSend) *cha
 	return s
 }
 func (s *channelSession) PairCode() (string, time.Time, error) {
+	if s.source == SpaceSourceTelegram {
+		return "", time.Time{}, ErrPermissionDenied
+	}
 	var raw [5]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", time.Time{}, err
@@ -111,6 +114,9 @@ func (s *channelSession) PairCode() (string, time.Time, error) {
 	return code, expires, nil
 }
 func (s *channelSession) reset(application string) {
+	if s.source == SpaceSourceTelegram {
+		s.tasks.core.Store.telegramIdentity(application)
+	}
 	s.mu.Lock()
 	s.application = application
 	s.callbacks = map[string]channelApproval{}
@@ -123,6 +129,13 @@ func (s *channelSession) setDispatch(dispatch ChannelDispatch) {
 	s.mu.Unlock()
 }
 func (s *channelSession) plain(ctx context.Context, e channelEvent, text string) error {
+	if s.source == SpaceSourceTelegram {
+		s.tasks.core.Store.telegramMu.Lock()
+		defer s.tasks.core.Store.telegramMu.Unlock()
+		if _, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person); err != nil {
+			return err
+		}
+	}
 	_, err := s.send(ctx, e.Target, e.Message, text, nil)
 	return err
 }
@@ -136,6 +149,31 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 	if !s.matchesApp(application, e.Target.ApplicationID) {
 		return ErrPermissionDenied
 	}
+	if s.source == SpaceSourceTelegram {
+		if _, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person); err != nil {
+			if !errors.Is(err, ErrPermissionDenied) {
+				return err
+			}
+			if e.Callback != "" || !e.Trigger {
+				return nil
+			}
+			words := strings.Fields(e.Text)
+			if len(words) == 0 || strings.ToLower(strings.SplitN(words[0], "@", 2)[0]) != "/start" {
+				_, err := s.send(ctx, e.Target, e.Message, "尚未获准访问。请发送 /start 申请，由管理员核对并批准。", nil)
+				return err
+			}
+			request, notify, err := s.tasks.requestTelegramAccess(e, time.Now().UTC())
+			if err != nil {
+				_, sendErr := s.send(ctx, e.Target, e.Message, "申请未创建：请求已满或身份不可验证，请稍后重试。", nil)
+				return errors.Join(err, sendErr)
+			}
+			if !notify {
+				return nil
+			}
+			_, err = s.send(ctx, e.Target, e.Message, "接入申请已提交，等待管理员批准。申请码："+request.Code+"（1 小时有效；仅用于身份核对，不能兑换权限）。", nil)
+			return err
+		}
+	}
 	if e.Callback != "" {
 		return s.callback(ctx, e)
 	}
@@ -144,7 +182,7 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 	if len(words) > 0 {
 		cmd = strings.ToLower(strings.SplitN(words[0], "@", 2)[0])
 	}
-	if cmd == "/pair" {
+	if cmd == "/pair" && s.source != SpaceSourceTelegram {
 		if e.Person == "" {
 			return ErrPermissionDenied
 		}
@@ -264,7 +302,18 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 	case "/save-reply":
 		return s.saveReplyFile(ctx, e, chat)
 	case "/mode":
-		return s.plain(ctx, e, fmt.Sprintf("空间=%s，人员=%s，有效权限=%s（只读；请在本机调整）。", sp.Mode, person.Mode, effective))
+		profile, profileErr := buildExecutionProfile(s.tasks.Config(), PermissionSelection{Mode: effective, Source: "space"})
+		if profileErr != nil {
+			return profileErr
+		}
+		facts := factsForProfile(profile, effectiveBuiltinToolSettings(s.tasks.Config()), PermissionSelection{Mode: effective, PersonID: e.Person, Entry: e.Target.Source})
+		text := fmt.Sprintf("下一次请求：空间=%s，人员=%s，有效权限=%s；命令=%s，后端=%s，命令网络=%s。", sp.Mode, person.Mode, effective, facts.Commands.Status, facts.Commands.Backend, facts.Network)
+		if run, err := s.tasks.Latest(ctx, chat); err == nil {
+			if frozen, err := s.tasks.RuntimeFacts(ctx, chat, run.ID); err == nil {
+				text += fmt.Sprintf("\n最近 Run=%s，入口=%s，发起人=%s，冻结权限=%s，后端=%s；当前阻断=%s。", run.ID, frozen.Entry, frozen.PersonID, frozen.Permission, frozen.Commands.Backend, frozen.DispatchBlocked)
+			}
+		}
+		return s.plain(ctx, e, text)
 	case "/help", "/start":
 		return s.plain(ctx, e, "/mode /status /stop /continue /abandon /compact /save-reply；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
 	case "/status":
@@ -273,6 +322,13 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 			return s.plain(ctx, e, "当前对话没有运行记录。")
 		}
 		answer := run.Output
+		if run.Permission == nil || run.Permission.PersonID != e.Person || s.tasks.checkTelegramRun(ctx, run) != nil {
+			answer = "此入口只显示已确认公开的回复；未投递或管理员私有结果请在本机核对。"
+			var publicText string
+			if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT json_extract(body_json,'$.Content') FROM messages WHERE conversation_id=? AND request_key LIKE ? AND json_extract(body_json,'$.Public')=1 ORDER BY id DESC LIMIT 1`, chat, "channel/delivery/"+run.ID+"/%").Scan(&publicText); err == nil {
+				answer = publicText
+			}
+		}
 		if len(answer) > 12000 {
 			answer = string([]rune(answer)[:min(len([]rune(answer)), 3000)]) + "\n[已截断]"
 		}
@@ -353,9 +409,6 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		}
 		return s.launch(ctx, e, chat, func(ctx context.Context) (RunResult, error) { return s.tasks.Continue(ctx, run.ID) })
 	case "/compact":
-		if effective == PermissionNone {
-			return s.plain(ctx, e, "None 不允许修改上下文；请在本机操作。")
-		}
 		return s.launch(ctx, e, chat, func(ctx context.Context) (RunResult, error) {
 			return s.tasks.CompactChannel(ctx, chat, e.Person, e.Target)
 		})
@@ -422,6 +475,12 @@ func (s *channelSession) callback(ctx context.Context, e channelEvent) error {
 // was safe to repeat.
 func (s *channelSession) withFeedback(event channelEvent, call func(context.Context) (RunResult, error)) func(context.Context) (RunResult, error) {
 	return func(ctx context.Context) (RunResult, error) {
+		var progress sync.Once
+		ctx = context.WithValue(ctx, runEventObserverKey{}, func(update Event) {
+			if update.Kind == "context_compacting" {
+				progress.Do(func() { _ = s.plain(ctx, event, "正在压缩当前公开上下文，原始记录保留。") })
+			}
+		})
 		result, err := call(ctx)
 		if result.Run.ID == "" || result.Duplicate {
 			message := "当前无需更改；原始记录保留。"
@@ -464,13 +523,16 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 	if origin == nil || origin.Source != s.source {
 		return nil
 	}
+	if err := s.tasks.checkTelegramRun(ctx, run); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	application := s.application
 	s.mu.Unlock()
 	if !s.matchesApp(application, origin.ApplicationID) {
 		return nil
 	}
-	if run.Status != "waiting_confirmation" {
+	if run.Status != "waiting_confirmation" && !result.Maintenance {
 		defer func() { returnErr = errors.Join(returnErr, s.deliverFiles(ctx, run, *origin)) }()
 	}
 	text := strings.TrimSpace(result.Answer)
@@ -510,6 +572,12 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 	if text == "" {
 		text = "Run 状态：" + run.Status + "。UNKNOWN 不会自动重试，请查看本机证据。"
 	}
+	if run.Status == "limited" {
+		text += "\n本轮因限额停止：" + run.StopReason + "。目标尚未完成；已有文件会继续投递。"
+		if run.LimitSettled {
+			text += "如需处理剩余工作，请明确发送“继续”或 /continue。"
+		}
+	}
 	// Bound transport output independently of model limits. Do not edit/retry a
 	// possibly delivered message; only confirmed sends enter public context.
 	if len(text) > 64<<10 {
@@ -517,6 +585,9 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 	}
 	parts := channels.SplitTelegramText(text)
 	for index, part := range parts {
+		if err := s.tasks.checkTelegramRun(ctx, run); err != nil {
+			return err
+		}
 		key := "channel/send/" + run.ID + "/" + contentHash([]byte(fmt.Sprintf("%s/%d", revision, index)))
 		claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, `{"state":"dispatching","replay":false}`)
 		if err != nil {
@@ -533,7 +604,7 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 		if index != len(parts)-1 {
 			b = nil
 		}
-		message, sendErr := s.send(ctx, origin.ChannelTarget, s.replyMessage(ctx, run), part, b)
+		message, sendErr := s.sendRunText(ctx, run, origin.ChannelTarget, s.replyMessage(ctx, run), part, b)
 		state, confirmed := "sent", part
 		if sendErr != nil || message == "" {
 			state, confirmed = "unknown", ""
@@ -549,7 +620,7 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 		if message == "" {
 			message = "unknown-" + shortDeliveryID(run.ID, index) + "-" + contentHash([]byte(revision))[:8]
 		}
-		recordErr := s.tasks.RecordChannelDelivery(persist, run.ID, message, confirmed, state)
+		recordErr := s.tasks.RecordChannelDelivery(persist, run.ID, message, confirmed, state, result.Maintenance)
 		done()
 		if sendErr == nil && state == "sent" {
 			s.mu.Lock()

@@ -297,10 +297,10 @@ func TestControlRejectsStaleRevisionAndExactRevert(t *testing.T) {
 		t.Fatal(err)
 	}
 	secondCode, err := control.ControlCodeForTests(ctx, second.ID, conversationID, "user")
-	if err != nil {
+	if !errors.Is(err, ErrControlStaleRevision) {
 		t.Fatal(err)
 	}
-	if _, err := control.ConfirmControlChange(ctx, second.ID, controlAuth(capability, conversationID, "user", secondCode)); !errors.Is(err, ErrControlStaleRevision) {
+	if _, err := control.ConfirmControlChange(ctx, second.ID, controlAuth(capability, conversationID, "user", secondCode)); !errors.Is(err, ErrControlAlreadyUsed) {
 		t.Fatalf("stale error=%v", err)
 	}
 	if service.Config.Execution.PermissionMode != PermissionFull {

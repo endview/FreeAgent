@@ -11,17 +11,18 @@ import (
 
 func TestChannelFilesNoneBackgroundSelectionAndReplyExport(t *testing.T) {
 	tasks, _, _, _ := attachmentFixture(t, nil, nil)
-	target := ChannelTarget{SpaceSourceTelegram, "bot_1", "chat_1"}
+	target := ChannelTarget{SpaceSourceTelegram, "1", "-90"}
 	space, err := tasks.PairChannel(t.Context(), target, "group", "files")
 	if err != nil {
 		t.Fatal(err)
 	}
+	grantTelegramFixture(t, tasks, TelegramAccessChange{Target: target, Kind: "group", Enabled: true, Members: []string{"telegram:user:9"}})
 	sequence, downloads, fileSends := 0, 0, 0
 	s := newChannelSession(tasks, SpaceSourceTelegram, func(context.Context, ChannelTarget, string, string, []channelButton) (string, error) {
 		sequence++
 		return fmt.Sprint(sequence), nil
 	})
-	s.reset("bot_1")
+	s.reset("1")
 	s.download = func(context.Context, channelEvent, channels.MediaRef, int64) ([]byte, error) {
 		downloads++
 		return []byte("public input fact"), nil
@@ -58,11 +59,13 @@ func TestChannelFilesNoneBackgroundSelectionAndReplyExport(t *testing.T) {
 }
 func TestChannelFileUnknownNeverResendsAndDoesNotPublish(t *testing.T) {
 	tasks, _, _, _ := attachmentFixture(t, nil, nil)
-	target := ChannelTarget{SpaceSourceTelegram, "bot", "chat"}
+	target := ChannelTarget{SpaceSourceTelegram, "1", "90"}
 	space, err := tasks.PairChannel(t.Context(), target, "private", "files")
 	if err != nil {
 		t.Fatal(err)
 	}
+	grant := grantTelegramFixture(t, tasks, TelegramAccessChange{Target: target, Kind: "private", Enabled: true, Members: []string{"telegram:user:9"}})
+	ctx := context.WithValue(t.Context(), telegramFileAuthorityKey{}, telegramFileAuthority{Target: target, Person: "telegram:user:9", Revision: grant.Revision})
 	ref, err := tasks.createAttachment(t.Context(), space.DefaultConversationID, "reply.md", strings.NewReader("private"), "reply", "r", true)
 	if err != nil {
 		t.Fatal(err)
@@ -73,10 +76,10 @@ func TestChannelFileUnknownNeverResendsAndDoesNotPublish(t *testing.T) {
 		calls++
 		return "", &channels.TelegramError{Uncertain: true}
 	}
-	if err := s.sendFileReceipt(t.Context(), space.DefaultConversationID, "run", target, "msg", ref); err == nil {
+	if err := s.sendFileReceipt(ctx, space.DefaultConversationID, "run", target, "msg", ref); err == nil {
 		t.Fatal("uncertain send accepted")
 	}
-	if err := s.sendFileReceipt(t.Context(), space.DefaultConversationID, "run", target, "msg", ref); err != nil || calls != 1 {
+	if err := s.sendFileReceipt(ctx, space.DefaultConversationID, "run", target, "msg", ref); err != nil || calls != 1 {
 		t.Fatal("unknown send replayed", err, calls)
 	}
 	record, err := loadAttachment(t.Context(), tasks.core.Store.db, ref.ID)

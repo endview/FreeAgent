@@ -29,7 +29,7 @@ func TestNoneAndExternalContextExcludeLocalToolBodiesAndInstructions(t *testing.
 	if result, err := tasks.Submit(t.Context(), chat, "read", "read this private file"); err != nil || result.Run.Status != "completed" {
 		t.Fatalf("initial %s %v", result.Run.Status, err)
 	}
-	space, err := tasks.NewSpace(t.Context(), "External", SpaceSourceTelegram, "group", "telegram:bot:1:chat:2")
+	space, err := tasks.NewSpace(t.Context(), "External", SpaceSourceTelegram, "group", "1/2")
 	if err != nil {
 		t.Fatal(err)
 	}

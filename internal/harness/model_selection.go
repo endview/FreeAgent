@@ -29,24 +29,26 @@ type ModelBinding struct {
 // Model and limit changes remain bounded data in the existing run snapshot.
 // The first binding is immutable; attempts record the actual dispatched binding.
 type runSnapshot struct {
-	InputAttachments []AttachmentRef   `json:",omitempty"`
-	Channel          *ChannelRunOrigin `json:",omitempty"`
-	Config           Config
-	Tools            []ToolDefinition
-	InstructionsHash string
-	Bindings         []ModelBinding
-	Limits           *ExecutionLimits     `json:",omitempty"`
-	Auto             *autoRunPolicy       `json:",omitempty"`
-	Routing          []RoutingDecision    `json:",omitempty"`
-	Memory           *memoryRunPolicy     `json:",omitempty"`
-	Permission       *PermissionSelection `json:",omitempty"`
-	Capabilities     *CapabilitySelection `json:",omitempty"`
-	ToolGeneration   string               `json:"tool_generation"`
-	EnabledTools     BuiltinToolSettings  `json:"enabled_tools"`
-	CommandPolicy    CommandConfig        `json:"command_policy"`
-	HTTPPolicy       HTTPConfig           `json:"http_policy"`
-	FilePolicy       FileAccessPolicy     `json:"file_policy"`
-	ExecutionProfile ExecutionProfile     `json:"execution_profile"`
+	ContinuationOf      string            `json:"continuation_of,omitempty"`
+	CommandRulesVersion int               `json:"command_rules_version"`
+	InputAttachments    []AttachmentRef   `json:",omitempty"`
+	Channel             *ChannelRunOrigin `json:",omitempty"`
+	Config              Config
+	Tools               []ToolDefinition
+	InstructionsHash    string
+	Bindings            []ModelBinding
+	Limits              *ExecutionLimits     `json:",omitempty"`
+	Auto                *autoRunPolicy       `json:",omitempty"`
+	Routing             []RoutingDecision    `json:",omitempty"`
+	Memory              *memoryRunPolicy     `json:",omitempty"`
+	Permission          *PermissionSelection `json:",omitempty"`
+	Capabilities        *CapabilitySelection `json:",omitempty"`
+	ToolGeneration      string               `json:"tool_generation"`
+	EnabledTools        BuiltinToolSettings  `json:"enabled_tools"`
+	CommandPolicy       CommandConfig        `json:"command_policy"`
+	HTTPPolicy          HTTPConfig           `json:"http_policy"`
+	FilePolicy          FileAccessPolicy     `json:"file_policy"`
+	ExecutionProfile    ExecutionProfile     `json:"execution_profile"`
 }
 
 type ExecutionLimits struct {
@@ -309,7 +311,12 @@ func validateSnapshotToolPolicy(policy ToolPolicy) error {
 }
 
 func withModelFacts(run Run) Run {
+	if run.Status == "limited" && strings.HasPrefix(run.StopReason, settledLimitPrefix) {
+		run.LimitSettled = true
+		run.StopReason = strings.TrimPrefix(run.StopReason, settledLimitPrefix)
+	}
 	if snapshot, err := decodeRunSnapshot(run.ConfigJSON); err == nil {
+		run.ContinuationOf = snapshot.ContinuationOf
 		run.InitialModel = snapshot.Bindings[0].ID
 		binding := snapshot.Bindings[len(snapshot.Bindings)-1]
 		run.ModelID, run.ModelRevision = binding.ID, binding.Revision
@@ -353,7 +360,11 @@ func (service *Service) forRun(run Run) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	if snapshot.CommandRulesVersion != 1 {
+		return nil, fmt.Errorf("%w: command rule semantics changed; resolve this saved Run and explicitly start a new request", ErrConfigChanged)
+	}
 	copy := *service
+	copy.continuationOf = snapshot.ContinuationOf
 	if run.Status == "waiting_confirmation" && service.hasPendingToolApproval(run.ID) {
 		// The run owns its configuration snapshot. Rebuild the minimal model
 		// registry from frozen bindings so future-only global changes do not
@@ -542,6 +553,12 @@ func (tasks *TaskService) editRun(ctx context.Context, runID string, edit func(*
 	}
 	if run.Status == "completed" || run.Status == "failed" || run.Status == "abandoned" || run.ActiveSince != "" {
 		return errors.New("harness: only an inactive unfinished run can be adjusted")
+	}
+	if run.LimitSettled {
+		var next string
+		if err := core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "run/limit-next/"+run.ID).Scan(&next); err == nil && next != "" {
+			return errors.New("harness: this limited Run already has a successor; adjust the successor instead")
+		}
 	}
 	bound, err := core.forRun(run)
 	if err != nil {

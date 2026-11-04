@@ -340,6 +340,7 @@ dialog > label textarea { width: 100%; min-height: 140px; resize: vertical; }
 dialog > label input { width: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); padding: 8px 10px; outline: none; }
 dialog > label input:focus { border-color: var(--focus-border); box-shadow: 0 0 0 2px var(--focus-ring); }
 #context-dialog footer { flex-wrap: wrap; gap: 10px 18px; }
+.channel-access-controls { border: 0; padding: 0; margin: 0; min-inline-size: 0; }
 #commands-dialog { width: min(760px, calc(100vw - 24px)); }
 #command-records { padding: 0 20px; }
 #commands-dialog > details, #commands-dialog > pre { margin: 16px 20px; }

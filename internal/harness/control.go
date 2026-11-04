@@ -132,12 +132,13 @@ const (
 )
 
 type ControlCatalogEntry struct {
-	Kind            string      `json:"kind"`
-	ResourceFamily  string      `json:"resource_family"`
-	Risk            ControlRisk `json:"risk"`
-	Description     string      `json:"description"`
-	ModelProposable bool        `json:"model_proposable"`
-	Reversible      bool        `json:"reversible"`
+	Kind            string          `json:"kind"`
+	ResourceFamily  string          `json:"resource_family"`
+	Risk            ControlRisk     `json:"risk"`
+	Description     string          `json:"description"`
+	ModelProposable bool            `json:"model_proposable"`
+	Reversible      bool            `json:"reversible"`
+	InputSchema     json.RawMessage `json:"input_schema,omitempty"`
 }
 
 type ControlOperation struct {
@@ -249,6 +250,7 @@ type ControlConfigState struct {
 	NetworkMode    string                `json:"network_mode"`
 	EnabledTools   BuiltinToolSettings   `json:"enabled_tools"`
 	CommandReady   bool                  `json:"command_ready"`
+	Commands       CommandReadiness      `json:"commands"`
 	DefaultModel   string                `json:"default_model,omitempty"`
 	Models         []ControlModelState   `json:"models,omitempty"`
 	Workspace      string                `json:"workspace"`
@@ -271,13 +273,15 @@ type ControlModelState struct {
 }
 
 type ControlState struct {
-	Spaces                  []ControlSpaceState `json:"spaces,omitempty"`
-	Generation              string              `json:"generation"`
-	ResourceRevisions       map[string]uint64   `json:"resource_revisions"`
-	Config                  ControlConfigState  `json:"config"`
-	Pending                 []ControlOperation  `json:"pending,omitempty"`
-	ExternalChangePending   bool                `json:"external_change_pending,omitempty"`
-	ExternalChangeResources []string            `json:"external_change_resources,omitempty"`
+	TelegramRequests        []TelegramAccessRequest `json:"telegram_requests,omitempty"`
+	CurrentRun              *RuntimeFacts           `json:"current_run,omitempty"`
+	Spaces                  []ControlSpaceState     `json:"spaces,omitempty"`
+	Generation              string                  `json:"generation"`
+	ResourceRevisions       map[string]uint64       `json:"resource_revisions"`
+	Config                  ControlConfigState      `json:"config"`
+	Pending                 []ControlOperation      `json:"pending,omitempty"`
+	ExternalChangePending   bool                    `json:"external_change_pending,omitempty"`
+	ExternalChangeResources []string                `json:"external_change_resources,omitempty"`
 }
 
 type ControlSpaceState struct {
@@ -295,12 +299,14 @@ func (service *ControlService) ReadControlStateForModel(ctx context.Context) (Co
 		return ControlState{}, err
 	}
 	for index := range state.Pending {
+		state.Pending[index].RemotePrincipal = ""
 		state.Pending[index].AttemptID = ""
 		state.Pending[index].ExpectedRevisions = nil
 		state.Pending[index].NewRevisions = nil
 		state.Pending[index].OldValues = nil
 		state.Pending[index].ProposedValues = nil
 		state.Pending[index].Digest = ""
+		state.Pending[index].ExpiresAt = ""
 	}
 	return state, nil
 }
@@ -466,6 +472,11 @@ func (service *ControlService) recoverAppliedProposals() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, record := range service.operations {
+		if record.Operation.Status == ControlRejected || record.Operation.Status == ControlStale || record.Operation.Status == ControlFailed {
+			if err := service.settleInvalidProposal(ctx, record); err != nil {
+				return err
+			}
+		}
 		if record.Operation.Status != ControlApplied || record.Operation.AttemptID == "" {
 			continue
 		}
@@ -600,6 +611,7 @@ func (tasks *TaskService) Control() (*ControlService, error) {
 
 func ControlOperationCatalog() []ControlCatalogEntry {
 	entries := []ControlCatalogEntry{
+		{Kind: ControlTelegramAccess, ResourceFamily: "telegram.access", Risk: ControlRiskAuthority, Description: "Set Telegram chat admission for a verified numeric Bot/chat and people. Grants chat only. Arguments: request_code or request_id (optional pending application; server resolves its bound identity), target {source:telegram,application_id,chat_id}, kind (private/group), enabled, whole_group, members (telegram:user:ID). Administrator confirmation is always required.", ModelProposable: true},
 		{Kind: ControlSetAttachmentPolicy, ResourceFamily: "config.attachments", Risk: ControlRiskAuthority, Description: "Change bounded attachment input/export/storage limits for future uploads.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetPublicWeb, ResourceFamily: "config.public_web", Risk: ControlRiskAuthority, Description: "Configure optional Linux public HTTPS entrance, permission ceiling and bounded login security. Address/socket changes require restart. Raising the remote ceiling requires local confirmation; passwords use direct secure input.", ModelProposable: true, Reversible: true},
 		{Kind: ControlDeleteAttachment, ResourceFamily: "attachment", Risk: ControlRiskDestructive, Description: "Permanently remove one exact attachment with its visible-reference impact. Requires its conversation, id and sha256.", ModelProposable: true, Reversible: false},
@@ -653,6 +665,12 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSetConversationCapabilities, ResourceFamily: "conversation.capabilities", Risk: ControlRiskAuthority, Description: "Select the Skills, MCP servers and Extensions available to one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetMemorySelection, ResourceFamily: "conversation.memory", Risk: ControlRiskAuthority, Description: "Select bounded memory and knowledge inputs for one conversation's future Runs.", ModelProposable: true, Reversible: true},
 	}
+	for i := range entries {
+		if entries[i].Kind == ControlSetRuntimeLimits {
+			entries[i].Description += " task_summary_bytes: 0 disables automatic compaction; 1..16384 enables it and bounds the summary bytes. Existing summaries are retained."
+			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"max_steps":{"type":"integer","minimum":1,"maximum":100},"max_messages":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_run_seconds":{"type":"integer","minimum":1,"maximum":3600},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
+		}
+	}
 	return entries
 }
 
@@ -669,6 +687,9 @@ func (service *ControlService) ListControlOperations(ctx context.Context) ([]Con
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	result := make([]ControlOperation, 0, len(service.operations))
+	if err := service.expireDirectLocked(time.Now()); err != nil {
+		return nil, err
+	}
 	for _, record := range service.operations {
 		result = append(result, cloneControlOperation(record.Operation))
 	}
@@ -737,7 +758,15 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	config := service.core.currentConfig()
+	if err := service.expireDirectLocked(time.Now()); err != nil {
+		return ControlState{}, err
+	}
 	settings := effectiveExecutionSettings(config)
+	profile, profileErr := executionProfileForConfig(config)
+	if profileErr != nil {
+		return ControlState{}, profileErr
+	}
+	commands := commandReadiness(profile, effectiveBuiltinToolSettings(config))
 	models := make([]ControlModelState, 0, len(config.Models))
 	for id, model := range config.Models {
 		caps := model.EffectiveCapabilities()
@@ -753,7 +782,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 	state := ControlState{Spaces: spaceStates, Generation: service.generation, ResourceRevisions: cloneRevisions(service.revisions),
 		Config: ControlConfigState{Channels: config.Channels, PermissionMode: string(settings.PermissionMode), SandboxMode: string(settings.SandboxMode),
 			FileScope: string(settings.FileScope), NetworkMode: string(settings.NetworkPolicy.Mode),
-			EnabledTools: effectiveBuiltinToolSettings(config), CommandReady: config.Commands.Enabled && config.Commands.Execution != "",
+			EnabledTools: effectiveBuiltinToolSettings(config), CommandReady: commands.Status == "ready", Commands: commands,
 			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled,
 			Memory: config.Memory, Collaboration: redactCollaborationSettings(config.Collaboration), Limits: map[string]int{
 				"max_steps": config.MaxSteps, "max_messages": config.MaxMessages, "max_context_bytes": config.MaxContextBytes,
@@ -771,6 +800,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 		}
 	}
 	sort.Slice(state.Pending, func(i, j int) bool { return state.Pending[i].CreatedAt < state.Pending[j].CreatedAt })
+	state.TelegramRequests = NewTaskService(service.core).TelegramAccessRequests()
 	return state, nil
 }
 
@@ -1343,8 +1373,32 @@ func (service *ControlService) RenderConfirmation(ctx context.Context, operation
 	if !ok {
 		return ControlConfirmation{}, ErrControlOperationNotFound
 	}
+	if err := service.expireDirectLocked(time.Now()); err != nil {
+		return ControlConfirmation{}, err
+	}
+	record = service.operations[operationID]
+	if record.Operation.ErrorCode == "expired" {
+		return ControlConfirmation{}, ErrControlExpired
+	}
 	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal != "" && entry.Principal != record.Operation.RemotePrincipal {
-		return ControlConfirmation{}, ErrControlUserInteractionRequired
+		previous, exists := service.confirmations[operationID]
+		if record.Operation.AttemptID == "" || record.Operation.Authorization != ControlModelProposed || exists && time.Now().Before(previous.expiresAt) {
+			return ControlConfirmation{}, ErrControlUserInteractionRequired
+		}
+		attempt, err := service.core.Store.GetAttempt(ctx, record.Operation.AttemptID)
+		if err != nil || attempt.Status != "pending" {
+			return ControlConfirmation{}, ErrControlAlreadyUsed
+		}
+		run, err := service.core.Store.GetRun(ctx, attempt.RunID)
+		if err != nil || run.Status != "waiting_confirmation" || run.ConversationID != record.Operation.ConversationID {
+			return ControlConfirmation{}, ErrControlAlreadyUsed
+		}
+		record.Operation.RemotePrincipal = entry.Principal
+		service.operations[operationID] = record
+		delete(service.confirmations, operationID)
+		if err := service.appendLocked("surface_rebound", record); err != nil {
+			return ControlConfirmation{}, err
+		}
 	}
 	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal == "" {
 		record.Operation.RemotePrincipal = entry.Principal
@@ -1355,6 +1409,14 @@ func (service *ControlService) RenderConfirmation(ctx context.Context, operation
 	}
 	if record.Operation.Status != ControlPending {
 		return ControlConfirmation{}, ErrControlAlreadyUsed
+	}
+	for resource, expected := range record.Operation.ExpectedRevisions {
+		if service.revisionLocked(resource) != expected {
+			if err := service.invalidateProposalLocked(ctx, &record, "stale_revision"); err != nil {
+				return ControlConfirmation{}, err
+			}
+			return ControlConfirmation{}, ErrControlStaleRevision
+		}
 	}
 	if conversationID == "" {
 		conversationID = record.Operation.ConversationID
@@ -1417,6 +1479,10 @@ func (service *ControlService) confirmRunProposal(ctx context.Context, operation
 }
 
 func (service *ControlService) RejectControlChange(ctx context.Context, operationID string, auth ControlAuthorization) (ControlResult, error) {
+	return service.rejectControlChange(ctx, operationID, auth, false)
+}
+
+func (service *ControlService) rejectControlChange(ctx context.Context, operationID string, auth ControlAuthorization, fromRun bool) (ControlResult, error) {
 	if service == nil {
 		return ControlResult{}, errors.New("harness: control service is not configured")
 	}
@@ -1450,6 +1516,11 @@ func (service *ControlService) RejectControlChange(ctx context.Context, operatio
 	delete(service.confirmations, operationID)
 	service.clearKeySecretLocked(operationID)
 	service.clearMCPProfileLocked(operationID)
+	if !fromRun {
+		if err := service.settleInvalidProposal(ctx, record); err != nil {
+			return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
+		}
+	}
 	return ControlResult{Operation: cloneControlOperation(record.Operation), Result: "rejected"}, nil
 }
 
@@ -1505,11 +1576,20 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
+	if err := service.expireDirectLocked(time.Now()); err != nil {
+		return ControlResult{}, err
+	}
 	record, ok := service.operations[operationID]
 	if !ok {
 		return ControlResult{}, ErrControlOperationNotFound
 	}
 	result := ControlResult{Operation: cloneControlOperation(record.Operation)}
+	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal != "" && entry.Principal != record.Operation.RemotePrincipal {
+		return result, ErrControlUserInteractionRequired
+	}
+	if record.Operation.ErrorCode == "expired" {
+		return result, ErrControlExpired
+	}
 	if record.Operation.Status != ControlPending {
 		return result, ErrControlAlreadyUsed
 	}
@@ -1532,11 +1612,9 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 	}
 	for resource, expected := range record.Operation.ExpectedRevisions {
 		if current := service.revisionLocked(resource); current != expected {
-			record.Operation.Status = ControlStale
-			record.Operation.ErrorCode = "stale_revision"
-			service.operations[operationID] = record
-			_ = service.appendLocked("stale", record)
-			service.clearKeySecretLocked(operationID)
+			if err := service.invalidateProposalLocked(ctx, &record, "stale_revision"); err != nil {
+				return result, err
+			}
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "stale_revision"}, ErrControlStaleRevision
 		}
 	}
@@ -1549,7 +1627,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "busy_active_run"}, ErrControlBusy
 		}
 	}
-	permissionReduction := spacePermissionReduction(record)
+	permissionReduction := spacePermissionReduction(record) || record.Operation.Kind == ControlTelegramAccess
 	providerSwitch := record.Operation.Kind == ControlSetProviderEnabled || record.Operation.Kind == ControlSetPublicWeb || len(record.After["config.public_web"]) != 0
 	if !permissionReduction {
 		global := false
@@ -1591,6 +1669,18 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 		if errors.Is(err, ErrControlMCPReentryRequired) {
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "mcp_reentry_required"}, err
 		}
+		if errors.Is(err, ErrUnknownResult) {
+			record.Operation.Status, record.Operation.ErrorCode = ControlPartiallyApplied, "apply_unknown"
+			record.Operation.Recovery = "Inspect saved resources and runtime evidence; do not retry an uncertain control commit."
+			service.operations[operationID] = record
+			_ = service.appendLocked("unknown", record)
+			if record.Operation.AttemptID != "" {
+				if attempt, loadErr := service.core.Store.GetAttempt(ctx, record.Operation.AttemptID); loadErr == nil {
+					_ = service.core.Store.markUnknown(ctx, attempt, "control commit outcome unknown")
+				}
+			}
+			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "apply_unknown", Recovery: record.Operation.Recovery}, err
+		}
 		record.Operation.Status = ControlFailed
 		record.Operation.ErrorCode = "apply_failed"
 		record.Operation.Recovery = "Inspect the current control state; no automatic retry was performed."
@@ -1598,6 +1688,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 		service.clearKeySecretLocked(operationID)
 		service.clearMCPProfileLocked(operationID)
 		_ = service.appendLocked("failed", record)
+		_ = service.settleInvalidProposal(ctx, record)
 		return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "apply_failed", Recovery: record.Operation.Recovery}, err
 	}
 	record.Operation.Status = ControlApplied
@@ -1727,6 +1818,9 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 	}
 	if record.Operation.Kind == ControlDeleteAttachment {
 		return service.applyAttachmentDelete(ctx, record)
+	}
+	if record.Operation.Kind == ControlTelegramAccess {
+		return service.applyTelegramAccess(ctx, record)
 	}
 	if isSpaceControl(record.Operation.Kind) {
 		return service.applySpaceControl(ctx, record)
@@ -2067,7 +2161,11 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		record.Arguments = json.RawMessage(`{}`)
 	}
 	config := cloneConfig(service.core.currentConfig())
-	if request.Kind == ControlDeleteAttachment {
+	if request.Kind == ControlTelegramAccess {
+		if err := service.buildTelegramAccess(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlDeleteAttachment {
 		if err := service.buildAttachmentDelete(ctx, &record); err != nil {
 			return controlRecord{}, err
 		}
@@ -3251,6 +3349,32 @@ func (service *ControlService) loadJournal() error {
 	}
 	if err := scanner.Err(); err != nil {
 		return ErrControlJournal
+	}
+	return service.expireDirectLocked(time.Now())
+}
+
+// Direct settings gestures have an absolute lifetime. Re-rendering a card or
+// restarting the Owner cannot extend it. Run-bound proposals keep their Run's
+// lifecycle and may obtain a new confirmation credential separately.
+func (service *ControlService) expireDirectLocked(now time.Time) error {
+	for id, record := range service.operations {
+		op := record.Operation
+		if op.Status != ControlPending || op.Authorization != ControlUserDirect || op.AttemptID != "" {
+			continue
+		}
+		created, err := time.Parse(time.RFC3339Nano, op.CreatedAt)
+		if err != nil || now.Before(created.Add(controlConfirmationTTL)) {
+			continue
+		}
+		record.Operation.Status, record.Operation.ErrorCode = ControlStale, "expired"
+		record.Operation.Recovery = "The direct setting request expired; start a new setting operation."
+		if err := service.appendLocked("expired", record); err != nil {
+			return err
+		}
+		service.operations[id] = record
+		delete(service.confirmations, id)
+		service.clearKeySecretLocked(id)
+		service.clearMCPProfileLocked(id)
 	}
 	return nil
 }
