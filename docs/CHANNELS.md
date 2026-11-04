@@ -58,8 +58,11 @@ again. Old pairing records and `/start` parameters never grant access.
 
 ## v7.13 running inputs
 
-Running-task steering, FIFO `/queue`, `/inputs`, `/queue-cancel`, explicit
-queue pause/resume and `/history` message branches use the same TaskService.
+Running-task steering uses plain Telegram messages; `/inputs` shows received
+supplements. Telegram does not offer a FIFO queue: another member waits until
+the current request ends. GUI/CLI keep FIFO inputs with explicit promotion to
+current-task guidance. Input adoption and `/history` message branches use the
+same TaskService.
 See [continuous execution and context](CONTEXT_AND_CONTINUOUS_EXECUTION.md).
 TG multi-account/group changes in this version are simulated, not new live
 platform acceptance.

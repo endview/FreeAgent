@@ -123,7 +123,8 @@ restore --source <backup-directory> --data-dir <new-directory>
 Public Web (Linux, default off): public status|configure|disable|password|clear-locks.
   Passwords use hidden input or --password-stdin; HTTPS proxy setup: docs/PUBLIC_WEB.md.
 
-Chat commands: /steer <text> /queue [text] /inputs /queue-pause /queue-resume /queue-cancel <key> /branch <message-id> [text] /branch-reply <message-id> /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /history /sessions /resume <number> /new /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
+Chat commands: /guide [number|key] /steer <text> /queue [text] /inputs /queue-pause /queue-resume /queue-cancel <key> /branch <message-id> [text] /branch-reply <message-id> /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /history /sessions /resume <number> /new /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
+While running, terminal text is queued; /guide moves the next queued message into the current task.
 Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes and sandboxed commands, and Full access auto-runs enabled modifying tools. On Windows commands run in an AppContainer sandbox; Full access runs them on the host. MCP and loopback HTTP are not sandboxed.
 Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
 		return err

@@ -21,7 +21,10 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 		}
 		text := "已排队，将在当前任务正常完成后处理。"
 		if action == "steer" {
-			text = "插话已接收；已启动的工具保留实际结果，尚未启动的旧计划将在安全边界取消。"
+			text = "收到补充，接下来会处理。"
+			if run.Status == "stopped" || run.Status == "unknown" || run.Status == "limited" {
+				text = "补充已保留；请先处理当前暂停的任务，再明确继续。"
+			}
 		}
 		if item.Status == "target_ended" {
 			text = "目标 Run 已结束，输入保留；请明确作为新请求发送。"
@@ -40,6 +43,9 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 		if active.Permission != nil && active.Permission.PersonID == e.Person {
 			action = "steer"
 		}
+		if e.Target.Source == SpaceSourceTelegram && action == "queue" {
+			return s.plain(ctx, e, "当前任务由其他成员发起，请等它结束后再发送。")
+		}
 		return queue(active, action)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -53,6 +59,9 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 	s.mu.Unlock()
 	if dispatch != nil {
 		if err := dispatch(input.ConversationID, call); errors.Is(err, ErrActiveRun) {
+			if e.Target.Source == SpaceSourceTelegram {
+				return s.plain(ctx, e, "上一条消息还在启动，请稍后补充。")
+			}
 			return queue(Run{}, "queue")
 		} else {
 			return err
@@ -60,6 +69,9 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 	}
 	result, err := call(ctx)
 	if errors.Is(err, ErrActiveRun) {
+		if e.Target.Source == SpaceSourceTelegram {
+			return s.plain(ctx, e, "当前任务正在切换，请稍后补充。")
+		}
 		return queue(Run{}, "queue")
 	}
 	if result.Run.ID != "" {
@@ -69,6 +81,9 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 }
 
 func (s *channelSession) inputCommand(ctx context.Context, e channelEvent, space Space, chat, cmd string, args []string, effective PermissionMode) (bool, error) {
+	if e.Target.Source == SpaceSourceTelegram && (cmd == "/queue" || strings.HasPrefix(cmd, "/queue-")) {
+		return true, s.plain(ctx, e, "TG 不使用排队。运行时直接发送补充即可；新任务请等本轮结束后再发送。")
+	}
 	switch cmd {
 	case "/inputs", "/queue":
 		if len(args) == 0 {
@@ -77,9 +92,13 @@ func (s *channelSession) inputCommand(ctx context.Context, e channelEvent, space
 				return true, err
 			}
 			var text strings.Builder
-			fmt.Fprintf(&text, "队列暂停=%v\n", state.Paused)
+			if e.Target.Source == SpaceSourceTelegram {
+				text.WriteString("补充消息：\n")
+			} else {
+				fmt.Fprintf(&text, "队列暂停=%v\n", state.Paused)
+			}
 			for _, i := range state.Entries {
-				if i.Principal == "channel:"+e.Person {
+				if i.Principal == "channel:"+e.Person && (e.Target.Source != SpaceSourceTelegram || i.Action == "steer") {
 					fmt.Fprintf(&text, "%s %s %s\n", i.Key, i.Action, i.Status)
 				}
 			}

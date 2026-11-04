@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/endview/freeagent/internal/harness"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,37 @@ func chatInputs(ctx context.Context, tasks *remoteChat, line string, chat *strin
 		return false, nil
 	}
 	switch words[0] {
+	case "/guide":
+		if len(words) > 2 {
+			return true, fmt.Errorf("/guide [queued-number-or-key]")
+		}
+		state, err := tasks.Inputs(ctx, *chat)
+		if err != nil {
+			return true, err
+		}
+		pending := queuedCLIInputs(state)
+		if len(pending) == 0 {
+			return true, fmt.Errorf("no queued messages are waiting")
+		}
+		key := pending[0].Key
+		if len(words) == 2 {
+			key = words[1]
+			if n, err := strconv.Atoi(key); err == nil {
+				if n < 1 || n > len(pending) {
+					return true, fmt.Errorf("queued message number must be between 1 and %d", len(pending))
+				}
+				key = pending[n-1].Key
+			}
+		}
+		run, err := tasks.Latest(ctx, *chat)
+		if err != nil {
+			return true, err
+		}
+		item, err := tasks.SteerInput(ctx, *chat, key, run.ID)
+		if err == nil {
+			fmt.Fprintf(out, "Guidance received for the current task; input=%s status=%s\n", item.Key, item.Status)
+		}
+		return true, err
 	case "/inputs", "/queue":
 		if len(words) == 1 {
 			state, err := tasks.Inputs(ctx, *chat)
@@ -23,6 +55,9 @@ func chatInputs(ctx context.Context, tasks *remoteChat, line string, chat *strin
 				return true, err
 			}
 			fmt.Fprintf(out, "Queue paused=%v\n", state.Paused)
+			for index, input := range queuedCLIInputs(state) {
+				fmt.Fprintf(out, "  %d. %s  [/guide %d]\n", index+1, input.Prompt, index+1)
+			}
 			for _, i := range state.Entries {
 				fmt.Fprintf(out, "%s %s %s: %s\n", i.Key, i.Action, i.Status, i.Prompt)
 			}
@@ -115,26 +150,27 @@ func (remote *remoteChat) liveInput(ctx context.Context, chat, key, runID, line 
 	if line == "/stop" {
 		return remote.CancelRequest(ctx, chat, key)
 	}
-	if strings.HasPrefix(line, "/") && !strings.HasPrefix(line, "/steer ") && !strings.HasPrefix(line, "/queue ") && line != "/inputs" && line != "/queue" && !strings.HasPrefix(line, "/queue-") {
-		return fmt.Errorf("while running use plain steering text, /queue <text>, /inputs or /stop; control commands are not model input")
+	if strings.HasPrefix(line, "/") && !strings.HasPrefix(line, "/steer ") && !strings.HasPrefix(line, "/guide ") && line != "/guide" && !strings.HasPrefix(line, "/queue ") && line != "/inputs" && line != "/queue" && !strings.HasPrefix(line, "/queue-") {
+		return fmt.Errorf("while running, text is queued; use /guide [number], /steer <text>, /inputs or /stop")
 	}
 	var attachments []string
 	if handled, err := chatInputs(ctx, remote, line, &chat, &attachments, remote.stderr); handled {
 		return err
 	}
-	if runID == "" {
-		status, err := remote.Status(ctx, chat, key)
-		if err != nil {
-			return err
-		}
-		if !status.Found {
-			return fmt.Errorf("Run has not started; input retained: %s", line)
-		}
-		runID = status.Run.ID
-	}
-	item, err := remote.AcceptInput(ctx, chat, harness.InputCommand{Action: "steer", RunID: runID, RequestKey: fmt.Sprintf("steer-%x", time.Now().UnixNano()), Prompt: line})
+	item, err := remote.AcceptInput(ctx, chat, harness.InputCommand{Action: "queue", RequestKey: fmt.Sprintf("input-%x", time.Now().UnixNano()), Prompt: line})
 	if err == nil {
-		fmt.Fprintf(remote.stderr, "Steering input %s; key=%s\n", item.Status, item.Key)
+		fmt.Fprintf(remote.stderr, "Queued: %s\nUse /guide to guide with the next queued message, or /inputs to choose another. key=%s\n", line, item.Key)
 	}
 	return err
+}
+
+func queuedCLIInputs(state harness.InputState) []harness.PendingInput {
+	items := make([]harness.PendingInput, 0)
+	for _, input := range state.Entries {
+		if input.Action == "queue" && input.Status == "pending" {
+			items = append(items, input)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].MessageID < items[j].MessageID })
+	return items
 }

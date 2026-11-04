@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestTelegramSteeringAndQueueKeepVerifiedRequesterAndDeliveryOrigin(t *testing.T) {
+func TestTelegramSteeringKeepsVerifiedRequesterWithoutQueueing(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int32
 	r, tasks, _, _, _ := telegramRuntimeFixture(t, modelFunc(func(ctx context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
@@ -67,19 +67,15 @@ func TestTelegramSteeringAndQueueKeepVerifiedRequesterAndDeliveryOrigin(t *testi
 	if err := r.HandleUpdate(t.Context(), telegramMessageUpdate(12, 12, 90, 7, "/queue later task", "private")); err != nil {
 		t.Fatal(err)
 	}
-	second := <-done
-	if err := <-errs; err != nil {
-		t.Fatal(err)
+	if calls.Load() != 2 {
+		t.Fatal("Telegram queue command dispatched a new task")
 	}
-	if second.Run.Status != "completed" || second.Run.Prompt != "later task" {
-		t.Fatalf("second=%s prompt=%q", second.Run.Status, second.Run.Prompt)
-	}
-	run, origin, err := tasks.ChannelRun(t.Context(), second.Run.ID)
+	run, origin, err := tasks.ChannelRun(t.Context(), first.Run.ID)
 	if err != nil || origin == nil || origin.ChatID != "90" || run.Permission.PersonID != "telegram:user:7" || origin.InputMessageID == 0 {
 		t.Fatal("queued channel identity lost", err)
 	}
-	if err := r.Deliver(t.Context(), second); err != nil {
-		t.Fatal("queued result could not be delivered", err)
+	if err := r.Deliver(t.Context(), first); err != nil {
+		t.Fatal("steered result could not be delivered", err)
 	}
 	before := calls.Load()
 	if err := r.HandleUpdate(t.Context(), telegramMessageUpdate(12, 12, 90, 7, "/queue later task", "private")); err != nil {
@@ -91,14 +87,14 @@ func TestTelegramSteeringAndQueueKeepVerifiedRequesterAndDeliveryOrigin(t *testi
 	messages, _ := tasks.Messages(t.Context(), first.Run.ConversationID)
 	count := 0
 	for _, m := range messages {
-		if m.RunID == second.Run.ID && m.Role == "user" {
+		if m.RunID == first.Run.ID && m.Role == "user" {
 			count++
 			if strings.HasPrefix(m.Content, "/queue") {
 				t.Fatal("Owner command reached model")
 			}
 		}
 	}
-	if count != 1 {
-		t.Fatal("received queue message was duplicated", count)
+	if count != 2 {
+		t.Fatal("received steering message was lost or duplicated", count)
 	}
 }

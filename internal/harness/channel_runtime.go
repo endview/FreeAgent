@@ -316,6 +316,9 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		}
 		return s.plain(ctx, e, text)
 	case "/help", "/start":
+		if e.Target.Source == SpaceSourceTelegram {
+			return s.plain(ctx, e, "运行中直接发送消息即可补充当前任务。\n/mode /status /stop /continue /abandon /compact /save-reply /inputs /history /branch 消息ID；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
+		}
 		return s.plain(ctx, e, "/mode /status /stop /continue /abandon /compact /save-reply /steer 文本 /queue 文本 /inputs /queue-cancel key /queue-resume /history /branch 消息ID；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
 	case "/status":
 		run, err := s.tasks.Latest(ctx, chat)

@@ -938,6 +938,10 @@ func userError(err error) (string, string) {
 		return "capability", "当前模型能力或上下文限额不足。"
 	case errors.Is(err, harness.ErrActiveRun):
 		return "busy", "存在未完成任务，请先继续、停止或明确结束。"
+	case errors.Is(err, harness.ErrInputTargetEnded):
+		return "input_target_ended", "本轮已经结束或暂停，这条消息仍保留在待发列表中。"
+	case errors.Is(err, harness.ErrInputNotPending):
+		return "input_not_pending", "这条消息已发送或取消，请查看最新记录。"
 	case errors.Is(err, sql.ErrNoRows):
 		return "missing", "记录不存在，请刷新会话。"
 	case errors.Is(err, context.Canceled):

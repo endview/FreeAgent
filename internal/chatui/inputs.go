@@ -26,6 +26,7 @@ func (server *Server) inputsAPI(writer http.ResponseWriter, request *http.Reques
 		Operation string               `json:"operation"`
 		Command   harness.InputCommand `json:"command"`
 		Key       string               `json:"key"`
+		RunID     string               `json:"run_id"`
 	}
 	if !server.readBody(writer, request, &body) {
 		return
@@ -41,6 +42,14 @@ func (server *Server) inputsAPI(writer http.ResponseWriter, request *http.Reques
 		server.notify("input_changed", body.Chat, item.Status)
 		if body.Command.Action == "queue" {
 			server.advanceQueue(body.Chat)
+		}
+	case "steer":
+		item, err := server.tasks.SteerInput(request.Context(), body.Chat, body.Key, body.RunID)
+		if err != nil {
+			server.fail(writer, err)
+		} else {
+			server.writeJSON(writer, http.StatusOK, item)
+			server.notify("input_changed", body.Chat, item.Status)
 		}
 	case "cancel":
 		item, err := server.tasks.CancelInput(request.Context(), body.Chat, body.Key)
@@ -60,7 +69,7 @@ func (server *Server) inputsAPI(writer http.ResponseWriter, request *http.Reques
 			server.advanceQueue(body.Chat)
 		}
 	default:
-		server.writeError(writer, http.StatusBadRequest, "input", "请选择 accept、cancel、pause 或 resume。")
+		server.writeError(writer, http.StatusBadRequest, "input", "请选择 accept、steer、cancel、pause 或 resume。")
 	}
 }
 

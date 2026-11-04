@@ -82,4 +82,54 @@ func TestPublicInputsRequireAuthenticationAndSeparateLocalCapabilities(t *testin
 	if w := f.request(t, "GET", "/api/attach/inputs?conversation_id=x", nil, nil); w.Code != 404 {
 		t.Fatal("local attach route exposed", w.Code)
 	}
+	if w := f.request(t, "POST", "/api/remote/inputs", strings.NewReader(`{"conversation_id":"x","operation":"steer","key":"q","run_id":"r"}`), map[string]string{"X-FreeAgent-CSRF": ""}); w.Code != 403 {
+		t.Fatal("queued guidance accepted without CSRF", w.Code)
+	}
+}
+
+func TestOwnerQueuedInputCanBeGuidedWithoutStartingAnotherRun(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int32
+	ui := setupUI(t, fixtureModel(func(ctx context.Context, _ harness.ModelRequest, _ func(string)) (harness.ModelResponse, error) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return harness.ModelResponse{}, ctx.Err()
+			}
+		}
+		return harness.ModelResponse{Content: "guided"}, nil
+	}))
+	chat := ui.create(t)
+	code, raw := ui.request(t, "POST", "/api/chats/"+chat+"/submit", map[string]string{"request_key": "original", "prompt": "first task"})
+	if code != 202 {
+		t.Fatalf("submit %d %s", code, raw)
+	}
+	<-entered
+	run, err := ui.tasks.Latest(t.Context(), chat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, raw = ui.request(t, "POST", "/api/attach/inputs", map[string]any{"conversation_id": chat, "operation": "accept", "command": harness.InputCommand{Action: "queue", RequestKey: "queued", Prompt: "correct this task"}})
+	if code != 202 {
+		t.Fatalf("queue %d %s", code, raw)
+	}
+	code, raw = ui.request(t, "POST", "/api/attach/inputs", map[string]string{"conversation_id": chat, "operation": "steer", "key": "queued", "run_id": run.ID})
+	if code != 200 {
+		t.Fatalf("guide %d %s", code, raw)
+	}
+	close(release)
+	deadline := time.Now().Add(6 * time.Second)
+	for time.Now().Before(deadline) {
+		last, _ := ui.tasks.Latest(t.Context(), chat)
+		if last.Status == "completed" {
+			if last.ID != run.ID || calls.Load() != 2 {
+				t.Fatal("guidance started a separate request", last.ID, calls.Load())
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("guidance did not complete in the current Run")
 }

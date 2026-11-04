@@ -14,6 +14,16 @@ export function windowText(context) {
   return `${declared}；本地请求上限 ${w.byte_limit} 字节；自动触发 ${w.automatic_percent}%。\n${usage}\n${reported}`;
 }
 
-export function inputDisposition(busy, action = 'steer') {
-  return busy ? (action === 'queue' ? 'queue' : 'steer') : action === 'queue' ? 'queue' : 'send';
+export function inputDisposition(busy, action) {
+  if (action === 'queue') return 'queue';
+  if (action === 'steer') return busy ? 'steer' : 'send';
+  return busy ? 'queue' : 'send';
+}
+
+export function inputLabel(input) {
+  if (input.status === 'pending') return input.action === 'queue' ? '等待发送' : '引导已收到，等待处理';
+  if (input.status === 'adopted') return input.action === 'queue' ? '已发送' : '已用于当前任务';
+  if (input.status === 'cancelled') return '已取消';
+  if (input.status === 'target_ended') return '当前任务已结束，消息已保留';
+  return input.status;
 }

@@ -22,6 +22,11 @@ func (c *Client) CancelInput(ctx context.Context, chat, key string) (harness.Pen
 	err := c.request(ctx, http.MethodPost, "/api/attach/inputs", map[string]string{"conversation_id": chat, "operation": "cancel", "key": key}, &result)
 	return result, err
 }
+func (c *Client) SteerInput(ctx context.Context, chat, key, runID string) (harness.PendingInput, error) {
+	var result harness.PendingInput
+	err := c.request(ctx, http.MethodPost, "/api/attach/inputs", map[string]string{"conversation_id": chat, "operation": "steer", "key": key, "run_id": runID}, &result)
+	return result, err
+}
 func (c *Client) PauseQueue(ctx context.Context, chat string, paused bool) error {
 	action := "resume"
 	if paused {

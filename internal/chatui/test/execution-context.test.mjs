@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activityTime, windowText, inputDisposition } from '../src/execution-context.mjs';
+import { activityTime, windowText, inputDisposition, inputLabel } from '../src/execution-context.mjs';
 import { apiPath } from '../src/public-auth.mjs';
 import { turnSignature } from '../src/state.mjs';
 
@@ -15,10 +15,17 @@ test('window declaration, estimated bytes/tokens and reported usage stay separat
   assert.match(text,/窗口未知/);assert.match(text,/估算 350/);assert.match(text,/1000 字节/);assert.match(text,/实际返回：输入 222/);assert.match(text,/已有更新消息/);
 });
 test('busy input chooses steering or FIFO queue, and public transport only exposes typed input/branch routes',()=>{
-  assert.equal(inputDisposition(true),'steer');assert.equal(inputDisposition(true,'queue'),'queue');assert.equal(inputDisposition(false),'send');
+  assert.equal(inputDisposition(true),'queue');assert.equal(inputDisposition(true,'steer'),'steer');assert.equal(inputDisposition(false),'send');
   assert.equal(apiPath('attach/inputs?conversation_id=c',true),'/api/remote/inputs?conversation_id=c');
   assert.equal(apiPath('attach/branch',true),'/api/remote/branch');
   assert.throws(()=>apiPath('attach/backup',true));
+});
+
+test('received guidance is distinct from adopted guidance and cancelled messages',()=>{
+  assert.equal(inputLabel({action:'queue',status:'pending'}),'等待发送');
+  assert.equal(inputLabel({action:'steer',status:'pending'}),'引导已收到，等待处理');
+  assert.equal(inputLabel({action:'steer',status:'adopted'}),'已用于当前任务');
+  assert.equal(inputLabel({action:'queue',status:'cancelled'}),'已取消');
 });
 test('timing arrival updates the same saved activity row',()=>{
   const turn={key:'r',activity:[{key:'a',status:'finished'}]};const after=structuredClone(turn);after.activity[0].duration_ms=40;

@@ -12,6 +12,7 @@ import (
 var ErrInputTargetEnded = errors.New("harness: steering target has ended; input retained, no new task started")
 var ErrInputPending = errors.New("harness: user steering must be adopted before dispatch")
 var ErrQueuePaused = errors.New("harness: input queue is paused; inspect and resume explicitly")
+var ErrInputNotPending = errors.New("harness: input has already been sent or cancelled; inspect its saved state")
 
 type InputCommand struct {
 	Action      string   `json:"action"`
@@ -344,6 +345,79 @@ func (tasks *TaskService) CancelInput(ctx context.Context, chat, key string) (Pe
 	return i, tx.Commit()
 }
 
+// SteerInput moves one accepted queue entry into the specified current Run.
+// Its message, request key and authorization remain the same. Consumption,
+// cancellation and this operation compete in the same transaction boundary.
+func (tasks *TaskService) SteerInput(ctx context.Context, chat, key, runID string) (PendingInput, error) {
+	if ctx == nil || tasks == nil || tasks.core == nil || chat == "" || key == "" || runID == "" {
+		return PendingInput{}, ErrRequestKey
+	}
+	conversation, err := tasks.core.Store.GetConversation(ctx, chat)
+	if err != nil {
+		return PendingInput{}, err
+	}
+	if conversation.Workspace != tasks.Config().Workspace {
+		return PendingInput{}, ErrConversationSpace
+	}
+	store := tasks.core.Store
+	store.inputMu.Lock()
+	defer store.inputMu.Unlock()
+	// Validate the saved authority before the write transaction, since these
+	// checks read the Store through its normal connection.
+	input, err := loadInput(ctx, store.db, chat, key)
+	if err != nil {
+		return input, err
+	}
+	principal := InteractivePrincipal(ctx, "local")
+	if input.Principal != principal && principal != "local" {
+		return PendingInput{}, ErrPermissionDenied
+	}
+	if _, err := tasks.validateQueuedInput(ctx, chat, input); err != nil {
+		return input, err
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return input, err
+	}
+	defer tx.Rollback()
+	input, err = loadInput(ctx, tx, chat, key)
+	if err != nil {
+		return input, err
+	}
+	if input.Action == "steer" && input.TargetRun == runID {
+		return input, nil // A lost response never turns this back into a new input.
+	}
+	if input.Action != "queue" || input.Status != "pending" {
+		return input, ErrInputNotPending
+	}
+	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=? AND conversation_id=?`, runID, chat))
+	if err != nil {
+		return input, err
+	}
+	if run.Status != "running" {
+		return input, ErrInputTargetEnded
+	}
+	if input.Person != "" && (run.Permission == nil || run.Permission.PersonID != input.Person || input.Channel == nil || channelOriginFromJSON(run.ConfigJSON) == nil || channelOriginFromJSON(run.ConfigJSON).ChannelTarget != input.Channel.ChannelTarget) {
+		return PendingInput{}, ErrPermissionDenied
+	}
+	if input.Remote != nil {
+		var raw string
+		var original PublicEntry
+		if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "run/remote/"+run.ID).Scan(&raw); err != nil || json.Unmarshal([]byte(raw), &original) != nil || original.Principal != input.Remote.Principal {
+			return PendingInput{}, ErrPermissionDenied
+		}
+	}
+	input.Action, input.TargetRun = "steer", run.ID
+	if err := saveInput(ctx, tx, input); err != nil {
+		return input, err
+	}
+	if err := tx.Commit(); err != nil {
+		return input, err
+	}
+	tasks.inputEvent(input)
+	return input, nil
+}
+
 func (tasks *TaskService) PauseQueue(ctx context.Context, chat string, paused bool) error {
 	if ctx == nil || tasks == nil || tasks.core == nil || tasks.core.Store == nil {
 		return errors.New("harness: task service and context are required")
@@ -403,29 +477,10 @@ func (tasks *TaskService) RunQueued(ctx context.Context, chat string) (RunResult
 		ctx = WithPublicEntry(ctx, input.Remote.Principal, input.Remote.IP)
 	}
 	ctx = WithAttachmentIdentity(ctx, input.Principal)
-	config := tasks.Config()
-	safety := string(mustJSON(config))
-	core := tasks.core.runCopy()
-	binding, err := core.newBinding(config, input.Binding.ID)
-	if err != nil || contentHash([]byte(safety)) != input.ConfigHash || string(mustJSON(binding)) != string(mustJSON(input.Binding)) {
+	core, err := tasks.validateQueuedInput(ctx, chat, input)
+	if err != nil {
 		_ = tasks.PauseQueue(ctx, chat, true)
-		return RunResult{}, errors.Join(ErrConfigChanged, err)
-	}
-	if err := core.resolvePermission(ctx, chat, "", false); err != nil {
 		return RunResult{}, err
-	}
-	if input.Channel != nil {
-		if err := core.resolveRequestPermission(ctx, chat, input.Person, input.Channel.Source); err != nil {
-			return RunResult{}, err
-		}
-	}
-	if input.Remote != nil {
-		core.permission.Mode = lowerPermission(core.permission.Mode, config.PublicWeb.Effective().MaxPermission)
-	}
-	profile, err := buildExecutionProfile(config, *core.permission)
-	if err != nil || contentHash(mustJSON(profile)) != input.ProfileHash {
-		_ = tasks.PauseQueue(ctx, chat, true)
-		return RunResult{}, errors.Join(ErrPermissionRevoked, err)
 	}
 	var body string
 	if err := core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE id=?`, input.MessageID).Scan(&body); err != nil {
@@ -442,6 +497,32 @@ func (tasks *TaskService) RunQueued(ctx context.Context, chat string) (RunResult
 	off := DefaultCollaborationSettings()
 	off.Mode = "off"
 	return tasks.submitWithOptions(ctx, chat, input.Key, message.Content, RunOptions{inputKey: input.Key, ModelID: input.Binding.ID, Permission: input.Permission, ConfirmFullAccess: true, Attachments: ids, channel: input.Channel, personID: input.Person, Capabilities: input.Capabilities, Collaboration: &off})
+}
+
+func (tasks *TaskService) validateQueuedInput(ctx context.Context, chat string, input PendingInput) (*Service, error) {
+	config := tasks.Config()
+	core := tasks.core.runCopy()
+	core.Config = config
+	binding, err := core.newBinding(config, input.Binding.ID)
+	if err != nil || contentHash(mustJSON(config)) != input.ConfigHash || string(mustJSON(binding)) != string(mustJSON(input.Binding)) {
+		return nil, errors.Join(ErrConfigChanged, err)
+	}
+	if err := core.resolvePermission(ctx, chat, "", false); err != nil {
+		return nil, err
+	}
+	if input.Channel != nil {
+		if err := core.resolveRequestPermission(ctx, chat, input.Person, input.Channel.Source); err != nil {
+			return nil, err
+		}
+	}
+	if input.Remote != nil {
+		core.permission.Mode = lowerPermission(core.permission.Mode, config.PublicWeb.Effective().MaxPermission)
+	}
+	profile, err := buildExecutionProfile(config, *core.permission)
+	if err != nil || contentHash(mustJSON(profile)) != input.ProfileHash {
+		return nil, errors.Join(ErrPermissionRevoked, err)
+	}
+	return &core, nil
 }
 
 func pendingSteer(ctx context.Context, tx *sql.Tx, run string) (bool, error) {

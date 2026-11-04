@@ -19,7 +19,7 @@ import { commandEntries, commandQuery, filterCommands, commandNeedsInput, comman
 import { installDesktopBridge, setDesktopBusy, notifyDesktopAttention, selectDesktopFolder, selectDesktopFile } from './desktop.mjs';
 import { approvalHTML, approvalRawHTML } from './approval.mjs';
 import { bindLayoutResizers } from './layout.mjs';
-import { activityTime, windowText, inputDisposition } from './execution-context.mjs';
+import { activityTime, windowText, inputDisposition, inputLabel } from './execution-context.mjs';
 import { summaryByteLimit, contextActions, contextStatus } from './context.mjs';
 import { channelSections } from './channels.mjs';
 import { spaceChatGroups, spaceSelection, publicationMessage } from './spaces.mjs';
@@ -68,7 +68,8 @@ const state = { env: null, chats: [], spaces: [], space: 'local', chat: '', draf
   extensions: null, extensionId: '', capabilityTab: 'mcp',
   commandMenuOpen: false, commandIndex: -1, pendingCommand: null, commandCatalog: [],
   permissions: null, settings: null, channels: null, permissionPageLoading: false, permissionRootDraft: null, permissionBlockedDraft: null,
-  context: null, contextBusy: false, contextChat: '', contextNotice: '' };
+  context: null, contextBusy: false, contextChat: '', contextNotice: '',
+  inputs: {entries: [], paused: false}, inputsChat: '', inputRevision: 0, inputMutation: false };
 let attachmentUploading = false;
 let sse, snapshotTimer, streamTimer, runTimer, refreshListTimer, offlineTimer, errorTimer = 0, errorRevision = 0, scrollProgram = false;
 let earlierObserver;
@@ -107,7 +108,7 @@ app.innerHTML = `
     <main>
       <header class="chat-header">
         ${button('menu', '会话列表', 'sidebar')}
-        <div class="heading"><div class="title-wrap"><h1 id="title">FreeAgent</h1><button id="rename-chat" class="icon" data-action="rename" title="重命名会话" aria-label="重命名会话" hidden>${icon('pencil')}</button></div><span id="connection" role="status" aria-live="polite">连接中</span></div>
+        <div class="heading"><div class="title-wrap"><h1 id="title">FreeAgent</h1><button id="rename-chat" class="icon" data-action="rename" title="重命名会话" aria-label="重命名会话" hidden>${icon('pencil-line')}</button></div><span id="connection" role="status" aria-live="polite">连接中</span></div>
         <div class="model-label"><button id="model-trigger" type="button" class="model-trigger" aria-haspopup="menu" aria-expanded="false"></button><div id="model-menu" class="model-menu" role="menu" hidden></div></div>
         <div class="permission-label"><button id="permission-trigger" type="button" class="model-trigger" aria-haspopup="menu" aria-expanded="false">${icon('shield-check')}<span>Ask</span></button><div id="permission-menu" class="model-menu" role="menu" hidden></div></div>
         ${button('refresh-cw', '刷新记录', 'refresh')}
@@ -136,6 +137,7 @@ app.innerHTML = `
       <footer class="composer">
         <div class="layout-resizer composer-resizer" data-layout-resizer="composer" role="separator" aria-orientation="horizontal" aria-label="调整输入框高度" tabindex="0"></div>
         <div id="memory-panel"></div><div id="attachment-drafts" aria-live="polite"></div>
+        <section id="pending-inputs" aria-label="待发消息" hidden></section>
         <div class="input-surface">
           <textarea id="prompt" aria-label="输入任务" placeholder="输入任务..." rows="3"></textarea>
           <div id="command-menu" class="model-menu command-menu" role="listbox" hidden></div>
@@ -144,7 +146,7 @@ app.innerHTML = `
             ${button('pencil-line', '编辑草稿', 'edit', 'aria-pressed="true"')}
             ${button('eye', '预览草稿', 'preview', 'aria-pressed="false"')}
             <button type="button" class="icon" data-action="attachment-pick" aria-label="添加文本或图片" title="添加文本或图片">${icon('file-plus')}</button><input id="attachment-input" type="file" multiple accept="${inputAccept}" hidden>
-          </div><button id="capability-trigger" type="button" class="icon capability-trigger" title="本对话能力" aria-label="本对话能力" aria-haspopup="menu" aria-expanded="false">${icon('blocks')}<span id="capability-count"></span></button><div id="capability-menu" class="model-menu capability-menu" role="menu" hidden></div><span id="input-state"></span><select id="input-disposition" aria-label="发送方式"><option value="steer">运行中插话</option><option value="queue">排队</option></select><button type="button" class="text-action" data-action="inputs-open">输入队列</button><button id="send" class="send" data-action="send" title="发送" aria-label="发送">${icon('arrow-up')}<span id="send-label" class="send-label">发送</span></button></div>
+          </div><button id="capability-trigger" type="button" class="icon capability-trigger" title="本对话能力" aria-label="本对话能力" aria-haspopup="menu" aria-expanded="false">${icon('blocks')}<span id="capability-count"></span></button><div id="capability-menu" class="model-menu capability-menu" role="menu" hidden></div><span id="input-state"></span><button type="button" class="text-action" data-action="inputs-open">待发消息</button><button id="send" class="send" data-action="send" title="发送" aria-label="发送">${icon('arrow-up')}<span id="send-label" class="send-label">发送</span></button></div>
         </div>
       </footer>
     </main>
@@ -198,7 +200,7 @@ app.innerHTML = `
       <footer><button class="primary" data-action="command-start">${icon('play')}启动</button></footer>
     </details>
   </dialog>
-  <dialog id="inputs-dialog" aria-label="输入队列"><header><h2>插话与队列</h2><button data-action="inputs-close">关闭</button></header><p id="inputs-state"></p><div id="inputs-list"></div><footer><button data-action="inputs-refresh">刷新</button><button data-action="inputs-pause">暂停队列</button><button data-action="inputs-resume">恢复队列</button></footer></dialog>
+  <dialog id="inputs-dialog" aria-label="待发消息"><header><h2>待发消息</h2><button data-action="inputs-close">关闭</button></header><p id="inputs-state"></p><div id="inputs-list"></div><footer><button data-action="inputs-refresh">刷新</button><button data-action="inputs-pause">暂停发送</button><button data-action="inputs-resume">恢复发送</button></footer></dialog>
   <dialog id="context-dialog" aria-labelledby="context-title">
     <header><h2 id="context-title">上下文</h2>${button('x', '关闭上下文', 'context-close')}</header>
     <p id="context-status" role="status" aria-live="polite"></p>
@@ -1683,12 +1685,13 @@ function controls() {
   const turn = latest(), pending = state.pending;
   const noModels = !hasModels(state.env);
   const mode = submitMode(turn, state.busy || state.elsewhere);
-  $('#send').disabled = !state.online || noModels || !hasView() || state.mutation || state.creating || !!pending ||
-    (mode === 'blocked' && !state.busy && $('#input-disposition').value !== 'queue') || attachmentUploading || !$('#prompt').value.trim();
+  $('#send').disabled = !state.online || noModels || !hasView() || state.mutation || state.inputMutation || state.creating || !!pending ||
+    (mode === 'blocked' && !state.busy) || attachmentUploading || !$('#prompt').value.trim();
   $('#send').classList.toggle('end-send', mode === 'end_and_send');
-  $('#send').title = mode === 'end_and_send' ? '结束并发送' : '发送';
-  $('#send').setAttribute('aria-label', mode === 'end_and_send' ? '结束并发送' : '发送');
-  $('#send-label').textContent = state.busy ? ($('#input-disposition').value === 'queue' ? '排队' : '插话') : $('#input-disposition').value==='queue' ? '排队' : mode === 'end_and_send' ? '结束并发送' : '发送';
+  const sendLabel = state.busy ? '排队发送' : mode === 'end_and_send' ? '结束并发送' : '发送';
+  $('#send').title = sendLabel;
+  $('#send').setAttribute('aria-label', sendLabel);
+  $('#send-label').textContent = sendLabel;
   $('#model-trigger').disabled = !state.env || noModels || state.creating;
   $('#permission-trigger').disabled = !state.env || state.creating;
   $('#context-trigger').disabled = !state.chat || !state.online || state.creating;
@@ -1698,7 +1701,8 @@ function controls() {
   $('#input-state').innerHTML = noModels ? '请先添加 Key 和模型' :
     state.elsewhere && state.activeChat && state.activeChat !== state.chat
       ? `<button class="text-action active-chat-link" data-chat="${esc(state.activeChat)}">前台名额已满，请等待运行结束</button>`
-      : state.elsewhere ? '前台名额已满，请等待运行结束' : pending ? '正在核对提交' : state.creating ? '正在创建对话' : '';
+      : state.elsewhere ? '前台名额已满，请等待运行结束' : pending ? '正在核对提交' : state.creating ? '正在创建对话' : state.busy ? '新消息将排队，也可发送后引导当前任务' : '';
+  renderInputs();
   const actions = [];
   if (state.busy) actions.push(button('square', state.stopping ? '正在停止' : '停止任务', 'stop',
     state.stopping || state.mutation || !state.online ? 'disabled' : ''));
@@ -1787,6 +1791,9 @@ function resetView() {
   state.activeChats = [];
   state.runAnchor = null;
   state.runNotice = '';
+  state.inputs = {entries: [], paused: false};
+  state.inputsChat = '';
+  state.inputRevision++;
   state.endIntent = 'end';
   state.endPrompt = '';
   state.earlierLoading = false;
@@ -2030,6 +2037,7 @@ async function snapshot(before = '') {
   renderStream();
   if (!before) loadMemory().catch((failure) => error(failure.message));
   controls();
+  if (!before && (state.inputsChat !== chat || state.inputs.entries.some(input => input.status === 'pending'))) refreshInputs().catch(() => {});
   restoreAnchor(anchor, !!before);
   observeEarlier();
   ensureApprovalPreview();
@@ -2227,14 +2235,14 @@ function connectEvents() {
   sse?.close();
   sse = eventStream('/api/events', requestHeaders({}, false), {
 	unauthorized: () => recoverPublicSession(),
-  open: () => { connection(true); queueSnapshot(); },
+  open: () => { connection(true); queueSnapshot(); refreshInputs().catch(() => {}); },
   error: () => connection(false),
   message: (message) => {
     let event;
     try { event = JSON.parse(message.data); } catch { error('事件格式无效，请刷新记录。'); return; }
     if (event.kind === 'heartbeat') return;
     if (event.kind === 'command_changed' && $('#commands-dialog').open) refreshCommands().catch((failure) => error(failure.message));
-    if (event.kind === 'reconnect') { queueSnapshot(); return; }
+    if (event.kind === 'reconnect') { queueSnapshot(); refreshInputs().catch(() => {}); return; }
     if (event.kind === 'confirmation' || event.kind === 'control_confirmation') {
       if (!document.hasFocus()) setTitleAttention(true);
       notifyDesktopAttention(event.run_id);
@@ -2245,7 +2253,7 @@ function connectEvents() {
       if (event.kind !== 'model_text') queueSnapshot();
       return;
     }
-    if ((event.kind==='input_changed'||event.kind==='input_adopted') && $('#inputs-dialog').open) refreshInputs().catch(() => {});
+    if (event.kind==='input_changed'||event.kind==='input_adopted') refreshInputs().catch(() => {});
     if (event.kind === 'attachment_omitted') error(`本轮未发送历史图片：${event.message}。可重新选择原图。`);
     if (event.kind === 'request_error') error(event.message.slice(event.message.indexOf(': ') + 2));
     if (event.kind === 'context_compacting' && state.contextBusy) {
@@ -2405,7 +2413,7 @@ async function send() {
     await runContextAction('compact');
     return;
   }
-  if (inputDisposition(state.busy,$('#input-disposition').value)!=='send') {await submitDeferredInput(prompt);return;}
+  if (inputDisposition(state.busy)!=='send') {await submitDeferredInput(prompt);return;}
   if (new TextEncoder().encode(prompt).length > state.env.max_prompt_bytes) {
     error('任务超过当前输入限额，草稿已保留。');
     return;
@@ -2817,7 +2825,8 @@ document.addEventListener('click', async (event) => {
   const node = event.target.closest('button, [data-action]');
   if (!node || node.disabled) return;
   try {
-    if (node.dataset.cancelInput) {await api('attach/inputs',{conversation_id:state.chat,operation:'cancel',key:node.dataset.cancelInput});await refreshInputs();}
+    if (node.dataset.cancelInput) {await changeInput('cancel',node.dataset.cancelInput);}
+    else if (node.dataset.steerInput) {await changeInput('steer',node.dataset.steerInput,node.dataset.runId);}
     else if(node.dataset.branchMessage) {await branchMessage(node.dataset.branchMessage,node.dataset.branchMode);}
     else if (node.dataset.modelVision) { openVision(node.dataset.modelVision); }
     else if (node.dataset.attachmentDownload || node.dataset.attachmentPreview) {
@@ -3269,29 +3278,52 @@ async function saveVision(){
 }
 
 
+function renderInputs(){
+  const {entries, paused}=state.inputs;
+  const pending=entries.filter(input=>input.status==='pending').sort((a,b)=>a.message_id-b.message_id);
+  const row=input=>`<article class="pending-input"><div><strong>${esc(inputLabel(input))}</strong><p>${esc(input.prompt)}</p></div>${input.status==='pending'?`<div class="pending-input-actions">${input.action==='queue'&&state.busy?`<button type="button" data-steer-input="${esc(input.key)}" data-run-id="${esc(latest()?.key || '')}" ${state.inputMutation||!state.online?'disabled':''}>引导当前任务</button>`:''}<button type="button" data-cancel-input="${esc(input.key)}" ${state.inputMutation||!state.online?'disabled':''}>取消</button></div>`:''}</article>`;
+  const panel=$('#pending-inputs');
+  panel.hidden=!pending.length || state.inputsChat!==state.chat;
+  const content=`${paused?'<p class="subtle-note">待发消息已暂停，请处理当前任务后恢复。</p>':''}${pending.map(row).join('')}`;
+  if(panel.inputSignature!==content){panel.innerHTML=content;panel.inputSignature=content;}
+  $('#inputs-state').textContent=paused?'发送已暂停。处理当前任务后，可在这里恢复。':'待发消息将在本轮完成后依次发送。选择“引导当前任务”可改为补充本轮要求。';
+  const history=entries.map(row).join('') || '<p>暂无待发消息。</p>';
+  if($('#inputs-list').inputSignature!==history){$('#inputs-list').innerHTML=history;$('#inputs-list').inputSignature=history;}
+}
 async function refreshInputs(){
   const chat=state.chat;if(!chat)return;
+  const revision=++state.inputRevision;
   const inputs=await api(`attach/inputs?conversation_id=${encodeURIComponent(chat)}`);
-  if(chat!==state.chat)return;
-  $('#inputs-state').textContent=inputs.paused?'队列已暂停，处理当前任务后可恢复':'队列按接收顺序，在当前任务正常完成后推进';
-  $('#inputs-list').innerHTML=inputs.entries.map(i=>`<p>${esc(i.action)} · ${esc(statusText(i.status))} · ${esc(i.prompt)} ${i.status==='pending'?`<button data-cancel-input="${esc(i.key)}">取消未采用输入</button>`:''}</p>`).join('') || '暂无输入';
+  if(chat!==state.chat||revision!==state.inputRevision)return;
+  state.inputs=inputs;state.inputsChat=chat;renderInputs();
+}
+async function changeInput(operation,key,runID=''){
+  if(state.inputMutation)return;
+  state.inputMutation=true;controls();
+  try{
+    await api('attach/inputs',{conversation_id:state.chat,operation,key,run_id:runID});
+    await refreshInputs();
+  }finally{state.inputMutation=false;controls();}
 }
 async function submitDeferredInput(prompt){
+  if(state.inputMutation)return;
   if(!state.chat && !await createChat(prompt))return;
-  const action=inputDisposition(state.busy,$('#input-disposition').value),chat=state.chat;
+  const action='queue',chat=state.chat;
   const storageKey=`${pendingKey()}:input`;
   let command;try{command=JSON.parse(safeStorage(storage,storageKey)||'null');}catch{}
   const attachments=currentAttachments().map(i=>i.id).filter(Boolean);
-  if(command&&(command.prompt!==prompt||command.action!==action)){error('上条插话的接收结果尚未核对，请先打开输入队列；原草稿保留。');return;}
+  if(command&&(command.prompt!==prompt||command.action!==action)){error('上一条消息尚未核对是否收到，草稿已保留。请先查看待发消息。');return;}
   command ||= {action,run_id:action==='steer'?latest()?.key:'',request_key:crypto.randomUUID(),prompt,attachments};
   safeStorage(storage,storageKey,JSON.stringify(command));
+  state.inputMutation=true;controls();
+  try{
   const receipt=await api('attach/inputs',{conversation_id:chat,operation:'accept',command});
   safeStorage(storage,storageKey,'');
   if(chat!==state.chat)return;
-  if(receipt.status==='target_ended'){error('目标任务已结束；输入已保留在队列记录中，请明确作为新任务发送。');return;}
+  if(receipt.status==='target_ended'){error('本轮已经结束，消息已保留。');return;}
   if($('#prompt').value===prompt){$('#prompt').value='';draft();setAttachmentDrafts([]);}
-  error(action==='steer'?'插话已接收，将在安全边界采用。':'输入已排队。');
-  if($('#inputs-dialog').open)await refreshInputs();controls();
+  await refreshInputs();
+  }finally{state.inputMutation=false;controls();}
 }
 async function branchMessage(id,mode){
   const message=state.turns.flatMap(t=>t.messages).find(m=>m.key===id);if(!message)return;
@@ -3309,5 +3341,4 @@ async function editModelContext(){
   if(!/^\d+$/.test(input))throw new Error('请输入整数');
   await api('models/context',{id:state.context.window.model_id,tokens:Number(input)});await refreshEnvironment();await openContextDialog();
 }
-$('#input-disposition').addEventListener('change',controls);
 setInterval(()=>{document.querySelectorAll('[data-activity-clock][data-activity-status="dispatched"]').forEach(el=>{el.textContent=activityTime({status:'dispatched',started_at:el.dataset.activityClock});});},1000);
