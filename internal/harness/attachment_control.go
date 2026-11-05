@@ -28,7 +28,7 @@ func (service *ControlService) buildAttachmentDelete(ctx context.Context, record
 	}
 	resource := "attachment:" + args.ID
 	var messages int
-	if err := service.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM messages WHERE conversation_id=? AND EXISTS (SELECT 1 FROM json_each(body_json,'$.Attachments') WHERE json_extract(value,'$.id')=?)`, args.Conversation, args.ID).Scan(&messages); err != nil {
+	if err := service.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.messages WHERE conversation_id=$1 AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(body_json->'Attachments','[]'::jsonb)) AS item WHERE item->>'id'=$2)`, args.Conversation, args.ID).Scan(&messages); err != nil {
 		return err
 	}
 	record.Operation.ConversationID = args.Conversation
@@ -51,7 +51,7 @@ func (service *ControlService) applyAttachmentDelete(ctx context.Context, record
 		return ErrControlStaleRevision
 	}
 	var active int
-	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND `+activeRunPredicate+` `, r.Conversation).Scan(&active); err != nil {
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs WHERE conversation_id=$1 AND `+activeRunPredicate+` `, r.Conversation).Scan(&active); err != nil {
 		return err
 	}
 	if active > 0 {
@@ -65,7 +65,7 @@ func (service *ControlService) applyAttachmentDelete(ctx context.Context, record
 	// Revoke visibility first. A failed OS removal cannot leak bytes via a
 	// still-valid reference, and physical quota accounting includes remnants.
 	r.Deleted = true
-	if _, err := store.db.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(r)), attachmentPrefix+args.ID); err != nil {
+	if _, err := store.db.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+args.ID); err != nil {
 		return err
 	}
 	_ = root.Chmod(args.ID, 0600)
@@ -86,7 +86,7 @@ func (tasks *TaskService) Attachments(ctx context.Context, chat string) ([]Attac
 	if err != nil {
 		return nil, err
 	}
-	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE 'attachment/%' AND json_extract(value,'$.conversation')=? ORDER BY key LIMIT 1001`, chat)
+	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE 'attachment/%' AND (document #>> '{conversation}')=$1 ORDER BY key LIMIT 1001`, chat)
 	if err != nil {
 		return nil, err
 	}

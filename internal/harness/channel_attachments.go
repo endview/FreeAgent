@@ -6,64 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
-
-	"github.com/endview/freeagent/internal/channels"
 )
 
-func (r *TelegramRuntime) downloadMedia(ctx context.Context, e channelEvent, ref channels.MediaRef, limit int64) ([]byte, error) {
-	r.mu.Lock()
-	api, bot := r.api, r.bot
-	r.mu.Unlock()
-	if api == nil || strconv.FormatInt(bot.ID, 10) != e.Target.ApplicationID {
-		return nil, ErrPermissionDenied
-	}
-	return api.DownloadMedia(ctx, ref, limit)
-}
-func (r *TelegramRuntime) sendMedia(ctx context.Context, target ChannelTarget, reply string, ref AttachmentRef, raw []byte) (string, error) {
-	r.mu.Lock()
-	api, bot := r.api, r.bot
-	r.mu.Unlock()
-	if api == nil || strconv.FormatInt(bot.ID, 10) != target.ApplicationID {
-		return "", &CallError{Certain: true, Message: "telegram: file target connection changed"}
-	}
-	chat, err := strconv.ParseInt(target.ChatID, 10, 64)
-	if err != nil {
-		return "", err
-	}
-	replyID, _ := strconv.ParseInt(reply, 10, 64)
-	id, err := api.SendDocument(ctx, chat, replyID, ref.Name, raw)
-	if id <= 0 {
-		return "", err
-	}
-	return strconv.FormatInt(id, 10), err
-}
-func (r *AppChannelRuntime) downloadMedia(ctx context.Context, e channelEvent, ref channels.MediaRef, limit int64) ([]byte, error) {
-	r.mu.Lock()
-	api, app := r.lark, r.app
-	r.mu.Unlock()
-	if r.source != SpaceSourceLark {
-		return nil, errors.New("QQ file input is not supported by this transport")
-	}
-	if api == nil || !strings.HasPrefix(e.Target.ApplicationID, app+":") {
-		return nil, ErrPermissionDenied
-	}
-	return api.DownloadMedia(ctx, e.Message, ref, limit)
-}
-func (r *AppChannelRuntime) sendMedia(ctx context.Context, target ChannelTarget, reply string, ref AttachmentRef, raw []byte) (string, error) {
-	r.mu.Lock()
-	api, app := r.lark, r.app
-	r.mu.Unlock()
-	if r.source != SpaceSourceLark {
-		return "", &CallError{Certain: true, Message: "QQ C2C/group arbitrary file upload is not supported; no public file URL is created"}
-	}
-	if api == nil || !strings.HasPrefix(target.ApplicationID, app+":") {
-		return "", &CallError{Certain: true, Message: "lark: file target connection changed"}
-	}
-	return api.SendDocument(ctx, target.ChatID, reply, ref.Name, raw)
-}
 func (s *channelSession) receiveFiles(ctx context.Context, e channelEvent, input *ChannelReceived) error {
 	if s.source == SpaceSourceTelegram {
 		if _, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person); err != nil {
@@ -109,7 +55,7 @@ func (s *channelSession) receiveFiles(ctx context.Context, e channelEvent, input
 	}
 	defer tx.Rollback()
 	var raw string
-	if err := tx.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE id=? AND conversation_id=? AND run_id IS NULL`, input.MessageID, input.ConversationID).Scan(&raw); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE id=$1 AND conversation_id=$2 AND run_id IS NULL`, input.MessageID, input.ConversationID).Scan(&raw); err != nil {
 		return err
 	}
 	var body ModelMessage
@@ -120,7 +66,7 @@ func (s *channelSession) receiveFiles(ctx context.Context, e channelEvent, input
 		return err
 	}
 	body.Attachments = refs
-	if _, err := tx.ExecContext(ctx, `UPDATE messages SET body_json=? WHERE id=?`, string(mustJSON(body)), input.MessageID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.messages SET body_json=$1 WHERE id=$2 AND conversation_id=$3`, string(mustJSON(body)), input.MessageID, input.ConversationID); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -174,7 +120,7 @@ func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding stri
 		s.tasks.core.Store.attachmentMu.Unlock()
 		return loadErr
 	}
-	claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, string(mustJSON(map[string]any{"state": "dispatching", "attachment": ref, "target": target, "replay": false})))
+	claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, string(mustJSON(map[string]any{"state": "dispatching", "attachment": ref, "target": target, "replay": false})))
 	s.tasks.core.Store.attachmentMu.Unlock()
 	if err != nil {
 		return err
@@ -211,18 +157,19 @@ func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding stri
 		}
 	}
 	state := "sent"
-	if sendErr != nil || message == "" {
+	if isChannelQueued(sendErr) {
+		state, sendErr = "queued", nil
+	} else if sendErr != nil || message == "" {
 		state = "unknown"
-		var tg *channels.TelegramError
-		var app *channels.APIError
+		var transport interface{ DispatchCertain() bool }
 		var call *CallError
-		if readErr != nil || errors.As(sendErr, &tg) && !tg.Uncertain || errors.As(sendErr, &app) && !app.Uncertain || errors.As(sendErr, &call) && call.Certain {
+		if readErr != nil || errors.As(sendErr, &transport) && transport.DispatchCertain() || errors.As(sendErr, &call) && call.Certain {
 			state = "failed"
 		}
 	}
 	persist, done := context.WithTimeout(context.Background(), 5*time.Second)
 	defer done()
-	_, saveErr := s.tasks.core.Store.db.ExecContext(persist, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(map[string]any{"state": state, "attachment": ref, "target": target, "message_id": message, "replay": false})), key)
+	_, saveErr := s.tasks.core.Store.db.ExecContext(persist, `UPDATE fa.meta SET value=$1 WHERE key=$2 AND (document #>> '{state}')='dispatching'`, string(mustJSON(map[string]any{"state": state, "attachment": ref, "target": target, "message_id": message, "replay": false})), key)
 	if state == "sent" {
 		store := s.tasks.core.Store
 		store.attachmentMu.Lock()
@@ -238,11 +185,11 @@ func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding stri
 		}
 		r.Ref.Public = true
 		ref.Public = true
-		if _, err := tx.ExecContext(persist, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(r)), attachmentPrefix+ref.ID); err != nil {
+		if _, err := tx.ExecContext(persist, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+ref.ID); err != nil {
 			return errors.Join(sendErr, saveErr, err)
 		}
 		body := ModelMessage{Role: "assistant", Content: "[Delivered file: " + ref.Name + "]", Public: true, Attachments: []AttachmentRef{ref}, Channel: &ChannelMessageSource{ChannelTarget: target, MessageID: message, Purpose: "delivery"}}
-		if _, err := tx.ExecContext(persist, `INSERT INTO messages(conversation_id,run_id,request_key,body_json) VALUES(?,NULL,?,?) ON CONFLICT(request_key) WHERE request_key!='' DO NOTHING`, chat, key, string(mustJSON(body))); err != nil {
+		if _, err := tx.ExecContext(persist, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3) ON CONFLICT(request_key) WHERE request_key!='' DO NOTHING`, chat, key, string(mustJSON(body))); err != nil {
 			return errors.Join(sendErr, saveErr, err)
 		}
 		saveErr = errors.Join(saveErr, tx.Commit())
@@ -259,10 +206,10 @@ func (s *channelSession) saveReplyFile(ctx context.Context, e channelEvent, chat
 	}
 	// Only actual public reply text may be exported from a channel, including
 	// None. A private Run output is never substituted for a delivered message.
-	query := `SELECT body_json FROM messages WHERE conversation_id=? AND json_extract(body_json,'$.Role')='assistant' AND json_extract(body_json,'$.Public')=1 AND coalesce(json_extract(body_json,'$.Channel.purpose'),'')!='command'`
+	query := `SELECT body_json FROM fa.messages WHERE conversation_id=$1 AND (body_json #>> '{Role}')='assistant' AND ((body_json #>> '{Public}')::boolean)=true AND coalesce((body_json #>> '{Channel,purpose}'),'')!='command'`
 	args := []any{chat}
 	if e.ReplyTo != "" {
-		query += ` AND json_extract(body_json,'$.Channel.message_id')=?`
+		query += ` AND (body_json #>> '{Channel,message_id}')=$2`
 		args = append(args, e.ReplyTo)
 	}
 	query += ` ORDER BY id DESC LIMIT 1`
@@ -275,7 +222,7 @@ func (s *channelSession) saveReplyFile(ctx context.Context, e channelEvent, chat
 		return ErrAttachment
 	}
 	key := "channel/reply-file/" + contentHash(mustJSON([]string{chat, e.Message}))
-	claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, `{"state":"creating","replay":false}`)
+	claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, `{"state":"creating","replay":false}`)
 	if err != nil {
 		return err
 	}

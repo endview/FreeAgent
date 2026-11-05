@@ -48,10 +48,10 @@ func validateSpaceTitle(title string) error {
 
 func scanSpace(row interface{ Scan(...any) error }) (Space, error) {
 	var space Space
-	var multi int
+	var multi bool
 	err := row.Scan(&space.ID, &space.Title, &space.Source, &space.ChatKind, &space.ExternalChat,
 		&space.DefaultConversationID, &space.ActiveConversationID, &multi, &space.CreatedAt, &space.UpdatedAt)
-	space.MultiConversation = multi != 0
+	space.MultiConversation = multi
 	if errors.Is(err, sql.ErrNoRows) {
 		return Space{}, fmt.Errorf("%w: space not found", ErrSpaceNotFound)
 	}
@@ -64,12 +64,12 @@ func (store *Store) GetSpace(ctx context.Context, id string) (Space, error) {
 	if strings.TrimSpace(id) == "" {
 		return Space{}, ErrSpaceNotFound
 	}
-	return scanSpace(store.db.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE id=?`, id))
+	return scanSpace(store.db.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE id=$1`, id))
 }
 
 func (store *Store) ListSpaces(ctx context.Context) ([]Space, error) {
 	rows, err := store.db.QueryContext(ctx, `SELECT `+spaceColumns+`
-		FROM spaces ORDER BY CASE WHEN source='local' THEN 0 ELSE 1 END, updated_at DESC, id`)
+		FROM fa.spaces ORDER BY CASE WHEN source='local' THEN 0 ELSE 1 END, updated_at DESC, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +100,12 @@ func (store *Store) CreateSpace(ctx context.Context, title, source, chatKind, ex
 		return Space{}, err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO spaces(`+spaceColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.spaces(`+spaceColumns+`) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 		space.ID, space.Title, space.Source, space.ChatKind, space.ExternalChat, "", "", false, space.CreatedAt, space.UpdatedAt)
 	if err != nil {
 		return Space{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "space/permission/"+space.ID, string(mustJSON(PermissionSelection{SpaceID: space.ID, Source: "space", Mode: PermissionNone}))); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "space/permission/"+space.ID, string(mustJSON(PermissionSelection{SpaceID: space.ID, Source: "space", Mode: PermissionNone}))); err != nil {
 		return Space{}, err
 	}
 	return space, tx.Commit()
@@ -121,7 +121,7 @@ func (store *Store) EnsureExternalSpace(ctx context.Context, title, source, chat
 	if err := validateSpaceSource(source, chatKind, externalChat); err != nil {
 		return Space{}, false, err
 	}
-	existing, err := scanSpace(store.db.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE source=? AND external_chat=?`, source, externalChat))
+	existing, err := scanSpace(store.db.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE source=$1 AND external_chat=$2`, source, externalChat))
 	if err == nil {
 		return existing, false, nil
 	}
@@ -130,7 +130,7 @@ func (store *Store) EnsureExternalSpace(ctx context.Context, title, source, chat
 	}
 	space, err := store.CreateSpace(ctx, title, source, chatKind, externalChat)
 	if err != nil {
-		if existing, e := scanSpace(store.db.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE source=? AND external_chat=?`, source, externalChat)); e == nil {
+		if existing, e := scanSpace(store.db.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE source=$1 AND external_chat=$2`, source, externalChat)); e == nil {
 			return existing, false, nil
 		}
 	}
@@ -144,7 +144,7 @@ func (store *Store) RenameSpace(ctx context.Context, id, title string) error {
 	if _, err := store.GetSpace(ctx, id); err != nil {
 		return err
 	}
-	result, err := store.db.ExecContext(ctx, `UPDATE spaces SET title=?,updated_at=? WHERE id=?`, title, nowText(), id)
+	result, err := store.db.ExecContext(ctx, `UPDATE fa.spaces SET title=$1,updated_at=$2 WHERE id=$3`, title, nowText(), id)
 	if err != nil {
 		return err
 	}
@@ -169,12 +169,12 @@ func (store *Store) setSpaceConversation(ctx context.Context, spaceID, conversat
 		return err
 	}
 	defer tx.Rollback()
-	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE id=?`, spaceID))
+	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE id=$1`, spaceID))
 	if err != nil {
 		return err
 	}
 	var belongs string
-	if err := tx.QueryRowContext(ctx, `SELECT space_id FROM conversations WHERE id=?`, conversationID).Scan(&belongs); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT space_id FROM fa.conversations WHERE id=$1`, conversationID).Scan(&belongs); err != nil {
 		return err
 	}
 	if belongs != spaceID {
@@ -184,9 +184,9 @@ func (store *Store) setSpaceConversation(ctx context.Context, spaceID, conversat
 		return errors.New("harness: enable multiple conversations before changing channel routing")
 	}
 	if defaultConversation {
-		_, err = tx.ExecContext(ctx, `UPDATE spaces SET default_conversation_id=?,active_conversation_id=CASE WHEN source!='local' AND multi_conversation_enabled=0 THEN ? ELSE active_conversation_id END,updated_at=? WHERE id=?`, conversationID, conversationID, nowText(), spaceID)
+		_, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET default_conversation_id=$1,active_conversation_id=CASE WHEN source!='local' AND multi_conversation_enabled=false THEN $2 ELSE active_conversation_id END,updated_at=$3 WHERE id=$4`, conversationID, conversationID, nowText(), spaceID)
 	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE spaces SET active_conversation_id=?,updated_at=? WHERE id=?`, conversationID, nowText(), spaceID)
+		_, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET active_conversation_id=$1,updated_at=$2 WHERE id=$3`, conversationID, nowText(), spaceID)
 	}
 	if err != nil {
 		return err
@@ -195,7 +195,7 @@ func (store *Store) setSpaceConversation(ctx context.Context, spaceID, conversat
 }
 
 func (store *Store) SetSpaceMultiConversation(ctx context.Context, spaceID string, enabled bool) error {
-	result, err := store.db.ExecContext(ctx, `UPDATE spaces SET multi_conversation_enabled=?,active_conversation_id=CASE WHEN ?=0 THEN default_conversation_id ELSE active_conversation_id END,updated_at=? WHERE id=?`, enabled, enabled, nowText(), spaceID)
+	result, err := store.db.ExecContext(ctx, `UPDATE fa.spaces SET multi_conversation_enabled=$1,active_conversation_id=CASE WHEN $2=false THEN default_conversation_id ELSE active_conversation_id END,updated_at=$3 WHERE id=$4`, enabled, enabled, nowText(), spaceID)
 	if err != nil {
 		return err
 	}
@@ -218,20 +218,20 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 	}
 	defer tx.Rollback()
 	var sourceSpace string
-	if err := tx.QueryRowContext(ctx, `SELECT space_id FROM conversations WHERE id=?`, conversationID).Scan(&sourceSpace); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT space_id FROM fa.conversations WHERE id=$1`, conversationID).Scan(&sourceSpace); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("harness: conversation %q not found", conversationID)
 		}
 		return err
 	}
-	if _, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE id=?`, targetSpaceID)); err != nil {
+	if _, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE id=$1`, targetSpaceID)); err != nil {
 		return err
 	}
 	if sourceSpace == targetSpaceID {
 		return tx.Commit()
 	}
 	var active int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND `+activeRunPredicate+` `, conversationID).Scan(&active); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs WHERE conversation_id=$1 AND `+activeRunPredicate+` `, conversationID).Scan(&active); err != nil {
 		return err
 	}
 	if active != 0 {
@@ -240,11 +240,11 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 	if err := checkConversationCommandsTx(ctx, tx, conversationID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE conversations SET space_id=?,updated_at=? WHERE id=?`, targetSpaceID, nowText(), conversationID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.conversations SET space_id=$1,updated_at=$2 WHERE id=$3`, targetSpaceID, nowText(), conversationID); err != nil {
 		return err
 	}
 	var source string
-	if err := tx.QueryRowContext(ctx, `SELECT source FROM spaces WHERE id=?`, targetSpaceID).Scan(&source); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT source FROM fa.spaces WHERE id=$1`, targetSpaceID).Scan(&source); err != nil {
 		return err
 	}
 	if source != SpaceSourceLocal {
@@ -254,12 +254,12 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 		// Local selections and summaries must never travel implicitly to
 		// another publication scope. Original messages/Attempts are retained.
 		for _, prefix := range []string{"chat/memory/", capabilityMetaPrefix, summaryMetaPrefix} {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key=?`, prefix+conversationID); err != nil {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, prefix+conversationID); err != nil {
 				return err
 			}
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=json_set(value,'$.space',?) WHERE key LIKE 'attachment/%' AND json_extract(value,'$.conversation')=?`, targetSpaceID, conversationID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=(jsonb_set(document,'{space}',to_jsonb($1::text),true))::text WHERE key LIKE 'attachment/%' AND (document #>> '{conversation}')=$2`, targetSpaceID, conversationID); err != nil {
 		return err
 	}
 	if err := refreshSpacePointersTx(ctx, tx, sourceSpace); err != nil {
@@ -273,23 +273,23 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 
 func refreshSpacePointersTx(ctx context.Context, tx *sql.Tx, spaceID string) error {
 	var currentDefault, currentActive, first string
-	if err := tx.QueryRowContext(ctx, `SELECT default_conversation_id,active_conversation_id FROM spaces WHERE id=?`, spaceID).Scan(&currentDefault, &currentActive); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT default_conversation_id,active_conversation_id FROM fa.spaces WHERE id=$1`, spaceID).Scan(&currentDefault, &currentActive); err != nil {
 		return err
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM conversations WHERE space_id=? ORDER BY updated_at DESC,id LIMIT 1`, spaceID).Scan(&first); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM fa.conversations WHERE space_id=$1 ORDER BY updated_at DESC,id LIMIT 1`, spaceID).Scan(&first); errors.Is(err, sql.ErrNoRows) {
 		first = ""
 	} else if err != nil {
 		return err
 	}
 	if currentDefault != "" {
 		var belongs string
-		if err := tx.QueryRowContext(ctx, `SELECT coalesce(space_id,'') FROM conversations WHERE id=?`, currentDefault).Scan(&belongs); err != nil || belongs != spaceID {
+		if err := tx.QueryRowContext(ctx, `SELECT coalesce(space_id,'') FROM fa.conversations WHERE id=$1`, currentDefault).Scan(&belongs); err != nil || belongs != spaceID {
 			currentDefault = ""
 		}
 	}
 	if currentActive != "" {
 		var belongs string
-		if err := tx.QueryRowContext(ctx, `SELECT coalesce(space_id,'') FROM conversations WHERE id=?`, currentActive).Scan(&belongs); err != nil || belongs != spaceID {
+		if err := tx.QueryRowContext(ctx, `SELECT coalesce(space_id,'') FROM fa.conversations WHERE id=$1`, currentActive).Scan(&belongs); err != nil || belongs != spaceID {
 			currentActive = ""
 		}
 	}
@@ -301,13 +301,13 @@ func refreshSpacePointersTx(ctx context.Context, tx *sql.Tx, spaceID string) err
 	}
 	var source string
 	var multi bool
-	if err := tx.QueryRowContext(ctx, `SELECT source,multi_conversation_enabled FROM spaces WHERE id=?`, spaceID).Scan(&source, &multi); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT source,multi_conversation_enabled FROM fa.spaces WHERE id=$1`, spaceID).Scan(&source, &multi); err != nil {
 		return err
 	}
 	if source != "local" && !multi {
 		currentActive = currentDefault
 	}
-	_, err := tx.ExecContext(ctx, `UPDATE spaces SET default_conversation_id=?,active_conversation_id=?,updated_at=? WHERE id=?`,
+	_, err := tx.ExecContext(ctx, `UPDATE fa.spaces SET default_conversation_id=$1,active_conversation_id=$2,updated_at=$3 WHERE id=$4`,
 		currentDefault, currentActive, nowText(), spaceID)
 	return err
 }
@@ -324,39 +324,39 @@ func (store *Store) DeleteSpace(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback()
 	var exists int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM spaces WHERE id=?`, id).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM fa.spaces WHERE id=$1`, id).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %s", ErrSpaceNotFound, id)
 		}
 		return err
 	}
 	var active int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs r JOIN conversations c ON c.id=r.conversation_id WHERE c.space_id=? AND (r.status IN ('running','waiting_confirmation','stopped','unknown') OR (r.status='limited' AND substr(r.stop_reason,1,14)!='settled_limit:'))`, id).Scan(&active); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs r JOIN fa.conversations c ON c.id=r.conversation_id WHERE c.space_id=$1 AND (r.status IN ('running','waiting_confirmation','stopped','unknown') OR (r.status='limited' AND substr(r.stop_reason,1,14)!='settled_limit:'))`, id).Scan(&active); err != nil {
 		return err
 	}
 	if active != 0 {
 		return ErrSpaceHasActiveRun
 	}
 	var activeCommands int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM meta m JOIN conversations c ON c.id=json_extract(CASE WHEN m.key LIKE 'command/process/%' THEN m.value ELSE '{}' END,'$.conversation_id') WHERE c.space_id=? AND m.key LIKE 'command/process/%' AND (json_extract(m.value,'$.state') IN ('running','stopping') OR (json_extract(m.value,'$.state')='unknown' AND coalesce(json_extract(m.value,'$.reviewed'),0)=0))`, id).Scan(&activeCommands); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta m JOIN fa.conversations c ON c.id=(CASE WHEN m.key LIKE 'command/process/%' THEN m.document ELSE '{}' END #>> '{conversation_id}') WHERE c.space_id=$1 AND m.key LIKE 'command/process/%' AND ((m.document #>> '{state}') IN ('running','stopping') OR ((m.document #>> '{state}')='unknown' AND coalesce(((m.document #>> '{reviewed}')::boolean),false)=false))`, id).Scan(&activeCommands); err != nil {
 		return err
 	}
 	if activeCommands != 0 {
 		return ErrCommandBusy
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=json_set(value,'$.space',?) WHERE key LIKE 'attachment/%' AND json_extract(value,'$.space')=?`, LocalSpaceID, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=(jsonb_set(document,'{space}',to_jsonb($1::text),true))::text WHERE key LIKE 'attachment/%' AND (document #>> '{space}')=$2`, LocalSpaceID, id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE conversations SET space_id=?,updated_at=? WHERE space_id=?`, LocalSpaceID, nowText(), id); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.conversations SET space_id=$1,updated_at=$2 WHERE space_id=$3`, LocalSpaceID, nowText(), id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key=? OR key LIKE ?`, "space/permission/"+id, "space/people/"+id+"/%"); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 OR key LIKE $2`, "space/permission/"+id, "space/people/"+id+"/%"); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM spaces WHERE id=?`, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM fa.spaces WHERE id=$1`, id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key LIKE 'telegram/access/%' AND json_extract(value,'$.space_id')=?`, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key LIKE 'telegram/access/%' AND (document #>> '{space_id}')=$1`, id); err != nil {
 		return err
 	}
 	if err := refreshSpacePointersTx(ctx, tx, LocalSpaceID); err != nil {
@@ -367,7 +367,7 @@ func (store *Store) DeleteSpace(ctx context.Context, id string) error {
 
 func checkConversationCommandsTx(ctx context.Context, tx *sql.Tx, chat string) error {
 	var count int
-	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM meta WHERE key LIKE 'command/process/%' AND json_extract(value,'$.conversation_id')=? AND (json_extract(value,'$.state') IN ('running','stopping') OR (json_extract(value,'$.state')='unknown' AND coalesce(json_extract(value,'$.reviewed'),0)=0))`, chat).Scan(&count)
+	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta WHERE key LIKE 'command/process/%' AND (document #>> '{conversation_id}')=$1 AND ((document #>> '{state}') IN ('running','stopping') OR ((document #>> '{state}')='unknown' AND coalesce(((document #>> '{reviewed}')::boolean),false)=false))`, chat).Scan(&count)
 	if err != nil {
 		return err
 	}
@@ -382,7 +382,7 @@ func checkConversationCommandsTx(ctx context.Context, tx *sql.Tx, chat string) e
 // tool bodies are never made into group background. Receipt keys deduplicate
 // repeated moves without a new publication/task entity.
 func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) error {
-	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE id=?`, spaceID))
+	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE id=$1`, spaceID))
 	if err != nil {
 		return err
 	}
@@ -397,7 +397,7 @@ func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) err
 	}
 	var cursor int64
 	for {
-		rows, err := tx.QueryContext(ctx, `SELECT m.id,m.body_json FROM messages m JOIN runs r ON r.id=m.run_id WHERE m.conversation_id=? AND m.id>? AND COALESCE(json_extract(r.config_json,'$.Permission.entry'),'local')='local' AND NOT EXISTS(SELECT 1 FROM meta WHERE key='command/direct/'||r.id) ORDER BY m.id LIMIT 32`, chat, cursor)
+		rows, err := tx.QueryContext(ctx, `SELECT m.id,m.body_json FROM fa.messages m JOIN fa.runs r ON r.id=m.run_id WHERE m.conversation_id=$1 AND m.id>$2 AND COALESCE((r.config_doc #>> '{Permission,entry}'),'local')='local' AND NOT EXISTS(SELECT 1 FROM fa.meta WHERE key='command/direct/'||r.id) ORDER BY m.id LIMIT 32`, chat, cursor)
 		if err != nil {
 			return err
 		}
@@ -433,12 +433,12 @@ func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) err
 				}
 				refs[i].Public = true
 				r.Ref.Public = true
-				if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(r)), attachmentPrefix+refs[i].ID); err != nil {
+				if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+refs[i].ID); err != nil {
 					return err
 				}
 			}
 			public := ModelMessage{Role: entry.message.Role, Content: entry.message.Content, Public: true, Channel: source, Attachments: refs}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO messages(conversation_id,run_id,request_key,body_json) VALUES(?,NULL,?,?) ON CONFLICT(request_key) WHERE request_key!='' DO NOTHING`, chat, key, string(mustJSON(public))); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3) ON CONFLICT(request_key) WHERE request_key!='' DO NOTHING`, chat, key, string(mustJSON(public))); err != nil {
 				return err
 			}
 		}

@@ -21,6 +21,9 @@ type APIError struct {
 	RetryAfter   time.Duration
 }
 
+func (e *APIError) DispatchCertain() bool     { return !e.Uncertain }
+func (e *APIError) RetryDelay() time.Duration { return e.RetryAfter }
+
 func (e *APIError) Error() string {
 	return fmt.Sprintf("%s: API failure status=%d code=%d delivery_unknown=%t", e.Platform, e.Status, e.Code, e.Uncertain)
 }

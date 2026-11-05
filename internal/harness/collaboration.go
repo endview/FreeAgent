@@ -136,7 +136,7 @@ func insertCollaborationRun(ctx context.Context, tx *sql.Tx, workspace, title, r
 		saved.Channel = &origin
 		snapshot = string(mustJSON(saved))
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO conversations(id,title,workspace,space_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`, conversation.ID, title, workspace, conversation.SpaceID, conversation.CreatedAt, conversation.UpdatedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.conversations(id,title,workspace,space_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)`, conversation.ID, title, workspace, conversation.SpaceID, conversation.CreatedAt, conversation.UpdatedAt); err != nil {
 		return Run{}, err
 	}
 	run, err := insertPlannedRun(ctx, tx, conversation.ID, request, prompt, snapshot)
@@ -144,7 +144,7 @@ func insertCollaborationRun(ctx context.Context, tx *sql.Tx, workspace, title, r
 		return run, err
 	}
 	if saved.Memory != nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`,
+		_, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`,
 			"chat/agent/"+conversation.ID, saved.Memory.AgentID)
 	}
 	return run, err
@@ -152,13 +152,13 @@ func insertCollaborationRun(ctx context.Context, tx *sql.Tx, workspace, title, r
 
 func insertPlannedRun(ctx context.Context, tx *sql.Tx, conversationID, request, prompt, snapshot string) (Run, error) {
 	run := Run{ID: newID(), ConversationID: conversationID, RequestKey: request, Prompt: prompt, ConfigJSON: snapshot, Status: "stopped", CreatedAt: nowText(), UpdatedAt: nowText()}
-	_, err := tx.ExecContext(ctx, `INSERT INTO runs(`+runColumns+`) VALUES(?,?,?,?,?,'stopped','explicit collaboration continuation required',0,0,'',?,?,'')`,
+	_, err := tx.ExecContext(ctx, `INSERT INTO fa.runs(`+runColumns+`) VALUES($1,$2,$3,$4,$5,'stopped','explicit collaboration continuation required',0,0,'',$6,$7,'')`,
 		run.ID, conversationID, request, prompt, snapshot, run.CreatedAt, run.UpdatedAt)
 	if err != nil {
 		return Run{}, err
 	}
 	if origin := channelOriginFromJSON(snapshot); origin != nil && origin.InputMessageID > 0 {
-		updated, err := tx.ExecContext(ctx, `UPDATE messages SET run_id=? WHERE id=? AND conversation_id=? AND request_key=? AND run_id IS NULL`, run.ID, origin.InputMessageID, conversationID, request)
+		updated, err := tx.ExecContext(ctx, `UPDATE fa.messages SET run_id=$1 WHERE id=$2 AND conversation_id=$3 AND request_key=$4 AND run_id IS NULL`, run.ID, origin.InputMessageID, conversationID, request)
 		if err != nil {
 			return Run{}, err
 		}
@@ -242,7 +242,7 @@ func (collab *Collaboration) Create(ctx context.Context, conversationID, request
 	var parent Run
 	if conversationID != "" {
 		var currentPreference string
-		err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "chat/collaboration/"+conversationID).Scan(&currentPreference)
+		err := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "chat/collaboration/"+conversationID).Scan(&currentPreference)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return "", err
 		}
@@ -250,15 +250,15 @@ func (collab *Collaboration) Create(ctx context.Context, conversationID, request
 			return "", ErrConfigChanged
 		}
 		var workspace string
-		if err := tx.QueryRowContext(ctx, `SELECT workspace FROM conversations WHERE id=?`, conversationID).Scan(&workspace); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT workspace FROM fa.conversations WHERE id=$1`, conversationID).Scan(&workspace); err != nil {
 			return "", err
 		}
 		if workspace != core.Config.Workspace {
 			return "", errors.New("harness: parent workspace mismatch")
 		}
-		existing, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE conversation_id=? AND request_key=?`, conversationID, requestKey))
+		existing, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1 AND request_key=$2`, conversationID, requestKey))
 		if err == nil {
-			saved, err := loadCollaboration(ctx, tx, existing.ID)
+			saved, err := loadCollaborationForUpdate(ctx, tx, existing.ID)
 			if err != nil {
 				return "", ErrRequestKey
 			}
@@ -271,7 +271,7 @@ func (collab *Collaboration) Create(ctx context.Context, conversationID, request
 			return "", err
 		}
 		var unfinished int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND status NOT IN ('completed','failed','abandoned')`, conversationID).Scan(&unfinished); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs WHERE conversation_id=$1 AND status NOT IN ('completed','failed','abandoned')`, conversationID).Scan(&unfinished); err != nil {
 			return "", err
 		}
 		if unfinished > 0 {
@@ -298,11 +298,11 @@ func (collab *Collaboration) Create(ctx context.Context, conversationID, request
 			return "", err
 		}
 		record.Children = append(record.Children, childRecord{Spec: spec, RunID: run.ID, Control: "running"})
-		if _, err := tx.ExecContext(ctx, `INSERT INTO meta VALUES(?,?)`, "collaboration-run/"+run.ID, parent.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "collaboration-run/"+run.ID, parent.ID); err != nil {
 			return "", err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta VALUES(?,?)`, "collaboration-run/"+parent.ID, parent.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "collaboration-run/"+parent.ID, parent.ID); err != nil {
 		return "", err
 	}
 	if err := saveCollaboration(ctx, tx, record); err != nil {
@@ -324,7 +324,7 @@ func (collab *Collaboration) change(ctx context.Context, parentID string, edit f
 		return err
 	}
 	defer tx.Rollback()
-	record, err := loadCollaboration(ctx, tx, parentID)
+	record, err := loadCollaborationForUpdate(ctx, tx, parentID)
 	if err != nil {
 		return err
 	}
@@ -342,7 +342,7 @@ func (collab *Collaboration) Control(ctx context.Context, parentID, childName, a
 		return errors.New("harness: control must be pause, resume or cancel")
 	}
 	err := collab.change(ctx, parentID, func(record *collaborationRecord, tx *sql.Tx) error {
-		parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, parentID))
+		parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, parentID))
 		if err != nil {
 			return err
 		}
@@ -369,7 +369,7 @@ func (collab *Collaboration) Control(ctx context.Context, parentID, childName, a
 				if child.Retired {
 					return ErrControlledRun
 				}
-				run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, child.RunID))
+				run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, child.RunID))
 				if err != nil {
 					return err
 				}
@@ -891,7 +891,7 @@ func (collab *Collaboration) Resolve(ctx context.Context, parentID, digest, deci
 			return ErrActiveRun
 		}
 		var status string
-		if err := tx.QueryRowContext(ctx, `SELECT status FROM runs WHERE id=?`, parentID).Scan(&status); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM fa.runs WHERE id=$1`, parentID).Scan(&status); err != nil {
 			return err
 		}
 		if status == "completed" {
@@ -949,7 +949,7 @@ func (collab *Collaboration) finalize(ctx context.Context, core *Service, parent
 	}
 	defer tx.Rollback()
 	// A user control racing with synthesis must win before completion.
-	current, err := loadCollaboration(ctx, tx, parentID)
+	current, err := loadCollaborationForUpdate(ctx, tx, parentID)
 	if err != nil {
 		return report, err
 	}
@@ -959,10 +959,10 @@ func (collab *Collaboration) finalize(ctx context.Context, core *Service, parent
 	if current.Revision != report.Revision {
 		return report, ErrPlanRevision
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='completed',output=?,stop_reason='',updated_at=? WHERE id=?`, answer, nowText(), parentID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='completed',output=$1,stop_reason='',updated_at=$2 WHERE id=$3`, answer, nowText(), parentID); err != nil {
 		return report, err
 	}
-	parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, parentID))
+	parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, parentID))
 	if err != nil {
 		return report, err
 	}

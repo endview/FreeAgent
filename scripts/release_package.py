@@ -27,7 +27,7 @@ def git(*args):
     return subprocess.check_output(['git', *args], cwd=ROOT).decode().strip()
 
 
-def build(target, go, output, allow_dirty=False):
+def build(target, go, output, allow_dirty=False, postgres_runtime=None):
     version = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
     if not re.fullmatch(r'v\d+\.\d+\.\d+[A-Za-z0-9.+-]*', version):
         raise SystemExit('Invalid VERSION')
@@ -52,6 +52,31 @@ def build(target, go, output, allow_dirty=False):
     (package / 'bin').mkdir(parents=True)
     (package / 'docs').mkdir()
     goos, arch = target.split('-')
+
+    # Runtime files are pinned, separately verified build inputs. A live
+    # cluster, connection configuration or user's data directory is never input.
+    runtime = Path(postgres_runtime or os.environ.get('FREEAGENT_POSTGRES_RUNTIME', '')).resolve()
+    runtime_manifest = runtime / 'runtime-source.json'
+    if not runtime_manifest.is_file():
+        raise SystemExit('Prepare PG 15.19 with scripts/prepare-postgres.py; pass --postgres-runtime.')
+    dependency = json.loads(runtime_manifest.read_text(encoding='utf-8'))
+    if dependency.get('version') != '15.19' or dependency.get('target') != target:
+        raise SystemExit('PostgreSQL runtime version/target differs from the release contract.')
+    for record in dependency['files']:
+        relative = Path(record['path'])
+        if relative.is_absolute() or '..' in relative.parts or relative.as_posix() != record['path']:
+            raise SystemExit('Unsafe PostgreSQL runtime inventory.')
+        path = runtime / relative
+        if not path.is_file() or path.stat().st_size != record['bytes'] or digest(path) != record['sha256']:
+            raise SystemExit('PostgreSQL runtime inventory changed: ' + record['path'])
+    suffix = '.exe' if goos == 'windows' else ''
+    required = {'bin/' + n + suffix for n in ('postgres','initdb','pg_ctl','pg_dump','pg_restore')}
+    library_suffix = '.dll' if goos == 'windows' else '.so'
+    required |= {'share/postgres.bki', 'lib/pg_trgm' + library_suffix,
+                 'lib/plpgsql' + library_suffix, 'lib/dict_snowball' + library_suffix}
+    if not required.issubset({r['path'] for r in dependency['files']}):
+        raise SystemExit('PostgreSQL runtime is incomplete.')
+    shutil.copytree(runtime, package / 'runtime' / 'postgresql')
     env = dict(os.environ, GOOS=goos, GOARCH=arch, CGO_ENABLED='0', GOTOOLCHAIN='local')
     info = 'github.com/endview/freeagent/internal/buildinfo'
     flags = f'-X {info}.Version={build_version} -X {info}.Commit={commit}'
@@ -62,17 +87,20 @@ def build(target, go, output, allow_dirty=False):
     if goos == 'windows':
         compile('FreeAgent.exe', './cmd/freeagent-desktop', '-H=windowsgui')
         compile('bin/freeagent.exe', './cmd/freeagent')
+        compile('bin/freeagent-channel.exe', './cmd/freeagent-channel')
         readme = 'PORTABLE.md'
     else:
         compile('bin/freeagent', './cmd/freeagent')
+        compile('bin/freeagent-channel', './cmd/freeagent-channel')
         launcher = (ROOT / 'scripts/FreeAgent-linux.sh').read_text(encoding='utf-8')
         (package / 'FreeAgent').write_bytes(launcher.replace('\r\n', '\n').encode())
         readme = 'LINUX_PORTABLE.md'
     files = {'docs/' + readme: 'README.md', **{p:p for p in ('VERSION','LICENSE','THIRD_PARTY_NOTICES.md')}}
     files.update({f'docs/{p}': f'docs/{p}' for p in (
-        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','CONTEXT_AND_CONTINUOUS_EXECUTION.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md','PUBLIC_WEB.md')})
+        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','CONTEXT_AND_CONTINUOUS_EXECUTION.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md','PUBLIC_WEB.md','POSTGRESQL.md')})
     if goos=='linux':
         files.update({'deploy/freeagent.service':'deploy/freeagent.service',
+                      'deploy/freeagent-channel.service':'deploy/freeagent-channel.service',
                       'scripts/install-server.py':'deploy/install-server.py',
                       'deploy/freeagent.Caddyfile':'deploy/freeagent.Caddyfile',
                       'docs/SERVER_DEPLOYMENT.md':'docs/SERVER_DEPLOYMENT.md'})
@@ -91,7 +119,8 @@ def build(target, go, output, allow_dirty=False):
         'source_base_commit':commit, 'source_dirty':dirty,
         'source_digest_sha256':hashlib.sha256(source_text.encode()).hexdigest(),
         'source_file_count':len(records), 'archive_reference_utc':datetime.fromtimestamp(epoch,timezone.utc).isoformat(),
-        'signed':False,'installer':False,'data_format':'Harness-v8',
+        'signed':False,'installer':False,'data_format':'Harness-pg-v1',
+        'postgresql':{'version':dependency['version'],'runtime_manifest_sha256':digest(runtime_manifest)},
         'entry':'FreeAgent.exe' if goos=='windows' else 'FreeAgent',
         'native_desktop':goos=='windows', 'interfaces':['cli','loopback_web'],
         'optional_interfaces':['public_web_unix_proxy'] if goos=='linux' else [],
@@ -121,7 +150,8 @@ def build(target, go, output, allow_dirty=False):
                     relative=path.relative_to(package).as_posix()
                     item=tarfile.TarInfo(name if relative=='.' else name+'/'+relative)
                     item.mtime=epoch;item.uid=item.gid=0;item.uname=item.gname=''
-                    item.mode=0o755 if path.is_dir() or relative in ('FreeAgent','bin/freeagent') else 0o644
+                    executable = relative in ('FreeAgent','bin/freeagent','bin/freeagent-channel') or relative.startswith('runtime/postgresql/bin/')
+                    item.mode=0o755 if path.is_dir() or executable else 0o644
                     if path.is_dir():item.type=tarfile.DIRTYPE;tar.addfile(item)
                     else:item.size=path.stat().st_size;tar.addfile(item,io.BytesIO(path.read_bytes()))
     checksum=digest(archive)
@@ -135,8 +165,9 @@ def main():
     parser.add_argument('--target',required=True,choices=['windows-amd64','linux-amd64'])
     parser.add_argument('--go',default='go'); parser.add_argument('--output-directory',required=True)
     parser.add_argument('--allow-dirty',action='store_true',help='Build a marked development package from an uncommitted checkout')
+    parser.add_argument('--postgres-runtime',help='verified prepared PostgreSQL runtime directory')
     args=parser.parse_args()
-    build(args.target,args.go,args.output_directory,args.allow_dirty)
+    build(args.target,args.go,args.output_directory,args.allow_dirty,args.postgres_runtime)
 
 
 if __name__=='__main__':main()

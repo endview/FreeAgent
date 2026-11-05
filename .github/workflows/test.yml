@@ -37,14 +37,21 @@ jobs:
         working-directory: internal/chatui
       - run: git diff --exit-code -- internal/chatui/dist
       - run: go mod verify
-      - run: go test -count=1 -timeout=10m -skip 'Live|RealProvider' ./...
-      - run: go vet ./...
+      - name: Prepare Windows PostgreSQL
+        if: runner.os == 'Windows'
+        run: python scripts/prepare-postgres.py --target windows-amd64 --cache output/pg-cache --out output/postgresql
+      - name: Prepare Debian 12 PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src debian:12-slim sh -ec 'apt-get update -qq && apt-get install -y --no-install-recommends build-essential zlib1g-dev python3 ca-certificates && python3 scripts/prepare-postgres.py --target linux-amd64 --cache output/pg-cache --out output/postgresql'
+      - run: python scripts/test-postgres.py --runtime output/postgresql -- go test -p 2 -count=1 -timeout=30m -skip 'Live|RealProvider' ./cmd/... ./internal/... ./examples/...
+      - run: go vet ./cmd/... ./internal/... ./examples/...
       - run: go build ./cmd/freeagent
       - if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/update-notices.ps1 -Check
       - if: runner.os == 'Linux'
-        run: go test -race -count=1 -timeout=10m -skip 'Live|RealProvider' ./...
+        run: python scripts/test-postgres.py --runtime output/postgresql -- go test -race -p 2 -count=1 -timeout=30m -skip 'Live|RealProvider' ./cmd/... ./internal/... ./examples/...
       - if: runner.os == 'Windows'
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
@@ -56,5 +63,5 @@ jobs:
           $env:PATH = 'C:\msys64\mingw64\bin;' + $env:PATH
           $env:CGO_ENABLED = '1'
           gcc --version
-          go test -race -count=1 -timeout=10m -skip 'Live|RealProvider' ./...
+          python scripts/test-postgres.py --runtime output/postgresql -- go test -race -p 2 -count=1 -timeout=30m -skip 'Live|RealProvider' ./cmd/... ./internal/... ./examples/...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

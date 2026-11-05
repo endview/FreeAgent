@@ -393,7 +393,7 @@ func TestExternalSingleConversationRoutingIsExplicitAndLocalReferencesAreCleared
 	}
 	chat := conversation(t, service)
 	for _, prefix := range []string{"chat/memory/", capabilityMetaPrefix, summaryMetaPrefix} {
-		if _, err := store.db.Exec(`INSERT INTO meta(key,value) VALUES(?,?)`, prefix+chat, `{"private":"local-only"}`); err != nil {
+		if _, err := store.db.Exec(`INSERT INTO fa.meta(key,value) VALUES($1,$2)`, prefix+chat, `{"private":"local-only"}`); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -402,7 +402,7 @@ func TestExternalSingleConversationRoutingIsExplicitAndLocalReferencesAreCleared
 	}
 	for _, prefix := range []string{"chat/memory/", capabilityMetaPrefix, summaryMetaPrefix} {
 		var count int
-		if err := store.db.QueryRow(`SELECT count(*) FROM meta WHERE key=?`, prefix+chat).Scan(&count); err != nil || count != 0 {
+		if err := store.db.QueryRow(`SELECT count(*) FROM fa.meta WHERE key=$1`, prefix+chat).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("local input reference retained: %s %v", prefix, err)
 		}
 	}

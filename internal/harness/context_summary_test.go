@@ -126,7 +126,7 @@ func TestCompactionFailuresRetainPreviousSummaryAndHistory(t *testing.T) {
 				}
 			})
 			if mode == "transaction" {
-				if _, err := service.Store.db.ExecContext(t.Context(), `CREATE TRIGGER reject_summary BEFORE UPDATE ON meta WHEN NEW.key LIKE 'context/summary/%' BEGIN SELECT RAISE(ABORT,'summary fixture failure'); END`); err != nil {
+				if err := installPGFault(t, service.Store, "reject_summary", "meta", "UPDATE", "NEW.key LIKE 'context/summary/%'"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -160,7 +160,7 @@ func TestCompactionIntegrityRefreshAndClear(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Store.db.ExecContext(t.Context(), `UPDATE messages SET body_json=json_set(body_json,'$.Content',?) WHERE id=(SELECT min(id) FROM messages WHERE conversation_id=?)`, strings.Repeat("changed source; ", 40)+lateContextConstraint, chat); err != nil {
+	if _, err := service.Store.db.ExecContext(t.Context(), `UPDATE fa.messages SET body_json=jsonb_set(body_json,'{Content}',to_jsonb($1::text)) WHERE id=(SELECT min(id) FROM fa.messages WHERE conversation_id=$2)`, strings.Repeat("changed source; ", 40)+lateContextConstraint, chat); err != nil {
 		t.Fatal(err)
 	}
 	state, err := tasks.ContextState(t.Context(), chat)
@@ -281,7 +281,7 @@ func TestCompactionRejectsChangedSourceBeforeCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.Model = modelFunc(func(ctx context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
-		_, err := service.Store.db.ExecContext(ctx, `UPDATE messages SET body_json=json_set(body_json,'$.Content','changed while summarizing') WHERE id=?`, first.State.Summary.CoveredThrough)
+		_, err := service.Store.db.ExecContext(ctx, `UPDATE fa.messages SET body_json=jsonb_set(body_json,'{Content}','"changed while summarizing"'::jsonb) WHERE id=$1`, first.State.Summary.CoveredThrough)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -306,7 +306,7 @@ func TestAutomaticCompactionRebuildsStalePrefixAndExtendsAtomically(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	_, err = service.Store.db.ExecContext(t.Context(), `UPDATE messages SET body_json=json_set(body_json,'$.Content',?) WHERE id=(SELECT min(id) FROM messages WHERE conversation_id=?)`, strings.Repeat("updated prefix; ", 40)+lateContextConstraint, chat)
+	_, err = service.Store.db.ExecContext(t.Context(), `UPDATE fa.messages SET body_json=jsonb_set(body_json,'{Content}',to_jsonb($1::text)) WHERE id=(SELECT min(id) FROM fa.messages WHERE conversation_id=$2)`, strings.Repeat("updated prefix; ", 40)+lateContextConstraint, chat)
 	if err != nil {
 		t.Fatal(err)
 	}

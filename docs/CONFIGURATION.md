@@ -379,10 +379,10 @@ freeagent config memory --data-dir <data> --knowledge=false
 Unmentioned memory fields are preserved. Configuration is offline; changing
 memory settings requires no unfinished Run. Chat `/settings memory` offers the
 same finite bounds and enable switch. No scanning or background model work is
-started. The current format is `freeagent-harness-v9`, configuration version
-`9`, backup format `freeagent-harness-backup-v3`, with default data directory
-`os.UserConfigDir()/FreeAgent/Harness-v8`; older formats are rejected. The
-current SQLite store format is `freeagent-harness-v9`.
+started. The current store format is `freeagent-postgres-v1`, configuration version
+`10`, backup format `freeagent-postgres-backup-v1`, with default data directory
+`os.UserConfigDir()/FreeAgent/Harness-pg-v1`; older formats are rejected. See
+[PostgreSQL maintenance](POSTGRESQL.md) for bundled startup and online backup.
 
 Private entries are explicitly selected per Chat, or supplied as a task override
 by a local caller. Selection fixes input authority in the Run; each model request

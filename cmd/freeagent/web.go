@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -49,14 +50,9 @@ func runWebWithBrowser(ctx context.Context, args []string, stdin io.Reader, stdo
 			return usageErr("service mode cannot open a browser or depend on stdin")
 		}
 	}
+	stdinClosed := make(chan struct{})
 	if exitOnStdinClose {
-		runCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		go func() {
-			_, _ = io.Copy(io.Discard, stdin)
-			cancel()
-		}()
-		ctx = runCtx
+		go func() { _, _ = io.Copy(io.Discard, stdin); close(stdinClosed) }()
 	}
 	tasks, closeAll, err := harness.OpenTasks(ctx, *data, harness.Adapters{})
 	if err != nil {
@@ -76,11 +72,20 @@ func runWebWithBrowser(ctx context.Context, args []string, stdin io.Reader, stdo
 	if *serviceMode {
 		mode = "service"
 	}
-	owner, err := startLocalOwnerMode(ctx, tasks, *data, *port, exitOnStdinClose, mode)
+	owner, err := startLocalOwnerMode(ctx, tasks, *data, *port, false, mode)
 	if err != nil {
 		return err
 	}
 	defer owner.Close()
+	if exitOnStdinClose {
+		go func() {
+			select {
+			case <-stdinClosed:
+				owner.handler.ArmIdleShutdown()
+			case <-ctx.Done():
+			}
+		}()
+	}
 	address := owner.address
 	if *serviceMode {
 		_, _ = fmt.Fprintf(stdout, "FreeAgent service ready; generation=%s; use owner status/url locally\n", owner.publish.Info.Generation)
@@ -99,6 +104,6 @@ func runWebWithBrowser(ctx context.Context, args []string, stdin io.Reader, stdo
 	case <-ctx.Done():
 		return owner.Close()
 	case <-owner.handler.StopRequested():
-		return owner.Close()
+		return errors.Join(tasks.OwnerError(), owner.Close())
 	}
 }

@@ -104,7 +104,7 @@ func (client *AnthropicClient) Generate(ctx context.Context, request ModelReques
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(response.Body, (64<<10)+1))
-		return ModelResponse{}, normalizeAnthropicError(response.StatusCode, raw, client.key.secret)
+		return ModelResponse{}, withRetryAfter(normalizeAnthropicError(response.StatusCode, raw, client.key.secret), response.Header)
 	}
 	kind, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	var result ModelResponse

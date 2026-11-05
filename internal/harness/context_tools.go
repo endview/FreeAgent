@@ -46,7 +46,7 @@ func (tools *contextTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 			if err != nil {
 				return ToolResult{}, err
 			}
-			if tools.service.publicContext() && state.Summary != nil && state.Summary.Scope != tools.service.publicSummaryScope() {
+			if tools.service.scopedHistory() && state.Summary != nil && state.Summary.Scope != tools.service.publicSummaryScope() {
 				state.Summary = nil
 				state.Status = "different_visibility_scope"
 			}

@@ -32,7 +32,7 @@ and `FREEAGENT_KEYS_FILE`; an explicit `--data-dir` still overrides the former.
 Do not run the raw CLI as root against service-owned files: it refuses the
 ownership mismatch. `web --service` itself refuses root. The default installation
 uses `/opt/freeagent/releases/VERSION`, `/opt/freeagent/current`,
-`/var/lib/freeagent/data/Harness-v8`, `/var/lib/freeagent/workspace` and
+`/var/lib/freeagent/data/Harness-pg-v1`, `/var/lib/freeagent/workspace` and
 `/var/lib/freeagent/keys.json`. Runtime files use `/run/freeagent`.
 
 Use `systemctl status/start/stop/restart freeagent` and

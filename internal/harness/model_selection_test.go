@@ -520,7 +520,7 @@ func TestPredecessorFormatsRejectedBeforeRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			if old == "store" {
-				if _, err := core.Store.db.ExecContext(t.Context(), `PRAGMA user_version=1`); err != nil {
+				if _, err := testPGAdmin(t, data).ExecContext(t.Context(), `UPDATE fa.meta SET value='0' WHERE key='schema/version'`); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -560,7 +560,7 @@ func TestPredecessorFormatsRejectedBeforeRecovery(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			path := filepath.Join(data, "state.sqlite")
+			path := filepath.Join(data, "postgres.json")
 			before, _ := os.ReadFile(path)
 			if store, err := OpenStore(t.Context(), data); err == nil {
 				_ = store.Close()

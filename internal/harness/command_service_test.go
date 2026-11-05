@@ -238,7 +238,7 @@ func TestServiceReadinessTimeoutAndBoundedLogs(t *testing.T) {
 func TestServiceCleanupPersistenceFailureRetainsUNKNOWNAndCapacity(t *testing.T) {
 	tasks, chat, _ := serviceFixture(t, 20)
 	parent, r := startService(t, tasks, chat, "addr", "", 10, "", 0)
-	_, err := tasks.core.Store.db.ExecContext(t.Context(), `CREATE TRIGGER fail_command_projection BEFORE UPDATE ON meta WHEN NEW.key LIKE 'command/process/%' BEGIN SELECT RAISE(FAIL,'fixture persistence failure'); END`)
+	err := installPGFault(t, tasks.core.Store, "fail_command_projection", "meta", "UPDATE", "NEW.key LIKE 'command/process/%'")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestServiceCleanupPersistenceFailureRetainsUNKNOWNAndCapacity(t *testing.T)
 	if run.Status != "completed" {
 		t.Fatal("reopened parent")
 	}
-	if _, err := tasks.core.Store.db.ExecContext(t.Context(), `DROP TRIGGER fail_command_projection`); err != nil {
+	if err := removePGFault(t, tasks.core.Store, "fail_command_projection", "meta"); err != nil {
 		t.Fatal(err)
 	}
 	if err := tasks.CloseCommands("test_close"); !errors.Is(err, ErrUnknownResult) {
@@ -430,7 +430,7 @@ func TestServiceBackupRecoveryDoesNotReopenParentOrAttach(t *testing.T) {
 
 func TestServiceStartupPersistenceFailureRecoversFromOriginalAttempt(t *testing.T) {
 	tasks, chat, _ := serviceFixture(t, 20)
-	_, err := tasks.core.Store.db.ExecContext(t.Context(), `CREATE TRIGGER fail_command_insert BEFORE INSERT ON meta WHEN NEW.key LIKE 'command/process/%' BEGIN SELECT RAISE(FAIL,'fixture startup persistence failure'); END`)
+	err := installPGFault(t, tasks.core.Store, "fail_command_insert", "meta", "INSERT", "NEW.key LIKE 'command/process/%'")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +452,7 @@ func TestServiceStartupPersistenceFailureRecoversFromOriginalAttempt(t *testing.
 		t.Fatalf("new command can bypass live uncertainty: %v", err)
 	}
 	_ = finishService(t, tasks, id)
-	if _, err := tasks.core.Store.db.ExecContext(t.Context(), `DROP TRIGGER fail_command_insert`); err != nil {
+	if err := removePGFault(t, tasks.core.Store, "fail_command_insert", "meta"); err != nil {
 		t.Fatal(err)
 	}
 	before, attempts, _, _ := tasks.Inspect(t.Context(), result.Run.ID)

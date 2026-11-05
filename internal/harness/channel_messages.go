@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/endview/freeagent/internal/channels"
+	"github.com/endview/freeagent/internal/channelwire"
 	"strings"
 )
 
@@ -42,7 +42,7 @@ func channelTarget(space Space) (ChannelTarget, bool) {
 }
 
 type ChannelMessageSource struct {
-	Media []channels.MediaRef `json:"media,omitempty"`
+	Media []channelwire.MediaRef `json:"media,omitempty"`
 	ChannelTarget
 	PersonID    string `json:"person_id,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
@@ -103,7 +103,7 @@ func historyBound(run Run) int64 {
 }
 
 func (service *Service) publicSummaryScope() string {
-	if service.externalContext() {
+	if service.spaceContext() {
 		return "channel_public"
 	}
 	return "public_text"
@@ -142,7 +142,7 @@ func (tasks *TaskService) PairChannel(ctx context.Context, target ChannelTarget,
 // bindChannelTx creates organization only. Telegram admission is committed by
 // its control handler in the same transaction; a binding alone grants nothing.
 func (tasks *TaskService) bindChannelTx(ctx context.Context, tx *sql.Tx, target ChannelTarget, kind, title string) (Space, error) {
-	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE source=? AND external_chat=?`, target.Source, target.key()))
+	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE source=$1 AND external_chat=$2`, target.Source, target.key()))
 	if err == nil {
 		return space, nil
 	}
@@ -150,21 +150,21 @@ func (tasks *TaskService) bindChannelTx(ctx context.Context, tx *sql.Tx, target 
 		return Space{}, err
 	}
 	now, spaceID, chatID := nowText(), newID(), newID()
-	_, err = tx.ExecContext(ctx, `INSERT INTO spaces(`+spaceColumns+`) VALUES(?,?,?,?,?,?,?,0,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.spaces(`+spaceColumns+`) VALUES($1,$2,$3,$4,$5,$6,$7,false,$8,$9)`,
 		spaceID, title, target.Source, kind, target.key(), chatID, chatID, now, now)
 	if err != nil {
 		return Space{}, err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO conversations(id,title,workspace,space_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.conversations(id,title,workspace,space_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)`,
 		chatID, title, tasks.Config().Workspace, spaceID, now, now)
 	if err != nil {
 		return Space{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "space/permission/"+spaceID,
+	if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "space/permission/"+spaceID,
 		string(mustJSON(PermissionSelection{SpaceID: spaceID, Source: "space", Mode: PermissionNone}))); err != nil {
 		return Space{}, err
 	}
-	space, err = scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE id=?`, spaceID))
+	space, err = scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE id=$1`, spaceID))
 	if err != nil {
 		return Space{}, err
 	}
@@ -175,7 +175,7 @@ func (tasks *TaskService) ChannelSpace(ctx context.Context, target ChannelTarget
 	if err := target.validate(); err != nil {
 		return Space{}, err
 	}
-	return scanSpace(tasks.core.Store.db.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE source=? AND external_chat=?`, target.Source, target.key()))
+	return scanSpace(tasks.core.Store.db.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE source=$1 AND external_chat=$2`, target.Source, target.key()))
 }
 
 // ReceiveChannelText records a received event once, independently of whether
@@ -202,7 +202,7 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	}
 	defer tx.Rollback()
 	var received ChannelReceived
-	err = tx.QueryRowContext(ctx, `SELECT id,conversation_id,COALESCE(run_id,'') FROM messages WHERE request_key=?`, source.requestKey()).
+	err = tx.QueryRowContext(ctx, `SELECT id,conversation_id,COALESCE(run_id,'') FROM fa.messages WHERE request_key=$1`, source.requestKey()).
 		Scan(&received.MessageID, &received.ConversationID, &received.RunID)
 	if err == nil {
 		received.Duplicate = true
@@ -211,7 +211,7 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	if !errors.Is(err, sql.ErrNoRows) {
 		return received, err
 	}
-	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE source=? AND external_chat=?`, source.Source, source.key()))
+	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE source=$1 AND external_chat=$2`, source.Source, source.key()))
 	if err != nil {
 		return received, err
 	}
@@ -219,14 +219,24 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	if space.MultiConversation {
 		chat = space.ActiveConversationID
 	}
+	if intent, ok := ctx.Value(channelReplayKey{}).(channelInputIntent); ok && intent.ConversationID != "" {
+		var bound string
+		if err := tx.QueryRowContext(ctx, `SELECT space_id FROM fa.conversations WHERE id=$1`, intent.ConversationID).Scan(&bound); err != nil {
+			return received, err
+		}
+		if bound != space.ID {
+			return received, ErrConversationSpace
+		}
+		chat = intent.ConversationID
+	}
 	if chat == "" {
 		chat, now := newID(), nowText()
-		_, err = tx.ExecContext(ctx, `INSERT INTO conversations(id,title,workspace,space_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
+		_, err = tx.ExecContext(ctx, `INSERT INTO fa.conversations(id,title,workspace,space_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)`,
 			chat, space.Title, tasks.Config().Workspace, space.ID, now, now)
 		if err != nil {
 			return received, err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE spaces SET default_conversation_id=?,active_conversation_id=? WHERE id=?`, chat, chat, space.ID); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET default_conversation_id=$1,active_conversation_id=$2 WHERE id=$3`, chat, chat, space.ID); err != nil {
 			return received, err
 		}
 		received.ConversationID = chat
@@ -234,20 +244,16 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 		received.ConversationID = chat
 	}
 	body := ModelMessage{Role: "user", Content: text, Channel: &source, Public: true}
-	result, err := tx.ExecContext(ctx, `INSERT INTO messages(conversation_id,run_id,request_key,body_json) VALUES(?,NULL,?,?)`, received.ConversationID, source.requestKey(), string(mustJSON(body)))
+	err = tx.QueryRowContext(ctx, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3) RETURNING id`, received.ConversationID, source.requestKey(), string(mustJSON(body))).Scan(&received.MessageID)
 	if err != nil {
 		return received, err
 	}
-	received.MessageID, err = result.LastInsertId()
-	if err != nil {
-		return received, err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE conversations SET updated_at=? WHERE id=?`, nowText(), received.ConversationID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE fa.conversations SET updated_at=$1 WHERE id=$2`, nowText(), received.ConversationID); err != nil {
 		return received, err
 	}
 	if source.PersonID != "" {
 		// Observation does not grant a permission or overwrite a local grant.
-		_, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, "person/"+source.PersonID,
+		_, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, "person/"+source.PersonID,
 			string(mustJSON(PersonPermission{ID: source.PersonID, DisplayName: source.DisplayName, Mode: PermissionNone, UpdatedAt: nowText()})))
 		if err != nil {
 			return received, err
@@ -305,10 +311,19 @@ func (service *Service) bindChannel(ctx context.Context, chat string, origin *Ch
 		return nil
 	}
 	var through int64
-	if err := service.Store.db.QueryRowContext(ctx, `SELECT COALESCE(max(id),0) FROM messages WHERE conversation_id=?`, chat).Scan(&through); err != nil {
+	if err := service.Store.db.QueryRowContext(ctx, `SELECT COALESCE(max(id),0) FROM fa.messages WHERE conversation_id=$1`, chat).Scan(&through); err != nil {
 		return err
 	}
 	service.channel = &ChannelRunOrigin{ChannelTarget: target, HistoryThrough: through}
+	if target.Source == SpaceSourceTelegram && service.permission != nil && service.permission.PersonID == "" {
+		grant, _, err := telegramAccessRaw(ctx, service.Store.db, target)
+		if err != nil {
+			return err
+		}
+		if grant.Enabled && grant.SpaceID == space.ID {
+			service.channel.AccessRevision = grant.Revision
+		}
+	}
 	if target.Source == SpaceSourceTelegram && service.permission != nil && service.permission.PersonID != "" {
 		grant, err := NewTaskService(service).CheckTelegramAccess(ctx, target, service.permission.PersonID)
 		if err != nil {
@@ -374,7 +389,7 @@ func (tasks *TaskService) CheckChannelRunAction(ctx context.Context, target Chan
 }
 
 func (service *Service) projectPublicMessages(messages []Message) []Message {
-	if !service.externalContext() {
+	if !service.spaceContext() {
 		return publicMessages(messages)
 	}
 	visible := make([]Message, 0, len(messages))
@@ -404,7 +419,7 @@ func (tasks *TaskService) RecordChannelDelivery(ctx context.Context, runID, deli
 	if err != nil || origin == nil || !validChannelPart(deliveryID) || len(text) > 128<<10 {
 		return ErrInvalidSpace
 	}
-	if state != "sent" && state != "partial" && state != "unknown" && state != "failed" {
+	if state != "sent" && state != "partial" && state != "unknown" && state != "failed" && state != "queued" {
 		return ErrInvalidSpace
 	}
 	tx, err := tasks.core.Store.db.BeginTx(ctx, nil)
@@ -413,7 +428,7 @@ func (tasks *TaskService) RecordChannelDelivery(ctx context.Context, runID, deli
 	}
 	defer tx.Rollback()
 	key := "channel/delivery/" + run.ID + "/" + deliveryID
-	result, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key,
+	result, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key,
 		string(mustJSON(map[string]any{"run_id": run.ID, "state": state, "confirmed_bytes": len(text), "target": origin.ChannelTarget})))
 	if err != nil {
 		return err
@@ -428,7 +443,7 @@ func (tasks *TaskService) RecordChannelDelivery(ctx context.Context, runID, deli
 			source.Purpose = "command"
 		}
 		body := ModelMessage{Role: "assistant", Content: text, Channel: source, Public: true}
-		_, err = tx.ExecContext(ctx, `INSERT INTO messages(conversation_id,run_id,request_key,body_json) VALUES(?,NULL,?,?)`, run.ConversationID, key, string(mustJSON(body)))
+		_, err = tx.ExecContext(ctx, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3)`, run.ConversationID, key, string(mustJSON(body)))
 		if err != nil {
 			return err
 		}

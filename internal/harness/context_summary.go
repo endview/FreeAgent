@@ -88,8 +88,8 @@ func (summary ConversationSummary) prefix() sourcePrefix {
 func readSourcePrefix(ctx context.Context, reader interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }, chat string, through int64, prefix sourcePrefix) (sourcePrefix, error) {
-	rows, err := reader.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
-		WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND id<=? ORDER BY id`, chat, prefix.Through, through)
+	rows, err := reader.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM fa.messages
+		WHERE conversation_id=$1 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND id>$2 AND id<=$3 ORDER BY id`, chat, prefix.Through, through)
 	if err != nil {
 		return prefix, err
 	}
@@ -107,7 +107,7 @@ func readSourcePrefix(ctx context.Context, reader interface {
 
 func (store *Store) summaryRaw(ctx context.Context, chat string) (string, error) {
 	var raw string
-	err := store.db.QueryRowContext(ctx, `SELECT substr(value,1,?) FROM meta WHERE key=?`,
+	err := store.db.QueryRowContext(ctx, `SELECT substr(value,1,$1) FROM fa.meta WHERE key=$2`,
 		maxSummaryRecordBytes+1, summaryMetaPrefix+chat).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
@@ -125,7 +125,7 @@ func (store *Store) clearContextSummary(ctx context.Context, chat, revision stri
 	}
 	defer tx.Rollback()
 	var raw string
-	err = tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, summaryMetaPrefix+chat).Scan(&raw)
+	err = tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, summaryMetaPrefix+chat).Scan(&raw)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
@@ -135,7 +135,7 @@ func (store *Store) clearContextSummary(ctx context.Context, chat, revision stri
 	if raw == "" {
 		return false, nil
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key=? AND value=?`, summaryMetaPrefix+chat, raw); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 AND value=$2`, summaryMetaPrefix+chat, raw); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -198,12 +198,11 @@ func (store *Store) contextTail(ctx context.Context, run Run, through int64, max
 	filter := ""
 	args := []any{run.ConversationID, through, historyBound(run), run.ID}
 	if len(scope) > 0 && scope[0] != "" {
-		visible := `(json_extract(body_json,'$.Role') IN ('user','assistant') AND length(json_extract(body_json,'$.Content'))>0)`
+		visible := `((body_json #>> '{Role}') IN ('user','assistant') AND length((body_json #>> '{Content}'))>0)`
 		if scope[0] == "channel_public" {
-			visible += ` AND json_extract(body_json,'$.Public')=1 AND coalesce(json_extract(body_json,'$.Channel.purpose'),'')!='command'`
+			visible += ` AND ((body_json #>> '{Public}')::boolean)=true AND coalesce((body_json #>> '{Channel,purpose}'),'')!='command'`
 		}
-		filter = " AND (run_id=? OR (" + visible + "))"
-		args = append(args, run.ID)
+		filter = " AND (run_id=$4 OR (" + visible + "))"
 	}
 	var messages []Message
 	total, cursor := 0, through
@@ -212,8 +211,8 @@ func (store *Store) contextTail(ctx context.Context, run Run, through int64, max
 		pageArgs := append([]any(nil), args...)
 		pageArgs[1] = cursor
 		pageArgs = append(pageArgs, pageSize)
-		rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
-   WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND (id<=? OR run_id=?)`+filter+` ORDER BY id LIMIT ?`, pageArgs...)
+		rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM fa.messages
+   WHERE conversation_id=$1 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND id>$2 AND (id<=$3 OR run_id=$4)`+filter+` ORDER BY id LIMIT $5`, pageArgs...)
 		if err != nil {
 			return nil, err
 		}
@@ -248,7 +247,7 @@ func (store *Store) contextTail(ctx context.Context, run Run, through int64, max
 	if through > 0 && run.ID != "" {
 		var prompt Message
 		var raw string
-		err := store.db.QueryRowContext(ctx, `SELECT id,body_json FROM messages WHERE run_id=? ORDER BY id LIMIT 1`, run.ID).Scan(&prompt.ID, &raw)
+		err := store.db.QueryRowContext(ctx, `SELECT id,body_json FROM fa.messages WHERE run_id=$1 ORDER BY id LIMIT 1`, run.ID).Scan(&prompt.ID, &raw)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -296,10 +295,10 @@ func (tasks *TaskService) contextState(ctx context.Context, chat, callerRun, cal
 		return state, err
 	}
 	var blocked string
-	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT id FROM runs r WHERE conversation_id=?
+	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT id FROM fa.runs r WHERE conversation_id=$1
 		AND (status IN ('running','waiting_confirmation','unknown') OR
-		(status IN ('stopped','limited') AND EXISTS(SELECT 1 FROM attempts a WHERE a.run_id=r.id AND a.status IN ('pending','dispatched','unknown'))))
-		AND (r.id!=? OR r.status='unknown' OR EXISTS(SELECT 1 FROM attempts a WHERE a.run_id=r.id AND a.id!=? AND a.status IN ('pending','dispatched','unknown'))) LIMIT 1`, chat, callerRun, callerAttempt).Scan(&blocked)
+		(status IN ('stopped','limited') AND EXISTS(SELECT 1 FROM fa.attempts a WHERE a.run_id=r.id AND a.status IN ('pending','dispatched','unknown') AND NOT `+resolvedAttemptSQL+`)))
+		AND (r.id!=$2 OR r.status='unknown' OR EXISTS(SELECT 1 FROM fa.attempts a WHERE a.run_id=r.id AND a.id!=$3 AND a.status IN ('pending','dispatched','unknown') AND NOT `+resolvedAttemptSQL+`)) LIMIT 1`, chat, callerRun, callerAttempt).Scan(&blocked)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
 	}

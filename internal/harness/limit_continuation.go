@@ -10,7 +10,6 @@ import (
 const settledLimitPrefix = "settled_limit:"
 const activeRunPredicate = `(status IN ('running','waiting_confirmation','stopped','unknown') OR (status='limited' AND substr(stop_reason,1,14)!='settled_limit:'))`
 const activeRunIndex = `CREATE UNIQUE INDEX one_active_run ON runs(conversation_id) WHERE ` + activeRunPredicate
-const unsettledRunIndex = `CREATE UNIQUE INDEX one_active_run ON runs(conversation_id) WHERE status IN ('running','waiting_confirmation','stopped','unknown','limited')`
 const limitContinuationPrompt = "Continue only the unfinished work from the preceding limited request. Use the saved conversation and confirmed results. Do not repeat completed tools or replay UNKNOWN operations. Report what remains unfinished."
 
 func isExplicitContinuation(prompt string) bool {
@@ -19,30 +18,6 @@ func isExplicitContinuation(prompt string) bool {
 		return true
 	}
 	return false
-}
-
-// Only the occupancy index changes. No table, history, status, permission or
-// usage record is migrated; a settled limit remains status=limited in SQLite.
-func (store *Store) ensureActiveRunIndex(ctx context.Context) error {
-	var existing string
-	if err := store.db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type='index' AND name='one_active_run'`).Scan(&existing); err != nil {
-		return err
-	}
-	if existing == activeRunIndex {
-		return nil
-	}
-	tx, err := store.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `DROP INDEX one_active_run`); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, activeRunIndex); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 func (store *Store) settleLimited(ctx context.Context, run Run) (bool, error) {
@@ -61,7 +36,7 @@ func (store *Store) settleLimited(ctx context.Context, run Run) (bool, error) {
 	}
 	defer tx.Rollback()
 	var unsettled int
-	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM attempts WHERE run_id=? AND status IN ('pending','dispatched','unknown')`, run.ID).Scan(&unsettled); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.attempts a WHERE a.run_id=$1 AND a.status IN ('pending','dispatched','unknown') AND NOT `+resolvedAttemptSQL, run.ID).Scan(&unsettled); err != nil {
 		return false, err
 	}
 	if unsettled != 0 {
@@ -73,7 +48,7 @@ func (store *Store) settleLimited(ctx context.Context, run Run) (bool, error) {
 		}
 		return false, err
 	}
-	changed, err := tx.ExecContext(ctx, `UPDATE runs SET stop_reason=?,updated_at=? WHERE id=? AND status='limited' AND stop_reason=? AND active_since=''`, settledLimitPrefix+run.StopReason, nowText(), run.ID, run.StopReason)
+	changed, err := tx.ExecContext(ctx, `UPDATE fa.runs SET stop_reason=$1,updated_at=$2 WHERE id=$3 AND status='limited' AND stop_reason=$4 AND active_since=''`, settledLimitPrefix+run.StopReason, nowText(), run.ID, run.StopReason)
 	if err != nil {
 		return false, err
 	}
@@ -168,7 +143,7 @@ func (tasks *TaskService) startLimitSuccessor(ctx context.Context, core *Service
 		copy := *snapshot.Channel
 		copy.InputMessageID = 0
 		copy.RequestKey = ""
-		if err := core.Store.db.QueryRowContext(ctx, `SELECT coalesce(max(id),0) FROM messages WHERE conversation_id=?`, run.ConversationID).Scan(&copy.HistoryThrough); err != nil {
+		if err := core.Store.db.QueryRowContext(ctx, `SELECT coalesce(max(id),0) FROM fa.messages WHERE conversation_id=$1`, run.ConversationID).Scan(&copy.HistoryThrough); err != nil {
 			return RunResult{}, err
 		}
 		core.channel = &copy
@@ -190,14 +165,14 @@ func (tasks *TaskService) startLimitSuccessor(ctx context.Context, core *Service
 
 func successorTx(ctx context.Context, tx *sql.Tx, parentID, chat string) (string, error) {
 	var parentChat, status, reason string
-	if err := tx.QueryRowContext(ctx, `SELECT conversation_id,status,stop_reason FROM runs WHERE id=?`, parentID).Scan(&parentChat, &status, &reason); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT conversation_id,status,stop_reason FROM fa.runs WHERE id=$1`, parentID).Scan(&parentChat, &status, &reason); err != nil {
 		return "", err
 	}
 	if parentChat != chat || status != "limited" || !strings.HasPrefix(reason, settledLimitPrefix) {
 		return "", ErrActiveRun
 	}
 	var unsettled int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM attempts WHERE run_id=? AND status IN ('pending','dispatched','unknown')`, parentID).Scan(&unsettled); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.attempts a WHERE a.run_id=$1 AND a.status IN ('pending','dispatched','unknown') AND NOT `+resolvedAttemptSQL, parentID).Scan(&unsettled); err != nil {
 		return "", err
 	}
 	if unsettled != 0 {
@@ -207,7 +182,7 @@ func successorTx(ctx context.Context, tx *sql.Tx, parentID, chat string) (string
 		return "", err
 	}
 	var successor string
-	err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "run/limit-next/"+parentID).Scan(&successor)
+	err := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "run/limit-next/"+parentID).Scan(&successor)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
 	}

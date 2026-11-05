@@ -33,7 +33,7 @@ type BranchResult struct {
 
 func branchSourceReady(ctx context.Context, tx *sql.Tx, chat string) error {
 	var blocked bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM runs r WHERE conversation_id=? AND (`+activeRunPredicate+` OR EXISTS(SELECT 1 FROM attempts a WHERE a.run_id=r.id AND a.status IN ('pending','dispatched','unknown'))))`, chat).Scan(&blocked)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.runs r WHERE conversation_id=$1 AND (`+activeRunPredicate+` OR EXISTS(SELECT 1 FROM fa.attempts a WHERE a.run_id=r.id AND a.status IN ('pending','dispatched','unknown'))))`, chat).Scan(&blocked)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func branchSourceReady(ctx context.Context, tx *sql.Tx, chat string) error {
 			return ErrActiveRun
 		}
 		var safe bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM runs WHERE id=? AND conversation_id=? AND status='waiting_confirmation') AND NOT EXISTS(SELECT 1 FROM runs WHERE conversation_id=? AND id!=? AND `+activeRunPredicate+`) AND NOT EXISTS(SELECT 1 FROM attempts WHERE run_id=? AND (status IN ('dispatched','unknown') OR status='pending' AND json_extract(request_json,'$.Name')!='control_plan_change'))`, allowed, chat, chat, allowed, allowed).Scan(&safe); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.runs WHERE id=$1 AND conversation_id=$2 AND status='waiting_confirmation') AND NOT EXISTS(SELECT 1 FROM fa.runs WHERE conversation_id=$3 AND id!=$4 AND `+activeRunPredicate+`) AND NOT EXISTS(SELECT 1 FROM fa.attempts WHERE run_id=$5 AND (status IN ('dispatched','unknown') OR status='pending' AND (request_doc #>> '{Name}')!='control_plan_change'))`, allowed, chat, chat, allowed, allowed).Scan(&safe); err != nil {
 			return err
 		}
 		if !safe {
@@ -75,7 +75,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 	requestMeta := "branch/request/" + chat + "/" + contentHash([]byte(command.RequestKey))
 	digest := contentHash(mustJSON(command))
 	var saved string
-	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, requestMeta).Scan(&saved); err == nil {
+	if err := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, requestMeta).Scan(&saved); err == nil {
 		var previous struct {
 			Digest string
 			Result BranchResult
@@ -92,15 +92,15 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 		return result, err
 	}
 	var source Conversation
-	err = tx.QueryRowContext(ctx, `SELECT id,title,workspace,space_id,created_at,updated_at FROM conversations WHERE id=?`, chat).Scan(&source.ID, &source.Title, &source.Workspace, &source.SpaceID, &source.CreatedAt, &source.UpdatedAt)
+	err = tx.QueryRowContext(ctx, `SELECT id,title,workspace,space_id,created_at,updated_at FROM fa.conversations WHERE id=$1`, chat).Scan(&source.ID, &source.Title, &source.Workspace, &source.SpaceID, &source.CreatedAt, &source.UpdatedAt)
 	if err != nil {
 		return result, err
 	}
-	_ = tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "chat/model/"+chat).Scan(&source.ModelID)
+	_ = tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "chat/model/"+chat).Scan(&source.ModelID)
 	if source.Workspace != config.Workspace {
 		return result, ErrConversationSpace
 	}
-	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM spaces WHERE id=?`, source.SpaceID))
+	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE id=$1`, source.SpaceID))
 	if err != nil {
 		return result, err
 	}
@@ -111,7 +111,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 		return result, err
 	}
 	var cutRaw, cutRun string
-	if err := tx.QueryRowContext(ctx, `SELECT body_json,coalesce(run_id,'') FROM messages WHERE id=? AND conversation_id=?`, command.MessageID, chat).Scan(&cutRaw, &cutRun); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT body_json,coalesce(run_id,'') FROM fa.messages WHERE id=$1 AND conversation_id=$2`, command.MessageID, chat).Scan(&cutRaw, &cutRun); err != nil {
 		return result, err
 	}
 	var cut ModelMessage
@@ -126,7 +126,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 	}
 	if command.Mode == "continue" && cutRun != "" {
 		var status string
-		if err := tx.QueryRowContext(ctx, `SELECT status FROM runs WHERE id=?`, cutRun).Scan(&status); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM fa.runs WHERE id=$1`, cutRun).Scan(&status); err != nil {
 			return result, err
 		}
 		if status != "completed" {
@@ -137,7 +137,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 	if command.Mode == "rerun" {
 		cutoff--
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE conversation_id=? AND id<=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 ORDER BY id`, chat, cutoff)
+	rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM fa.messages WHERE conversation_id=$1 AND id<=$2 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false ORDER BY id`, chat, cutoff)
 	if err != nil {
 		return result, err
 	}
@@ -190,11 +190,11 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 	if command.Prompt != nil {
 		result.Prompt = *command.Prompt
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO conversations(id,title,workspace,space_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`, result.Conversation.ID, result.Conversation.Title, result.Conversation.Workspace, result.Conversation.SpaceID, result.Conversation.CreatedAt, result.Conversation.UpdatedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.conversations(id,title,workspace,space_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)`, result.Conversation.ID, result.Conversation.Title, result.Conversation.Workspace, result.Conversation.SpaceID, result.Conversation.CreatedAt, result.Conversation.UpdatedAt); err != nil {
 		return result, err
 	}
 	if source.ModelID != "" {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "chat/model/"+result.Conversation.ID, source.ModelID); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "chat/model/"+result.Conversation.ID, source.ModelID); err != nil {
 			return result, err
 		}
 	}
@@ -214,7 +214,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 	cache := map[string]AttachmentRef{}
 	var used int64
 	var files int
-	if err := tx.QueryRowContext(ctx, `SELECT coalesce(sum(CAST(json_extract(value,'$.ref.bytes') AS INTEGER)),0),count(*) FROM meta WHERE key LIKE 'attachment/%' AND coalesce(json_extract(value,'$.deleted'),0)=0`).Scan(&used, &files); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT coalesce(sum(CAST(((document #>> '{ref,bytes}')::bigint) AS INTEGER)),0),count(*) FROM fa.meta WHERE key LIKE 'attachment/%' AND coalesce(((document #>> '{deleted}')::boolean),false)=false`).Scan(&used, &files); err != nil {
 		return result, err
 	}
 	copyRefs := func(refs []AttachmentRef) ([]AttachmentRef, error) {
@@ -264,7 +264,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 			r.ExportSelected = false
 			r.ExportKeepVersion = false
 			r.Created = nowText()
-			if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, attachmentPrefix+ref.ID, string(mustJSON(r))); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, attachmentPrefix+ref.ID, string(mustJSON(r))); err != nil {
 				return nil, err
 			}
 			cache[old] = ref
@@ -277,7 +277,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 		if err != nil {
 			return result, err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO messages(conversation_id,body_json) VALUES(?,?)`, result.Conversation.ID, string(mustJSON(m))); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.messages(conversation_id,body_json) VALUES($1,$2)`, result.Conversation.ID, string(mustJSON(m))); err != nil {
 			return result, err
 		}
 	}
@@ -285,10 +285,10 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 	if err != nil {
 		return result, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "conversation/branch/"+result.Conversation.ID, string(mustJSON(result.Origin))); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "conversation/branch/"+result.Conversation.ID, string(mustJSON(result.Origin))); err != nil {
 		return result, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, requestMeta, string(mustJSON(struct {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, requestMeta, string(mustJSON(struct {
 		Digest string
 		Result BranchResult
 	}{digest, result}))); err != nil {

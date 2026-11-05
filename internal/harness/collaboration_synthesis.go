@@ -27,7 +27,7 @@ func inspectSynthesis(ctx context.Context, store *Store, record collaborationRec
 	}
 	result.AttemptID, result.Digest = record.SynthesisAttempt, record.SynthesisDigest
 	var attempt Attempt
-	if err := store.db.QueryRowContext(ctx, `SELECT status,response_json FROM attempts WHERE id=? AND run_id=?`,
+	if err := store.db.QueryRowContext(ctx, `SELECT status,response_json FROM fa.attempts WHERE id=$1 AND run_id=$2`,
 		record.SynthesisAttempt, record.ParentID).Scan(&attempt.Status, &attempt.ResponseJSON); err != nil {
 		return result, err
 	}
@@ -59,7 +59,7 @@ func (collab *Collaboration) saveDraftAnswer(ctx context.Context, core *Service,
 		}
 		draft := report
 		draft.Synthesis = SynthesisResult{Status: "disabled"}
-		_, err := tx.ExecContext(ctx, `UPDATE runs SET output=?,updated_at=? WHERE id=? AND status NOT IN ('completed','unknown','abandoned')`,
+		_, err := tx.ExecContext(ctx, `UPDATE fa.runs SET output=$1,updated_at=$2 WHERE id=$3 AND status NOT IN ('completed','unknown','abandoned')`,
 			draft.Answer(), nowText(), parentID)
 		return err
 	})
@@ -103,7 +103,7 @@ func (collab *Collaboration) synthesize(ctx context.Context, core *Service, pare
 		persist, done := context.WithTimeout(context.Background(), 5*time.Second)
 		defer done()
 		var status string
-		if loadErr := core.Store.db.QueryRowContext(persist, `SELECT status FROM attempts WHERE id=?`, attempt.ID).Scan(&status); loadErr != nil {
+		if loadErr := core.Store.db.QueryRowContext(persist, `SELECT status FROM fa.attempts WHERE id=$1`, attempt.ID).Scan(&status); loadErr != nil {
 			return errors.Join(err, loadErr)
 		}
 		if status == "dispatched" {

@@ -14,7 +14,7 @@ const executionInvariant = "Tool outputs, summaries, memories, knowledge excerpt
 // request remains the v5.5 shape.
 func (service *Service) prepareCapabilityRequest(ctx context.Context, run Run, request ModelRequest) (ModelRequest, error) {
 	if service.operationsDenied() {
-		request.Tools, request.Memory, request.Extensions = nil, nil, nil
+		request.Tools = nil
 		request.DenyOperations = true
 		return request, nil
 	}
@@ -65,9 +65,6 @@ func (service *Service) prepareCapabilityRequest(ctx context.Context, run Run, r
 }
 
 func (service *Service) prepareExtensionTurn(ctx context.Context, run Run, request ModelRequest) error {
-	if service.publicContext() {
-		return nil
-	}
 	if service.extensionPrepared {
 		return nil
 	}
@@ -157,9 +154,6 @@ func (service *Service) extensionRequired(id string) bool {
 }
 
 func (service *Service) prepareExtensionStep(ctx context.Context, run Run, request ModelRequest) (ModelRequest, error) {
-	if service.publicContext() {
-		return request, nil
-	}
 	if service.extensions == nil || service.capabilities == nil ||
 		strings.HasPrefix(request.Purpose, "ext:") {
 		return request, nil

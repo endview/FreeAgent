@@ -67,7 +67,7 @@ func TestLimitWithUnknownAttemptCannotSettleOrEscape(t *testing.T) {
 	service, tasks, previous, _ := limitedFixture(t)
 	// Simulate a separately observed uncertain dispatch. It invalidates the
 	// settled marker before this Run can be used as a successor source.
-	if _, err := service.Store.db.ExecContext(t.Context(), `UPDATE attempts SET status='unknown' WHERE run_id=? AND kind='tool'`, previous.ID); err != nil {
+	if _, err := service.Store.db.ExecContext(t.Context(), `UPDATE fa.attempts SET status='unknown' WHERE run_id=$1 AND kind='tool'`, previous.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tasks.Continue(t.Context(), previous.ID); err == nil {

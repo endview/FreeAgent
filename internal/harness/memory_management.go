@@ -33,8 +33,8 @@ func (tasks *TaskService) MemoryScopes(ctx context.Context, chat, kind string) (
 	if kind != "private" && kind != "shared" && kind != "knowledge" {
 		return nil, ErrMemoryDenied
 	}
-	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT DISTINCT scope,owner,project,task_id FROM memories
-		WHERE scope=? AND (project='' OR project=?) AND state!='deleted' ORDER BY owner,project,task_id LIMIT 101`,
+	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT DISTINCT scope,owner,project,task_id FROM fa.memories
+		WHERE scope=$1 AND (project='' OR project=$2) AND state!='deleted' ORDER BY owner,project,task_id LIMIT 101`,
 		kind, authority.project)
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ func (tasks *TaskService) SetMemoryConfig(ctx context.Context, memory MemoryConf
 	}
 	defer tasks.core.Store.runMu.Unlock()
 	var unfinished int
-	if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs
+	if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs
 		WHERE `+activeRunPredicate+` `).Scan(&unfinished); err != nil {
 		return err
 	}

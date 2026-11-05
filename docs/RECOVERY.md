@@ -127,7 +127,7 @@ on failure, stop, approval or UNKNOWN. Inspect the saved operation before using
 
 ## Backup
 
-Exit chat and other writers, then:
+Back up online through the running Owner, or run offline when no Owner is active:
 
 ```text
 freeagent backup --data-dir <state> --out <new-backup>
@@ -136,15 +136,17 @@ freeagent restore --source <new-backup> --data-dir <new-restored-state>
 freeagent doctor --data-dir <new-restored-state>
 ```
 
-Targets must not already exist. Backup uses `VACUUM INTO`, so committed WAL
-history is included; copying an active `.sqlite` file yourself is not equivalent.
-It includes the database, config and only selected instruction files with
-hashes. MCP executables, resolved environment secrets and project files are not
-copied. Restore verifies the exact private staged copy before publishing it.
-Failure does not overwrite an existing target.
+Targets must not already exist. Backup uses an exported PostgreSQL snapshot
+and `pg_dump`, with attachment references from the same snapshot. Ordinary
+task dispatch continues. It includes the database, config, selected instructions
+and referenced immutable attachments; credentials, executables and workspace
+files are excluded. Restore imports into a new database and checks identity,
+schema and attachment references before publishing a new data directory.
+Failure does not overwrite an existing target. See [PostgreSQL](POSTGRESQL.md).
 
-Backup verification checks the exact current schema, SQLite/FK integrity,
-config and instruction bounds/hashes. It does not authenticate who made the
+Backup verification checks the manifest, dump, attachment references, config
+and instruction bounds/hashes. Full restore checks the actual PG schema and
+constraints in the new database. It does not authenticate who made the
 backup or resolve secrets/start MCP/contact the model. The original workspace
 path remains in config; restoring does not restore or relocate that workspace.
 If the workspace is absent, restore can succeed but doctor/runtime will reject

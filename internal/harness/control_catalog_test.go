@@ -42,6 +42,7 @@ func TestControlCatalogCoversPersistentConfigFields(t *testing.T) {
 		"auto": "config.auto", "workspace": "config.workspace",
 		"history_page_size": "config.limits", "max_context_bytes": "config.limits",
 		"max_output_tokens": "config.limits", "max_tool_result_bytes": "config.limits",
+		"model_retries":        "config.limits",
 		"auto_compact_percent": "config.limits", "task_summary_bytes": "config.limits", "system_prompt": "config.prompt", "instructions": "config.prompt",
 		"mcpServers": "config.mcp", "skills": "config.skills", "extensions": "config.extensions",
 		"tools": "config.tools", "commands": "config.commands", "execution": "config.execution",

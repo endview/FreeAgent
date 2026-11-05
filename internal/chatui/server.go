@@ -31,6 +31,9 @@ type Stream struct {
 
 // Server owns only transport state; TaskService owns execution and persistence.
 type Server struct {
+	clients         map[string]time.Time
+	clientRequests  int
+	idleOnce        sync.Once
 	public          *PublicServer
 	attachmentSlots chan struct{}
 	tasks           *harness.TaskService
@@ -54,8 +57,7 @@ type Server struct {
 	stopRequested   chan struct{}
 	stopOnce        sync.Once
 	ownerInfo       handoff.EngineInfo
-	telegram        *harness.TelegramRuntime
-	lark, qq        *harness.AppChannelRuntime
+	channelBridge   *harness.ChannelBridge
 	channelConfig   harness.ChannelsConfig
 }
 
@@ -93,6 +95,7 @@ func newServer(ctx context.Context, tasks *harness.TaskService, origin, token, a
 	tasks.SetCommandGeneration(server.generation)
 	tasks.SetApproval(nil)
 	tasks.SetEvents(server.onEvent)
+	go server.watchDatabaseOwner()
 	return server, nil
 }
 
@@ -117,12 +120,6 @@ func (server *Server) SetOwnerInfo(info handoff.EngineInfo) {
 	server.mu.Unlock()
 }
 
-func (server *Server) SetTelegramRuntime(runtime *harness.TelegramRuntime) {
-	server.mu.Lock()
-	server.telegram = runtime
-	server.mu.Unlock()
-}
-
 // StopRequested is closed when an attached client has requested a graceful
 // owner handoff. The process that owns the Store performs final shutdown and
 // releases owner.lock.
@@ -143,6 +140,9 @@ func (server *Server) Close() {
 	server.tasks.Cancel()
 	server.wg.Wait()
 	_ = server.tasks.CloseCommands("owner_shutdown")
+	if server.channelBridge != nil {
+		_ = server.channelBridge.Close()
+	}
 }
 
 func (server *Server) onEvent(event harness.Event) {
@@ -241,6 +241,9 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		http.FileServerFS(Assets()).ServeHTTP(writer, request)
 		return
 	}
+	if server.channelPluginAPI(writer, request) {
+		return
+	}
 	key := request.Header.Get("X-FreeAgent-Key")
 	attachKey := request.Header.Get("X-FreeAgent-Attach")
 	keyOK := public || subtle.ConstantTimeCompare([]byte(key), []byte(server.token)) == 1
@@ -249,6 +252,12 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.writeError(writer, http.StatusUnauthorized, "auth", "需要本次启动的 Chat 地址。")
 		return
 	}
+	leave, admitted := server.enterClientRequest(request)
+	if !admitted {
+		server.writeError(writer, 503, "owner_stopping", "Owner 正在停止，未接收新请求。")
+		return
+	}
+	defer leave()
 	if attachOK && !keyOK && (request.URL.Path == "/api/control/plan" || request.URL.Path == "/api/control/confirm" || request.URL.Path == "/api/control/reject" || request.URL.Path == "/api/control/revert-plan") {
 		server.writeError(writer, http.StatusForbidden, "user_interaction_required", "需要当前用户界面的交互确认。")
 		return
@@ -259,6 +268,11 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	}
 	if path == "/api/connect" && request.Method == http.MethodPost {
 		server.writeJSON(writer, http.StatusOK, map[string]any{"connected": true})
+		return
+	}
+	if path == "/api/client/detach" && request.Method == http.MethodPost {
+		server.ForgetClient(request.Header.Get("X-FreeAgent-Client"))
+		server.writeJSON(writer, http.StatusOK, map[string]any{"detached": true})
 		return
 	}
 	if path == "/api/events" && request.Method == http.MethodGet {
@@ -428,8 +442,13 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			}
 			entries = append(entries, item)
 		}
+		pins, pinErr := server.tasks.PinnedMemory(request.Context(), chat)
+		if pinErr != nil {
+			server.fail(writer, pinErr)
+			return
+		}
 		server.writeJSON(writer, http.StatusOK, map[string]any{
-			"entries": entries, "knowledge": selection.Knowledge, "task_private": selection.TaskPrivate,
+			"entries": entries, "knowledge": selection.Knowledge, "task_private": selection.TaskPrivate, "pins": pins,
 		})
 		return
 	}
@@ -438,6 +457,24 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		if err != nil {
 			server.fail(writer, err)
 			return
+		}
+		server.mu.Lock()
+		activeAtReadEnd := server.running[chat] != nil
+		server.mu.Unlock()
+		// A repeatable-read snapshot can precede the commit that released the
+		// in-memory execution slot. Refresh once before reporting idle together
+		// with an obsolete "generating" turn; do not hold server.mu over SQL.
+		if !activeAtReadEnd {
+			for _, turn := range view.Turns {
+				if turn.State == "generating" {
+					view, err = server.tasks.Chat(request.Context(), chat, request.URL.Query().Get("before"))
+					break
+				}
+			}
+			if err != nil {
+				server.fail(writer, err)
+				return
+			}
 		}
 		server.mu.Lock()
 		streams := make([]Stream, 0)
@@ -506,10 +543,23 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.writeJSON(writer, http.StatusOK, map[string]string{"id": chat, "title": updated.Conversation.Title})
 	case "exclude-memory":
 		var body struct {
+			PinID     string                   `json:"pin_id"`
 			Entry     *harness.MemoryReference `json:"entry"`
 			Knowledge *harness.MemoryScope     `json:"knowledge"`
 		}
 		if !server.readBody(writer, request, &body) {
+			return
+		}
+		if body.PinID != "" {
+			if body.Entry != nil || body.Knowledge != nil {
+				server.writeError(writer, 400, "input", "一次只排除一个来源。")
+				return
+			}
+			if err := server.tasks.ExcludePinnedMemory(request.Context(), chat, body.PinID); err != nil {
+				server.fail(writer, err)
+				return
+			}
+			server.writeJSON(writer, 200, map[string]bool{"removed": true})
 			return
 		}
 		if body.Entry == nil && body.Knowledge == nil || body.Entry != nil && body.Knowledge != nil {
@@ -745,8 +795,9 @@ func (server *Server) conversationsAPI(writer http.ResponseWriter, request *http
 	switch parts[1] {
 	case "permission":
 		var body struct {
-			Mode      harness.PermissionMode `json:"mode"`
-			Confirmed bool                   `json:"confirmed"`
+			OwnerPrivate *bool                  `json:"owner_private"`
+			Mode         harness.PermissionMode `json:"mode"`
+			Confirmed    bool                   `json:"confirmed"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return true
@@ -760,9 +811,14 @@ func (server *Server) conversationsAPI(writer http.ResponseWriter, request *http
 			server.permissionFailure(writer, harness.ErrFullAccessConfirmation)
 			return true
 		}
-		if _, applyErr := server.applyDirectControl(request.Context(), "", chatID, harness.ControlSetSpacePermission, map[string]any{
-			"conversation_id": chatID, "mode": body.Mode,
-		}); applyErr != nil {
+		args := map[string]any{"conversation_id": chatID, "mode": body.Mode}
+		if body.OwnerPrivate != nil {
+			selected.Mode = body.Mode
+			selected.OwnerPrivate = *body.OwnerPrivate
+			args["selection"] = selected
+			delete(args, "mode")
+		}
+		if _, applyErr := server.applyDirectControl(request.Context(), "", chatID, harness.ControlSetSpacePermission, args); applyErr != nil {
 			server.permissionFailure(writer, applyErr)
 			return true
 		}
@@ -910,6 +966,8 @@ func (server *Server) readBody(writer http.ResponseWriter, request *http.Request
 func userError(err error) (string, string) {
 	var failure *harness.CallError
 	switch {
+	case errors.Is(err, harness.ErrOwnerLost):
+		return "database_owner_lost", "数据库连接或执行所有权失效，Owner 已停止接收新任务。重新启动后核对保留的 UNKNOWN 记录。"
 	case errors.Is(err, harness.ErrPublicLocalConfirmation):
 		return "local_confirmation_required", "提高远程最高权限需要在服务器本机 GUI 或 CLI 确认。当前配置未提高。"
 	case errors.Is(err, harness.ErrPublicSourceBlocked):

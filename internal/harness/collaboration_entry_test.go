@@ -359,7 +359,7 @@ func TestCollaborationEntryChatOffBeforeCreationCommits(t *testing.T) {
 				_, err = tasks.Submit(t.Context(), chat, "create", "goal")
 			}
 			var runs int
-			_ = core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM runs`).Scan(&runs)
+			_ = core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.runs`).Scan(&runs)
 			if !errors.Is(err, ErrConfigChanged) || runs != 0 || calls.Load() != 0 || refreshes.Load() == 0 {
 				t.Fatalf("revoked selection created work: err=%v runs=%d calls=%d", err, runs, calls.Load())
 			}

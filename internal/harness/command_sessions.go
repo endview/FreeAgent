@@ -256,7 +256,7 @@ func (s *commandSupervisor) event(r CommandRecord) {
 func newCommandSupervisor(ctx context.Context, store *Store) (*commandSupervisor, error) {
 	owner, cancel := context.WithCancel(ctx)
 	s := &commandSupervisor{store: store, generation: newID(), ctx: owner, cancel: cancel, active: map[string]*ownedCommand{}, reservations: map[string]commandReservation{}}
-	rows, err := store.db.QueryContext(ctx, `SELECT key,value FROM meta WHERE key LIKE 'command/process/%'`)
+	rows, err := store.db.QueryContext(ctx, `SELECT key,value FROM fa.meta WHERE key LIKE 'command/process/%'`)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -311,7 +311,7 @@ func (s *commandSupervisor) save(ctx context.Context, r CommandRecord) error {
 	if len(raw) > 2<<20 {
 		return ErrContextLimit
 	}
-	_, err := s.store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, commandMetaPrefix+r.ID, string(raw))
+	_, err := s.store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, commandMetaPrefix+r.ID, string(raw))
 	return err
 }
 func (s *commandSupervisor) reserve(id string, tools *CommandTools, args *commandArguments) (func(), error) {
@@ -374,7 +374,7 @@ func (s *commandSupervisor) activeIDsLocked() string {
 	return strings.Join(ids, ",")
 }
 func (s *commandSupervisor) list(ctx context.Context) ([]CommandRecord, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE 'command/process/%' ORDER BY rowid DESC LIMIT 200`)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE 'command/process/%' ORDER BY (document->>'started_at') DESC,key DESC LIMIT 200`)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +449,7 @@ func (s *commandSupervisor) poll(ctx context.Context, id string, cursor int64, l
 		return r, nil
 	}
 	var raw string
-	if err := s.store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, commandMetaPrefix+id).Scan(&raw); err != nil {
+	if err := s.store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, commandMetaPrefix+id).Scan(&raw); err != nil {
 		return CommandRecord{}, err
 	}
 	var r CommandRecord

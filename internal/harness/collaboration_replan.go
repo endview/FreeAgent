@@ -70,7 +70,7 @@ func (collab *Collaboration) replan(ctx context.Context, core *Service, parentID
 	var saved *Attempt
 	for index := range attempts {
 		attempt := &attempts[index]
-		if attempt.Status == "dispatched" || attempt.Status == "unknown" {
+		if attempt.Status == "dispatched" || (attempt.Status == "unknown" && attempt.Replacement == "" && attempt.Resolution == "") {
 			return ErrUnknownResult
 		}
 		var request ModelRequest
@@ -169,7 +169,7 @@ func replanLimitRevisions(ctx context.Context, reader metaReader, record collabo
 	for index := revision + 1; index <= record.Revision; index++ {
 		var raw string
 		var saved PlanRevision
-		if err := reader.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`,
+		if err := reader.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`,
 			fmt.Sprintf("collaboration-revision/%s/%04d", record.ParentID, index)).Scan(&raw); err != nil {
 			return err
 		}

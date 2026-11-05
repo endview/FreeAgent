@@ -266,10 +266,6 @@ func readBoundedFile(path string, limit int) ([]byte, error) {
 }
 
 func (service *Service) loadSkills(ctx context.Context, prompt string) error {
-	if service.publicContext() {
-		service.skills = &skillRuntime{registry: skillRegistry{Skills: map[string]skill{}}, selected: map[string]skill{}}
-		return nil
-	}
 	if service == nil || service.Store == nil {
 		return errors.New("harness: skill runtime requires a store")
 	}

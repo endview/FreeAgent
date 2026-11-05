@@ -178,6 +178,7 @@ type ControlPlanRequest struct {
 // this boundary, held in owner memory until apply, and never copied into a
 // controlRecord or journal line.
 type KeyControlRequest struct {
+	Namespace     string
 	Ref           string
 	Input         KeyInput
 	Remove        bool
@@ -521,16 +522,12 @@ func (service *ControlService) refreshBaseline() error {
 	if err != nil {
 		return err
 	}
-	keysHash := ""
-	if service.core.Keys != nil && service.core.Keys.Path() != "" {
-		if raw, readErr := os.ReadFile(service.core.Keys.Path()); readErr == nil {
-			keysHash = contentHash(raw)
-		} else if !errors.Is(readErr, os.ErrNotExist) {
-			return readErr
-		}
+	keysHash, err := service.credentialBaseline()
+	if err != nil {
+		return err
 	}
 	var dataVersion int
-	if err := service.core.Store.db.QueryRow(`PRAGMA data_version`).Scan(&dataVersion); err != nil {
+	if err := service.core.Store.db.QueryRowContext(context.Background(), `SELECT (document->>'revision')::bigint FROM fa.meta WHERE key='core/external'`).Scan(&dataVersion); err != nil {
 		return err
 	}
 	service.baselineMu.Lock()
@@ -551,16 +548,12 @@ func (service *ControlService) detectExternalChange() error {
 		return err
 	}
 	configHash := contentHash(configRaw)
-	keysHash := ""
-	if service.core.Keys != nil && service.core.Keys.Path() != "" {
-		if raw, readErr := os.ReadFile(service.core.Keys.Path()); readErr == nil {
-			keysHash = contentHash(raw)
-		} else if !errors.Is(readErr, os.ErrNotExist) {
-			return readErr
-		}
+	keysHash, err := service.credentialBaseline()
+	if err != nil {
+		return err
 	}
 	var dataVersion int
-	if err := service.core.Store.db.QueryRow(`PRAGMA data_version`).Scan(&dataVersion); err != nil {
+	if err := service.core.Store.db.QueryRowContext(context.Background(), `SELECT (document->>'revision')::bigint FROM fa.meta WHERE key='core/external'`).Scan(&dataVersion); err != nil {
 		return err
 	}
 	service.baselineMu.Lock()
@@ -664,12 +657,13 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlRenameConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Rename one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlPinConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Pin or unpin one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetConversationCapabilities, ResourceFamily: "conversation.capabilities", Risk: ControlRiskAuthority, Description: "Select the Skills, MCP servers and Extensions available to one conversation.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetMemoryPin, ResourceFamily: "memory.pin", Risk: ControlRiskAuthority, Description: "Pin or unpin an exact retained Memory revision and explicit scope; confirmation is always required.", ModelProposable: true, Reversible: false},
 		{Kind: ControlSetMemorySelection, ResourceFamily: "conversation.memory", Risk: ControlRiskAuthority, Description: "Select bounded memory and knowledge inputs for one conversation's future Runs.", ModelProposable: true, Reversible: true},
 	}
 	for i := range entries {
 		if entries[i].Kind == ControlSetRuntimeLimits {
 			entries[i].Description += " task_summary_bytes: 0 disables automatic compaction; 1..16384 enables it and bounds the summary bytes. Existing summaries are retained."
-			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
+			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"model_retries":{"type":"integer","minimum":0,"maximum":6},"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
 		}
 	}
 	return entries
@@ -792,7 +786,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 	service.baselineMu.Lock()
 	state.ExternalChangePending = service.externalChange
 	if state.ExternalChangePending {
-		state.ExternalChangeResources = []string{"config.json", "keys.json", "state.sqlite"}
+		state.ExternalChangeResources = []string{"config.json", "keys.json", "PostgreSQL"}
 	}
 	service.baselineMu.Unlock()
 	for _, record := range service.operations {
@@ -923,13 +917,21 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	views, err := service.core.Keys.List()
+	keys := service.core.Keys
+	resource := "keys.profiles"
+	if request.Namespace == "channels" {
+		keys = NewTaskService(service.core).ChannelKeys()
+		resource = "channel.keys"
+	} else if request.Namespace != "" {
+		return ControlOperation{}, ErrPermissionDenied
+	}
+	views, err := keys.List()
 	if err != nil {
 		return ControlOperation{}, err
 	}
 	var current KeyProfileView
 	if request.Ref != "" {
-		current, err = service.core.Keys.Find(request.Ref)
+		current, err = keys.Find(request.Ref)
 		if err != nil {
 			return ControlOperation{}, err
 		}
@@ -941,16 +943,24 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 			return ControlOperation{}, ErrKeyNotFound
 		}
 		users := keyModelUsers(service.core.currentConfig(), current.ID)
+		if request.Namespace == "channels" {
+			users = nil
+			for _, connection := range service.core.currentConfig().Channels.Connections {
+				if connection.Credential == current.ID {
+					return ControlOperation{}, ErrControlBusy
+				}
+			}
+		}
 		if len(users) != 0 && !request.Force && !request.DisableModels {
 			return ControlOperation{}, ErrControlBusy
 		}
-		args := mustJSON(map[string]any{"id": current.ID, "remove": true, "force": request.Force,
+		args := mustJSON(map[string]any{"namespace": request.Namespace, "id": current.ID, "remove": true, "force": request.Force,
 			"disable_models": request.DisableModels, "new_default": request.NewDefault})
-		operation := ControlOperation{Kind: kind, Authorization: ControlUserDirect, ResourceIDs: []string{"keys.profiles"},
-			ExpectedRevisions: map[string]uint64{"keys.profiles": service.revisionLocked("keys.profiles")}, Risk: ControlRiskDestructive,
+		operation := ControlOperation{Kind: kind, Authorization: ControlUserDirect, ResourceIDs: []string{resource},
+			ExpectedRevisions: map[string]uint64{resource: service.revisionLocked(resource)}, Risk: ControlRiskDestructive,
 			Preview: fmt.Sprintf("Remove Key profile %s%s.", redactID(current.ID), map[bool]string{true: " and its referencing models", false: ""}[request.DisableModels]), RevertClass: "none"}
 		record := controlRecord{Operation: operation, Arguments: args,
-			Before: map[string]json.RawMessage{"keys.profiles": mustJSON(views)}, After: map[string]json.RawMessage{"keys.profiles": mustJSON(removeKeyView(views, current.ID))}}
+			Before: map[string]json.RawMessage{resource: mustJSON(views)}, After: map[string]json.RawMessage{resource: mustJSON(removeKeyView(views, current.ID))}}
 		return service.persistKeyPlanLocked(record, nil)
 	}
 
@@ -978,6 +988,9 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 		return ControlOperation{}, err
 	}
 	protocol := normalizeKeyProtocol(input.Protocol)
+	if !keys.accepts(protocol) {
+		return ControlOperation{}, ErrPermissionDenied
+	}
 	if input.Source == KeySourceEnv && !validEnvName(input.EnvName) {
 		return ControlOperation{}, errors.New("harness: invalid environment variable name")
 	}
@@ -996,18 +1009,18 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 	if nameTakenViews(views, name, current.ID) {
 		return ControlOperation{}, ErrKeyNameExists
 	}
-	args := mustJSON(map[string]any{"id": current.ID, "new": current.ID == "", "name": name, "base_url": base,
+	args := mustJSON(map[string]any{"namespace": request.Namespace, "id": current.ID, "new": current.ID == "", "name": name, "base_url": base,
 		"protocol": protocol, "note": note, "source": input.Source, "env_name": input.EnvName})
 	after := replaceKeyView(views, current.ID, KeyProfileView{ID: current.ID, Name: name, BaseURL: base, Protocol: protocol,
 		Note: note, Source: input.Source, EnvName: input.EnvName})
 	if current.ID == "" {
 		after = append(after, KeyProfileView{Name: name, BaseURL: base, Protocol: protocol, Note: note, Source: input.Source, EnvName: input.EnvName})
 	}
-	operation := ControlOperation{Kind: kind, Authorization: ControlUserDirect, ResourceIDs: []string{"keys.profiles"},
-		ExpectedRevisions: map[string]uint64{"keys.profiles": service.revisionLocked("keys.profiles")}, Risk: ControlRiskAuthority,
+	operation := ControlOperation{Kind: kind, Authorization: ControlUserDirect, ResourceIDs: []string{resource},
+		ExpectedRevisions: map[string]uint64{resource: service.revisionLocked(resource)}, Risk: ControlRiskAuthority,
 		Preview: fmt.Sprintf("Save Key profile %s at %s using protocol %s. The secret is not shown.", name, base, protocol), RevertClass: "none"}
 	record := controlRecord{Operation: operation, Arguments: args,
-		Before: map[string]json.RawMessage{"keys.profiles": mustJSON(views)}, After: map[string]json.RawMessage{"keys.profiles": mustJSON(after)}}
+		Before: map[string]json.RawMessage{resource: mustJSON(views)}, After: map[string]json.RawMessage{resource: mustJSON(after)}}
 	secret := append([]byte(nil), input.Secret...)
 	clear(input.Secret)
 	return service.persistKeyPlanLocked(record, secret)
@@ -1621,7 +1634,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 	}
 	if record.Operation.Kind == ControlSetWorkspace {
 		var active int
-		if err := service.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE status='running' OR active_since!=''`).Scan(&active); err != nil {
+		if err := service.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs WHERE status='running' OR active_since!=''`).Scan(&active); err != nil {
 			return result, err
 		}
 		if active != 0 {
@@ -1799,6 +1812,9 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 	if record.Operation.Kind == ControlSetMCPProfile || record.Operation.Kind == ControlRemoveMCP {
 		return service.applyMCPRecordLocked(ctx, record)
 	}
+	if record.Operation.Kind == ControlSetMemoryPin {
+		return service.applyMemoryPin(ctx, record)
+	}
 	if record.Operation.Kind == ControlSetMemorySelection {
 		var args struct {
 			ConversationID string          `json:"conversation_id"`
@@ -1928,6 +1944,7 @@ func (service *ControlService) applyCapabilityLifecycleLocked(ctx context.Contex
 
 func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record *controlRecord) error {
 	var args struct {
+		Namespace     string `json:"namespace"`
 		ID            string `json:"id"`
 		New           bool   `json:"new"`
 		Remove        bool   `json:"remove"`
@@ -1947,8 +1964,17 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 	if service.core.Keys == nil {
 		return errors.New("harness: key store is not configured")
 	}
+	keys := service.core.Keys
+	if args.Namespace == "channels" {
+		keys = NewTaskService(service.core).ChannelKeys()
+	} else if args.Namespace != "" {
+		return ErrPermissionDenied
+	}
 	if record.Operation.Kind == ControlProbeKey {
-		resolved, err := service.core.Keys.Resolve(args.ID)
+		if args.Namespace != "" {
+			return ErrPermissionDenied
+		}
+		resolved, err := keys.Resolve(args.ID)
 		if err != nil {
 			return err
 		}
@@ -1956,7 +1982,7 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 		if err != nil {
 			return err
 		}
-		if err := service.core.Keys.RecordCheck(args.ID, probe.Category); err != nil {
+		if err := keys.RecordCheck(args.ID, probe.Category); err != nil {
 			return err
 		}
 		raw, err := json.Marshal(probe)
@@ -1969,6 +1995,14 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 	if args.Remove || record.Operation.Kind == ControlRemoveKey {
 		config := service.core.currentConfig()
 		users := keyModelUsers(config, args.ID)
+		if args.Namespace == "channels" {
+			users = nil
+			for _, connection := range config.Channels.Connections {
+				if connection.Credential == args.ID {
+					return ErrControlBusy
+				}
+			}
+		}
 		if len(users) != 0 && !args.Force && !args.DisableModels {
 			return ErrControlBusy
 		}
@@ -1984,7 +2018,7 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 				return err
 			}
 		}
-		return service.core.Keys.Remove(args.ID)
+		return keys.Remove(args.ID)
 	}
 	secret := service.keySecrets[record.Operation.ID]
 	delete(service.keySecrets, record.Operation.ID)
@@ -1992,13 +2026,13 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 	input := KeyInput{Name: args.Name, BaseURL: args.BaseURL, Protocol: args.Protocol, Note: args.Note,
 		Source: args.Source, EnvName: args.EnvName, Secret: secret}
 	if args.New {
-		_, err := service.core.Keys.Add(input)
+		_, err := keys.Add(input)
 		return err
 	}
 	if args.ID == "" {
 		return ErrKeyNotFound
 	}
-	_, err := service.core.Keys.Update(args.ID, input)
+	_, err := keys.Update(args.ID, input)
 	return err
 }
 
@@ -2081,7 +2115,7 @@ func (service *ControlService) applyConversationLocked(ctx context.Context, reco
 		if _, ok := config.Models[args.ModelID]; !ok {
 			return fmt.Errorf("harness: model %q is not configured", args.ModelID)
 		}
-		_, err := service.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/model/"+args.ConversationID, args.ModelID)
+		_, err := service.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/model/"+args.ConversationID, args.ModelID)
 		return err
 	case ControlRenameConversation:
 		return service.core.Store.RenameConversation(ctx, args.ConversationID, args.Title)
@@ -2103,10 +2137,10 @@ func (service *ControlService) applyConversationBeforeLocked(ctx context.Context
 				return err
 			}
 			if model == "" {
-				_, err := service.core.Store.db.ExecContext(ctx, `DELETE FROM meta WHERE key=?`, "chat/model/"+id)
+				_, err := service.core.Store.db.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "chat/model/"+id)
 				return err
 			}
-			_, err := service.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/model/"+id, model)
+			_, err := service.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/model/"+id, model)
 			return err
 		}
 		if strings.HasPrefix(resource, "conversation.title:") {
@@ -2135,7 +2169,7 @@ func (service *ControlService) applyConversationBeforeLocked(ctx context.Context
 			if err != nil {
 				return err
 			}
-			_, err = service.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, capabilityMetaPrefix+id, string(encoded))
+			_, err = service.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, capabilityMetaPrefix+id, string(encoded))
 			return err
 		}
 	}
@@ -2179,6 +2213,10 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		}
 	} else if isSpaceControl(request.Kind) {
 		if err := service.buildSpaceControl(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlSetMemoryPin {
+		if err := service.buildMemoryPin(ctx, &record); err != nil {
 			return controlRecord{}, err
 		}
 	} else if request.Kind == ControlSetMemorySelection {
@@ -2258,7 +2296,8 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 			return controlRecord{}, err
 		}
 		if record.Operation.Kind == ControlSetChannelPolicy {
-			if err := validateChannelKeys(service.core.Keys, config.Channels); err != nil {
+			keys := NewTaskService(service.core).ChannelKeys()
+			if err := validateChannelKeys(keys, config.Channels); err != nil {
 				return controlRecord{}, err
 			}
 		}
@@ -2740,6 +2779,7 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		config.Collaboration = args
 	case ControlSetRuntimeLimits:
 		var args struct {
+			ModelRetries     *int `json:"model_retries"`
 			AutoCompactAt    *int `json:"auto_compact_percent"`
 			HistoryPageSize  *int `json:"history_page_size"`
 			MaxContextBytes  *int `json:"max_context_bytes"`
@@ -2752,6 +2792,9 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		}
 		if args.AutoCompactAt != nil {
 			config.AutoCompactAt = *args.AutoCompactAt
+		}
+		if args.ModelRetries != nil {
+			config.ModelRetries = *args.ModelRetries
 		}
 		if args.HistoryPageSize != nil {
 			config.HistoryPageSize = *args.HistoryPageSize
@@ -2956,6 +2999,7 @@ func configResourceValue(config Config, resource string) any {
 		return config.Collaboration
 	case "config.limits":
 		return map[string]any{"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
+			"model_retries":     config.ModelRetries,
 			"max_output_tokens": config.MaxOutputTokens, "max_tool_result_bytes": config.MaxToolResult, "auto_compact_percent": autoCompactPercent(config), "task_summary_bytes": config.TaskSummaryBytes}
 	case "config.workspace":
 		return config.Workspace
@@ -3131,6 +3175,7 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		return decodeAndAssign(raw, &config.Collaboration)
 	case "config.limits":
 		var data struct {
+			ModelRetries     int `json:"model_retries"`
 			AutoCompactAt    int `json:"auto_compact_percent"`
 			HistoryPageSize  int `json:"history_page_size"`
 			MaxContextBytes  int `json:"max_context_bytes"`
@@ -3144,6 +3189,7 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		config.HistoryPageSize, config.MaxContextBytes, config.MaxOutputTokens = data.HistoryPageSize, data.MaxContextBytes, data.MaxOutputTokens
 		config.MaxToolResult, config.TaskSummaryBytes = data.MaxToolResult, data.TaskSummaryBytes
 		config.AutoCompactAt = data.AutoCompactAt
+		config.ModelRetries = data.ModelRetries
 	default:
 		if strings.HasPrefix(resource, "config.model:") {
 			id := strings.TrimPrefix(resource, "config.model:")
@@ -3472,4 +3518,24 @@ func (service *ControlService) gateState() (bool, bool) {
 func (service *ControlService) ControlCodeForTests(ctx context.Context, operationID, conversationID, principal string) (string, error) {
 	confirmation, err := service.RenderConfirmation(ctx, operationID, conversationID, principal)
 	return confirmation.Code, err
+}
+
+func (service *ControlService) credentialBaseline() (string, error) {
+	paths := []string{filepath.Join(service.core.Store.DataDir(), "channel-keys.json")}
+	if service.core.Keys != nil && service.core.Keys.Path() != "" {
+		paths = append(paths, service.core.Keys.Path())
+	}
+	var hashes []string
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			hashes = append(hashes, "")
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		hashes = append(hashes, contentHash(raw))
+	}
+	return contentHash(mustJSON(hashes)), nil
 }

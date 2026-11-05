@@ -32,7 +32,7 @@ func (store *Store) Evidence(ctx context.Context, runID string) (Evidence, error
 // model Run stays completed even when its channel reply could not be delivered.
 func channelDeliveryNotes(ctx context.Context, reader attemptReader, runID string) ([]string, error) {
 	prefix := "channel/send/" + runID + "/"
-	rows, err := reader.QueryContext(ctx, `SELECT json_extract(value,'$.state'),count(*) FROM meta WHERE (key>=? AND key<?) OR (key>=? AND key<?) GROUP BY json_extract(value,'$.state') LIMIT 16`, prefix, prefix+"\uffff", "channel/file-send/"+runID+"/", "channel/file-send/"+runID+"/\uffff")
+	rows, err := reader.QueryContext(ctx, `SELECT (document #>> '{state}'),count(*) FROM fa.meta WHERE (key>=$1 AND key<$2) OR (key>=$3 AND key<$4) GROUP BY (document #>> '{state}') LIMIT 16`, prefix, prefix+"\uffff", "channel/file-send/"+runID+"/", "channel/file-send/"+runID+"/\uffff")
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +45,8 @@ func channelDeliveryNotes(ctx context.Context, reader attemptReader, runID strin
 			return nil, err
 		}
 		switch state {
+		case "queued":
+			notes = append(notes, fmt.Sprintf("%d channel delivery part(s) queued; execution result retained", count))
 		case "unknown", "dispatching":
 			notes = append(notes, fmt.Sprintf("channel delivery UNKNOWN for %d part(s); execution was not replayed; inspect saved result before a new request", count))
 		case "failed":

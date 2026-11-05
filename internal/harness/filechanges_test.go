@@ -159,7 +159,7 @@ func TestBatchCrashPreservesKnownProgressAndUnknownNeverContinues(t *testing.T) 
 	}
 	progress := ToolResult{Receipts: []ToolReceipt{{Kind: "file", Path: "one", Status: "applied"}, {Kind: "file", Path: "two", Status: "unknown"}}}
 	raw, _ := json.Marshal(progress)
-	_, _ = service.Store.db.ExecContext(ctx, `UPDATE attempts SET response_json=? WHERE id=?`, string(raw), attempts[1].ID)
+	_, _ = service.Store.db.ExecContext(ctx, `UPDATE fa.attempts SET response_json=$1 WHERE id=$2`, string(raw), attempts[1].ID)
 	reopenHarness(t, service)
 	recovered, _ := service.Store.ListAttempts(ctx, run.ID)
 	if recovered[1].Status != "unknown" || recovered[1].ResponseJSON != string(raw) {

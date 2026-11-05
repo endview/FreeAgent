@@ -20,7 +20,7 @@ func TestDoctorReportsIndependentFailuresWithoutQuotingContents(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.Remove(filepath.Join(data, "state.sqlite")); err != nil {
+	if err := os.Remove(filepath.Join(data, "postgres.json")); err != nil {
 		t.Fatal(err)
 	}
 	raw, stderr, err := invoke(t, "", "doctor", "--data-dir", data)
@@ -43,7 +43,7 @@ func TestDoctorReportsIndependentFailuresWithoutQuotingContents(t *testing.T) {
 	if strings.Contains(raw+stderr, secret) {
 		t.Fatal("diagnosis copied private content from a decoding error")
 	}
-	if _, err := os.Stat(filepath.Join(data, "state.sqlite")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(data, "postgres.json")); !os.IsNotExist(err) {
 		t.Fatal("diagnosis recreated the missing database")
 	}
 }

@@ -280,7 +280,7 @@ func TestWorkflowUnknownSettlementCompletesAfterNestedRunUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := service.Store.db.ExecContext(t.Context(),
-		`UPDATE runs SET status='unknown', stop_reason='nested host outcome unknown' WHERE id=?`, run.ID); err != nil {
+		`UPDATE fa.runs SET status='unknown', stop_reason='nested host outcome unknown' WHERE id=$1`, run.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Store.finishWorkflowUnknown(t.Context(), run, attempt,

@@ -103,9 +103,8 @@ func TestCollaborationSerialEvidenceBudgetsAndDeduplication(t *testing.T) {
 		t.Fatalf("completed collaboration kept the parent chat locked: result=%+v err=%v", ordinary, err)
 	}
 	var tables int
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_schema
-		WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'knowledge_fts%'
-		AND name NOT IN ('memories','memory_revisions','memory_operations')`).Scan(&tables); err != nil || tables != 6 {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM pg_tables WHERE schemaname='fa'
+		AND tablename NOT IN ('memories','memory_revisions','memory_operations')`).Scan(&tables); err != nil || tables != 6 {
 		t.Fatalf("execution tables=%d err=%v", tables, err)
 	}
 }

@@ -218,6 +218,7 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 		return true
 	case path == "/api/control/key-plan" && request.Method == http.MethodPost:
 		var body struct {
+			Namespace     string `json:"namespace"`
 			Ref           string `json:"ref"`
 			Remove        bool   `json:"remove"`
 			Force         bool   `json:"force"`
@@ -237,7 +238,7 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 		secret := []byte(body.Secret)
 		body.Secret = ""
 		defer clear(secret)
-		result, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{
+		result, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Namespace: body.Namespace,
 			Ref: body.Ref, Remove: body.Remove, Force: body.Force, DisableModels: body.DisableModels,
 			NewDefault: body.NewDefault, Input: harness.KeyInput{Name: body.Name, BaseURL: body.BaseURL,
 				Protocol: body.Protocol, Note: body.Note, Source: body.Source, EnvName: body.EnvName, Secret: secret},
@@ -406,6 +407,7 @@ func (server *Server) configProjection() map[string]any {
 		"collaboration": config.Collaboration, "memory": config.Memory,
 		"limits": map[string]int{
 			"history_page_size": config.HistoryPageSize,
+			"model_retries":     config.ModelRetries,
 			"max_context_bytes": config.MaxContextBytes, "max_output_tokens": config.MaxOutputTokens,
 			"max_tool_result_bytes": config.MaxToolResult,
 			"task_summary_bytes":    config.TaskSummaryBytes,

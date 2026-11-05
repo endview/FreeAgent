@@ -52,7 +52,7 @@ def verify_package(package):
     if (manifest['target'] != 'linux/amd64' or manifest['source_dirty'] is not False
             or not re.fullmatch(r'v[0-9][A-Za-z0-9.+-]*', manifest['candidate'])
             or not re.fullmatch(r'[0-9a-f]{40}', manifest['source_base_commit'])
-            or not re.fullmatch(r'Harness-v[0-9]+', manifest['data_format'])):
+            or not manifest['data_format'] == 'Harness-pg-v1'):
         refuse('Package is not a clean Linux amd64 release.', 'Download the Linux portable release and verify its published SHA-256.')
     if not isinstance(manifest['files'], list) or not 1 <= len(manifest['files']) <= 2048:
         refuse('Invalid package file inventory.', 'Extract a fresh portable release.')
@@ -250,7 +250,7 @@ def main():
         for name in (args.user,args.public_proxy_user):run('usermod','--append','--groups',args.public_group,name)
         public_runtime=RUNTIME_ROOT/(args.unit+'-public')
     runtime=RUNTIME_ROOT/args.unit
-    for path in (state,state/'workspace',state/'data'):
+    for path in (state,state/'workspace',state/'data',state/'cache'):
         if path.exists() and path.stat().st_uid!=account.pw_uid:raise SystemExit('State directory belongs to another user')
         path.mkdir(parents=True,exist_ok=True);os.chown(path,account.pw_uid,account.pw_gid);path.chmod(0o700)
     target.parent.mkdir(parents=True,exist_ok=True)
@@ -262,7 +262,7 @@ def main():
     else:
         shutil.copytree(package,target)
         for path in target.rglob('*'):
-            path.chmod(0o755 if path.is_dir() or path.relative_to(target).as_posix() in ('FreeAgent','bin/freeagent') else 0o644)
+            path.chmod(0o755 if path.is_dir() or path.relative_to(target).as_posix() in ('FreeAgent','bin/freeagent','bin/freeagent-channel') or path.relative_to(target).as_posix().startswith('runtime/postgresql/bin/') else 0o644)
         target.chmod(0o755)
     if verify_package(target)!=manifest:
         refuse('Installed program copy differs from the verified package.', 'Keep the existing current program selected and review the failed release directory before retrying.')
@@ -307,6 +307,7 @@ RuntimeDirectoryMode=0700
 UMask=0077
 Environment={systemd('FREEAGENT_DATA_DIR='+str(data))}
 Environment={systemd('FREEAGENT_KEYS_FILE='+str(keys))}
+Environment={systemd('XDG_CACHE_HOME='+str(state/'cache'))}
 WorkingDirectory={state}
 ExecStart={systemd(executable)} web --service
 Restart=on-failure

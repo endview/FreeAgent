@@ -93,6 +93,7 @@ type MemorySource struct {
 }
 
 type MemoryEntry struct {
+	Pinned    *MemoryPin     `json:"pinned,omitempty"`
 	ID        string         `json:"id"`
 	Scope     MemoryScope    `json:"scope"`
 	Revision  int            `json:"revision"`
@@ -116,6 +117,7 @@ type MemoryGrant struct {
 }
 
 type MemoryMutation struct {
+	Pinned           *MemoryPin     `json:"pinned,omitempty"`
 	RequestKey       string         `json:"request_key"`
 	Action           string         `json:"action"`
 	Scope            MemoryScope    `json:"scope"`
@@ -208,14 +210,14 @@ func (authority memoryAuthority) grant(scope MemoryScope, action string) (Memory
 	return MemoryGrant{}, ErrMemoryDenied
 }
 
-const memoryColumns = `id,scope,owner,project,task_id,revision,state,kind,title,body,author,sources_json,created_at,updated_at`
+const memoryColumns = `id,scope,owner,project,task_id,revision,state,kind,title,body,author,sources_json,created_at,updated_at,pin_json`
 
 func scanMemory(row interface{ Scan(...any) error }) (MemoryEntry, error) {
 	var entry MemoryEntry
-	var sources string
+	var sources, pin string
 	err := row.Scan(&entry.ID, &entry.Scope.Kind, &entry.Scope.Owner, &entry.Scope.Project, &entry.Scope.TaskID,
-		&entry.Revision, &entry.State, &entry.Kind, &entry.Title, &entry.Body, &entry.Author, &sources, &entry.CreatedAt, &entry.UpdatedAt)
-	if err == nil && json.Unmarshal([]byte(sources), &entry.Sources) != nil {
+		&entry.Revision, &entry.State, &entry.Kind, &entry.Title, &entry.Body, &entry.Author, &sources, &entry.CreatedAt, &entry.UpdatedAt, &pin)
+	if err == nil && (json.Unmarshal([]byte(sources), &entry.Sources) != nil || json.Unmarshal([]byte(pin), &entry.Pinned) != nil) {
 		err = ErrStoreFormat
 	}
 	if err == nil && (!memoryID(entry.ID) || entry.Scope.validate() != nil || entry.Revision < 1 || entry.Revision > 256 ||
@@ -239,10 +241,10 @@ func getMemory(ctx context.Context, reader metaReader, authority memoryAuthority
 	}
 	kinds, _ := json.Marshal(grant.Kinds)
 	ids, _ := json.Marshal(grant.Entries)
-	entry, err := scanMemory(reader.QueryRowContext(ctx, `SELECT `+memoryColumns+` FROM memories
-		WHERE id=? AND scope=? AND owner=? AND project=? AND task_id=?
-		AND (? OR kind IN (SELECT value FROM json_each(?)))
-		AND (? OR id IN (SELECT value FROM json_each(?)))`, id, scope.Kind, scope.Owner, scope.Project, scope.TaskID,
+	entry, err := scanMemory(reader.QueryRowContext(ctx, `SELECT `+memoryColumns+` FROM fa.memories
+		WHERE id=$1 AND scope=$2 AND owner=$3 AND project=$4 AND task_id=$5
+		AND ($6 OR kind IN (SELECT value FROM jsonb_array_elements_text(COALESCE(NULLIF($7::jsonb,'null'::jsonb),'[]'::jsonb))))
+		AND ($8 OR id IN (SELECT value FROM jsonb_array_elements_text(COALESCE(NULLIF($9::jsonb,'null'::jsonb),'[]'::jsonb))))`, id, scope.Kind, scope.Owner, scope.Project, scope.TaskID,
 		len(grant.Kinds) == 0, string(kinds), len(grant.Entries) == 0, string(ids)))
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrMemoryMissing
@@ -264,10 +266,10 @@ func listMemory(ctx context.Context, reader attemptReader, authority memoryAutho
 	kinds, _ := json.Marshal(grant.Kinds)
 	ids, _ := json.Marshal(grant.Entries)
 	// Listing is metadata only. Full body reads require a separately scoped ID.
-	rows, err := reader.QueryContext(ctx, `SELECT id,scope,owner,project,task_id,revision,state,kind,title,'',author,sources_json,created_at,updated_at
-		FROM memories WHERE scope=? AND owner=? AND project=? AND task_id=? AND state!='deleted'
-		AND (? OR kind IN (SELECT value FROM json_each(?)))
-		AND (? OR id IN (SELECT value FROM json_each(?))) ORDER BY updated_at DESC,id LIMIT ?`,
+	rows, err := reader.QueryContext(ctx, `SELECT id,scope,owner,project,task_id,revision,state,kind,title,'',author,sources_json,created_at,updated_at,pin_json
+		FROM fa.memories WHERE scope=$1 AND owner=$2 AND project=$3 AND task_id=$4 AND state!='deleted'
+		AND ($5 OR kind IN (SELECT value FROM jsonb_array_elements_text(COALESCE(NULLIF($6::jsonb,'null'::jsonb),'[]'::jsonb))))
+		AND ($7 OR id IN (SELECT value FROM jsonb_array_elements_text(COALESCE(NULLIF($8::jsonb,'null'::jsonb),'[]'::jsonb)))) ORDER BY updated_at DESC,id LIMIT $9`,
 		scope.Kind, scope.Owner, scope.Project, scope.TaskID, len(grant.Kinds) == 0, string(kinds),
 		len(grant.Entries) == 0, string(ids), limit)
 	if err != nil {
@@ -300,20 +302,16 @@ func searchKnowledge(ctx context.Context, reader attemptReader, authority memory
 	kinds, _ := json.Marshal(grant.Kinds)
 	ids, _ := json.Marshal(grant.Entries)
 	query = strings.TrimSpace(query)
-	// FTS5 syntax is intentionally reduced to one quoted literal. This keeps
-	// imported source data from becoming a query operator.
-	term := `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
+	// pg_trgm accelerates literal substrings. Very short terms remain bounded
+	// by the authorized scope and the caller/SQL deadline, never an implicit RAG.
+	term := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(query) + "%"
 	columns := "m." + strings.ReplaceAll(memoryColumns, ",", ",m.")
-	filters := ` AND m.scope='knowledge' AND m.owner=? AND m.project=? AND m.task_id=''
-		AND m.state='active' AND (? OR m.kind IN (SELECT value FROM json_each(?)))
-		AND (? OR m.id IN (SELECT value FROM json_each(?)))`
-	statement := `SELECT ` + columns + ` FROM knowledge_fts JOIN memories m ON m.id=knowledge_fts.entry_id
-		WHERE knowledge_fts MATCH ?` + filters + ` ORDER BY bm25(knowledge_fts),m.id LIMIT ?`
-	if utf8.RuneCountInString(query) < 3 {
-		statement = `SELECT ` + columns + ` FROM memories m WHERE instr(lower(m.body),lower(?))>0` +
-			filters + ` ORDER BY m.id LIMIT ?`
-		term = query
-	}
+	statement := `SELECT ` + columns + ` FROM fa.memories m
+	 WHERE lower(m.body) LIKE lower($1) ESCAPE '\' AND m.scope='knowledge'
+	 AND m.owner=$2 AND m.project=$3 AND m.task_id='' AND m.state='active'
+	 AND ($4 OR m.kind IN (SELECT value FROM jsonb_array_elements_text(COALESCE(NULLIF($5::jsonb,'null'::jsonb),'[]'::jsonb))))
+	 AND ($6 OR m.id IN (SELECT value FROM jsonb_array_elements_text(COALESCE(NULLIF($7::jsonb,'null'::jsonb),'[]'::jsonb))))
+	 ORDER BY m.id LIMIT $8`
 	rows, err := reader.QueryContext(ctx, statement, term, scope.Owner, scope.Project,
 		len(grant.Kinds) == 0, string(kinds), len(grant.Entries) == 0, string(ids), limit)
 	if err != nil {
@@ -355,8 +353,15 @@ func searchKnowledge(ctx context.Context, reader attemptReader, authority memory
 }
 
 func (mutation MemoryMutation) validate() error {
+	if mutation.Action == "pin" {
+		if mutation.Pinned == nil || mutation.Pinned.validate() != nil {
+			return ErrMemoryDenied
+		}
+	} else if mutation.Pinned != nil {
+		return ErrMemoryDenied
+	}
 	if mutation.Scope.validate() != nil || mutation.RequestKey == "" || len(mutation.RequestKey) > 256 ||
-		!slices.Contains([]string{"create", "update", "disable", "enable", "delete"}, mutation.Action) ||
+		!slices.Contains([]string{"create", "update", "disable", "enable", "delete", "pin", "unpin"}, mutation.Action) ||
 		len(mutation.Title) > 256 || len(mutation.Body) > 65536 || len(mutation.Reason) > 512 ||
 		!utf8.ValidString(mutation.Title+mutation.Body+mutation.Reason+mutation.RequestKey) ||
 		strings.ContainsRune(mutation.Title+mutation.Body+mutation.Reason+mutation.RequestKey, 0) || len(mutation.Sources) > 16 {
@@ -391,8 +396,8 @@ func duplicateKnowledgeSource(ctx context.Context, tx *sql.Tx, mutation MemoryMu
 	if wanted.Kind == "" {
 		return MemoryReceipt{}, false, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,revision,state,sources_json FROM memories
-		WHERE scope='knowledge' AND owner=? AND project=? AND task_id='' AND state!='deleted'`,
+	rows, err := tx.QueryContext(ctx, `SELECT id,revision,state,sources_json FROM fa.memories
+		WHERE scope='knowledge' AND owner=$1 AND project=$2 AND task_id='' AND state!='deleted'`,
 		mutation.Scope.Owner, mutation.Scope.Project)
 	if err != nil {
 		return MemoryReceipt{}, false, err
@@ -466,23 +471,23 @@ func validateMemorySources(ctx context.Context, tx *sql.Tx, authority memoryAuth
 			}
 		case "request":
 			var prompt, project string
-			err := tx.QueryRowContext(ctx, `SELECT r.prompt,c.workspace FROM runs r JOIN conversations c
-				ON c.id=r.conversation_id WHERE r.id=?`, source.RunID).Scan(&prompt, &project)
+			err := tx.QueryRowContext(ctx, `SELECT r.prompt,c.workspace FROM fa.runs r JOIN fa.conversations c
+				ON c.id=r.conversation_id WHERE r.id=$1`, source.RunID).Scan(&prompt, &project)
 			if err != nil || project != authority.project || source.Hash != contentHash([]byte(prompt)) ||
 				!authority.user && source.RunID != authority.runID {
 				return ErrMemoryDenied
 			}
 		case "run":
 			var output, project, state string
-			err := tx.QueryRowContext(ctx, `SELECT r.output,c.workspace,r.status FROM runs r JOIN conversations c ON c.id=r.conversation_id WHERE r.id=?`, source.RunID).Scan(&output, &project, &state)
+			err := tx.QueryRowContext(ctx, `SELECT r.output,c.workspace,r.status FROM fa.runs r JOIN fa.conversations c ON c.id=r.conversation_id WHERE r.id=$1`, source.RunID).Scan(&output, &project, &state)
 			if err != nil || project != authority.project || state != "completed" || source.Hash != contentHash([]byte(output)) ||
 				!authority.user && source.RunID != authority.runID {
 				return ErrMemoryDenied
 			}
 		case "attempt":
 			var body, runID, project, state string
-			err := tx.QueryRowContext(ctx, `SELECT a.response_json,a.run_id,c.workspace,a.status FROM attempts a
-				JOIN runs r ON r.id=a.run_id JOIN conversations c ON c.id=r.conversation_id WHERE a.id=?`, source.AttemptID).Scan(&body, &runID, &project, &state)
+			err := tx.QueryRowContext(ctx, `SELECT a.response_json,a.run_id,c.workspace,a.status FROM fa.attempts a
+				JOIN fa.runs r ON r.id=a.run_id JOIN fa.conversations c ON c.id=r.conversation_id WHERE a.id=$1`, source.AttemptID).Scan(&body, &runID, &project, &state)
 			if err != nil || project != authority.project || state != "finished" || source.Hash != contentHash([]byte(body)) ||
 				source.RunID != runID || !authority.user && runID != authority.runID {
 				return ErrMemoryDenied
@@ -490,8 +495,8 @@ func validateMemorySources(ctx context.Context, tx *sql.Tx, authority memoryAuth
 		case "memory":
 			scope := mutation.Scope
 			if authority.user {
-				err := tx.QueryRowContext(ctx, `SELECT scope,owner,project,task_id FROM memories
-					WHERE id=? AND (project='' OR project=?)`, source.EntryID, authority.project).
+				err := tx.QueryRowContext(ctx, `SELECT scope,owner,project,task_id FROM fa.memories
+					WHERE id=$1 AND (project='' OR project=$2)`, source.EntryID, authority.project).
 					Scan(&scope.Kind, &scope.Owner, &scope.Project, &scope.TaskID)
 				if err != nil {
 					return ErrMemoryMissing
@@ -522,11 +527,11 @@ func validateMemoryScopeOwner(ctx context.Context, tx *sql.Tx, scope MemoryScope
 			id = scope.TaskID
 		}
 		var project string
-		if err := tx.QueryRowContext(ctx, `SELECT c.workspace FROM runs r JOIN conversations c ON c.id=r.conversation_id WHERE r.id=?`, id).Scan(&project); err != nil || project != scope.Project {
+		if err := tx.QueryRowContext(ctx, `SELECT c.workspace FROM fa.runs r JOIN fa.conversations c ON c.id=r.conversation_id WHERE r.id=$1`, id).Scan(&project); err != nil || project != scope.Project {
 			return ErrMemoryDenied
 		}
 		if scope.Kind == "shared" {
-			record, err := loadCollaboration(ctx, tx, id)
+			record, err := loadCollaborationForUpdate(ctx, tx, id)
 			if err != nil || record.ParentID != scope.Owner {
 				return ErrMemoryDenied
 			}
@@ -548,7 +553,7 @@ func memoryOperation(authority memoryAuthority, mutation MemoryMutation) (string
 
 func savedMemoryReceipt(ctx context.Context, reader metaReader, key, hash string) (MemoryReceipt, bool, error) {
 	var previousHash, raw string
-	err := reader.QueryRowContext(ctx, `SELECT request_hash,receipt_json FROM memory_operations WHERE id=?`, key).Scan(&previousHash, &raw)
+	err := reader.QueryRowContext(ctx, `SELECT request_hash,receipt_json FROM fa.memory_operations WHERE id=$1`, key).Scan(&previousHash, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MemoryReceipt{}, false, nil
 	}
@@ -568,13 +573,16 @@ func savedMemoryReceipt(ctx context.Context, reader metaReader, key, hash string
 
 func saveMemoryReceipt(ctx context.Context, tx *sql.Tx, key, hash string, receipt MemoryReceipt) error {
 	raw, _ := json.Marshal(receipt)
-	_, err := tx.ExecContext(ctx, `INSERT INTO memory_operations(id,request_hash,receipt_json,created_at) VALUES(?,?,?,?)`,
+	_, err := tx.ExecContext(ctx, `INSERT INTO fa.memory_operations(id,request_hash,receipt_json,created_at) VALUES($1,$2,$3,$4)`,
 		key, hash, string(raw), nowText())
 	return err
 }
 
 func mutateMemoryTx(ctx context.Context, tx *sql.Tx, authority memoryAuthority, mutation MemoryMutation) (MemoryReceipt, error) {
 	if err := mutation.validate(); err != nil {
+		return MemoryReceipt{}, err
+	}
+	if err := validatePinTarget(ctx, tx, mutation.Pinned, authority.project); err != nil {
 		return MemoryReceipt{}, err
 	}
 	grant, err := authority.grant(mutation.Scope, mutation.Action)
@@ -589,12 +597,21 @@ func mutateMemoryTx(ctx context.Context, tx *sql.Tx, authority memoryAuthority, 
 		author = "user"
 	}
 	key, hash := memoryOperation(authority, mutation)
+	// Serialize only this pure DB publication. A retry with the same request
+	// reads its saved receipt; different edits still compare the locked revision.
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, key); err != nil {
+		return MemoryReceipt{}, err
+	}
 	if receipt, found, err := savedMemoryReceipt(ctx, tx, key, hash); err != nil || found {
 		return receipt, err
 	}
 	entry := MemoryEntry{ID: newID(), Scope: mutation.Scope, Revision: 1, State: "active",
 		CreatedAt: nowText(), UpdatedAt: nowText(), Author: author}
 	if mutation.Action != "create" {
+		var locked string
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM fa.memories WHERE id=$1 AND scope=$2 AND owner=$3 AND project=$4 AND task_id=$5 FOR UPDATE`, mutation.EntryID, mutation.Scope.Kind, mutation.Scope.Owner, mutation.Scope.Project, mutation.Scope.TaskID).Scan(&locked); err != nil {
+			return MemoryReceipt{}, errors.Join(ErrMemoryMissing, err)
+		}
 		entry, err = getMemory(ctx, tx, authority, mutation.Scope, mutation.EntryID, mutation.Action)
 		if err != nil {
 			return MemoryReceipt{}, err
@@ -638,34 +655,37 @@ func mutateMemoryTx(ctx context.Context, tx *sql.Tx, authority memoryAuthority, 
 	case "delete":
 		entry.State, entry.Title, entry.Body, entry.Sources = "deleted", "", "", []MemorySource{}
 	}
+	if mutation.Action == "pin" {
+		if !authority.user || entry.State != "active" || entry.Scope.TaskID != "" || len(entry.Body) > 2048 {
+			return MemoryReceipt{}, ErrMemoryDenied
+		}
+		entry.Pinned = mutation.Pinned
+	}
+	if mutation.Action == "unpin" || mutation.Action == "delete" {
+		if !authority.user {
+			return MemoryReceipt{}, ErrMemoryDenied
+		}
+		entry.Pinned = nil
+	}
 	sources, _ := json.Marshal(entry.Sources)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO memories(`+memoryColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.memories(`+memoryColumns+`) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,state=excluded.state,kind=excluded.kind,title=excluded.title,body=excluded.body,
-		author=excluded.author,sources_json=excluded.sources_json,updated_at=excluded.updated_at`,
+		author=excluded.author,sources_json=excluded.sources_json,updated_at=excluded.updated_at,pin_json=excluded.pin_json`,
 		entry.ID, entry.Scope.Kind, entry.Scope.Owner, entry.Scope.Project, entry.Scope.TaskID, entry.Revision, entry.State,
-		entry.Kind, entry.Title, entry.Body, entry.Author, string(sources), entry.CreatedAt, entry.UpdatedAt); err != nil {
+		entry.Kind, entry.Title, entry.Body, entry.Author, string(sources), entry.CreatedAt, entry.UpdatedAt, string(mustJSON(entry.Pinned))); err != nil {
 		return MemoryReceipt{}, err
 	}
 	if mutation.Action == "delete" {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM memory_revisions WHERE entry_id=?`, entry.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM fa.memory_revisions WHERE entry_id=$1`, entry.ID); err != nil {
 			return MemoryReceipt{}, err
 		}
 	} else {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO memory_revisions(entry_id,revision,state,kind,title,body,author,sources_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			entry.ID, entry.Revision, entry.State, entry.Kind, entry.Title, entry.Body, author, string(sources), mutation.Reason, entry.UpdatedAt); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.memory_revisions(entry_id,revision,state,kind,title,body,author,sources_json,reason,created_at,pin_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			entry.ID, entry.Revision, entry.State, entry.Kind, entry.Title, entry.Body, author, string(sources), mutation.Reason, entry.UpdatedAt, string(mustJSON(entry.Pinned))); err != nil {
 			return MemoryReceipt{}, err
 		}
 	}
-	if entry.Scope.Kind == "knowledge" {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_fts WHERE entry_id=?`, entry.ID); err != nil {
-			return MemoryReceipt{}, err
-		}
-		if entry.State == "active" {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO knowledge_fts(entry_id,body) VALUES(?,?)`, entry.ID, entry.Body); err != nil {
-				return MemoryReceipt{}, err
-			}
-		}
-	}
+
 	receipt := MemoryReceipt{EntryID: entry.ID, Revision: entry.Revision, State: entry.State, Action: mutation.Action}
 	return receipt, saveMemoryReceipt(ctx, tx, key, hash, receipt)
 }
@@ -679,7 +699,7 @@ func (tasks *TaskService) AgentIdentity(ctx context.Context, conversationID stri
 		return "", errors.Join(ErrMemoryDenied, err)
 	}
 	var agent string
-	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "chat/agent/"+chat.ID).Scan(&agent)
+	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "chat/agent/"+chat.ID).Scan(&agent)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "chat-" + chat.ID, nil
 	}
@@ -713,12 +733,12 @@ func (tasks *TaskService) SelectAgent(ctx context.Context, conversationID, agent
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		"chat/agent/"+conversationID, agentID)
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		"chat/memory/"+conversationID, string(raw)); err != nil {
 		return err
 	}
@@ -731,6 +751,9 @@ func (tasks *TaskService) userMemory(ctx context.Context, conversationID string)
 }
 
 func (tasks *TaskService) SaveMemory(ctx context.Context, conversationID string, mutation MemoryMutation) (MemoryReceipt, error) {
+	if mutation.Action == "pin" && mutation.Pinned == nil {
+		mutation.Pinned = &MemoryPin{Scope: "conversation", Target: conversationID}
+	}
 	authority, err := tasks.userMemory(ctx, conversationID)
 	if err != nil {
 		return MemoryReceipt{}, err

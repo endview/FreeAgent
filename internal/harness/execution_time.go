@@ -58,7 +58,7 @@ func (clock *runClock) resume() (returnErr error) {
 		return ErrTimeLimit
 	}
 	clock.started, clock.since = time.Now(), nowText()
-	if _, err := clock.store.db.ExecContext(clock.parent, `UPDATE runs SET active_since=? WHERE id=?`, clock.since, clock.runID); err != nil {
+	if _, err := clock.store.db.ExecContext(clock.parent, `UPDATE fa.runs SET active_since=$1 WHERE id=$2`, clock.since, clock.runID); err != nil {
 		clock.since = ""
 		return err
 	}
@@ -93,8 +93,8 @@ func (clock *runClock) pause() (returnErr error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := clock.store.db.ExecContext(ctx, `UPDATE runs SET elapsed_ms=elapsed_ms+?,active_since=''
-		WHERE id=? AND active_since=?`, max(0, time.Since(clock.started).Milliseconds()), clock.runID, clock.since)
+	_, err := clock.store.db.ExecContext(ctx, `UPDATE fa.runs SET elapsed_ms=elapsed_ms+$1,active_since=''
+		WHERE id=$2 AND active_since=$3`, max(0, time.Since(clock.started).Milliseconds()), clock.runID, clock.since)
 	if err == nil {
 		clock.since = ""
 	}

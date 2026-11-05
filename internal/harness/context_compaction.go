@@ -54,7 +54,7 @@ func (service *Service) planCompactionFor(ctx context.Context, run Run, command 
 	if command.ExpectedRevision != "" && command.ExpectedRevision != contentHash([]byte(plan.raw)) {
 		return plan, ErrApprovalChanged
 	}
-	if service.publicContext() && plan.old != nil && plan.old.Scope != service.publicSummaryScope() {
+	if service.scopedHistory() && plan.old != nil && plan.old.Scope != service.publicSummaryScope() {
 		plan.old = nil
 		plan.command.Action = "compact"
 		command.Action = "compact"
@@ -84,7 +84,7 @@ func (service *Service) planCompactionFor(ctx context.Context, run Run, command 
 		}
 		var latest string
 		var retain int64
-		err := service.Store.db.QueryRowContext(ctx, `SELECT COALESCE(run_id,''),id FROM messages WHERE conversation_id=? AND (id<=? OR run_id=?) ORDER BY id DESC LIMIT 1`, run.ConversationID, historyBound(run), run.ID).Scan(&latest, &retain)
+		err := service.Store.db.QueryRowContext(ctx, `SELECT COALESCE(run_id,''),id FROM fa.messages WHERE conversation_id=$1 AND (id<=$2 OR run_id=$3) ORDER BY id DESC LIMIT 1`, run.ConversationID, historyBound(run), run.ID).Scan(&latest, &retain)
 		if errors.Is(err, sql.ErrNoRows) {
 			return plan, nil
 		}
@@ -92,20 +92,20 @@ func (service *Service) planCompactionFor(ctx context.Context, run Run, command 
 			return plan, err
 		}
 		if latest != "" {
-			if err := service.Store.db.QueryRowContext(ctx, `SELECT min(id) FROM messages WHERE run_id=?`, latest).Scan(&retain); err != nil {
+			if err := service.Store.db.QueryRowContext(ctx, `SELECT min(id) FROM fa.messages WHERE run_id=$1`, latest).Scan(&retain); err != nil {
 				return plan, err
 			}
 		}
 		if latest == run.ID && run.Status != "completed" && run.Status != "failed" && run.Status != "abandoned" {
 			var assistant sql.NullInt64
-			if err := service.Store.db.QueryRowContext(ctx, `SELECT max(id) FROM messages WHERE run_id=? AND json_extract(body_json,'$.Role')='assistant'`, latest).Scan(&assistant); err != nil {
+			if err := service.Store.db.QueryRowContext(ctx, `SELECT max(id) FROM fa.messages WHERE run_id=$1 AND (body_json #>> '{Role}')='assistant'`, latest).Scan(&assistant); err != nil {
 				return plan, err
 			}
 			if assistant.Valid {
 				firstMessage := retain
 				retain = assistant.Int64
 				var latestUser sql.NullInt64
-				if err := service.Store.db.QueryRowContext(ctx, `SELECT max(id) FROM messages WHERE run_id=? AND json_extract(body_json,'$.Role')='user'`, latest).Scan(&latestUser); err != nil {
+				if err := service.Store.db.QueryRowContext(ctx, `SELECT max(id) FROM fa.messages WHERE run_id=$1 AND (body_json #>> '{Role}')='user'`, latest).Scan(&latestUser); err != nil {
 					return plan, err
 				}
 				if latestUser.Valid && latestUser.Int64 > firstMessage {
@@ -114,7 +114,7 @@ func (service *Service) planCompactionFor(ctx context.Context, run Run, command 
 			}
 		}
 		var bound sql.NullInt64
-		if err := service.Store.db.QueryRowContext(ctx, `SELECT max(id) FROM messages WHERE conversation_id=? AND id<?`, run.ConversationID, retain).Scan(&bound); err != nil {
+		if err := service.Store.db.QueryRowContext(ctx, `SELECT max(id) FROM fa.messages WHERE conversation_id=$1 AND id<$2`, run.ConversationID, retain).Scan(&bound); err != nil {
 			return plan, err
 		}
 		through = bound.Int64
@@ -159,8 +159,8 @@ func (service *Service) summaryChunk(ctx context.Context, run Run, prefix source
 	if err != nil {
 		return nil, prefix, ModelRequest{}, err
 	}
-	rows, err := service.Store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages
-		WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND id<=? ORDER BY id LIMIT 1001`, run.ConversationID, prefix.Through, through)
+	rows, err := service.Store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM fa.messages
+		WHERE conversation_id=$1 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND id>$2 AND id<=$3 ORDER BY id LIMIT 1001`, run.ConversationID, prefix.Through, through)
 	if err != nil {
 		return nil, prefix, ModelRequest{}, err
 	}
@@ -182,7 +182,7 @@ func (service *Service) summaryChunk(ctx context.Context, run Run, prefix source
 		}
 		candidate := append(append([]Message(nil), chunk...), group...)
 		projected := candidate
-		if service.publicContext() {
+		if service.scopedHistory() {
 			projected = service.projectPublicMessages(candidate)
 		}
 		candidateRequest := summaryRequest(binding, limits, limit, previous, projected)
@@ -286,7 +286,7 @@ func (service *Service) applyCompaction(ctx context.Context, run Run, plan compa
 	record := ConversationSummary{Version: 1, ConversationID: run.ConversationID, Revision: 1,
 		CoveredThrough: prefix.Through, SourceCount: prefix.Count, SourceBytes: prefix.Bytes, SourceDigest: prefix.Digest,
 		Text: previous, TextHash: contentHash([]byte(previous)), ByteLimit: plan.limit, RunID: run.ID, UpdatedAt: nowText()}
-	if service.publicContext() {
+	if service.scopedHistory() {
 		record.Scope = service.publicSummaryScope()
 	}
 	if plan.old != nil {
@@ -330,7 +330,7 @@ func (service *Service) applyCompaction(ctx context.Context, run Run, plan compa
 	}
 	defer tx.Rollback()
 	var current string
-	err = tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, summaryMetaPrefix+run.ConversationID).Scan(&current)
+	err = tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, summaryMetaPrefix+run.ConversationID).Scan(&current)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return result, err
 	}
@@ -348,7 +348,7 @@ func (service *Service) applyCompaction(ctx context.Context, run Run, plan compa
 	if len(raw) > maxSummaryRecordBytes {
 		return result, ErrContextLimit
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, summaryMetaPrefix+run.ConversationID, string(raw)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, summaryMetaPrefix+run.ConversationID, string(raw)); err != nil {
 		return result, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -445,12 +445,12 @@ func (tasks *TaskService) manageContext(ctx context.Context, chat string, comman
 		if plan.source.Count <= plan.base.Count || plan.source.Bytes-plan.base.Bytes <= 256 {
 			return RunResult{}, nil
 		}
-		if core.externalContext() {
-			var visible int
-			if err := core.Store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM messages WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND id<=? AND json_extract(body_json,'$.Public')=1 AND json_extract(body_json,'$.Role') IN ('user','assistant') AND length(json_extract(body_json,'$.Content'))>0 AND coalesce(json_extract(body_json,'$.Channel.purpose'),'')!='command')`, chat, plan.base.Through, plan.source.Through).Scan(&visible); err != nil {
+		if core.spaceContext() {
+			var visible bool
+			if err := core.Store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.messages WHERE conversation_id=$1 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND id>$2 AND id<=$3 AND ((body_json #>> '{Public}')::boolean)=true AND (body_json #>> '{Role}') IN ('user','assistant') AND length((body_json #>> '{Content}'))>0 AND coalesce((body_json #>> '{Channel,purpose}'),'')!='command')`, chat, plan.base.Through, plan.source.Through).Scan(&visible); err != nil {
 				return RunResult{}, err
 			}
-			if visible == 0 {
+			if !visible {
 				return RunResult{}, nil
 			}
 		}

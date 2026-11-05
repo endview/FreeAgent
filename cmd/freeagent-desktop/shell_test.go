@@ -116,7 +116,7 @@ func TestNeedsInit(t *testing.T) {
 
 func TestCLIArgs(t *testing.T) {
 	workspace := `C:\Users\test\FreeAgent & notes!`
-	data := `C:\Users\test\AppData\Harness-v8`
+	data := `C:\Users\test\AppData\Harness-pg-v1`
 	if got, want := initCLIArgs(workspace, data), []string{"init", "--workspace", workspace, "--data-dir", data}; !sameStrings(got, want) {
 		t.Fatalf("init args=%#v want=%#v", got, want)
 	}

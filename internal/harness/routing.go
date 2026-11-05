@@ -380,8 +380,8 @@ func (service *Service) saveRouting(ctx context.Context, run *Run, binding Model
 	if len(copy.bindings) > 64 || len(copy.routing) > 64 {
 		return errors.New("harness: model decision limit reached")
 	}
-	result, err := service.Store.db.ExecContext(ctx, `UPDATE runs SET config_json=?,updated_at=?
-		WHERE id=? AND config_json=? AND status='running'`, snapshot, nowText(), run.ID, run.ConfigJSON)
+	result, err := service.Store.db.ExecContext(ctx, `UPDATE fa.runs SET config_json=$1,updated_at=$2
+		WHERE id=$3 AND config_json=$4 AND status='running'`, snapshot, nowText(), run.ID, run.ConfigJSON)
 	if err != nil {
 		return err
 	}

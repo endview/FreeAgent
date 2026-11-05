@@ -526,7 +526,7 @@ func (tasks *TaskService) SelectModel(ctx context.Context, conversationID, model
 	if conversation.Workspace != config.Workspace {
 		return errors.New("harness: conversation workspace does not match")
 	}
-	_, err = store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)
+	_, err = store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/model/"+conversationID, modelID)
 	return err
 }
@@ -577,7 +577,7 @@ func (tasks *TaskService) editRun(ctx context.Context, runID string, edit func(*
 	}
 	if run.LimitSettled {
 		var next string
-		if err := core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "run/limit-next/"+run.ID).Scan(&next); err == nil && next != "" {
+		if err := core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "run/limit-next/"+run.ID).Scan(&next); err == nil && next != "" {
 			return errors.New("harness: this limited Run already has a successor; adjust the successor instead")
 		}
 	}
@@ -603,7 +603,7 @@ func (tasks *TaskService) editRun(ctx context.Context, runID string, edit func(*
 		return err
 	}
 	// Both the binding and limits change are atomic; consumption is untouched.
-	_, err = core.Store.db.ExecContext(ctx, `UPDATE runs SET config_json=?,updated_at=? WHERE id=?`, snapshot, nowText(), runID)
+	_, err = core.Store.db.ExecContext(ctx, `UPDATE fa.runs SET config_json=$1,updated_at=$2 WHERE id=$3`, snapshot, nowText(), runID)
 	return err
 }
 
@@ -619,7 +619,7 @@ func (tasks *TaskService) SwitchModel(ctx context.Context, runID, modelID string
 			return "", err
 		}
 		for _, attempt := range attempts {
-			if attempt.Status == "unknown" || attempt.Status == "dispatched" {
+			if (attempt.Status == "unknown" && attempt.Replacement == "" && attempt.Resolution == "") || attempt.Status == "dispatched" {
 				return "", ErrUnknownResult
 			}
 			if attempt.Status == "pending" {

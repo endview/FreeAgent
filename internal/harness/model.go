@@ -26,7 +26,8 @@ type ModelMessage struct {
 }
 
 type ModelRequest struct {
-	DenyOperations  bool `json:",omitempty"`
+	Recovery        *ModelRecovery `json:",omitempty"`
+	DenyOperations  bool           `json:",omitempty"`
 	ModelID         string
 	ModelRevision   string
 	Purpose         string `json:",omitempty"`
@@ -233,9 +234,10 @@ type CallError struct {
 	Category   string `json:"category,omitempty"`
 	HTTPStatus int    `json:"http_status,omitempty"`
 	Code       string `json:"code,omitempty"`
-	// Retryable is diagnostic advice for a new, explicit request. It never
-	// authorizes replay of this Attempt, especially if Certain is false.
-	Retryable bool `json:"retryable"`
+	// Retryable is advice interpreted by the bounded model recovery policy;
+	// it never authorizes replay of a tool or the same Attempt.
+	Retryable    bool  `json:"retryable"`
+	RetryAfterMS int64 `json:"retry_after_ms,omitempty"`
 }
 
 func (err *CallError) Error() string { return err.Message }

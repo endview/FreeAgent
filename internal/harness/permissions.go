@@ -30,6 +30,7 @@ func (mode PermissionMode) Validate() error {
 
 // This is part of the existing run snapshot, not another execution object.
 type PermissionSelection struct {
+	OwnerPrivate      bool           `json:"owner_private,omitempty"`
 	RemoteLimit       PermissionMode `json:"remote_limit,omitempty"`
 	SpaceID           string         `json:"space_id,omitempty"`
 	PersonID          string         `json:"person_id,omitempty"`

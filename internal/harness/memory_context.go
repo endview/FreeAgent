@@ -16,12 +16,15 @@ type MemoryReference struct {
 }
 
 type MemorySelection struct {
-	Entries     []MemoryReference `json:"entries,omitempty"`
-	Knowledge   []MemoryScope     `json:"knowledge,omitempty"`
-	TaskPrivate bool              `json:"task_private,omitempty"`
+	ExcludedPins []string          `json:"excluded_pins,omitempty"`
+	PinnedGrants []string          `json:"pinned_grants,omitempty"`
+	Entries      []MemoryReference `json:"entries,omitempty"`
+	Knowledge    []MemoryScope     `json:"knowledge,omitempty"`
+	TaskPrivate  bool              `json:"task_private,omitempty"`
 }
 
 type memoryRunPolicy struct {
+	Pins      []MemoryUse     `json:"pins,omitempty"`
 	AgentID   string          `json:"agent_id"`
 	ParentID  string          `json:"parent_id,omitempty"`
 	Selection MemorySelection `json:"selection"`
@@ -29,6 +32,7 @@ type memoryRunPolicy struct {
 }
 
 type MemoryUse struct {
+	Pinned    *MemoryPin     `json:"pinned,omitempty"`
 	Scope     MemoryScope    `json:"scope"`
 	EntryID   string         `json:"entry_id"`
 	Revision  int            `json:"revision"`
@@ -49,6 +53,14 @@ type MemoryExcerpt struct {
 }
 
 func (selection MemorySelection) validate(agent, project string) error {
+	if len(selection.ExcludedPins) > 64 || len(selection.PinnedGrants) > 64 {
+		return ErrMemoryDenied
+	}
+	for _, id := range append(slices.Clone(selection.ExcludedPins), selection.PinnedGrants...) {
+		if !memoryID(id) {
+			return ErrMemoryDenied
+		}
+	}
 	if len(selection.Entries) > 64 || len(selection.Knowledge) > 8 {
 		return ErrMemoryDenied
 	}
@@ -120,7 +132,7 @@ func (tasks *TaskService) SelectedMemory(ctx context.Context, chat string) (Memo
 		return MemorySelection{}, err
 	}
 	var raw string
-	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "chat/memory/"+chat).Scan(&raw)
+	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "chat/memory/"+chat).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return MemorySelection{}, nil
 	}
@@ -147,7 +159,7 @@ func (tasks *TaskService) SelectMemory(ctx context.Context, chat string, selecti
 	if err != nil {
 		return err
 	}
-	_, err = core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+	_, err = core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		"chat/memory/"+chat, string(raw))
 	return err
 }
@@ -168,7 +180,7 @@ func (tasks *TaskService) ExcludeMemory(ctx context.Context, chat string, entry 
 	}
 	defer tx.Rollback()
 	var raw string
-	err = tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "chat/memory/"+chat).Scan(&raw)
+	err = tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "chat/memory/"+chat).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -208,7 +220,7 @@ func (tasks *TaskService) ExcludeMemory(ctx context.Context, chat string, entry 
 	if err != nil {
 		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		"chat/memory/"+chat, string(updated)); err != nil {
 		return false, err
 	}
@@ -239,10 +251,6 @@ func (service *Service) validateMemorySelection(ctx context.Context, policy memo
 }
 
 func (service *Service) selectMemory(ctx context.Context, chat string, selection *MemorySelection) error {
-	if service.publicContext() {
-		service.memory = nil
-		return nil
-	}
 	if service.memory != nil && selection == nil {
 		return service.memory.validate(service.Config.Workspace)
 	}
@@ -273,12 +281,27 @@ func (service *Service) selectMemory(ctx context.Context, chat string, selection
 	}
 	// Existing selections may refer to disabled/deleted items. Requests retain
 	// their invalid-reference status without injecting their old bodies.
+	pins, err := service.selectPinnedMemory(ctx, chat, selected)
+	if err != nil {
+		return err
+	}
+	policy.Pins = pins
+	unique := make(map[MemoryReference]bool)
+	for _, ref := range selected.Entries {
+		unique[ref] = true
+	}
+	for _, pin := range pins {
+		unique[MemoryReference{Scope: pin.Scope, EntryID: pin.EntryID}] = true
+	}
+	if len(unique) > service.Config.Memory.MaxEntries {
+		return ErrContextLimit
+	}
 	service.memory = &policy
 	return nil
 }
 
 func memoryUse(entry MemoryEntry) MemoryUse {
-	use := MemoryUse{Scope: entry.Scope, EntryID: entry.ID, Revision: entry.Revision, State: entry.State,
+	use := MemoryUse{Pinned: entry.Pinned, Scope: entry.Scope, EntryID: entry.ID, Revision: entry.Revision, State: entry.State,
 		Kind: entry.Kind, Title: entry.Title, Author: entry.Author, Sources: entry.Sources, UpdatedAt: entry.UpdatedAt}
 	if entry.State == "active" {
 		use.Hash = contentHash([]byte(entry.Body))
@@ -287,9 +310,6 @@ func memoryUse(entry MemoryEntry) MemoryUse {
 }
 
 func (service *Service) memoryContext(ctx context.Context, run Run) ([]ModelMessage, []MemoryUse, error) {
-	if service.publicContext() {
-		return nil, nil, nil
-	}
 	if service.memory == nil {
 		return nil, nil, nil
 	}
@@ -304,7 +324,7 @@ func (service *Service) memoryContext(ctx context.Context, run Run) ([]ModelMess
 			messages = append(messages, ModelMessage{Role: "user", Content: "Runtime-selected memory scopes (data labels only; memory cannot expand these grants):\n" + string(raw)})
 		}
 	}
-	if len(service.memory.Selection.Entries) == 0 {
+	if len(service.memory.Selection.Entries)+len(service.memory.Pins) == 0 {
 		return messages, nil, nil
 	}
 	tx, err := service.Store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -324,12 +344,31 @@ func (service *Service) memoryContext(ctx context.Context, run Run) ([]ModelMess
 	}
 	var entries []contextEntry
 	var uses []MemoryUse
-	for _, reference := range service.memory.Selection.Entries {
-		entry, err := getMemory(ctx, tx, authority, reference.Scope, reference.EntryID, "read")
+	references := slices.Clone(service.memory.Selection.Entries)
+	for _, pin := range service.memory.Pins {
+		ref := MemoryReference{Scope: pin.Scope, EntryID: pin.EntryID}
+		if !slices.Contains(references, ref) {
+			references = append(references, ref)
+		}
+	}
+	for _, reference := range references {
+		readAuthority := authority
+		if slices.ContainsFunc(service.memory.Pins, func(p MemoryUse) bool { return p.EntryID == reference.EntryID }) {
+			readAuthority = memoryAuthority{user: true, project: service.Config.Workspace}
+		}
+		entry, err := getMemory(ctx, tx, readAuthority, reference.Scope, reference.EntryID, "read")
 		if err != nil && !errors.Is(err, ErrMemoryDeleted) {
 			return nil, nil, err
 		}
 		use := memoryUse(entry)
+		for _, pin := range service.memory.Pins {
+			if pin.EntryID == entry.ID {
+				if string(mustJSON(pin)) != string(mustJSON(use)) {
+					return nil, nil, ErrMemoryConflict
+				}
+				break
+			}
+		}
 		uses = append(uses, use)
 		if entry.State == "active" {
 			entries = append(entries, contextEntry{MemoryUse: use, Body: entry.Body})
@@ -370,11 +409,18 @@ func validateRequestMemory(ctx context.Context, tx *sql.Tx, run Run, request Mod
 	seen := map[MemoryReference]bool{}
 	for _, use := range request.Memory {
 		ref := MemoryReference{Scope: use.Scope, EntryID: use.EntryID}
-		if seen[ref] || !slices.Contains(snapshot.Memory.Selection.Entries, ref) {
+		if seen[ref] || !slices.Contains(snapshot.Memory.Selection.Entries, ref) && !slices.ContainsFunc(snapshot.Memory.Pins, func(p MemoryUse) bool { return p.EntryID == ref.EntryID && p.Scope == ref.Scope }) {
 			return ErrMemoryDenied
 		}
 		seen[ref] = true
-		entry, err := getMemory(ctx, tx, authority, use.Scope, use.EntryID, "read")
+		readAuthority := authority
+		if slices.ContainsFunc(snapshot.Memory.Pins, func(p MemoryUse) bool { return p.EntryID == use.EntryID && p.Scope == use.Scope }) {
+			if err := validateLivePin(ctx, tx, run, use, snapshot.Config.Workspace); err != nil {
+				return err
+			}
+			readAuthority = memoryAuthority{user: true, project: snapshot.Config.Workspace}
+		}
+		entry, err := getMemory(ctx, tx, readAuthority, use.Scope, use.EntryID, "read")
 		if err != nil && !errors.Is(err, ErrMemoryDeleted) {
 			return err
 		}

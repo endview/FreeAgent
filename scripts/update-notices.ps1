@@ -11,7 +11,7 @@ try {
     foreach ($target in @('windows', 'linux')) {
         $env:GOOS = $target
         $env:GOARCH = 'amd64'
-        $lines = & $Go list -deps -f '{{if .Module}}{{.Module.Path}}{{end}}' ./cmd/freeagent ./cmd/freeagent-desktop
+        $lines = & $Go list -deps -f '{{if .Module}}{{.Module.Path}}{{end}}' ./cmd/freeagent ./cmd/freeagent-desktop ./cmd/freeagent-channel
         if ($LASTEXITCODE -ne 0) { throw "go list failed for $target" }
         foreach ($line in $lines) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
@@ -31,6 +31,9 @@ try {
     [void]$text.AppendLine('dependencies (including their production dependency closure). Build-only')
     [void]$text.AppendLine('frontend tools are not distributed. The Go standard library carries its')
     [void]$text.AppendLine('own BSD license in the Go distribution. Notices are reproduced below.')
+    [void]$text.AppendLine('The separately bundled PostgreSQL runtime and its native dependencies retain')
+    [void]$text.AppendLine('their notices under runtime/postgresql/licenses (or LICENSE), with pinned')
+    [void]$text.AppendLine('sources and file inventory in runtime/postgresql/runtime-source.json.')
     foreach ($name in ($modules.Keys | Sort-Object)) {
         $module = $modules[$name]
         $files = @(Get-ChildItem -LiteralPath $module.Dir -File |

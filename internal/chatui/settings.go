@@ -42,6 +42,13 @@ type settingsCommandPatch struct {
 func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Request) bool {
 	path := request.URL.Path
 	switch {
+	case path == "/api/settings/database" && request.Method == http.MethodGet:
+		status, err := server.tasks.DatabaseStatus(request.Context())
+		if err != nil {
+			server.writeError(writer, http.StatusServiceUnavailable, "database", "PostgreSQL 状态不可用；请检查本机数据库日志。")
+		} else {
+			server.writeJSON(writer, http.StatusOK, status)
+		}
 	case path == "/api/settings" && request.Method == http.MethodGet:
 		server.writeSettings(writer, request)
 	case path == "/api/settings/permissions" && request.Method == http.MethodPatch:
@@ -55,17 +62,29 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 	case path == "/api/settings/context" && request.Method == http.MethodPatch:
 		var body struct {
 			settingsPatch
+			ModelRetries     *int `json:"model_retries"`
+			MaxOutputTokens  *int `json:"max_output_tokens"`
+			MaxContextBytes  *int `json:"max_context_bytes"`
 			TaskSummaryBytes *int `json:"task_summary_bytes"`
 			AutoCompactAt    *int `json:"auto_compact_percent"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
-		if body.TaskSummaryBytes == nil && body.AutoCompactAt == nil {
+		if body.TaskSummaryBytes == nil && body.AutoCompactAt == nil && body.ModelRetries == nil && body.MaxOutputTokens == nil && body.MaxContextBytes == nil {
 			server.writeError(writer, http.StatusBadRequest, "input", "task_summary_bytes is required (0 disables automatic compaction)")
 			return true
 		}
 		args := map[string]int{}
+		if body.MaxOutputTokens != nil {
+			args["max_output_tokens"] = *body.MaxOutputTokens
+		}
+		if body.MaxContextBytes != nil {
+			args["max_context_bytes"] = *body.MaxContextBytes
+		}
+		if body.ModelRetries != nil {
+			args["model_retries"] = *body.ModelRetries
+		}
 		if body.TaskSummaryBytes != nil {
 			args["task_summary_bytes"] = *body.TaskSummaryBytes
 		}
@@ -96,7 +115,8 @@ func (server *Server) settingsProjection() map[string]any {
 	return map[string]any{
 		"schema_version": 1,
 		"revision":       policy.Generation,
-		"context":        map[string]any{"automatic": config.TaskSummaryBytes > 0, "task_summary_bytes": config.TaskSummaryBytes, "auto_compact_percent": config.AutoCompactAt},
+		"recovery":       map[string]any{"model_retries": config.ModelRetries, "tool_verification_rounds": 2, "retry_may_charge": true},
+		"context":        map[string]any{"automatic": config.TaskSummaryBytes > 0, "task_summary_bytes": config.TaskSummaryBytes, "auto_compact_percent": config.AutoCompactAt, "max_output_tokens": config.MaxOutputTokens, "max_context_bytes": config.MaxContextBytes},
 		"default_permission_mode": func() harness.PermissionMode {
 			if config.Execution.PermissionMode == "" {
 				return harness.PermissionAsk

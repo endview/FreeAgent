@@ -57,7 +57,7 @@ func TestActiveTimeIsRetainedWithoutTaskTimeLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	active := time.Now().Add(-2 * time.Second).UTC().Format(time.RFC3339Nano)
-	if _, err := service.Store.db.ExecContext(ctx, `UPDATE runs SET elapsed_ms=360000,active_since=? WHERE id=?`, active, run.ID); err != nil {
+	if _, err := service.Store.db.ExecContext(ctx, `UPDATE fa.runs SET elapsed_ms=360000,active_since=$1 WHERE id=$2`, active, run.ID); err != nil {
 		t.Fatal(err)
 	}
 	reopenHarness(t, service)
@@ -189,22 +189,29 @@ func TestContextByteTailNeverSplitsPriorToolRun(t *testing.T) {
 }
 
 func TestSchemaTamperingRejectedReadOnly(t *testing.T) {
-	service, _, _ := testHarness(t, EchoModel{})
-	data := service.Store.DataDir()
-	if _, err := service.Store.db.Exec(`DROP INDEX one_active_run`); err != nil {
+	core, _, _ := testHarness(t, EchoModel{})
+	data := core.Store.DataDir()
+	admin := testPGAdmin(t, data)
+	if _, err := core.Store.db.ExecContext(t.Context(), `DROP INDEX fa.one_active_run`); err == nil {
+		t.Fatal("runtime role was allowed DDL")
+	}
+	if _, err := admin.ExecContext(t.Context(), `DROP INDEX fa.one_active_run`); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Store.Close(); err != nil {
+	before, err := schemaIdentity(t.Context(), admin)
+	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(data, "state.sqlite")
-	before, _ := os.ReadFile(path)
-	if _, err := OpenStore(context.Background(), data); !errors.Is(err, ErrStoreFormat) {
-		t.Fatalf("modified current schema accepted: %v", err)
+	core.Store.Close()
+	if store, err := OpenStoreReadOnly(t.Context(), data); !errors.Is(err, ErrStoreFormat) {
+		if store != nil {
+			store.Close()
+		}
+		t.Fatal("modified schema accepted", err)
 	}
-	after, _ := os.ReadFile(path)
-	if contentHash(before) != contentHash(after) {
-		t.Fatal("rejected store was modified")
+	after, err := schemaIdentity(t.Context(), admin)
+	if err != nil || before != after {
+		t.Fatal("unrecognized schema was modified", err)
 	}
 }
 
@@ -228,16 +235,11 @@ func TestBackupWALInstructionsRestoreAndTampering(t *testing.T) {
 	if err := WriteConfig(data, service.Config); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Store.db.Exec(`PRAGMA wal_autocheckpoint=0`); err != nil {
-		t.Fatal(err)
-	}
+
 	id := conversation(t, service)
 	result, err := service.Run(ctx, id, "wal", "persist me")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if info, err := os.Stat(filepath.Join(data, "state.sqlite-wal")); err != nil || info.Size() == 0 {
-		t.Fatalf("test did not create WAL pages: %v", err)
 	}
 	backup := filepath.Join(t.TempDir(), "backup")
 	if err := service.Store.Backup(ctx, backup); err != nil {

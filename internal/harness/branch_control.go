@@ -43,7 +43,7 @@ func (service *ControlService) buildBranchControl(ctx context.Context, record *c
 		return ErrConversationSpace
 	}
 	var raw string
-	if err := service.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE id=? AND conversation_id=?`, args.MessageID, args.ConversationID).Scan(&raw); err != nil {
+	if err := service.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE id=$1 AND conversation_id=$2`, args.MessageID, args.ConversationID).Scan(&raw); err != nil {
 		return err
 	}
 	var message ModelMessage

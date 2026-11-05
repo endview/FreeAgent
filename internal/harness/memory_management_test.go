@@ -93,7 +93,7 @@ func TestMemoryManagementRunPreviewScopeAndMetadata(t *testing.T) {
 		t.Fatalf("private scope metadata=%+v err=%v", scopes, err)
 	}
 	for _, state := range []string{"stopped", "waiting_confirmation", "unknown", "failed", "abandoned"} {
-		if _, err := core.Store.db.ExecContext(t.Context(), `UPDATE runs SET status=? WHERE id=?`, state, completed.Run.ID); err != nil {
+		if _, err := core.Store.db.ExecContext(t.Context(), `UPDATE fa.runs SET status=$1 WHERE id=$2`, state, completed.Run.ID); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := tasks.PreviewRunMemory(t.Context(), chat, completed.Run.ID, scope, "", "Not complete", state); err == nil {
@@ -129,7 +129,7 @@ func TestMemoryManagementSettingsIdleAndFinite(t *testing.T) {
 		t.Fatal("unbounded/invalid settings saved")
 	}
 	for _, state := range []string{"running", "waiting_confirmation", "stopped", "unknown", "limited"} {
-		if _, err := core.Store.db.ExecContext(t.Context(), `UPDATE runs SET status=? WHERE id=?`, state, completed.Run.ID); err != nil {
+		if _, err := core.Store.db.ExecContext(t.Context(), `UPDATE fa.runs SET status=$1 WHERE id=$2`, state, completed.Run.ID); err != nil {
 			t.Fatal(err)
 		}
 		change := memory

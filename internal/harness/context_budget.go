@@ -178,7 +178,7 @@ func (service *Service) recordContextUsage(ctx context.Context, run Run, usage C
 	if run.ID == "" {
 		return nil
 	}
-	if err := service.Store.db.QueryRowContext(ctx, `SELECT coalesce(max(id),0) FROM messages WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND (id<=? OR run_id=?)`, run.ConversationID, historyBound(run), run.ID).Scan(&usage.Through); err != nil {
+	if err := service.Store.db.QueryRowContext(ctx, `SELECT coalesce(max(id),0) FROM fa.messages WHERE conversation_id=$1 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND (id<=$2 OR run_id=$3)`, run.ConversationID, historyBound(run), run.ID).Scan(&usage.Through); err != nil {
 		return err
 	}
 	tx, err := service.Store.db.BeginTx(ctx, nil)
@@ -187,11 +187,11 @@ func (service *Service) recordContextUsage(ctx context.Context, run Run, usage C
 	}
 	defer tx.Rollback()
 	keys := []string{"context/usage/" + run.ConversationID}
-	if service.publicContext() {
+	if service.scopedHistory() {
 		keys = append(keys, service.contextUsageKey(run.ConversationID))
 	}
 	for _, key := range keys {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, string(mustJSON(usage))); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, string(mustJSON(usage))); err != nil {
 			return err
 		}
 	}
@@ -225,14 +225,14 @@ func (tasks *TaskService) populateContextUsage(ctx context.Context, chat string,
 		state.Window = contextWindow(config, limits, ModelBinding{ID: id, Config: model}, output)
 	}
 	var raw string
-	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, tasks.core.contextUsageKey(chat)).Scan(&raw)
+	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, tasks.core.contextUsageKey(chat)).Scan(&raw)
 	if err == nil {
 		var usage ContextUsage
 		if json.Unmarshal([]byte(raw), &usage) != nil {
 			return ErrStoreFormat
 		}
 		var through int64
-		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT coalesce(max(id),0) FROM messages WHERE conversation_id=?`, chat).Scan(&through); err != nil {
+		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT coalesce(max(id),0) FROM fa.messages WHERE conversation_id=$1`, chat).Scan(&through); err != nil {
 			return err
 		}
 		usage.Stale = through > usage.Through
@@ -240,8 +240,8 @@ func (tasks *TaskService) populateContextUsage(ctx context.Context, chat string,
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT a.response_json FROM attempts a JOIN runs r ON r.id=a.run_id WHERE r.conversation_id=? AND a.kind='model' AND (?='' OR coalesce(json_extract(r.config_json,'$.Permission.mode'),'')='none' AND ?='public_text' OR json_extract(r.config_json,'$.Permission.entry') IN ('telegram','lark','qq') AND ?='channel_public') AND coalesce(json_extract(a.request_json,'$.Purpose'),'')='' AND CASE WHEN json_valid(a.response_json) THEN json_extract(a.response_json,'$.Usage') END IS NOT NULL ORDER BY r.created_at DESC,a.rowid DESC LIMIT 1`, chat, func() string {
-		if tasks.core.publicContext() {
+	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT a.response_json FROM fa.attempts a JOIN fa.runs r ON r.id=a.run_id WHERE r.conversation_id=$1 AND a.kind='model' AND ($2='' OR coalesce((r.config_doc #>> '{Permission,mode}'),'')='none' AND $3='public_text' OR (r.config_doc #>> '{Permission,entry}') IN ('telegram','lark','qq') AND $4='channel_public') AND coalesce((a.request_doc #>> '{Purpose}'),'')='' AND CASE WHEN (a.response_doc IS NOT NULL) THEN (a.response_doc #> '{Usage}') END IS NOT NULL ORDER BY r.created_at DESC,a.seq DESC LIMIT 1`, chat, func() string {
+		if tasks.core.scopedHistory() {
 			return tasks.core.publicSummaryScope()
 		}
 		return ""
@@ -298,7 +298,7 @@ func (service *Service) selectionContext(ctx context.Context, run Run) (ModelReq
 
 func (service *Service) contextUsageKey(chat string) string {
 	key := "context/usage/" + chat
-	if service.publicContext() {
+	if service.scopedHistory() {
 		key += "/" + service.publicSummaryScope()
 	}
 	return key

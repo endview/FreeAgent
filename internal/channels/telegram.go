@@ -36,6 +36,9 @@ type TelegramError struct {
 	Uncertain  bool
 }
 
+func (e *TelegramError) DispatchCertain() bool     { return !e.Uncertain }
+func (e *TelegramError) RetryDelay() time.Duration { return e.RetryAfter }
+
 func (e *TelegramError) Error() string {
 	return fmt.Sprintf("telegram: API failure status=%d delivery_unknown=%t", e.Status, e.Uncertain)
 }
@@ -173,6 +176,17 @@ func (api *TelegramAPI) Me(ctx context.Context) (TelegramUser, error) {
 		err = errors.New("telegram: incomplete bot identity")
 	}
 	return user, err
+}
+
+func (api *TelegramAPI) DropPendingUpdates(ctx context.Context) error {
+	var ok bool
+	if err := api.call(ctx, "deleteWebhook", map[string]bool{"drop_pending_updates": true}, &ok, true); err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("telegram: cutover purge was not confirmed")
+	}
+	return nil
 }
 func (api *TelegramAPI) Poll(ctx context.Context, offset int64, waitSeconds int) ([]TelegramUpdate, error) {
 	if waitSeconds < 0 || waitSeconds > 50 {
@@ -323,6 +337,7 @@ func TelegramEventFromUpdate(update TelegramUpdate, bot TelegramUser) (TelegramE
 		event.ChatID, event.ChatKind, event.MessageID = c.Message.Chat.ID, c.Message.Chat.Type, c.Message.ID
 		event.PersonID = "telegram:user:" + strconv.FormatInt(c.From.ID, 10)
 		event.CallbackID, event.CallbackData = c.ID, c.Data
+		event.Date = c.Message.Date
 		return event, true
 	}
 	m := update.Message

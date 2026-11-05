@@ -53,6 +53,10 @@ type TaskService struct {
 // Backup uses the store's existing exclusive execution boundary, including
 // when a GUI or terminal already owns the writer.
 func (tasks *TaskService) Backup(ctx context.Context, target string) error {
+	if tasks.core.controlMu != nil {
+		tasks.core.controlMu.Lock()
+		defer tasks.core.controlMu.Unlock()
+	}
 	return tasks.core.Store.Backup(ctx, target)
 }
 
@@ -498,7 +502,7 @@ func (tasks *TaskService) ConfigureModels(ctx context.Context, edit func(*Config
 	}
 	if before != after {
 		var unfinished int
-		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs
+		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs
 			WHERE `+activeRunPredicate+` `).Scan(&unfinished); err != nil {
 			return err
 		}
@@ -1079,7 +1083,7 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 				workflowErr = errors.Join(workflowErr, ErrUnknownResult)
 			} else if attempts, attemptsErr := bound.Store.ListAttempts(persistCtx, run.ID); attemptsErr == nil {
 				for _, saved := range attempts {
-					if saved.ID != attempt.ID && (saved.Status == "unknown" || saved.Status == "dispatched") {
+					if saved.ID != attempt.ID && ((saved.Status == "unknown" && saved.Replacement == "" && saved.Resolution == "") || saved.Status == "dispatched") {
 						status, reason = "unknown", "workflow contains an unresolved Host operation"
 						workflowErr = errors.Join(workflowErr, ErrUnknownResult)
 						break
@@ -1229,7 +1233,7 @@ func previewConfirmation(ctx context.Context, core *Service, runID string) (Conf
 		return Confirmation{}, err
 	}
 	for _, attempt := range attempts {
-		if attempt.Status == "unknown" || attempt.Status == "dispatched" {
+		if (attempt.Status == "unknown" && attempt.Replacement == "" && attempt.Resolution == "") || attempt.Status == "dispatched" {
 			return Confirmation{}, ErrUnknownResult
 		}
 		if attempt.Status != "pending" || attempt.Kind != "tool" {

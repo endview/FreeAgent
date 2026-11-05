@@ -39,7 +39,7 @@ $manifest = Get-Content -LiteralPath (Join-Path $package 'manifest.json') -Raw |
 if ($manifest.signed -or $manifest.installer -or $manifest.bundled_credentials -or $manifest.bundled_user_data) {
     throw 'Unexpected portable release claim or bundled state.'
 }
-if ($manifest.data_format -ne 'Harness-v8') { throw 'Portable manifest has the wrong data format.' }
+if ($manifest.data_format -ne 'Harness-pg-v1') { throw 'Portable manifest has the wrong data format.' }
 $expected = @('SHA256SUMS.txt', 'manifest.json') + @($manifest.files.path)
 $actual = @(Get-ChildItem -LiteralPath $package -File -Recurse | ForEach-Object {
     $_.FullName.Substring($package.Length + 1).Replace('\', '/')
@@ -163,7 +163,7 @@ $previousKeysFile = $env:FREEAGENT_KEYS_FILE
 try {
     Remove-Item Env:FREEAGENT_KEYS_FILE -ErrorAction SilentlyContinue
     $workspace = Join-Path $package 'workspace'
-    $data = [IO.Path]::GetFullPath((Join-Path $package 'data/Harness-v8'))
+    $data = [IO.Path]::GetFullPath((Join-Path $package 'data/Harness-pg-v1'))
     if ($SkipDesktop) {
         # Hosted service runners may have no interactive WebView2 desktop.
         # Keep CLI/manifest checks useful without claiming native UI coverage.

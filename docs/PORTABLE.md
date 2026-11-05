@@ -2,12 +2,12 @@
 
 For the separate Linux amd64 CLI/Web archive, see [Linux portable](https://github.com/endview/FreeAgent/blob/main/docs/LINUX_PORTABLE.md).
 
-Current candidate: `v7.12.0-dev.1`, Windows amd64. This is an unsigned
+Current candidate: `v8.0.0-dev.1`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are bundled with the engine.
 
 Settings includes optional Telegram, Lark/Feishu and official QQ connections.
-Save channel credentials in Key management, select the matching saved profile,
+Save channel credentials under Settings → Connections → Channels, select the matching account,
 then enable it in Settings. Telegram uses /start applications and administrator approval; Lark/QQ retain pairing. See [Channel setup](https://github.com/endview/FreeAgent/blob/main/docs/CHANNELS.md).
 Real app/chat acceptance remains NOT_RUN; the package is a local development
 preview. Two foreground conversations share one workspace; command and service
@@ -18,7 +18,7 @@ while permission reductions still take effect immediately.
 
 Extract the entire ZIP to a writable directory, then double-click
 `FreeAgent.exe`. No console window is opened. The package creates its own
-`data\Harness-v8` store and `workspace\` directory on first start.
+`data\Harness-pg-v1` store and `workspace\` directory on first start.
 
 The desktop app uses Microsoft WebView2 when it is installed. If WebView2 is
 unavailable, it opens the same local Chat in the default browser and shows a
@@ -63,7 +63,7 @@ execution. The optional public HTTPS entrance is available on Linux servers.
 
 ## Data And Workspace
 
-The package uses the independent `data\Harness-v8` directory. Old stores,
+The package uses the independent `data\Harness-pg-v1` directory. Old stores,
 backups and configurations are not imported, upgraded or removed. The default
 workspace is `workspace\` beside the desktop executable.
 

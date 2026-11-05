@@ -145,7 +145,7 @@ func (collab *Collaboration) deliverResults(ctx context.Context, core *Service, 
 			source := recordChild(*record, ref.Source)
 			var status string
 			if source.RunID == "" || source.Retired || source.Control != "running" ||
-				tx.QueryRowContext(ctx, `SELECT status FROM runs WHERE id=?`, source.RunID).Scan(&status) != nil ||
+				tx.QueryRowContext(ctx, `SELECT status FROM fa.runs WHERE id=$1`, source.RunID).Scan(&status) != nil ||
 				status != "completed" || slices.ContainsFunc(report.Gaps, func(gap string) bool {
 				return strings.HasPrefix(gap, ref.Source+":")
 			}) {
@@ -156,7 +156,7 @@ func (collab *Collaboration) deliverResults(ctx context.Context, core *Service, 
 			return validateDeliveredResults(ctx, tx, *record, *child)
 		}
 		var run Run
-		run, err = scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, child.RunID))
+		run, err = scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, child.RunID))
 		if err != nil {
 			return err
 		}
@@ -174,7 +174,7 @@ func (collab *Collaboration) deliverResults(ctx context.Context, core *Service, 
 				return err
 			}
 			var output string
-			if err := tx.QueryRowContext(ctx, `SELECT output FROM runs WHERE id=?`, item.RunID).Scan(&output); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT output FROM fa.runs WHERE id=$1`, item.RunID).Scan(&output); err != nil {
 				return err
 			}
 			if contentHash([]byte(output)) != item.OutputHash {
@@ -191,11 +191,11 @@ func (collab *Collaboration) deliverResults(ctx context.Context, core *Service, 
 		if len(prompt) > core.Config.MaxContextBytes/2 {
 			return ErrContextLimit
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE runs SET prompt=?,updated_at=? WHERE id=?`, prompt, nowText(), run.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET prompt=$1,updated_at=$2 WHERE id=$3`, prompt, nowText(), run.ID); err != nil {
 			return err
 		}
 		body, _ := json.Marshal(ModelMessage{Role: "user", Content: prompt})
-		result, err := tx.ExecContext(ctx, `UPDATE messages SET body_json=? WHERE run_id=? AND json_extract(body_json,'$.Role')='user'`, string(body), run.ID)
+		result, err := tx.ExecContext(ctx, `UPDATE fa.messages SET body_json=$1 WHERE run_id=$2 AND (body_json #>> '{Role}')='user'`, string(body), run.ID)
 		if err != nil {
 			return err
 		}
@@ -223,7 +223,7 @@ func validateDeliveredResults(ctx context.Context, tx *sql.Tx, record collaborat
 			len(delivered.SectionHash) != 64 || delivered.NextOffset != ref.Offset+len(delivered.Content) {
 			return ErrResultReference
 		}
-		run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, source.RunID))
+		run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, source.RunID))
 		if err != nil || run.Status != "completed" || contentHash([]byte(run.Output)) != delivered.OutputHash {
 			return errors.Join(ErrResultReference, err)
 		}

@@ -563,9 +563,10 @@ func keyTime() time.Time { return time.Now().UTC().Truncate(time.Second) }
 // KeyStore reads keys.json lazily and caches it by modification time and size.
 // Writers serialize in-process with mu and across processes with keys.json.lock.
 type KeyStore struct {
-	path  string
-	mu    sync.Mutex
-	cache keysCache
+	path     string
+	channels bool
+	mu       sync.Mutex
+	cache    keysCache
 }
 
 type keysCache struct {
@@ -577,6 +578,17 @@ type keysCache struct {
 
 // NewKeyStore does not touch the filesystem.
 func NewKeyStore(path string) *KeyStore { return &KeyStore{path: filepath.Clean(path)} }
+
+// NewChannelKeyStore reuses protected storage, but accepts only platform
+// credentials. A model API cannot list or resolve this namespace.
+func NewChannelKeyStore(path string) *KeyStore {
+	return &KeyStore{path: filepath.Clean(path), channels: true}
+}
+func (store *KeyStore) accepts(protocol string) bool {
+	p := normalizeKeyProtocol(protocol)
+	channel := p == KeyProtocolTelegram || p == KeyProtocolLark || p == KeyProtocolQQ
+	return validKeyProtocol(p) && channel == store.channels
+}
 
 // KeysEncrypted reports whether saved keys are encrypted on this system
 // (DPAPI on Windows). Elsewhere they are stored as plain text.
@@ -624,6 +636,9 @@ func (store *KeyStore) profile(ref string) (KeyProfile, error) {
 
 func (store *KeyStore) Add(input KeyInput) (KeyProfileView, error) {
 	defer clear(input.Secret)
+	if !store.accepts(input.Protocol) {
+		return KeyProfileView{}, errors.New("harness: credential protocol belongs to a different namespace")
+	}
 	name, base, note, err := keyFields(input)
 	if err != nil {
 		return KeyProfileView{}, err
@@ -687,7 +702,7 @@ func (store *KeyStore) Update(ref string, input KeyInput) (KeyProfileView, error
 		if input.Protocol != "" {
 			protocol = normalizeKeyProtocol(input.Protocol)
 		}
-		if !validKeyProtocol(protocol) {
+		if !store.accepts(protocol) {
 			return nil, errors.New("harness: key protocol must be openai-compatible or anthropic")
 		}
 		base, err := NormalizeBaseURLForProtocol(input.BaseURL, protocol)
@@ -898,11 +913,26 @@ func (store *KeyStore) load() ([]KeyProfile, error) {
 // read retries once so a reader racing a replaced file sees the new version.
 func (store *KeyStore) read() ([]KeyProfile, os.FileInfo, error) {
 	profiles, info, err := readKeysFile(store.path)
+	if err == nil {
+		for _, p := range profiles {
+			if !store.accepts(p.Protocol) {
+				return nil, nil, ErrKeysFormat
+			}
+		}
+	}
 	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		return profiles, info, err
 	}
 	time.Sleep(keysReadRetry)
-	return readKeysFile(store.path)
+	profiles, info, err = readKeysFile(store.path)
+	if err == nil {
+		for _, p := range profiles {
+			if !store.accepts(p.Protocol) {
+				return nil, nil, ErrKeysFormat
+			}
+		}
+	}
+	return profiles, info, err
 }
 
 func readKeysFile(path string) ([]KeyProfile, os.FileInfo, error) {

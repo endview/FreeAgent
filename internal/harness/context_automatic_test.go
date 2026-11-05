@@ -84,6 +84,7 @@ func TestCompletedLargeToolOutputIsSummarizedAsBoundedSourceFragments(t *testing
 
 func TestDefiniteProviderContextRefusalGetsOneRecordedCompactionRetry(t *testing.T) {
 	core, tasks, chat, _ := summaryFixture(t)
+	core.Config.ModelRetries = 2
 	core.Config.TaskSummaryBytes = 512
 	ordinary, summaries := 0, 0
 	core.Model = modelFunc(func(_ context.Context, r ModelRequest, _ func(string)) (ModelResponse, error) {

@@ -1,27 +1,21 @@
 import { escapeHTML as esc } from './render.mjs';
 
 export const CHANNELS = [ ['telegram', 'Telegram'], ['lark', 'Lark / 飞书'], ['qq', 'QQ 官方机器人'] ];
-export function channelConfig(status, source) {
-  return { ...(status?.config?.[source] || status?.[source]?.config || {}), enabled: Boolean(status?.config?.[source]?.enabled ?? status?.[source]?.config?.enabled ?? status?.[source]?.enabled) };
+export function channelConfig(status,source) {
+  return {...(status?.config?.connections?.find(c=>c.source===source)||{} )};
 }
-export function channelSections(status = {}, profiles = []) {
-  return CHANNELS.map(([source, label]) => {
-    const view = status[source] || {}, config = channelConfig(status, source);
-    const keys = profiles.filter(profile => profile.protocol === source);
-    const limitations = view.limitations || (source === 'telegram' ? ['群背景只覆盖 Bot 实际收到的文字；请核对 Privacy Mode。'] : []);
-    return `<section class="permission-section" data-channel="${source}">
-      <header><div><h3>${label}</h3><p>与本机共用对话和权限；${source === 'telegram' ? '用户发送 /start 申请，管理员批准后仅获得聊天资格。' : '新配对默认为 None。'}</p></div><span class="permission-state ${view.running ? 'enabled' : ''}">${view.running ? '运行中' : config.enabled ? '连接未就绪' : '已关闭'}</span></header>
-      <label class="check-line"><input type="checkbox" id="channel-${source}-enabled" ${config.enabled ? 'checked' : ''}>启用</label>
-      <label>已保存的渠道 Key<select id="channel-${source}-key"><option value="">选择 Key 管理中的 ${label} 凭据</option>${keys.map(profile => `<option value="${esc(profile.id)}" ${config.key === profile.id ? 'selected' : ''}>${esc(profile.name)}</option>`).join('')}</select></label>
-      ${source !== 'telegram' ? `<label>官方应用 App ID<input id="channel-${source}-app" value="${esc(config.app_id || '')}" autocomplete="off"></label>` : ''}
-      ${source === 'qq' ? `<label>本机回调地址<input id="channel-qq-listen" value="${esc(config.listen || '127.0.0.1:8098')}" autocomplete="off"></label><p>将自己的公网 HTTPS 回调反向代理至此地址的 <code>/qq/events</code>。</p>` : ''}
-      <p class="subtle-note">${view.bot_username ? `Bot：@${esc(view.bot_username)} ` : ''}${view.last_error ? `连接错误：${esc(view.last_error)}` : ''}</p>
-      ${limitations.map(text => `<p class="subtle-note">${esc(text)}</p>`).join('')}
-      ${source !== 'telegram' && view.pair_code ? `<p class="permission-notice">配对：<code>/pair ${esc(view.pair_code)}</code>；有效期至 ${esc(view.pair_expires_at || '')}</p>` : ''}
-      <div class="permission-actions"><button class="primary" data-action="channel-save" data-source="${source}">保存连接配置</button>${source !== 'telegram' ? `<button data-action="channel-code" data-source="${source}" ${!view.running ? 'disabled' : ''}>生成 10 分钟配对码</button>` : '<button data-action="telegram-access-refresh">刷新接入申请</button>'}</div>
-      ${source === 'telegram' ? telegramAccessSection(status.telegram_access || {}) : ''}
-    </section>`;
-  }).join('');
+export function channelSections(status={},profiles=[]) {
+  const connections=status.config?.connections||[];
+  const states=status.connections||[];
+  return `<section class="permission-section" data-settings-section="channels"><h3>可选渠道进程</h3><p>默认不连接任何平台。每个账号明确绑定一个 Core；渠道只传输消息，权限和执行仍由 Core 处理。</p>
+  ${connections.map(c=>{const view=states.find(s=>s.id===c.id);return `<div class="channel-connection"><strong>${esc(c.id)}</strong><span>${esc(c.source)} · ${esc(c.application_id)} · ${view?.running?'在线':c.enabled?'等待进程连接':'已关闭'}</span><button data-action="channel-save" data-id="${esc(c.id)}">${c.enabled?'关闭':'启用'}</button><button data-action="channel-connection-delete" data-id="${esc(c.id)}">删除连接</button></div>`}).join('')||'<p>尚未配置渠道。</p>'}
+  <details><summary>添加渠道账号</summary><label>连接 ID<input id="channel-id" autocomplete="off" placeholder="telegram-main"></label><label>平台<select id="channel-source">${CHANNELS.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label>
+  <label>Bot 数字 ID / 应用 ID<input id="channel-app" autocomplete="off"></label><p>Lark 使用 app:tenant；QQ 使用官方应用 ID。</p><label>渠道凭据<select id="channel-key"><option value="">先保存下方渠道凭据</option>${profiles.map(k=>`<option value="${esc(k.id)}">${esc(k.name)} · ${esc(k.protocol)}</option>`).join('')}</select></label>
+  <label>QQ 本机回调（其他平台留空）<input id="channel-listen" autocomplete="off" placeholder="127.0.0.1:8098"></label><p>QQ 通过反向代理使用本机 <code>/qq/events</code>。</p><label><input id="channel-enabled" type="checkbox">保存后启用（会连接平台）</label><button data-action="channel-add">保存连接</button></details>
+  </section>
+  <section class="permission-section" data-settings-section="channels"><h3>渠道凭据</h3><p>与模型 Provider 独立保存。Secret 不进入模型上下文。</p>${profiles.map(k=>`<div class="channel-connection"><span>${esc(k.name)} · ${esc(k.protocol)}</span><button data-action="channel-credential-delete" data-id="${esc(k.id)}">删除凭据</button></div>`).join('')}
+  <form id="channel-credential-form"><label>名称<input id="channel-credential-name" required maxlength="64"></label><label>平台<select id="channel-credential-protocol">${CHANNELS.map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label><label>平台 API 地址<input id="channel-credential-origin" required placeholder="https://api.telegram.org"></label><label>Bot Token / 应用 Secret<input id="channel-credential-secret" type="password" autocomplete="new-password" required></label><button type="button" data-action="channel-credential-save">保存渠道凭据</button></form></section>
+  ${connections.some(c=>c.source==='telegram'&&c.enabled)?`<section class="permission-section" data-settings-section="channels"><h3>Telegram 准入</h3>${telegramAccessSection(status.telegram_access||{})}</section>`:''}`;
 }
 
 export function telegramAccessSection(state = {}) {

@@ -60,10 +60,11 @@ func runDesktop(ctx context.Context) error {
 		}
 		return nil
 	}
-	defer func() {
-		_ = windows.ReleaseMutex(instance)
-		_ = windows.CloseHandle(instance)
-	}()
+	var releaseInstanceOnce sync.Once
+	releaseInstance := func() {
+		releaseInstanceOnce.Do(func() { _ = windows.ReleaseMutex(instance); _ = windows.CloseHandle(instance) })
+	}
+	defer releaseInstance()
 
 	logDir, err := apppaths.LogDir()
 	if err != nil {
@@ -165,6 +166,7 @@ func runDesktop(ctx context.Context) error {
 	changeCtx, cancelChange := context.WithCancel(ctx)
 	defer cancelChange()
 	var closing atomic.Bool
+	keepOwner := false
 	var view *desktopWebView
 
 	closeEngine := func() {
@@ -181,14 +183,16 @@ func runDesktop(ctx context.Context) error {
 		if !closing.CompareAndSwap(false, true) {
 			return
 		}
+		stopOwner := system
 		if !system && view != nil && view.busy.Load() {
-			if !confirmClose(view.hwnd(),
-				"有任务正在运行。\n\n确定：停止任务并退出。停止前已经执行的操作不会撤销，可能已经产生作用。\n取消：返回 FreeAgent。",
-				"退出 FreeAgent") {
+			choice := chooseOwnerClose(view.hwnd())
+			if choice == 0 {
 				closing.Store(false)
 				return
 			}
+			stopOwner = choice == 2
 		}
+		keepOwner = !stopOwner && currentEngine != nil
 		cancelChange()
 		if view != nil {
 			saved := currentWindowState(view.hwnd(), currentLaunch.Port)
@@ -197,7 +201,16 @@ func runDesktop(ctx context.Context) error {
 			}
 			hideWindow(view.hwnd())
 		}
-		closeEngine()
+		if keepOwner {
+			engineMu.Lock()
+			process := currentEngine
+			engineMu.Unlock()
+			if process != nil {
+				_ = process.stdin.Close()
+			}
+		} else if stopOwner {
+			closeEngine()
+		}
 		if view != nil && !system && view.subclass != nil {
 			view.subclass.allowWindowClose()
 		}
@@ -253,7 +266,35 @@ func runDesktop(ctx context.Context) error {
 		beginClose(true)
 	}
 	view.Run()
+	// Destroy WebView/SSE before waiting for the detached Owner. Otherwise the
+	// hidden page keeps renewing its own client lease and prevents idle exit.
+	view.Close()
+	releaseDesktopClient(currentLaunch, view.clientID)
+	if keepOwner {
+		releaseInstance()
+		engineMu.Lock()
+		process := currentEngine
+		engineMu.Unlock()
+		if process != nil {
+			return waitForEngine(ctx, process)
+		}
+	}
 	return nil
+}
+
+func releaseDesktopClient(launch engineLaunch, clientID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, launch.Origin+"/api/client/detach", nil)
+	if err != nil {
+		return
+	}
+	request.Header.Set("X-FreeAgent-Key", launch.Token)
+	request.Header.Set("X-FreeAgent-Client", clientID)
+	response, err := http.DefaultClient.Do(request)
+	if err == nil {
+		_ = response.Body.Close()
+	}
 }
 
 func changeAttachedWorkspace(ctx context.Context, launch engineLaunch, view *desktopWebView, workspace string, closing *atomic.Bool) {

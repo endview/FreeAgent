@@ -298,7 +298,7 @@ func bubblewrapArgs(ctx context.Context, spec Spec, deniedPath string) ([]string
 		files := []string{path}
 		if info.IsDir() {
 			files = nil
-			for _, name := range []string{"config.json", "state.sqlite", "state.sqlite-wal", "state.sqlite-shm", "owner.lock", "engine.json", "attach.secret", "chat.secret", "control-journal.jsonl", "public-admin.json"} {
+			for _, name := range []string{"config.json", "postgres.json", "postgres-maintenance.json", "channel-keys.json", "owner.lock", "engine.json", "attach.secret", "chat.secret", "control-journal.jsonl", "public-admin.json"} {
 				files = append(files, filepath.Join(path, name))
 			}
 		}

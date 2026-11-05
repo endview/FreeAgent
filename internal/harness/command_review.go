@@ -10,7 +10,7 @@ func (s *commandSupervisor) unreviewed(ctx context.Context) ([]CommandRecord, er
 	if active := s.liveUncertain(); len(active) > 0 {
 		return nil, fmt.Errorf("%w: owner command %s has uncertain cleanup or persistence; inspect before restarting the owner", ErrUnknownResult, active[0].ID)
 	}
-	rows, err := s.store.db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE 'command/process/%' AND json_extract(value,'$.state')='unknown' AND coalesce(json_extract(value,'$.reviewed'),0)=0 LIMIT 33`)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE 'command/process/%' AND (document #>> '{state}')='unknown' AND coalesce(((document #>> '{reviewed}')::boolean),false)=false LIMIT 33`)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (s *commandSupervisor) review(ctx context.Context, records []CommandRecord)
 	defer tx.Rollback()
 	for _, old := range records {
 		var raw string
-		if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, commandMetaPrefix+old.ID).Scan(&raw); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, commandMetaPrefix+old.ID).Scan(&raw); err != nil {
 			return err
 		}
 		var r CommandRecord
@@ -59,7 +59,7 @@ func (s *commandSupervisor) review(ctx context.Context, records []CommandRecord)
 		}
 		r.Reviewed = true
 		r.Revision++
-		if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=? AND value=?`, string(mustJSON(r)), commandMetaPrefix+r.ID, raw); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2 AND value=$3`, string(mustJSON(r)), commandMetaPrefix+r.ID, raw); err != nil {
 			return err
 		}
 	}

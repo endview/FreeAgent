@@ -11,6 +11,8 @@ import (
 // attached owner API. It contains user-selected arguments only; the owner
 // derives the current workspace and Agent identity before executing it.
 type MemoryCommand struct {
+	PinScope         string   `json:"pin_scope,omitempty"`
+	PinTarget        string   `json:"pin_target,omitempty"`
 	Command          string   `json:"command"`
 	ConversationID   string   `json:"conversation_id,omitempty"`
 	ScopeKind        string   `json:"scope_kind,omitempty"`
@@ -134,6 +136,22 @@ func ExecuteMemoryCommand(ctx context.Context, tasks *TaskService, request Memor
 		}
 		if !request.KindProvided {
 			mutation.Kind = current.Kind
+		}
+	case "pin", "unpin":
+		mutation.Kind, mutation.Title, mutation.Body, mutation.Sources = "", "", "", nil
+		if request.Command == "pin" {
+			scope := request.PinScope
+			if scope == "" {
+				scope = "conversation"
+			}
+			target := request.PinTarget
+			if scope == "conversation" && target == "" {
+				target = request.ConversationID
+			}
+			if scope == "workspace" && target == "" {
+				target = tasks.Config().Workspace
+			}
+			mutation.Pinned = &MemoryPin{Scope: scope, Target: target}
 		}
 	case "disable", "enable", "delete":
 		mutation.Kind, mutation.Title, mutation.Body, mutation.Sources = "", "", "", nil

@@ -14,7 +14,7 @@ type exportSelection struct {
 
 func (store *Store) identicalExport(ctx context.Context, chat, run, source, hash string, keep bool) (AttachmentRef, error) {
 	var raw string
-	err := store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key LIKE 'attachment/%' AND json_extract(value,'$.conversation')=? AND json_extract(value,'$.request')=? AND json_extract(value,'$.export_source')=? AND json_extract(value,'$.ref.sha256')=? AND coalesce(json_extract(value,'$.deleted'),0)=0 LIMIT 1`, chat, run, source, hash).Scan(&raw)
+	err := store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE 'attachment/%' AND (document #>> '{conversation}')=$1 AND (document #>> '{request}')=$2 AND (document #>> '{export_source}')=$3 AND (document #>> '{ref,sha256}')=$4 AND coalesce(((document #>> '{deleted}')::boolean),false)=false LIMIT 1`, chat, run, source, hash).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return AttachmentRef{}, nil
 	}
@@ -37,7 +37,7 @@ func (store *Store) identicalExport(ctx context.Context, chat, run, source, hash
 	if err := selectExportTx(ctx, tx, &r); err != nil {
 		return AttachmentRef{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(r)), attachmentPrefix+r.Ref.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+r.Ref.ID); err != nil {
 		return AttachmentRef{}, err
 	}
 	return r.Ref, tx.Commit()
@@ -45,12 +45,12 @@ func (store *Store) identicalExport(ctx context.Context, chat, run, source, hash
 
 func exportDispatchStarted(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
 	var count int
-	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM meta WHERE key LIKE 'channel/file-send/%' AND json_extract(value,'$.attachment.id')=? AND json_extract(value,'$.state') IN ('dispatching','sent','unknown')`, id).Scan(&count)
+	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta WHERE key LIKE 'channel/file-send/%' AND (document #>> '{attachment,id}')=$1 AND (document #>> '{state}') IN ('dispatching','sent','unknown')`, id).Scan(&count)
 	return count > 0, err
 }
 
 func selectExportTx(ctx context.Context, tx *sql.Tx, record *attachmentRecord) error {
-	rows, err := tx.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE 'attachment/%' AND json_extract(value,'$.request')=? AND json_extract(value,'$.export_source')=? AND json_extract(value,'$.export_selected')=1 AND coalesce(json_extract(value,'$.deleted'),0)=0`, record.Request, record.ExportSource)
+	rows, err := tx.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE 'attachment/%' AND (document #>> '{request}')=$1 AND (document #>> '{export_source}')=$2 AND ((document #>> '{export_selected}')::boolean)=true AND coalesce(((document #>> '{deleted}')::boolean),false)=false`, record.Request, record.ExportSource)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func selectExportTx(ctx context.Context, tx *sql.Tx, record *attachmentRecord) e
 			continue
 		}
 		r.ExportSelected = false
-		if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(r)), attachmentPrefix+r.Ref.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+r.Ref.ID); err != nil {
 			return err
 		}
 	}

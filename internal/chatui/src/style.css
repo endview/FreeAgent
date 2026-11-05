@@ -623,3 +623,16 @@ dialog > label input:focus { border-color: var(--focus-border); box-shadow: 0 0 
 #public-settings-dialog{width:min(850px,calc(100vw - 32px));max-height:90vh;overflow:auto}#public-settings-dialog header{display:flex;align-items:center;justify-content:space-between}#public-settings-dialog fieldset{margin:18px 0;padding:14px;border:1px solid var(--border);border-radius:10px}
 .public-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}.public-fields>label{display:flex;flex-direction:column;gap:7px}.public-fields .check-line{flex-direction:row;align-items:center}.public-fields input,.public-fields textarea,.public-fields select{max-width:100%;min-width:0}.public-security-events{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto}
 @media(max-width:600px){.public-fields{grid-template-columns:1fr}}
+
+.settings-navigation { flex:none; padding:14px 24px 0; border-bottom:1px solid var(--border);background:var(--bg); }
+.settings-groups,.settings-subpages { display:flex; gap:8px; flex-wrap:wrap; padding-bottom:10px; }
+.settings-navigation button { border:1px solid transparent; border-radius:var(--radius); background:transparent; padding:7px 12px;cursor:pointer; }
+.settings-navigation button:hover { background:var(--bg-side); }
+.settings-navigation button[aria-current] { color:var(--accent);background:var(--selection);border-color:var(--border); }
+.settings-subpages { font-size:13px; }
+.channel-connection { display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:var(--radius); }
+.settings-page .permission-layout {grid-template-columns:minmax(0,1fr);max-width:880px;margin-inline:auto;}
+.settings-page .keys-header {max-width:880px;margin-inline:auto;}
+.settings-page .keys-header>div>button {display:none;}
+.capability-tabs {display:none;}
+@media(max-width:640px){.settings-navigation{padding-inline:10px;}.settings-navigation button{padding:8px;}.settings-groups{gap:4px;}}

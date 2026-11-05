@@ -1,0 +1,12 @@
+{
+  "ICU.txt": "https://raw.githubusercontent.com/unicode-org/icu/release-67-1/icu4c/LICENSE",
+  "OpenSSL.txt": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.5.7/LICENSE.txt",
+  "libxml2.txt": "https://raw.githubusercontent.com/GNOME/libxml2/v2.15.3/Copyright",
+  "LZ4.txt": "https://raw.githubusercontent.com/lz4/lz4/v1.10.0/lib/LICENSE",
+  "Zstandard.txt": "https://raw.githubusercontent.com/facebook/zstd/v1.5.7/LICENSE",
+  "zlib.txt": "https://raw.githubusercontent.com/madler/zlib/v1.3.2/LICENSE",
+  "Winpthreads.txt": "https://raw.githubusercontent.com/mingw-w64/mingw-w64/v12.0.0/mingw-w64-libraries/winpthreads/COPYING",
+  "LGPL-2.1.txt": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/LGPL-2.1-only.txt",
+  "LGPL-3.0.txt": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/LGPL-3.0-only.txt",
+  "GPL-3.0.txt": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/GPL-3.0-only.txt"
+}

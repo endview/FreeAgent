@@ -16,7 +16,7 @@ type PublicSecurityEvent struct {
 
 func (tasks *TaskService) ReadPublicSecurityEvents(ctx context.Context) ([]PublicSecurityEvent, error) {
 	var raw string
-	err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='public/security-events'`).Scan(&raw)
+	err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='public/security-events'`).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return []PublicSecurityEvent{}, nil
 	}
@@ -44,7 +44,7 @@ func (tasks *TaskService) AppendPublicSecurityEvent(ctx context.Context, event P
 	if len(events) > 256 {
 		events = events[len(events)-256:]
 	}
-	_, err = store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES('public/security-events',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(mustJSON(events)))
+	_, err = store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES('public/security-events',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(mustJSON(events)))
 	return err
 }
 func (service *Service) recordPublicPolicyChange(ctx context.Context) {

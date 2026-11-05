@@ -15,6 +15,7 @@ import (
 )
 
 type Client struct {
+	ClientID   string
 	Origin     string
 	Secret     string
 	Generation string
@@ -115,6 +116,9 @@ func (client *Client) request(ctx context.Context, method, path string, input, o
 		header = "X-FreeAgent-Attach"
 	}
 	request.Header.Set(header, client.Secret)
+	if client.ClientID != "" {
+		request.Header.Set("X-FreeAgent-Client", client.ClientID)
+	}
 	if input != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -360,6 +364,7 @@ func (client *Client) ControlKeyMutation(ctx context.Context, request harness.Ke
 	secret := string(secretBytes)
 	var result harness.ControlResult
 	err := client.request(ctx, http.MethodPost, "/api/control/key-plan", struct {
+		Namespace     string `json:"namespace"`
 		Ref           string `json:"ref"`
 		Remove        bool   `json:"remove"`
 		Force         bool   `json:"force"`
@@ -373,7 +378,7 @@ func (client *Client) ControlKeyMutation(ctx context.Context, request harness.Ke
 		EnvName       string `json:"env_name"`
 		Secret        string `json:"secret,omitempty"`
 	}{
-		Ref: request.Ref, Remove: request.Remove, Force: request.Force, DisableModels: request.DisableModels,
+		Namespace: request.Namespace, Ref: request.Ref, Remove: request.Remove, Force: request.Force, DisableModels: request.DisableModels,
 		NewDefault: request.NewDefault, Name: request.Input.Name, BaseURL: request.Input.BaseURL,
 		Protocol: request.Input.Protocol, Note: request.Input.Note, Source: request.Input.Source,
 		EnvName: request.Input.EnvName, Secret: secret,
@@ -395,4 +400,37 @@ func (client *Client) ControlMCPReentry(ctx context.Context, operationID, profil
 		Config      harness.MCPServerConfig `json:"config"`
 	}{OperationID: operationID, ProfileID: profileID, Config: config}, &operation)
 	return operation, err
+}
+
+// KeepAlive is tied to an interactive terminal, not every one-shot API call.
+func (client *Client) KeepAlive(ctx context.Context) context.CancelFunc {
+	alive, cancel := context.WithCancel(ctx)
+	if client.ClientID == "" {
+		id, err := NewSecret()
+		if err != nil {
+			cancel()
+			return cancel
+		}
+		client.ClientID = id[:24]
+	}
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-alive.Done():
+				return
+			case <-ticker.C:
+				var result any
+				_ = client.request(alive, http.MethodPost, "/api/connect", struct{}{}, &result)
+			}
+		}
+	}()
+	return cancel
+}
+
+func (client *Client) ChannelCredentials(ctx context.Context) ([]harness.KeyProfileView, error) {
+	var result []harness.KeyProfileView
+	err := client.request(ctx, http.MethodGet, "/api/attach/channels/credentials", nil, &result)
+	return result, err
 }

@@ -37,14 +37,26 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 		return s.plain(ctx, e, text)
 	}
 	var active Run
-	active, err := scanRun(s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE conversation_id=? AND `+activeRunPredicate+` LIMIT 1`, input.ConversationID))
+	intent, hasIntent := ctx.Value(channelReplayKey{}).(channelInputIntent)
+	var err error
+	if hasIntent && intent.TargetRun != "" {
+		active, err = s.tasks.core.Store.GetRun(ctx, intent.TargetRun)
+	} else if hasIntent {
+		err = sql.ErrNoRows
+	} else {
+		active, err = scanRun(s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1 AND `+activeRunPredicate+` LIMIT 1`, input.ConversationID))
+	}
 	if err == nil {
 		action := "queue"
 		if active.Permission != nil && active.Permission.PersonID == e.Person {
 			action = "steer"
 		}
 		if e.Target.Source == SpaceSourceTelegram && action == "queue" {
-			return s.plain(ctx, e, "当前任务由其他成员发起，请等它结束后再发送。")
+			notice := s.plain(ctx, e, "当前任务由其他成员发起，请等它结束后再发送。")
+			if s.remote {
+				return errors.Join(errChannelInputRejected, notice)
+			}
+			return notice
 		}
 		return queue(active, action)
 	}
@@ -60,7 +72,11 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 	if dispatch != nil {
 		if err := dispatch(input.ConversationID, call); errors.Is(err, ErrActiveRun) {
 			if e.Target.Source == SpaceSourceTelegram {
-				return s.plain(ctx, e, "上一条消息还在启动，请稍后补充。")
+				notice := s.plain(ctx, e, "上一条消息还在启动，请稍后补充。")
+				if s.remote {
+					return errors.Join(errChannelInputRejected, notice)
+				}
+				return notice
 			}
 			return queue(Run{}, "queue")
 		} else {
@@ -112,7 +128,7 @@ func (s *channelSession) inputCommand(ctx context.Context, e channelEvent, space
 		}
 		source := ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: "request"}
 		var id int64
-		if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT id FROM messages WHERE request_key=? AND conversation_id=? AND run_id IS NULL`, source.requestKey(), chat).Scan(&id); err != nil {
+		if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT id FROM fa.messages WHERE request_key=$1 AND conversation_id=$2 AND run_id IS NULL`, source.requestKey(), chat).Scan(&id); err != nil {
 			return true, err
 		}
 		var revision uint64

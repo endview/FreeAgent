@@ -205,7 +205,7 @@ func loadAttachment(ctx context.Context, q interface {
 		return attachmentRecord{}, ErrAttachment
 	}
 	var raw string
-	if err := q.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, attachmentPrefix+id).Scan(&raw); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, attachmentPrefix+id).Scan(&raw); err != nil {
 		return attachmentRecord{}, ErrAttachment
 	}
 	var record attachmentRecord
@@ -335,7 +335,7 @@ func (tasks *TaskService) createAttachment(ctx context.Context, chat, name strin
 	}
 	if source == "upload" && request != "" {
 		var existing string
-		err := store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key LIKE 'attachment/%' AND json_extract(value,'$.conversation')=? AND json_extract(value,'$.principal')=? AND json_extract(value,'$.request')=? AND json_extract(value,'$.ref.source')='upload' LIMIT 1`, chat, attachmentIdentity(ctx), request).Scan(&existing)
+		err := store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE 'attachment/%' AND (document #>> '{conversation}')=$1 AND (document #>> '{principal}')=$2 AND (document #>> '{request}')=$3 AND (document #>> '{ref,source}')='upload' LIMIT 1`, chat, attachmentIdentity(ctx), request).Scan(&existing)
 		if err == nil {
 			var previous attachmentRecord
 			if json.Unmarshal([]byte(existing), &previous) != nil || previous.Deleted || previous.Ref.SHA256 != ref.SHA256 || previous.Ref.Name != ref.Name || previous.Ref.Bytes != ref.Bytes {
@@ -354,7 +354,7 @@ func (tasks *TaskService) createAttachment(ctx context.Context, chat, name strin
 	}
 	if source == "file_export" {
 		var exports int
-		if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM meta WHERE key LIKE 'attachment/%' AND json_extract(value,'$.request')=? AND json_extract(value,'$.ref.source')='file_export'`, request).Scan(&exports); err != nil {
+		if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta WHERE key LIKE 'attachment/%' AND (document #>> '{request}')=$1 AND (document #>> '{ref,source}')='file_export'`, request).Scan(&exports); err != nil {
 			return AttachmentRef{}, err
 		}
 		if exports >= p.MaxFiles {
@@ -382,20 +382,25 @@ func (tasks *TaskService) createAttachment(ctx context.Context, chat, name strin
 			return ref, err
 		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, attachmentPrefix+id, string(mustJSON(record)))
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, attachmentPrefix+id, string(mustJSON(record)))
 	if err != nil {
 		return ref, err
 	}
-	if err := tx.Commit(); err != nil {
+	// A missing COMMIT response cannot prove that the reference was rejected.
+	// Keep the immutable bytes until the exact transaction is reconciled.
+	published = true
+	if err := store.commitAttachment(ctx, tx, ref); err != nil {
 		return ref, err
 	}
-	published = true
 	return ref, nil
 }
 
 func (store *Store) cleanupAttachmentsLocked(ctx context.Context, root *os.Root, p AttachmentPolicy, limit int) error {
+	if err := store.reconcileAttachmentCommits(ctx); err != nil {
+		return err
+	}
 	cutoff := time.Now().Add(-time.Duration(p.StagingHours) * time.Hour).UTC().Format(time.RFC3339Nano)
-	rows, err := store.db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE 'attachment/%' AND json_extract(value,'$.committed')=0 AND json_extract(value,'$.created')<? LIMIT ?`, cutoff, limit)
+	rows, err := store.db.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE 'attachment/%' AND ((document #>> '{committed}')::boolean)=false AND COALESCE((document->>'deleted')::boolean,false)=false AND (document #>> '{created}')<$1 LIMIT $2`, cutoff, limit)
 	if err != nil {
 		return err
 	}
@@ -417,11 +422,17 @@ func (store *Store) cleanupAttachmentsLocked(ctx context.Context, root *os.Root,
 		return err
 	}
 	for _, r := range stale {
-		_ = root.Chmod(r.Ref.ID, 0600)
-		if err := root.Remove(r.Ref.ID); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Lstat(store.attachmentCommitPath(r.Ref.ID)); err == nil {
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		if _, err := store.db.ExecContext(ctx, `DELETE FROM meta WHERE key=?`, attachmentPrefix+r.Ref.ID); err != nil {
+		r.Deleted = true
+		if _, err := store.db.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+r.Ref.ID); err != nil {
+			return err
+		}
+		_ = root.Chmod(r.Ref.ID, 0600)
+		if err := root.Remove(r.Ref.ID); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
@@ -442,7 +453,7 @@ func (store *Store) cleanupAttachmentsLocked(ctx context.Context, root *os.Root,
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	var cursorText string
-	_ = store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key='attachment-cleanup-cursor'`).Scan(&cursorText)
+	_ = store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='attachment-cleanup-cursor'`).Scan(&cursorText)
 	cursor, _ := strconv.Atoi(cursorText)
 	if len(entries) > 0 {
 		cursor = cursor % len(entries)
@@ -451,12 +462,17 @@ func (store *Store) cleanupAttachmentsLocked(ctx context.Context, root *os.Root,
 			if !attachmentID(entry.Name()) || !entry.Type().IsRegular() {
 				continue
 			}
+			if _, err := os.Lstat(store.attachmentCommitPath(entry.Name())); err == nil {
+				continue
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
 			info, err := entry.Info()
 			if err != nil || !info.ModTime().Before(time.Now().Add(-time.Duration(p.StagingHours)*time.Hour)) {
 				continue
 			}
 			var exists int
-			if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM meta WHERE key=?`, attachmentPrefix+entry.Name()).Scan(&exists); err != nil {
+			if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta WHERE key=$1`, attachmentPrefix+entry.Name()).Scan(&exists); err != nil {
 				return err
 			}
 			if exists == 0 {
@@ -470,7 +486,7 @@ func (store *Store) cleanupAttachmentsLocked(ctx context.Context, root *os.Root,
 	} else {
 		cursor = 0
 	}
-	_, err = store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES('attachment-cleanup-cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(cursor))
+	_, err = store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES('attachment-cleanup-cursor',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(cursor))
 	if err != nil {
 		return err
 	}
@@ -549,7 +565,7 @@ func (tasks *TaskService) resolveAttachments(ctx context.Context, chat string, i
 }
 func bindAttachments(ctx context.Context, tx *sql.Tx, chat, runID string, refs []AttachmentRef) error {
 	var space string
-	if err := tx.QueryRowContext(ctx, `SELECT space_id FROM conversations WHERE id=?`, chat).Scan(&space); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT space_id FROM fa.conversations WHERE id=$1`, chat).Scan(&space); err != nil {
 		return err
 	}
 	for _, ref := range refs {
@@ -561,7 +577,7 @@ func bindAttachments(ctx context.Context, tx *sql.Tx, chat, runID string, refs [
 		if r.Ref.Source != "upload" {
 			r.Request = runID
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(r)), attachmentPrefix+ref.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+ref.ID); err != nil {
 			return err
 		}
 	}
@@ -588,7 +604,7 @@ func (tasks *TaskService) SaveReplyAttachment(ctx context.Context, chat, runID, 
 	// Existing meta provides idempotency; no separate delivery/task objects.
 	key := "attachment-reply/" + contentHash([]byte(chat+"\x00"+request))
 	var raw string
-	if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, key).Scan(&raw); err == nil {
+	if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, key).Scan(&raw); err == nil {
 		var saved struct {
 			Run string
 			Ref AttachmentRef
@@ -604,7 +620,7 @@ func (tasks *TaskService) SaveReplyAttachment(ctx context.Context, chat, runID, 
 	if err != nil {
 		return ref, err
 	}
-	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, key, string(mustJSON(struct {
+	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, key, string(mustJSON(struct {
 		Run string
 		Ref AttachmentRef
 	}{runID, ref})))

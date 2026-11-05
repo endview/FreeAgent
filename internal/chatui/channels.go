@@ -4,51 +4,53 @@ import (
 	"encoding/json"
 	"github.com/endview/freeagent/internal/harness"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 )
 
-func (server *Server) SetAppChannels(lark, qq *harness.AppChannelRuntime) {
+func (server *Server) ConfigureChannelBridge() error {
+	config := server.tasks.Config().Channels
+	enabled := false
+	for _, c := range config.Connections {
+		enabled = enabled || c.Enabled
+	}
 	server.mu.Lock()
-	server.lark, server.qq = lark, qq
-	server.channelConfig = server.tasks.Config().Channels
+	bridge := server.channelBridge
+	generation := server.generation
+	server.channelConfig = config
 	server.mu.Unlock()
+	if !enabled {
+		if bridge != nil {
+			_ = bridge.Close()
+			server.mu.Lock()
+			server.channelBridge = nil
+			server.mu.Unlock()
+		}
+		return nil
+	}
+	if bridge != nil {
+		return bridge.Configure()
+	}
+	next, err := harness.NewChannelBridge(server.tasks, server.origin, generation, server.DispatchChannel)
+	if err != nil {
+		return err
+	}
+	server.mu.Lock()
+	server.channelBridge = next
+	server.mu.Unlock()
+	return nil
 }
 func (server *Server) channelStatus(source string) any {
 	server.mu.Lock()
-	telegram, lark, qq := server.telegram, server.lark, server.qq
+	bridge := server.channelBridge
 	server.mu.Unlock()
-	switch source {
-	case "telegram":
-		if telegram != nil {
-			return telegram.Status()
-		}
-		return harness.TelegramChannelStatus{Enabled: server.tasks.Config().Channels.Telegram.Enabled, Key: server.tasks.Config().Channels.Telegram.Key}
-	case "lark":
-		if lark != nil {
-			return lark.Status()
-		}
-		return harness.AppChannelStatus{Source: source, Config: server.tasks.Config().Channels.Lark}
-	case "qq":
-		if qq != nil {
-			return qq.Status()
-		}
-		return harness.AppChannelStatus{Source: source, Config: server.tasks.Config().Channels.QQ}
+	if bridge != nil {
+		return bridge.Status(source)
 	}
-	return map[string]any{"telegram": server.channelStatus("telegram"), "lark": server.channelStatus("lark"), "qq": server.channelStatus("qq"), "config": server.tasks.Config().Channels}
+	return map[string]any{"connections": []any{}, "config": server.tasks.Config().Channels, "enabled": false, "running": false}
 }
 func (server *Server) reconfigureChannels() {
-	server.mu.Lock()
-	telegram, lark, qq := server.telegram, server.lark, server.qq
-	server.mu.Unlock()
-	if telegram != nil {
-		_ = telegram.Reconfigure(server.ctx)
-	}
-	for _, r := range []*harness.AppChannelRuntime{lark, qq} {
-		if r != nil {
-			_ = r.Reconfigure(server.ctx)
-		}
+	if err := server.ConfigureChannelBridge(); err != nil {
+		server.notify("channel_error", "", "渠道进程配置未生效，请检查账号与凭据。")
 	}
 }
 func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
@@ -58,6 +60,10 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	source := strings.TrimPrefix(path, "channels/")
+	if source == "credentials" {
+		server.channelCredentials(w, r)
+		return true
+	}
 	if source == "telegram/access" {
 		return server.telegramAccessAPI(w, r)
 	}
@@ -93,19 +99,11 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 			if !server.readBody(w, r, &config) {
 				return true
 			}
-		} else if source == "telegram" {
-			if !server.readBody(w, r, &config.Telegram) {
-				return true
-			}
-		} else if source == "lark" {
-			if !server.readBody(w, r, &config.Lark) {
-				return true
-			}
 		} else {
-			if !server.readBody(w, r, &config.QQ) {
-				return true
-			}
+			server.writeError(w, 400, "connection_required", "请通过 connections 配置明确的账号连接。")
+			return true
 		}
+
 		_, err = server.applyDirectControl(r.Context(), "", "", harness.ControlSetChannelPolicy, config)
 		if err != nil {
 			server.fail(w, err)
@@ -115,30 +113,18 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	if r.Method == http.MethodPost && source != "" {
+		if source == "telegram" {
+			server.writeError(w, 410, "pairing_removed", "Telegram 使用 /start 申请与管理员批准。")
+			return true
+		}
 		server.mu.Lock()
-		telegram, lark, qq := server.telegram, server.lark, server.qq
+		bridge := server.channelBridge
 		server.mu.Unlock()
-		var pair func() (string, time.Time, error)
-		switch source {
-		case "telegram":
-			_ = telegram
-			server.writeError(w, 410, "pairing_removed", "Telegram 已改用 /start 申请与管理员批准，请打开接入申请列表。")
-			return true
-		case "lark":
-			if lark != nil {
-				pair = lark.PairCode
-			}
-		case "qq":
-			if qq != nil {
-				pair = qq.PairCode
-			}
-		}
-		if pair == nil {
-			server.writeError(w, 409, "channel_unavailable", "当前 Owner 未装配此渠道。")
+		if bridge == nil {
+			server.writeError(w, 409, "channel_unavailable", "当前渠道未启用。")
 			return true
 		}
-		code, expires, err := pair()
-
+		code, expires, err := bridge.PairCode(source, r.URL.Query().Get("connection"))
 		if err != nil {
 			server.fail(w, err)
 		} else {
@@ -166,13 +152,10 @@ func (server *Server) telegramAccessAPI(w http.ResponseWriter, r *http.Request) 
 		return true
 	}
 	server.mu.Lock()
-	telegram := server.telegram
+	telegram := server.channelBridge
 	server.mu.Unlock()
 	if r.Method == http.MethodGet {
 		bot := ""
-		if telegram != nil {
-			bot = strconv.FormatInt(telegram.Status().BotID, 10)
-		}
 		grants, err := server.tasks.TelegramAccessList(r.Context(), bot)
 		if err != nil {
 			server.fail(w, err)

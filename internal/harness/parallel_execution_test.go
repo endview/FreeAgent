@@ -66,7 +66,7 @@ func TestParallelConversationsBoundSlotsCancelAndFreezeGlobalCommit(t *testing.T
 	if _, err := tasks.ConfigureRuntimePolicy(t.Context(), "", func(*Config) error { return nil }); !errors.Is(err, ErrActiveRun) || !strings.Contains(err.Error(), a) || !strings.Contains(err.Error(), b) {
 		t.Fatalf("global commit=%v", err)
 	}
-	if err := service.Store.Backup(t.Context(), filepath.Join(t.TempDir(), "backup")); !errors.Is(err, ErrActiveRun) {
+	if err := service.Store.Backup(t.Context(), filepath.Join(t.TempDir(), "backup")); err != nil {
 		t.Fatal(err)
 	}
 	if !tasks.CancelConversation(a) {
@@ -323,7 +323,7 @@ func TestMovePublishesConfirmedLocalTextWithoutToolBodiesOrDuplicates(t *testing
 		}
 	}
 	var count int
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM messages WHERE conversation_id=? AND request_key LIKE 'channel/publication/%'`, chat).Scan(&count); err != nil || count != 2 {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.messages WHERE conversation_id=$1 AND request_key LIKE 'channel/publication/%'`, chat).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("publication mirrors=%d %v", count, err)
 	}
 }

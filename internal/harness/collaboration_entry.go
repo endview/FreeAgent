@@ -114,7 +114,7 @@ func (tasks *TaskService) collaborationSettings(ctx context.Context, conversatio
 		if err != nil || chat.Workspace != tasks.Config().Workspace {
 			return settings, raw, errors.Join(errors.New("harness: Chat workspace mismatch"), err)
 		}
-		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`,
+		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`,
 			"chat/collaboration/"+conversationID).Scan(&raw)
 		if err == nil {
 			if strictDecode([]byte(raw), &settings) != nil {
@@ -147,15 +147,15 @@ func (tasks *TaskService) SetCollaborationSettings(ctx context.Context, conversa
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "chat/collaboration/"+conversationID, string(raw))
 	if err != nil {
 		return err
 	}
 	var cancelled []string
 	if settings.Mode == "off" {
-		rows, err := tx.QueryContext(ctx, `SELECT r.id FROM runs r JOIN meta m ON m.key='collaboration-run/'||r.id
-			WHERE r.conversation_id=? AND m.value=r.id AND r.status NOT IN ('completed','failed','abandoned')`, conversationID)
+		rows, err := tx.QueryContext(ctx, `SELECT r.id FROM fa.runs r JOIN fa.meta m ON m.key='collaboration-run/'||r.id
+			WHERE r.conversation_id=$1 AND m.value=r.id AND r.status NOT IN ('completed','failed','abandoned')`, conversationID)
 		if err != nil {
 			return err
 		}
@@ -171,7 +171,7 @@ func (tasks *TaskService) SetCollaborationSettings(ctx context.Context, conversa
 			return err
 		}
 		for _, id := range cancelled {
-			record, err := loadCollaboration(ctx, tx, id)
+			record, err := loadCollaborationForUpdate(ctx, tx, id)
 			if err != nil {
 				return err
 			}
@@ -332,7 +332,7 @@ func (collab *Collaboration) startGoal(ctx context.Context, conversationID, requ
 	}
 	defer tx.Rollback()
 	var currentPreference string
-	err = tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "chat/collaboration/"+conversationID).Scan(&currentPreference)
+	err = tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "chat/collaboration/"+conversationID).Scan(&currentPreference)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return RunResult{}, err
 	}
@@ -340,7 +340,7 @@ func (collab *Collaboration) startGoal(ctx context.Context, conversationID, requ
 		return RunResult{}, ErrConfigChanged
 	}
 	var unfinished int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM runs WHERE conversation_id=? AND status NOT IN ('completed','failed','abandoned')`, conversationID).Scan(&unfinished); err != nil || unfinished != 0 {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs WHERE conversation_id=$1 AND status NOT IN ('completed','failed','abandoned')`, conversationID).Scan(&unfinished); err != nil || unfinished != 0 {
 		return RunResult{}, errors.Join(ErrActiveRun, err)
 	}
 	parent, err := insertPlannedRun(ctx, tx, conversationID, requestKey, prompt, snapshot)
@@ -349,7 +349,7 @@ func (collab *Collaboration) startGoal(ctx context.Context, conversationID, requ
 	}
 	record := collaborationRecord{ParentID: parent.ID, Plan: CollaborationPlan{Objective: prompt, Budget: settings.Budget},
 		ConfigJSON: snapshot, Control: "running", Reservations: map[string]outputReservation{}, Settings: &settings, Planning: true, Revision: 1}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta VALUES(?,?)`, "collaboration-run/"+parent.ID, parent.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "collaboration-run/"+parent.ID, parent.ID); err != nil {
 		return RunResult{}, err
 	}
 	if err := saveCollaboration(ctx, tx, record); err != nil {
@@ -410,7 +410,7 @@ func (collab *Collaboration) planGoal(ctx context.Context, core *Service, run Ru
 		return result, err
 	}
 	for _, attempt := range attempts {
-		if attempt.Status == "unknown" || attempt.Status == "dispatched" {
+		if (attempt.Status == "unknown" && attempt.Replacement == "" && attempt.Resolution == "") || attempt.Status == "dispatched" {
 			return result, ErrUnknownResult
 		}
 	}
@@ -494,7 +494,7 @@ func (collab *Collaboration) planGoal(ctx context.Context, core *Service, run Ru
 				return err
 			}
 			current.Children = append(current.Children, childRecord{Spec: spec, RunID: child.ID, Control: "running"})
-			if _, err := tx.ExecContext(clock.ctx, `INSERT INTO meta VALUES(?,?)`, "collaboration-run/"+child.ID, run.ID); err != nil {
+			if _, err := tx.ExecContext(clock.ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "collaboration-run/"+child.ID, run.ID); err != nil {
 				return err
 			}
 		}

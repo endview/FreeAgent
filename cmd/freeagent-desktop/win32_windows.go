@@ -313,3 +313,17 @@ func (s *windowSubclass) restore() {
 	_, _, _ = procSetWindowLongPtr.Call(uintptr(s.hwnd), gwlpWndProc, s.previous)
 	s.previous = 0
 }
+
+// 1 disconnects this window; 2 explicitly stops its Owner; 0 cancels.
+func chooseOwnerClose(hwnd windows.Handle) int {
+	text, _ := windows.UTF16PtrFromString("有运行任务、等待确认或后台命令。\n\n是：仅关闭窗口，任务和其他客户端继续。\n否：停止 Owner 并退出，影响其所有客户端。已发生的副作用不会撤销。\n取消：返回 FreeAgent。")
+	title, _ := windows.UTF16PtrFromString("关闭 FreeAgent")
+	result, _ := windows.MessageBox(windows.HWND(hwnd), text, title, uint32(windows.MB_YESNOCANCEL)|uint32(windows.MB_ICONWARNING))
+	if result == 6 {
+		return 1
+	}
+	if result == 7 {
+		return 2
+	}
+	return 0
+}

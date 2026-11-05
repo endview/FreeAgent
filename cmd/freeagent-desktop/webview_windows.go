@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"errors"
 	"log"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 )
 
 type desktopWebView struct {
+	clientID        string
 	view            webview2.WebView
 	subclass        *windowSubclass
 	origin          string
@@ -57,6 +59,7 @@ func newDesktopWebView(launch engineLaunch, dataPath, workspace string, onClose 
 		return nil, errors.New("WebView2 window creation failed")
 	}
 	desktop := &desktopWebView{
+		clientID:  rand.Text(),
 		view:      view,
 		origin:    launch.Origin,
 		workspace: workspace,
@@ -172,7 +175,7 @@ func (w *desktopWebView) initGuard() {
 		`if(window.location.origin!==expected){` +
 		`try{delete window.faOpenExternal;delete window.faChangeWorkspace;delete window.faSelectFolder;delete window.faSelectFile;delete window.faSetBusy;delete window.faAttention;}catch(e){}` +
 		`try{if(window.external){window.external.invoke=function(){return Promise.reject("external page");};}}catch(e){}` +
-		`}})();`
+		`}else{Object.defineProperty(window,'__freeagentClientID',{value:` + jsString(w.clientID) + `});}})();`
 	w.view.Init(script)
 }
 

@@ -11,8 +11,8 @@ import (
 	"github.com/endview/freeagent/internal/harness"
 )
 
-// TestMain points the default keys file at a temporary directory so no CLI
-// test can read or write the user's real keys.
+// TestMain isolates both default configuration and keys. A service test user's
+// HOME may belong to root; it must not change test results or expose real data.
 func TestMain(m *testing.M) {
 	for _, arg := range os.Args[1:] {
 		if arg == "--freeagent-cli-extension-helper" {
@@ -25,6 +25,9 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	_ = os.Setenv(apppaths.KeysFileEnv, filepath.Join(dir, "keys.json"))
+	_ = os.Unsetenv(apppaths.DataDirEnv)
+	_ = os.Setenv("XDG_CONFIG_HOME", dir)
+	_ = os.Setenv("APPDATA", dir)
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)

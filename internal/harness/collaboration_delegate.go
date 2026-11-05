@@ -131,12 +131,12 @@ func insertActiveDelegation(ctx context.Context, core *Service, run Run, plan Co
 		record.Children = append(record.Children, childRecord{
 			Spec: spec, RunID: child.ID, Control: "running",
 		})
-		if _, err := tx.ExecContext(ctx, `INSERT INTO meta VALUES(?,?)`,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`,
 			"collaboration-run/"+child.ID, run.ID); err != nil {
 			return record, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO meta VALUES(?,?)`,
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`,
 		"collaboration-run/"+run.ID, run.ID); err != nil {
 		return record, err
 	}

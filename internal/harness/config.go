@@ -17,7 +17,7 @@ import (
 
 const (
 	ConfigVersion = 10
-	StoreFormat   = "freeagent-harness-v10"
+	StoreFormat   = "freeagent-postgres-v1"
 )
 
 type Config struct {
@@ -25,7 +25,7 @@ type Config struct {
 	Attachments      AttachmentPolicy           `json:"attachments"`
 	Server           ServerConfig               `json:"server,omitempty"`
 	Providers        map[string]bool            `json:"providers,omitempty"`
-	Channels         ChannelsConfig             `json:"channels,omitempty"`
+	Channels         ChannelsConfig             `json:"channels,omitempty,omitzero"`
 	Version          int                        `json:"version"`
 	Models           map[string]ModelConfig     `json:"models"`
 	DefaultModel     string                     `json:"default_model"`
@@ -35,6 +35,7 @@ type Config struct {
 	HistoryPageSize  int                        `json:"history_page_size"`
 	MaxContextBytes  int                        `json:"max_context_bytes"`
 	MaxOutputTokens  int                        `json:"max_output_tokens"`
+	ModelRetries     int                        `json:"model_retries"`
 	MaxToolResult    int                        `json:"max_tool_result_bytes"`
 	TaskSummaryBytes int                        `json:"task_summary_bytes,omitempty"`
 	AutoCompactAt    int                        `json:"auto_compact_percent,omitempty"`
@@ -121,20 +122,12 @@ type ExtensionsConfig struct {
 	MaxModelCallsPerTurn int                          `json:"max_model_calls_per_turn,omitempty"`
 }
 
-// UnmarshalJSON applies the v5 default for omitted MCP read-only trust while
-// preserving an explicit false value.
+// Read-only trust always requires the user's explicit opt-in.
 func (config *MCPServerConfig) UnmarshalJSON(raw []byte) error {
 	type plain MCPServerConfig
 	var value plain
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return err
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		return err
-	}
-	if _, present := fields["trustReadOnlyHint"]; !present {
-		value.TrustReadOnlyHint = true
 	}
 	*config = MCPServerConfig(value)
 	return nil
@@ -225,6 +218,7 @@ func DefaultConfig(workspace string) Config {
 		AutoCompactAt:    80,
 		MaxContextBytes:  128 << 10,
 		MaxOutputTokens:  4096,
+		ModelRetries:     2,
 		MaxToolResult:    64 << 10,
 		Commands:         CommandConfig{TimeoutSecs: 120, MaxOutput: 32768, Rules: defaultCommandRules(), Services: DefaultServicePolicy()},
 		Tools:            defaultBuiltinToolSettings(),
@@ -528,7 +522,7 @@ func Configure(ctx context.Context, dataDir string, edit func(*Config) error) (C
 		return Config{}, err
 	}
 	var unfinished int
-	err = store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs
+	err = store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs
 		WHERE `+activeRunPredicate+` `).Scan(&unfinished)
 	if err != nil {
 		return Config{}, err
@@ -557,6 +551,9 @@ func (config Config) Validate() error {
 }
 
 func (config Config) validate(requireWorkspace bool) error {
+	if config.ModelRetries < 0 || config.ModelRetries > 6 {
+		return errors.New("harness: model_retries must be between 0 and 6")
+	}
 	if config.Server.Port < 0 || config.Server.Port > 65535 {
 		return errors.New("harness: server loopback port must be 0-65535")
 	}

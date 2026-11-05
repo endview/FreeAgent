@@ -102,7 +102,7 @@ func TestCollaborationOutputSettlementRequiresDurableResult(t *testing.T) {
 	if err := service.recordOutput(t.Context(), attempt, len(raw), false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := core.Store.db.ExecContext(t.Context(), `CREATE TEMP TRIGGER reject_result BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT,'result persistence failure'); END`); err != nil {
+	if err := installPGFault(t, core.Store, "reject_result", "messages", "INSERT", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := core.Store.saveGuardedModel(t.Context(), run, attempt, response, guard, len(raw)); err == nil {
@@ -112,7 +112,7 @@ func TestCollaborationOutputSettlementRequiresDurableResult(t *testing.T) {
 	if err != nil || before.Usage.OutputBytes != 4096 {
 		t.Fatalf("failed save released capacity: usage=%+v err=%v", before.Usage, err)
 	}
-	if _, err := core.Store.db.ExecContext(t.Context(), `DROP TRIGGER reject_result`); err != nil {
+	if err := removePGFault(t, core.Store, "reject_result", "messages"); err != nil {
 		t.Fatal(err)
 	}
 	if err := core.Store.saveGuardedModel(t.Context(), run, attempt, response, guard, len(raw)); err != nil {

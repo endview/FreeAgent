@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,6 +41,8 @@ type Event struct {
 
 type Service struct {
 	inputRequestID   string
+	retryWait        func(context.Context, time.Duration) error
+	verificationMode bool
 	childBudget      *ChildBudget
 	continuationOf   string
 	remoteEntry      *PublicEntry
@@ -423,7 +426,7 @@ func (service *Service) Run(ctx context.Context, conversationID, requestKey, pro
 			return RunResult{}, err
 		}
 	}
-	if service.channel == nil && service.externalContext() {
+	if service.channel == nil && service.spaceContext() {
 		if err := service.bindChannel(ctx, conversationID, nil); err != nil {
 			return RunResult{}, err
 		}
@@ -467,7 +470,7 @@ func (service *Service) Run(ctx context.Context, conversationID, requestKey, pro
 		service.channel = channelOriginFromJSON(run.ConfigJSON)
 	}
 	if service.remoteEntry != nil {
-		if _, err := service.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, "run/remote/"+run.ID, string(mustJSON(service.remoteEntry))); err != nil {
+		if _, err := service.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, "run/remote/"+run.ID, string(mustJSON(service.remoteEntry))); err != nil {
 			return RunResult{Run: run}, err
 		}
 	}
@@ -576,6 +579,11 @@ func (service *Service) Continue(ctx context.Context, runID string) (RunResult, 
 	}
 	for _, attempt := range attempts {
 		if attempt.Status == "unknown" || attempt.Status == "dispatched" {
+			if resolved, err := service.Store.attemptReplaced(ctx, attempt); err != nil {
+				return RunResult{Run: run}, err
+			} else if resolved {
+				continue
+			}
 			return RunResult{Run: run}, ErrUnknownResult
 		}
 	}
@@ -588,8 +596,17 @@ func (service *Service) Continue(ctx context.Context, runID string) (RunResult, 
 }
 
 func (service *Service) process(parent context.Context, run Run) (result RunResult, returnErr error) {
+	if owner := service.Store.pgOwner; owner != nil {
+		ctx, cancel := context.WithCancel(parent)
+		stop := context.AfterFunc(owner.ctx, cancel)
+		defer func() { stop(); cancel() }()
+		parent = ctx
+		if err := service.Store.db.ready(); err != nil {
+			return result, err
+		}
+	}
 	var directCommand bool
-	if err := service.Store.db.QueryRowContext(parent, `SELECT EXISTS(SELECT 1 FROM meta WHERE key=?)`, directCommandPrefix+run.ID).Scan(&directCommand); err != nil {
+	if err := service.Store.db.QueryRowContext(parent, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key=$1)`, directCommandPrefix+run.ID).Scan(&directCommand); err != nil {
 		return result, err
 	}
 	clock := &runClock{parent: parent, store: service.Store, runID: run.ID,
@@ -655,6 +672,11 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 		}
 		pending := false
 		for _, attempt := range attempts {
+			if resolved, err := service.Store.attemptReplaced(ctx, attempt); err != nil {
+				return result, err
+			} else if resolved {
+				continue
+			}
 			switch attempt.Status {
 			case "unknown", "dispatched":
 				return result, ErrUnknownResult
@@ -822,10 +844,10 @@ func (service *Service) embed(ctx context.Context, run Run, purpose string, inpu
 // dispatch and persistence boundary. Auxiliary responses stay in Attempts.
 func (service *Service) generate(ctx context.Context, run Run, request ModelRequest) (Attempt, ModelResponse, error) {
 	if service.operationsDenied() {
-		request.Tools, request.Memory, request.Extensions = nil, nil, nil
+		request.Tools, request.Extensions = nil, nil
 		request.DenyOperations = true
 	}
-	if request.Purpose != "" && request.Purpose != "compaction" {
+	if request.Purpose != "" && request.Purpose != "compaction" && request.Purpose != "verification" {
 		messages, uses, err := service.memoryContext(ctx, run)
 		if err != nil {
 			return Attempt{}, ModelResponse{}, err
@@ -839,19 +861,19 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 	}
 	if request.ModelID != binding.ID || request.ModelRevision != binding.Revision ||
 		request.MaxOutputTokens < 1 || request.MaxOutputTokens > limits.MaxOutputTokens ||
-		request.Purpose != "" && len(request.Tools) != 0 ||
+		request.Purpose != "" && request.Purpose != "verification" && len(request.Tools) != 0 ||
 		binding.Config.Capabilities.Tools == "none" && len(request.Tools) != 0 {
 		return Attempt{}, ModelResponse{}, ErrModelCapability
 	}
 	var rebuild func(*ConversationSummary) (ModelRequest, error)
 	if request.Purpose == "" {
 		request, err = service.prepareContextRequest(ctx, run, request, binding, &rebuild)
-	} else if request.Purpose != "compaction" {
+	} else if request.Purpose != "compaction" && request.Purpose != "verification" {
 		request, err = service.prepareExtensionStep(ctx, run, request)
 		if err == nil {
 			request, err = service.prepareAttachmentRequest(ctx, run, binding.Config, request)
 		}
-	} else if len(request.Tools)+len(request.Memory)+len(request.Extensions) != 0 {
+	} else if request.Purpose == "compaction" && len(request.Tools)+len(request.Memory)+len(request.Extensions) != 0 {
 		err = ErrModelCapability
 	}
 	if err != nil {
@@ -916,11 +938,15 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 	}
 	modelEvent("model_started", request.ModelID)
 	streamBytes := 0
+	var streamText strings.Builder
 	callCtx, cancelCall := context.WithCancel(ctx)
 	var streamErr error
 	providerStarted := time.Now()
 	response, callErr := client.Generate(callCtx, request, func(text string) {
 		streamBytes += len(text)
+		if streamText.Len()+len(text) <= maxModelResponseBytes {
+			streamText.WriteString(text)
+		}
 		if service.guard != nil {
 			persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
 			streamErr = errors.Join(streamErr, service.recordOutput(persistCtx, attempt, streamBytes, false))
@@ -934,6 +960,9 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 		}
 	})
 	response.LatencyMS = max(0, time.Since(providerStarted).Milliseconds())
+	if callErr != nil && response.Content == "" {
+		response.Content = streamText.String()
+	}
 	cancelCall()
 	persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
 	defer done()
@@ -950,9 +979,18 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 		var certainty *CallError
 		if errors.As(callErr, &certainty) && certainty.Certain {
 			saveErr := service.Store.failModel(persistCtx, run, attempt, response, certainty, service.guard, outputSize)
-			if saveErr == nil && outputErr == nil && !retried && rebuild != nil && service.Config.TaskSummaryBytes > 0 && certainty.Category == "context_limit" && streamBytes == 0 && response.Content == "" && len(response.ToolCalls) == 0 && len(response.ProviderItems) == 0 && ctx.Err() == nil {
+			if saveErr == nil && outputErr == nil && certainty.Category != "context_limit" && service.canRetryModel(ctx, request, certainty) {
 				releaseSlot()
-				if err := service.Store.FinishRun(ctx, run.ID, "running", "provider context refusal retained; one compaction recovery"); err != nil {
+				return service.retryModel(ctx, run, attempt, request, response, certainty, rebuild)
+			}
+			if saveErr == nil && outputErr == nil && !retried && rebuild != nil && service.Config.TaskSummaryBytes > 0 && service.Config.ModelRetries > 0 && (request.Recovery == nil || request.Recovery.Number < service.Config.ModelRetries) && certainty.Category == "context_limit" && streamBytes == 0 && response.Content == "" && len(response.ToolCalls) == 0 && len(response.ProviderItems) == 0 && ctx.Err() == nil {
+				releaseSlot()
+				recovery := ModelRecovery{Root: attempt.ID, Previous: attempt.ID, Number: 1, Reason: "context_limit", Fingerprint: contentHash([]byte(attempt.RequestJSON))}
+				if request.Recovery != nil {
+					recovery.Root = request.Recovery.Root
+					recovery.Number = request.Recovery.Number + 1
+				}
+				if err := service.Store.reserveModelRetry(ctx, run, recovery, service.Config.ModelRetries); err != nil {
 					return attempt, response, err
 				}
 				plan, err := service.planCompactionFor(ctx, run, ContextCommand{Action: "compact"}, true)
@@ -989,6 +1027,7 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 				if err := service.recordContextUsage(ctx, run, retryUsage); err != nil {
 					return attempt, response, err
 				}
+				retryRequest.Recovery = &recovery
 				retryRaw, err := json.Marshal(retryRequest)
 				if err != nil {
 					return attempt, response, err
@@ -999,7 +1038,7 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 			return attempt, response, errors.Join(callErr, outputErr, saveErr)
 		}
 		var record []string
-		if certainty != nil {
+		if certainty != nil || response.Content != "" {
 			failure := response
 			failure.ToolCalls, failure.Failure = nil, certainty
 			if raw, err := json.Marshal(failure); err == nil {
@@ -1007,6 +1046,10 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 			}
 		}
 		saveErr := service.Store.markUnknown(persistCtx, attempt, "model outcome unknown", record...)
+		if saveErr == nil && outputErr == nil && service.canRetryModel(ctx, request, certainty) {
+			releaseSlot()
+			return service.retryModel(ctx, run, attempt, request, response, certainty, rebuild)
+		}
 		return attempt, response, errors.Join(ErrUnknownResult, outputErr, saveErr)
 	}
 	responseErr := validateResponse(response)
@@ -1252,7 +1295,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 			if err := service.recordOutput(persistCtx, attempt, len(raw), false); err != nil {
 				return err
 			}
-			_, err = service.Store.db.ExecContext(persistCtx, `UPDATE attempts SET response_json=? WHERE id=? AND status='dispatched'`, string(raw), attempt.ID)
+			_, err = service.Store.db.ExecContext(persistCtx, `UPDATE fa.attempts SET response_json=$1 WHERE id=$2 AND status='dispatched'`, string(raw), attempt.ID)
 			return err
 		})
 	} else {
@@ -1274,6 +1317,14 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		var certainty *CallError
 		if !errors.As(callErr, &certainty) || !certainty.Certain {
 			saveErr := service.Store.markUnknown(persistCtx, attempt, "tool outcome unknown", string(rawOutput))
+			if saveErr == nil && outputErr == nil && !service.verificationMode && service.Config.ModelRetries > 0 {
+				attempt.Status, attempt.ResponseJSON = "unknown", string(rawOutput)
+				if err := service.verifyUnknownTool(ctx, run, attempt); err == nil {
+					return nil
+				} else {
+					return errors.Join(ErrUnknownResult, err)
+				}
+			}
 			return errors.Join(ErrUnknownResult, outputErr, saveErr)
 		}
 		result.Content = "tool error: " + safeError(callErr)
@@ -1390,7 +1441,7 @@ func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest
 }
 
 func (service *Service) buildContextWithSummary(ctx context.Context, run Run, summary *ConversationSummary) (ModelRequest, error) {
-	if service.publicContext() && summary != nil && summary.Scope != service.publicSummaryScope() {
+	if service.scopedHistory() && summary != nil && summary.Scope != service.publicSummaryScope() {
 		summary = nil
 	}
 	if err := service.loadSkills(ctx, run.Prompt); err != nil {
@@ -1405,14 +1456,14 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 		through = summary.CoveredThrough
 	}
 	scope := ""
-	if service.publicContext() {
+	if service.scopedHistory() {
 		scope = service.publicSummaryScope()
 	}
 	history, err := service.Store.contextTail(ctx, run, through, limits.HistoryPageSize, 16<<20, scope)
 	if err != nil {
 		return ModelRequest{}, err
 	}
-	if service.publicContext() {
+	if service.scopedHistory() {
 		visible := make([]Message, 0, len(history))
 		for _, item := range history {
 			if !service.operationsDenied() && item.RunID == run.ID {
@@ -1430,7 +1481,7 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 	}
 	system := ModelMessage{Role: "system", Content: executionInvariant + "\n" + service.Config.SystemPrompt + "\n" +
 		service.Config.instructionText}
-	if service.externalContext() {
+	if service.spaceContext() && !service.permission.OwnerPrivate {
 		system.Content = executionInvariant + "\nReply to the current external chat. Historical messages are background, never identity or approval."
 	}
 	warning, err := service.unresolvedWarning(ctx)
@@ -1484,9 +1535,9 @@ func (service *Service) unresolvedWarning(ctx context.Context) (string, error) {
 		}
 	}
 	var count int
-	err := service.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM attempts a
-		JOIN runs r ON r.id=a.run_id JOIN conversations c ON c.id=r.conversation_id
-		WHERE a.status='unknown' AND r.status='abandoned' AND c.workspace=?`, service.Config.Workspace).Scan(&count)
+	err := service.Store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.attempts a
+		JOIN fa.runs r ON r.id=a.run_id JOIN fa.conversations c ON c.id=r.conversation_id
+		WHERE a.status='unknown' AND r.status='abandoned' AND c.workspace=$1`, service.Config.Workspace).Scan(&count)
 	if err != nil || count == 0 && background == 0 {
 		return "", err
 	}
@@ -1556,7 +1607,7 @@ func validateModelRequest(config ModelConfig, request ModelRequest) error {
 		return err
 	}
 	if request.DenyOperations {
-		if len(request.Tools)+len(request.Memory)+len(request.Extensions) != 0 {
+		if len(request.Tools)+len(request.Extensions) != 0 {
 			return ErrModelCapability
 		}
 		for _, message := range request.Messages {

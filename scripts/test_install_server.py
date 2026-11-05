@@ -28,7 +28,7 @@ class InstallerTests(unittest.TestCase):
         (self.package / 'FreeAgent').write_bytes(b'portable launcher\n')
         (self.package / 'bin/freeagent').write_bytes(b'fixture program\n')
         self.manifest = {'target': 'linux/amd64', 'source_dirty': False, 'candidate': 'v7.11.0-dev.1',
-                         'source_base_commit': 'a' * 40, 'data_format': 'Harness-v8', 'files': []}
+                         'source_base_commit': 'a' * 40, 'data_format': 'Harness-pg-v1', 'files': []}
         for name in ('FreeAgent', 'bin/freeagent'):
             raw = (self.package / name).read_bytes()
             self.manifest['files'].append({'path': name, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()})

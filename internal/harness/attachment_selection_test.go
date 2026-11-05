@@ -30,7 +30,7 @@ func TestExportSelectionReusesContentKeepsLatestSourceAndFreezesDispatch(t *test
 			t.Fatalf("selection %s=%t want %t err=%v", id, record.ExportSelected, want, err)
 		}
 	}
-	if _, err := tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`, "channel/file-send/fixture/version", string(mustJSON(map[string]any{"state": "unknown", "attachment": b}))); err != nil {
+	if _, err := tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "channel/file-send/fixture/version", string(mustJSON(map[string]any{"state": "unknown", "attachment": b}))); err != nil {
 		t.Fatal(err)
 	}
 	c := export("source/a", "third", false)

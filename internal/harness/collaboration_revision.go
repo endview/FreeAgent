@@ -47,7 +47,7 @@ func savePlanRevision(ctx context.Context, tx *sql.Tx, record collaborationRecor
 	if err != nil || len(raw) > 256<<10 {
 		return errors.New("harness: plan revision exceeds limit")
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`,
 		fmt.Sprintf("collaboration-revision/%s/%04d", record.ParentID, record.Revision), string(raw))
 	return err
 }
@@ -60,7 +60,7 @@ func (collab *Collaboration) Revisions(ctx context.Context, parentID string) ([]
 	if _, err := loadCollaboration(ctx, core.Store.db, parentID); err != nil {
 		return nil, err
 	}
-	rows, err := core.Store.db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE ? ORDER BY key`,
+	rows, err := core.Store.db.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE $1 ORDER BY key`,
 		"collaboration-revision/"+parentID+"/%")
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func applyPlanEdit(ctx context.Context, tx *sql.Tx, core *Service, record *colla
 	if edit.ExpectedRevision != record.Revision {
 		return ErrPlanRevision
 	}
-	parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, record.ParentID))
+	parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, record.ParentID))
 	if err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func applyPlanEdit(ctx context.Context, tx *sql.Tx, core *Service, record *colla
 	}
 	if record.SynthesisAttempt != "" {
 		var status string
-		if err := tx.QueryRowContext(ctx, `SELECT status FROM attempts WHERE id=?`, record.SynthesisAttempt).Scan(&status); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM fa.attempts WHERE id=$1`, record.SynthesisAttempt).Scan(&status); err != nil {
 			return err
 		}
 		if status == "dispatched" || status == "unknown" {
@@ -132,7 +132,7 @@ func applyPlanEdit(ctx context.Context, tx *sql.Tx, core *Service, record *colla
 	}
 	if source == "user" && record.ReplanAttempt != "" {
 		var status string
-		if err := tx.QueryRowContext(ctx, `SELECT status FROM attempts WHERE id=?`, record.ReplanAttempt).Scan(&status); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT status FROM fa.attempts WHERE id=$1`, record.ReplanAttempt).Scan(&status); err != nil {
 			return err
 		}
 		if status == "unknown" || status == "dispatched" {
@@ -212,12 +212,12 @@ func applyPlanEdit(ctx context.Context, tx *sql.Tx, core *Service, record *colla
 		if child.Retired || slices.Contains(record.Active, child.Spec.Name) {
 			return ErrActiveRun
 		}
-		run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, child.RunID))
+		run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, child.RunID))
 		if err != nil {
 			return err
 		}
 		var uncertain int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM attempts WHERE run_id=? AND status IN ('unknown','dispatched')`, run.ID).Scan(&uncertain); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.attempts a WHERE a.run_id=$1 AND a.status IN ('unknown','dispatched') AND NOT `+resolvedAttemptSQL, run.ID).Scan(&uncertain); err != nil {
 			return err
 		}
 		if uncertain != 0 || run.Status == "unknown" {
@@ -232,7 +232,7 @@ func applyPlanEdit(ctx context.Context, tx *sql.Tx, core *Service, record *colla
 			child.Retired = true
 			if run.Steps == 0 {
 				child.Control = "cancelled"
-				if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='abandoned',stop_reason='undispatched assignment retired',updated_at=? WHERE id=?`, nowText(), run.ID); err != nil {
+				if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='abandoned',stop_reason='undispatched assignment retired',updated_at=$1 WHERE id=$2`, nowText(), run.ID); err != nil {
 					return err
 				}
 			}
@@ -254,11 +254,11 @@ func applyPlanEdit(ctx context.Context, tx *sql.Tx, core *Service, record *colla
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE runs SET prompt=?,config_json=?,updated_at=? WHERE id=?`, prompt, snapshot, nowText(), child.RunID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET prompt=$1,config_json=$2,updated_at=$3 WHERE id=$4`, prompt, snapshot, nowText(), child.RunID); err != nil {
 			return err
 		}
 		body, _ := json.Marshal(ModelMessage{Role: "user", Content: prompt})
-		if _, err := tx.ExecContext(ctx, `UPDATE messages SET body_json=? WHERE run_id=? AND json_extract(body_json,'$.Role')='user'`, string(body), child.RunID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.messages SET body_json=$1 WHERE run_id=$2 AND (body_json #>> '{Role}')='user'`, string(body), child.RunID); err != nil {
 			return err
 		}
 		child.Spec = spec
@@ -275,7 +275,7 @@ func applyPlanEdit(ctx context.Context, tx *sql.Tx, core *Service, record *colla
 			return err
 		}
 		record.Children = append(record.Children, childRecord{Spec: spec, RunID: run.ID, Control: "running"})
-		if _, err := tx.ExecContext(ctx, `INSERT INTO meta VALUES(?,?)`, "collaboration-run/"+run.ID, parent.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "collaboration-run/"+run.ID, parent.ID); err != nil {
 			return err
 		}
 	}
@@ -334,7 +334,7 @@ func (collab *Collaboration) IncreaseLimits(ctx context.Context, parentID string
 	}
 	defer release()
 	return collab.change(ctx, parentID, func(record *collaborationRecord, tx *sql.Tx) error {
-		parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, parentID))
+		parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, parentID))
 		if err != nil {
 			return err
 		}

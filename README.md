@@ -1,15 +1,15 @@
 # FreeAgent Harness
 
 A small local harness for persistent conversations and model-driven file work.
-One CLI, one model/tool loop, one SQLite store. Built-in file tools work without
+One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v7.12.0-dev.1 development candidate**, not yet published to GitHub.
+This is the **v8.0.0-dev.1 development candidate**, not yet published to GitHub.
 Previously published Windows and Linux portable builds are available from
 [Releases](https://github.com/endview/FreeAgent/releases).
 [简体中文](README.zh-CN.md).
 It uses a new
-current-only `Harness-v8` data directory and the v10 store format. Old
+current-only `Harness-pg-v1` data directory and the PostgreSQL v1 store format. Old
 configurations, databases, backups, commands, and SDKs are not supported or
 imported. Do not point it at an old data directory.
 The v7 control service, GUI/CLI attach path, sandboxed Windows command
@@ -80,7 +80,7 @@ The Windows portable preview starts by double-clicking `FreeAgent.exe`, needs no
 Go or Node installation, and stores Keys encrypted for the current Windows
 user. The CLI is `bin\freeagent.exe`. See
 [Portable Instructions](docs/PORTABLE.md). It is unsigned and uses its own
-`data/Harness-v8`; it does not import existing installations.
+`data/Harness-pg-v1`; it does not import existing installations.
 
 The v7 desktop build opens `FreeAgent.exe` without a console window and uses
 the installed Microsoft WebView2 runtime. If WebView2 is unavailable, it

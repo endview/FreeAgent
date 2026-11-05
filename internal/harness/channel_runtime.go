@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/endview/freeagent/internal/channels"
+	"github.com/endview/freeagent/internal/channelwire"
 	"strings"
 	"sync"
 	"time"
@@ -19,7 +19,7 @@ type ChannelDispatch func(string, func(context.Context) (RunResult, error)) erro
 type channelButton struct{ Text, Token string }
 type channelSend func(context.Context, ChannelTarget, string, string, []channelButton) (string, error)
 type channelEvent struct {
-	Media                             []channels.MediaRef
+	Media                             []channelwire.MediaRef
 	ReplyTo                           string
 	Target                            ChannelTarget
 	Person, Name, Message, Kind, Text string
@@ -37,7 +37,8 @@ type channelApproval struct {
 // channelSession contains only volatile transport capabilities. All durable
 // authority, messages and execution receipts live in the existing Harness.
 type channelSession struct {
-	download            func(context.Context, channelEvent, channels.MediaRef, int64) ([]byte, error)
+	remote              bool
+	download            func(context.Context, channelEvent, channelwire.MediaRef, int64) ([]byte, error)
 	sendFile            func(context.Context, ChannelTarget, string, AttachmentRef, []byte) (string, error)
 	tasks               *TaskService
 	mu                  sync.Mutex
@@ -56,6 +57,9 @@ type channelSession struct {
 func newChannelSession(tasks *TaskService, source string, send channelSend) *channelSession {
 	s := &channelSession{tasks: tasks, source: source, buttons: true, sendGate: make(chan struct{}, 1), targets: map[ChannelTarget]time.Time{}, callbacks: map[string]channelApproval{}, busy: map[ChannelTarget]string{}}
 	s.send = func(ctx context.Context, target ChannelTarget, reply, text string, buttons []channelButton) (string, error) {
+		if s.remote {
+			return send(ctx, target, reply, text, buttons)
+		}
 		select {
 		case s.sendGate <- struct{}{}:
 			defer func() { <-s.sendGate }()
@@ -90,9 +94,9 @@ func newChannelSession(tasks *TaskService, source string, send channelSend) *cha
 			}
 			s.targets[target] = time.Now().Add(interval)
 		}
-		var tg *channels.TelegramError
-		if errors.As(err, &tg) && tg.RetryAfter > time.Second {
-			s.nextSend = time.Now().Add(tg.RetryAfter)
+		var transport interface{ RetryDelay() time.Duration }
+		if errors.As(err, &transport) && transport.RetryDelay() > time.Second {
+			s.nextSend = time.Now().Add(transport.RetryDelay())
 		}
 		return id, err
 	}
@@ -114,9 +118,6 @@ func (s *channelSession) PairCode() (string, time.Time, error) {
 	return code, expires, nil
 }
 func (s *channelSession) reset(application string) {
-	if s.source == SpaceSourceTelegram {
-		s.tasks.core.Store.telegramIdentity(application)
-	}
 	s.mu.Lock()
 	s.application = application
 	s.callbacks = map[string]channelApproval{}
@@ -131,12 +132,22 @@ func (s *channelSession) setDispatch(dispatch ChannelDispatch) {
 func (s *channelSession) plain(ctx context.Context, e channelEvent, text string) error {
 	if s.source == SpaceSourceTelegram {
 		s.tasks.core.Store.telegramMu.Lock()
-		defer s.tasks.core.Store.telegramMu.Unlock()
-		if _, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person); err != nil {
+		grant, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person)
+		if err != nil {
+			s.tasks.core.Store.telegramMu.Unlock()
 			return err
+		}
+		ctx = context.WithValue(ctx, telegramFileAuthorityKey{}, telegramFileAuthority{Target: e.Target, Person: e.Person, Revision: grant.Revision})
+		if s.remote {
+			s.tasks.core.Store.telegramMu.Unlock()
+		} else {
+			defer s.tasks.core.Store.telegramMu.Unlock()
 		}
 	}
 	_, err := s.send(ctx, e.Target, e.Message, text, nil)
+	if isChannelQueued(err) {
+		return nil
+	}
 	return err
 }
 func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
@@ -187,7 +198,7 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 			return ErrPermissionDenied
 		}
 		key := "channel/pair-receipt/" + contentHash(mustJSON([]string{e.Target.Source, e.Target.ApplicationID, e.Target.ChatID, e.Message}))
-		claimed, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, "received")
+		claimed, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, "received")
 		if err != nil {
 			return err
 		}
@@ -240,6 +251,18 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 		purpose = "command"
 	}
 	received, err := s.tasks.ReceiveChannelText(ctx, ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: purpose, Media: e.Media}, e.Text)
+	if received.Duplicate && received.RunID == "" && purpose == "request" {
+		if _, replay := ctx.Value(channelReplayKey{}).(channelInputIntent); replay {
+			revision := uint64(0)
+			if grant, err := s.tasks.CheckTelegramAccess(ctx, e.Target, e.Person); err == nil {
+				revision = grant.Revision
+			}
+			received.Duplicate = false
+			received.origin = &ChannelRunOrigin{ChannelTarget: e.Target, InputMessageID: received.MessageID, HistoryThrough: received.MessageID, RequestKey: ChannelMessageSource{ChannelTarget: e.Target, MessageID: e.Message}.requestKey(), AccessRevision: revision}
+			received.source = ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: purpose, Media: e.Media}
+			received.text = e.Text
+		}
+	}
 	if err != nil || received.Duplicate || !e.Trigger {
 		return err
 	}
@@ -268,7 +291,11 @@ func (s *channelSession) launch(ctx context.Context, e channelEvent, chat string
 			}
 			s.mu.Unlock()
 			if first {
-				return s.plain(ctx, e, "忙碌或当前对话尚未结束；本条未排队，请空闲后重新发送。")
+				notice := s.plain(ctx, e, "忙碌或当前对话尚未结束；本条未排队，请空闲后重新发送。")
+				if s.remote {
+					return errors.Join(errChannelInputRejected, notice)
+				}
+				return notice
 			}
 			return nil
 		}
@@ -329,7 +356,7 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		if run.Permission == nil || run.Permission.PersonID != e.Person || s.tasks.checkTelegramRun(ctx, run) != nil {
 			answer = "此入口只显示已确认公开的回复；未投递或管理员私有结果请在本机核对。"
 			var publicText string
-			if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT json_extract(body_json,'$.Content') FROM messages WHERE conversation_id=? AND request_key LIKE ? AND json_extract(body_json,'$.Public')=1 ORDER BY id DESC LIMIT 1`, chat, "channel/delivery/"+run.ID+"/%").Scan(&publicText); err == nil {
+			if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT (body_json #>> '{Content}') FROM fa.messages WHERE conversation_id=$1 AND request_key LIKE $2 AND ((body_json #>> '{Public}')::boolean)=true ORDER BY id DESC LIMIT 1`, chat, "channel/delivery/"+run.ID+"/%").Scan(&publicText); err == nil {
 				answer = publicText
 			}
 		}
@@ -445,6 +472,15 @@ func (s *channelSession) callback(ctx context.Context, e channelEvent) error {
 	s.mu.Lock()
 	item, ok := s.callbacks[e.Callback]
 	s.mu.Unlock()
+	if (!ok || item.Message == "") && s.remote {
+		var raw string
+		if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, s.callbackKey(e.Callback)).Scan(&raw); err == nil && json.Unmarshal([]byte(raw), &item) == nil {
+			ok = true
+			s.mu.Lock()
+			s.callbacks[e.Callback] = item
+			s.mu.Unlock()
+		}
+	}
 	if !ok || item.Message == "" || item.Message != e.CallbackMessage || item.Target != e.Target || item.Person != e.Person || time.Now().After(item.Expires) {
 		return ErrPermissionDenied
 	}
@@ -537,6 +573,12 @@ func (s *channelSession) button(item channelApproval) (string, error) {
 		return "", errors.New("harness: channel callback capacity reached")
 	}
 	s.callbacks[token] = item
+	if s.remote {
+		if err := s.saveCallback(token, item); err != nil {
+			delete(s.callbacks, token)
+			return "", err
+		}
+	}
 	return token, nil
 }
 func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnErr error) {
@@ -572,9 +614,12 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 		s.mu.Unlock()
 	}()
 	revision := run.Status + "/" + contentHash([]byte(text))
+	if correlation, _ := ctx.Value(channelEventKey{}).(string); correlation != "" {
+		revision += "/request/" + contentHash([]byte(correlation))
+	}
 	if run.Status == "waiting_confirmation" {
 		confirmation, err := s.tasks.Preview(ctx, run.ID)
-		if err != nil || confirmation.ControlOperationID != "" {
+		if err != nil || confirmation.ControlOperationID != "" || run.Permission == nil || run.Permission.PersonID == "" {
 			text = "操作等待本机确认，请打开 GUI 或 CLI 查看。"
 		} else if !s.buttons {
 			text = "操作等待本机 GUI 或 CLI 确认；此渠道不支持审批按钮。"
@@ -595,10 +640,10 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 		}
 	}
 	if text == "" {
-		text = "Run 状态：" + run.Status + "。UNKNOWN 不会自动重试，请查看本机证据。"
+		text = channelRunStatus(run)
 	}
 	if run.Status == "limited" {
-		text += "\n本轮因限额停止：" + run.StopReason + "。目标尚未完成；已有文件会继续投递。"
+		text += "\n本轮因限额停止，目标尚未完成；已有文件会继续投递。"
 		if run.LimitSettled {
 			text += "如需处理剩余工作，请明确发送“继续”或 /continue。"
 		}
@@ -608,13 +653,13 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 	if len(text) > 64<<10 {
 		text = string([]rune(text)[:min(len([]rune(text)), 16000)]) + "\n[回复已截断；完整结果在本机]"
 	}
-	parts := channels.SplitTelegramText(text)
+	parts := channelwire.SplitText(text)
 	for index, part := range parts {
 		if err := s.tasks.checkTelegramRun(ctx, run); err != nil {
 			return err
 		}
 		key := "channel/send/" + run.ID + "/" + contentHash([]byte(fmt.Sprintf("%s/%d", revision, index)))
-		claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, `{"state":"dispatching","replay":false}`)
+		claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, `{"state":"dispatching","replay":false}`)
 		if err != nil {
 			return err
 		}
@@ -629,23 +674,28 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 		if index != len(parts)-1 {
 			b = nil
 		}
-		message, sendErr := s.sendRunText(ctx, run, origin.ChannelTarget, s.replyMessage(ctx, run), part, b)
+		sendCtx := context.WithValue(ctx, channelDeliveryKey{}, channelDeliveryInfo{Claim: key, Run: run.ID, Chat: run.ConversationID, Maintenance: result.Maintenance})
+		message, sendErr := s.sendRunText(sendCtx, run, origin.ChannelTarget, s.replyMessage(ctx, run), part, b)
 		state, confirmed := "sent", part
-		if sendErr != nil || message == "" {
+		if isChannelQueued(sendErr) {
+			state, confirmed, sendErr = "queued", "", nil
+		} else if sendErr != nil || message == "" {
 			state, confirmed = "unknown", ""
-			var tg *channels.TelegramError
-			var app *channels.APIError
+			var transport interface{ DispatchCertain() bool }
 			var call *CallError
-			if errors.As(sendErr, &tg) && !tg.Uncertain || errors.As(sendErr, &app) && !app.Uncertain || errors.As(sendErr, &call) && call.Certain {
+			if errors.As(sendErr, &transport) && transport.DispatchCertain() || errors.As(sendErr, &call) && call.Certain {
 				state = "failed"
 			}
 		}
 		persist, done := context.WithTimeout(context.Background(), 5*time.Second)
-		_, saveErr := s.tasks.core.Store.db.ExecContext(persist, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(map[string]string{"state": state, "message_id": message})), key)
+		_, saveErr := s.tasks.core.Store.db.ExecContext(persist, `UPDATE fa.meta SET value=$1 WHERE key=$2 AND (document #>> '{state}')='dispatching'`, string(mustJSON(map[string]string{"state": state, "message_id": message})), key)
 		if message == "" {
 			message = "unknown-" + shortDeliveryID(run.ID, index) + "-" + contentHash([]byte(revision))[:8]
 		}
-		recordErr := s.tasks.RecordChannelDelivery(persist, run.ID, message, confirmed, state, result.Maintenance)
+		var recordErr error
+		if state != "queued" {
+			recordErr = s.tasks.RecordChannelDelivery(persist, run.ID, message, confirmed, state, result.Maintenance)
+		}
 		done()
 		if sendErr == nil && state == "sent" {
 			s.mu.Lock()
@@ -653,6 +703,9 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 				item := s.callbacks[button.Token]
 				item.Message = message
 				s.callbacks[button.Token] = item
+				if s.remote {
+					_ = s.saveCallback(button.Token, item)
+				}
 			}
 			s.mu.Unlock()
 		}
@@ -670,7 +723,7 @@ func (s *channelSession) replyMessage(ctx context.Context, run Run) string {
 	if origin == nil {
 		return ""
 	}
-	err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE conversation_id=? AND id<=? AND json_extract(body_json,'$.Channel.purpose') IN ('request','command') ORDER BY id DESC LIMIT 1`, run.ConversationID, origin.HistoryThrough).Scan(&raw)
+	err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE conversation_id=$1 AND id<=$2 AND (body_json #>> '{Channel,purpose}') IN ('request','command') ORDER BY id DESC LIMIT 1`, run.ConversationID, origin.HistoryThrough).Scan(&raw)
 	if err != nil {
 		return ""
 	}

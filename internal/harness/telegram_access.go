@@ -77,7 +77,23 @@ func (store *Store) telegramIdentity(bot string) {
 	defer store.telegramMu.Unlock()
 	if store.telegramBot != bot {
 		store.telegramBot = bot
+		store.telegramBots = map[string]bool{bot: true}
 		store.telegramRequests = map[string]TelegramAccessRequest{}
+	}
+}
+
+func (store *Store) telegramIdentities(bots []string) {
+	store.telegramMu.Lock()
+	defer store.telegramMu.Unlock()
+	next := map[string]bool{}
+	for _, bot := range bots {
+		next[bot] = true
+	}
+	store.telegramBots = next
+	for id, r := range store.telegramRequests {
+		if !next[r.Target.ApplicationID] {
+			delete(store.telegramRequests, id)
+		}
 	}
 }
 
@@ -96,7 +112,7 @@ func (tasks *TaskService) requestTelegramAccess(e channelEvent, now time.Time) (
 	store := tasks.core.Store
 	store.telegramMu.Lock()
 	defer store.telegramMu.Unlock()
-	if store.telegramBot != e.Target.ApplicationID {
+	if !store.telegramBots[e.Target.ApplicationID] {
 		return TelegramAccessRequest{}, false, ErrPermissionDenied
 	}
 	store.expireTelegramRequests(now)
@@ -175,7 +191,7 @@ func telegramAccessRaw(ctx context.Context, db interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, target ChannelTarget) (TelegramAccess, string, error) {
 	var raw string
-	err := db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, telegramAccessKey(target)).Scan(&raw)
+	err := db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, telegramAccessKey(target)).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TelegramAccess{Target: target}, "", nil
 	}
@@ -227,7 +243,7 @@ func (tasks *TaskService) TelegramAccessList(ctx context.Context, bot string) ([
 		if grant.SpaceID != space.ID {
 			grant = TelegramAccess{Target: target, SpaceID: space.ID, Kind: space.ChatKind}
 		}
-		rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT DISTINCT json_extract(body_json,'$.Channel.person_id') FROM messages WHERE json_extract(body_json,'$.Channel.source')='telegram' AND json_extract(body_json,'$.Channel.application_id')=? AND json_extract(body_json,'$.Channel.chat_id')=? LIMIT 129`, target.ApplicationID, target.ChatID)
+		rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT DISTINCT (body_json #>> '{Channel,person_id}') FROM fa.messages WHERE (body_json #>> '{Channel,source}')='telegram' AND (body_json #>> '{Channel,application_id}')=$1 AND (body_json #>> '{Channel,chat_id}')=$2 LIMIT 129`, target.ApplicationID, target.ChatID)
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +313,7 @@ func (service *ControlService) buildTelegramAccess(ctx context.Context, record *
 			args.Members = append(args.Members, request.PersonID)
 		}
 	}
-	if !validTelegramTarget(args.Target) || args.Target.ApplicationID != store.telegramBot || args.Kind != "private" && args.Kind != "group" || len(args.Members) > 128 || args.Kind == "private" && args.WholeGroup {
+	if !validTelegramTarget(args.Target) || !store.telegramBots[args.Target.ApplicationID] || args.Kind != "private" && args.Kind != "group" || len(args.Members) > 128 || args.Kind == "private" && args.WholeGroup {
 		return ErrPermissionDenied
 	}
 	slices.Sort(args.Members)
@@ -338,7 +354,7 @@ func (service *ControlService) applyTelegramAccess(ctx context.Context, record *
 	store := service.core.Store
 	store.telegramMu.Lock()
 	defer store.telegramMu.Unlock()
-	if args.Target.ApplicationID != store.telegramBot {
+	if !store.telegramBots[args.Target.ApplicationID] {
 		return ErrControlStaleRevision
 	}
 	if args.RequestID != "" {
@@ -372,7 +388,7 @@ func (service *ControlService) applyTelegramAccess(ctx context.Context, record *
 		return tx.Commit()
 	}
 	grant := TelegramAccess{Target: args.Target, SpaceID: space.ID, Kind: args.Kind, Enabled: args.Enabled, WholeGroup: args.WholeGroup, Members: args.Members, Revision: previous.Revision + 1, UpdatedAt: nowText()}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, telegramAccessKey(args.Target), string(mustJSON(grant))); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, telegramAccessKey(args.Target), string(mustJSON(grant))); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -411,9 +427,10 @@ func (tasks *TaskService) checkTelegramRun(ctx context.Context, run Run) error {
 	}
 	store := tasks.core.Store
 	store.telegramMu.Lock()
-	bot := store.telegramBot
+	active := store.telegramBots[origin.ApplicationID]
+	registered := len(store.telegramBots)
 	store.telegramMu.Unlock()
-	if bot != "" && bot != origin.ApplicationID {
+	if registered > 0 && !active {
 		return ErrPermissionRevoked
 	}
 	grant, err := tasks.CheckTelegramAccess(ctx, origin.ChannelTarget, snapshot.Permission.PersonID)
@@ -431,7 +448,12 @@ func (s *channelSession) sendRunText(ctx context.Context, run Run, target Channe
 	// already dispatched before revocation may still have side effects.
 	store := s.tasks.core.Store
 	store.telegramMu.Lock()
-	defer store.telegramMu.Unlock()
+	release := store.telegramMu.Unlock
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
 	var snapshot struct {
 		Permission *PermissionSelection
 		Channel    *ChannelRunOrigin
@@ -439,21 +461,26 @@ func (s *channelSession) sendRunText(ctx context.Context, run Run, target Channe
 	if json.Unmarshal([]byte(run.ConfigJSON), &snapshot) != nil || snapshot.Permission == nil || snapshot.Channel == nil {
 		return "", ErrPermissionDenied
 	}
-	grant, err := s.tasks.CheckTelegramAccess(ctx, target, snapshot.Permission.PersonID)
-	if err != nil || snapshot.Channel.AccessRevision != grant.Revision || store.telegramBot != target.ApplicationID {
+	grant, err := s.tasks.telegramDeliveryGrant(ctx, target, snapshot.Permission.PersonID, snapshot.Permission.PersonID == "")
+	if err != nil || snapshot.Channel.AccessRevision != grant.Revision || !store.telegramBots[target.ApplicationID] {
 		return "", &CallError{Certain: true, Message: ErrPermissionRevoked.Error()}
+	}
+	ctx = context.WithValue(ctx, telegramFileAuthorityKey{}, telegramFileAuthority{Target: target, Person: snapshot.Permission.PersonID, Revision: grant.Revision, LocalOwner: snapshot.Permission.PersonID == ""})
+	if s.remote {
+		release()
+		release = nil
 	}
 	return s.send(ctx, target, reply, text, buttons)
 }
 
 // Approval is durable before this notification. The receipt prevents an
 // uncertain notification from being sent again by a repeated admin request.
-func (r *TelegramRuntime) NotifyAccess(ctx context.Context, grant TelegramAccess) error {
+func (s *channelSession) NotifyAccess(ctx context.Context, grant TelegramAccess) error {
 	if !grant.Enabled || len(grant.Members) == 0 {
 		return nil
 	}
 	key := "telegram/access-notify/" + grant.Target.key() + "/" + strconv.FormatUint(grant.Revision, 10)
-	claim, err := r.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`, key, `{"state":"dispatching"}`)
+	claim, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, `{"state":"dispatching"}`)
 	if err != nil {
 		return err
 	}
@@ -461,9 +488,12 @@ func (r *TelegramRuntime) NotifyAccess(ctx context.Context, grant TelegramAccess
 	if n == 0 {
 		return nil
 	}
-	id, sendErr := r.session.plainAccessNotice(ctx, grant, "管理员已批准聊天接入。工具能力仍受空间和人员权限限制；发送 /start 查看帮助。")
+	ctx = context.WithValue(ctx, channelDeliveryKey{}, channelDeliveryInfo{Claim: key})
+	id, sendErr := s.plainAccessNotice(ctx, grant, "管理员已批准聊天接入。工具能力仍受空间和人员权限限制；发送 /start 查看帮助。")
 	state := "sent"
-	if sendErr != nil || id == "" {
+	if isChannelQueued(sendErr) {
+		state, sendErr = "queued", nil
+	} else if sendErr != nil || id == "" {
 		state = "unknown"
 		var call *CallError
 		if errors.As(sendErr, &call) && call.Certain {
@@ -472,17 +502,27 @@ func (r *TelegramRuntime) NotifyAccess(ctx context.Context, grant TelegramAccess
 	}
 	persist, done := context.WithTimeout(context.Background(), 5*time.Second)
 	defer done()
-	_, saveErr := r.tasks.core.Store.db.ExecContext(persist, `UPDATE meta SET value=? WHERE key=?`, string(mustJSON(map[string]string{"state": state})), key)
+	_, saveErr := s.tasks.core.Store.db.ExecContext(persist, `UPDATE fa.meta SET value=$1 WHERE key=$2 AND (document #>> '{state}')='dispatching'`, string(mustJSON(map[string]string{"state": state})), key)
 	return errors.Join(sendErr, saveErr)
 }
 
 func (s *channelSession) plainAccessNotice(ctx context.Context, grant TelegramAccess, text string) (string, error) {
 	store := s.tasks.core.Store
 	store.telegramMu.Lock()
-	defer store.telegramMu.Unlock()
+	release := store.telegramMu.Unlock
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
 	current, err := s.tasks.CheckTelegramAccess(ctx, grant.Target, grant.Members[0])
-	if err != nil || current.Revision != grant.Revision || store.telegramBot != grant.Target.ApplicationID {
+	if err != nil || current.Revision != grant.Revision || !store.telegramBots[grant.Target.ApplicationID] {
 		return "", &CallError{Certain: true, Message: ErrPermissionRevoked.Error()}
+	}
+	ctx = context.WithValue(ctx, telegramFileAuthorityKey{}, telegramFileAuthority{Target: grant.Target, Person: grant.Members[0], Revision: grant.Revision})
+	if s.remote {
+		release()
+		release = nil
 	}
 	return s.send(ctx, grant.Target, "", text, nil)
 }
@@ -498,7 +538,7 @@ func (service *Service) lockTelegramDispatch(ctx context.Context, runID string) 
 	store := service.Store
 	store.telegramMu.Lock()
 	grant, err := NewTaskService(service).CheckTelegramAccess(ctx, service.channel.ChannelTarget, service.permission.PersonID)
-	if err != nil || grant.Revision != service.channel.AccessRevision || store.telegramBot != service.channel.ApplicationID {
+	if err != nil || grant.Revision != service.channel.AccessRevision || !store.telegramBots[service.channel.ApplicationID] {
 		store.telegramMu.Unlock()
 		return nil, ErrPermissionRevoked
 	}
@@ -510,9 +550,10 @@ func (service *Service) lockTelegramDispatch(ctx context.Context, runID string) 
 }
 
 type telegramFileAuthority struct {
-	Target   ChannelTarget
-	Person   string
-	Revision uint64
+	LocalOwner bool
+	Target     ChannelTarget
+	Person     string
+	Revision   uint64
 }
 
 func (s *channelSession) withTelegramFileAccess(ctx context.Context, target ChannelTarget, binding string, send func() error) error {
@@ -521,7 +562,12 @@ func (s *channelSession) withTelegramFileAccess(ctx context.Context, target Chan
 	}
 	store := s.tasks.core.Store
 	store.telegramMu.Lock()
-	defer store.telegramMu.Unlock()
+	release := store.telegramMu.Unlock
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
 	authority, ok := ctx.Value(telegramFileAuthorityKey{}).(telegramFileAuthority)
 	if !ok {
 		run, err := store.GetRun(ctx, binding)
@@ -532,14 +578,37 @@ func (s *channelSession) withTelegramFileAccess(ctx context.Context, target Chan
 		if origin == nil || run.Permission == nil {
 			return ErrPermissionDenied
 		}
-		authority = telegramFileAuthority{Target: origin.ChannelTarget, Person: run.Permission.PersonID, Revision: origin.AccessRevision}
+		authority = telegramFileAuthority{Target: origin.ChannelTarget, Person: run.Permission.PersonID, Revision: origin.AccessRevision, LocalOwner: run.Permission.PersonID == ""}
 	}
-	if authority.Target != target || store.telegramBot != target.ApplicationID {
+	if authority.Target != target || !store.telegramBots[target.ApplicationID] {
 		return &CallError{Certain: true, Message: ErrPermissionRevoked.Error()}
 	}
-	grant, err := s.tasks.CheckTelegramAccess(ctx, target, authority.Person)
+	grant, err := s.tasks.telegramDeliveryGrant(ctx, target, authority.Person, authority.LocalOwner)
 	if err != nil || grant.Revision != authority.Revision {
 		return &CallError{Certain: true, Message: ErrPermissionRevoked.Error()}
 	}
+	if s.remote {
+		release()
+		release = nil
+	}
 	return send()
+}
+
+// A local Owner may continue a channel conversation without impersonating a
+// platform person. Publication still requires its current enabled space grant.
+func (tasks *TaskService) telegramDeliveryGrant(ctx context.Context, target ChannelTarget, person string, local bool) (TelegramAccess, error) {
+	if !local {
+		return tasks.CheckTelegramAccess(ctx, target, person)
+	}
+	if person != "" {
+		return TelegramAccess{}, ErrPermissionDenied
+	}
+	grant, _, err := telegramAccessRaw(ctx, tasks.core.Store.db, target)
+	if err != nil {
+		return grant, err
+	}
+	if !grant.Enabled || grant.Revision == 0 {
+		return grant, ErrPermissionDenied
+	}
+	return grant, nil
 }

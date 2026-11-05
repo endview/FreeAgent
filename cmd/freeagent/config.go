@@ -15,7 +15,7 @@ import (
 	"github.com/endview/freeagent/internal/harness"
 )
 
-var configCommands = []string{"show", "model", "workspace", "auto", "commands", "context", "http", "channels", "collaboration", "memory"}
+var configCommands = []string{"show", "model", "workspace", "auto", "commands", "context", "http", "collaboration", "memory"}
 
 func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 || !slices.Contains(configCommands, args[0]) {
@@ -35,13 +35,13 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	var allowedExecutables, allowedOrigins repeatedStrings
 	summaryBytes := 0
 	autoCompactAt := 80
+	modelRetries := 2
 	collaboration := harness.DefaultCollaborationSettings()
 	var collaborationMode string
 	var collaborationModels, collaborationTools, collaborationPaths repeatedStrings
 	var auto harness.AutoConfig
 	var autoModels repeatedStrings
 	var memory harness.MemoryConfig
-	var channels harness.ChannelsConfig
 	var sharedKinds, sharedEntries repeatedStrings
 	if args[0] == "memory" {
 		flags.BoolVar(&memory.KnowledgeEnabled, "knowledge", false, "explicitly enable local knowledge import and selected search")
@@ -118,11 +118,8 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		flags.IntVar(&httpConfig.MaxOutput, "output-bytes", 32768, "response text limit")
 		flags.Var(&allowedOrigins, "origin", "allowed scheme://host[:port]; repeat for multiple origins")
 	}
-	if args[0] == "channels" {
-		flags.BoolVar(&channels.Telegram.Enabled, "enabled", false, "enable the configured Telegram Bot channel")
-		flags.StringVar(&channels.Telegram.Key, "telegram-key", "", "Telegram Bot Key profile id or name")
-	}
 	if args[0] == "context" {
+		flags.IntVar(&modelRetries, "model-retries", 2, "automatic model recovery attempts, 0-6; may incur provider charges")
 		flags.IntVar(&summaryBytes, "summary-bytes", 0, "summary byte cap; 0 disables automatic compaction")
 		flags.IntVar(&autoCompactAt, "auto-percent", 80, "automatic compaction trigger, 50-95 percent of available input budget")
 	}
@@ -156,7 +153,8 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	}
 	if args[0] != "show" {
 		invocation := configInvocation{
-			Command: args[0], Flags: flags,
+			ModelRetries: modelRetries,
+			Command:      args[0], Flags: flags,
 			ModelID: modelID, Model: model, KeyRef: keyRef, MakeDefault: makeDefault,
 			RemoveModel: removeModel, NewDefault: newDefault, Workspace: workspace,
 			Commands: commands, AllowedExecutables: allowedExecutables,
@@ -165,8 +163,7 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 			Collaboration: collaboration, CollaborationMode: collaborationMode,
 			CollaborationModels: collaborationModels, CollaborationTools: collaborationTools,
 			CollaborationPaths: collaborationPaths, SharedKinds: sharedKinds, SharedEntries: sharedEntries,
-			Memory:   memory,
-			Channels: channels,
+			Memory: memory,
 		}
 		attached, err := tryAttachedConfig(ctx, path, invocation, stdin, stdout, stderr)
 		if err != nil || attached {
@@ -267,10 +264,11 @@ func writeConfigResult(stdout io.Writer, path string, config harness.Config, res
 		"models": config.Models, "default_model": config.DefaultModel, "default_selection": config.DefaultSelection,
 		"auto": config.Auto, "enabled_mcp_servers": enabled, "instructions": config.Instructions,
 		"model_capabilities": capabilities,
-		"commands":           config.Commands, "http": config.HTTP, "channels": config.Channels,
+		"commands":           config.Commands, "http": config.HTTP,
 		"collaboration": config.Collaboration,
 		"memory":        config.Memory,
 		"limits": map[string]int{
+			"model_retries":     config.ModelRetries,
 			"history_page_size": config.HistoryPageSize,
 			"max_context_bytes": config.MaxContextBytes, "max_output_tokens": config.MaxOutputTokens,
 			"max_tool_result_bytes": config.MaxToolResult,

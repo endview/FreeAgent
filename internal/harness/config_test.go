@@ -164,7 +164,7 @@ func TestConfigAllowsZeroModels(t *testing.T) {
 		t.Fatalf("run without models succeeded: %+v", result)
 	}
 	var runs int
-	if err := service.Store.db.QueryRow(`SELECT count(*) FROM runs`).Scan(&runs); err != nil || runs != 0 {
+	if err := service.Store.db.QueryRow(`SELECT count(*) FROM fa.runs`).Scan(&runs); err != nil || runs != 0 {
 		t.Fatalf("runs=%d err=%v", runs, err)
 	}
 }

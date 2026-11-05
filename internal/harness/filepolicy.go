@@ -137,7 +137,7 @@ func protectedPath(dataDir, target string) bool {
 	}
 	name := strings.ToLower(filepath.Base(resolved))
 	return name == "keys.json" || name == "config.json" || name == "owner.lock" ||
-		name == "desktop.json" || strings.HasPrefix(name, "state.sqlite")
+		name == "desktop.json" || name == "postgres.json" || name == "postgres-maintenance.json" || name == "channel-keys.json"
 }
 
 func validateExternalPath(dataDir string, roots []string, raw string) (string, error) {

@@ -62,7 +62,7 @@ func runKey(ctx context.Context, args []string, stdin io.Reader, stdout, stderr 
 		flags.StringVar(&name, "name", "", "profile name")
 		flags.StringVar(&address, "url", "", "service address, for example https://api.example.com/v1")
 		flags.StringVar(&note, "note", "", "optional note")
-		flags.StringVar(&protocol, "protocol", harness.KeyProtocolOpenAICompatible, "openai-compatible, anthropic, telegram, lark, or qq")
+		flags.StringVar(&protocol, "protocol", harness.KeyProtocolOpenAICompatible, "model protocol: openai-compatible or anthropic; use channel credential for platform accounts")
 		flags.BoolVar(&keyStdin, "key-stdin", false, "read the key from stdin (one line, at most 4096 bytes)")
 		flags.StringVar(&keyEnv, "key-env", "", "read the key from this environment variable when it is used")
 		flags.BoolVar(&noKey, "no-key", false, "no key; loopback addresses only")

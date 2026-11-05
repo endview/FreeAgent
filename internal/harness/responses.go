@@ -119,9 +119,9 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 		raw, _ := io.ReadAll(io.LimitReader(response.Body, (64<<10)+1))
 		var decoded responsesEnvelope
 		if len(raw) <= 64<<10 && json.Unmarshal(raw, &decoded) == nil && decoded.Error != nil {
-			return ModelResponse{}, normalizeResponsesError(response.StatusCode, decoded.Error, client.key.secret)
+			return ModelResponse{}, withRetryAfter(normalizeResponsesError(response.StatusCode, decoded.Error, client.key.secret), response.Header)
 		}
-		return ModelResponse{}, normalizeProviderError(response.StatusCode, nil, client.key.secret)
+		return ModelResponse{}, withRetryAfter(normalizeProviderError(response.StatusCode, nil, client.key.secret), response.Header)
 	}
 	kind, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	var result ModelResponse

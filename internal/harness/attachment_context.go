@@ -60,7 +60,7 @@ func (service *Service) prepareAttachmentRequest(ctx context.Context, run Run, m
 	}
 	if run.ID != "" {
 		var body string
-		err := service.Store.db.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE run_id=? AND json_extract(body_json,'$.Role')='user' ORDER BY id DESC LIMIT 1`, run.ID).Scan(&body)
+		err := service.Store.db.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE run_id=$1 AND (body_json #>> '{Role}')='user' ORDER BY id DESC LIMIT 1`, run.ID).Scan(&body)
 		if err == nil {
 			var message ModelMessage
 			if json.Unmarshal([]byte(body), &message) != nil {
@@ -84,7 +84,7 @@ func (service *Service) prepareAttachmentRequest(ctx context.Context, run Run, m
 		}
 		var text strings.Builder
 		for _, ref := range message.Attachments {
-			if service.externalContext() && !ref.Public {
+			if service.spaceContext() && !ref.Public {
 				continue
 			}
 			r, err := loadAttachment(ctx, service.Store.db, ref.ID)

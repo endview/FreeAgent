@@ -2,7 +2,7 @@ name: Repeatable portable candidates
 on:
   workflow_dispatch:
   push:
-    tags: ['v7.*']
+    tags: ['v8.*']
 permissions:
   contents: read
 jobs:
@@ -40,9 +40,16 @@ jobs:
         working-directory: internal/chatui
       - run: git diff --exit-code -- internal/chatui/dist
       - run: go mod verify
-      - run: go test -count=1 -timeout=10m -skip 'Live|RealProvider' ./...
-      - run: python scripts/release_package.py --target ${{ matrix.target }} --output-directory bin/repeat-a
-      - run: python scripts/release_package.py --target ${{ matrix.target }} --output-directory bin/repeat-b
+      - name: Prepare Windows PostgreSQL
+        if: runner.os == 'Windows'
+        run: python scripts/prepare-postgres.py --target windows-amd64 --cache output/pg-cache --out output/postgresql
+      - name: Prepare Debian 12 PostgreSQL
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src debian:12-slim sh -ec 'apt-get update -qq && apt-get install -y --no-install-recommends build-essential zlib1g-dev python3 ca-certificates && python3 scripts/prepare-postgres.py --target linux-amd64 --cache output/pg-cache --out output/postgresql'
+      - run: python scripts/test-postgres.py --runtime output/postgresql -- go test -p 2 -count=1 -timeout=30m -skip 'Live|RealProvider' ./cmd/... ./internal/... ./examples/...
+      - run: python scripts/release_package.py --target ${{ matrix.target }} --postgres-runtime output/postgresql --output-directory bin/repeat-a
+      - run: python scripts/release_package.py --target ${{ matrix.target }} --postgres-runtime output/postgresql --output-directory bin/repeat-b
       - run: python scripts/verify-repeatable.py bin/repeat-a bin/repeat-b
       - if: runner.os == 'Windows'
         shell: pwsh

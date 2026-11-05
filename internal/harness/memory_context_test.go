@@ -41,7 +41,7 @@ func TestMemoryExplicitSelectionManualModelsAndNoLearning(t *testing.T) {
 		t.Fatal("ordinary chat retrieved persistent memory automatically")
 	}
 	var count int
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM memories`).Scan(&count); err != nil || count != 1 {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.memories`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("ordinary output was learned: entries=%d err=%v", count, err)
 	}
 	selection := MemorySelection{Entries: []MemoryReference{ref}}

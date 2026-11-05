@@ -98,7 +98,7 @@ func TestCollaborationMemoryLocalRollbackAndDefinitiveConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := report.Children[0].Run
-	if _, err := core.Store.db.ExecContext(t.Context(), `UPDATE runs SET status='running' WHERE id=?`, run.ID); err != nil {
+	if _, err := core.Store.db.ExecContext(t.Context(), `UPDATE fa.runs SET status='running' WHERE id=$1`, run.ID); err != nil {
 		t.Fatal(err)
 	}
 	scope := MemoryScope{Kind: "shared", Owner: parent, Project: core.Config.Workspace}
@@ -107,7 +107,7 @@ func TestCollaborationMemoryLocalRollbackAndDefinitiveConflict(t *testing.T) {
 	})
 	raw, _ := json.Marshal(call)
 	attempt := Attempt{ID: newID(), RunID: run.ID, Kind: "tool", CallID: call.ID, RequestJSON: string(raw), Status: "dispatched"}
-	if _, err := core.Store.db.ExecContext(t.Context(), `INSERT INTO attempts VALUES(?,?,'tool',?,'dispatched',?,'')`,
+	if _, err := core.Store.db.ExecContext(t.Context(), `INSERT INTO fa.attempts(id,run_id,kind,call_id,status,request_json,response_json) VALUES($1,$2,'tool',$3,'dispatched',$4,'')`,
 		attempt.ID, run.ID, call.ID, string(raw)); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestCollaborationMemoryLocalRollbackAndDefinitiveConflict(t *testing.T) {
 		t.Fatalf("definitive conflict=%+v %v", result, err)
 	}
 	var count int
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM memories`).Scan(&count); err != nil || count != 0 {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.memories`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("failed local transaction leaked its mutation")
 	}
 	attempts, err := core.Store.ListAttempts(t.Context(), run.ID)

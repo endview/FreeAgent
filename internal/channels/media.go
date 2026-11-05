@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/endview/freeagent/internal/channelwire"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -16,12 +17,7 @@ import (
 
 // MediaRef comes only from an authenticated platform event, never a model URL.
 // Transport secrets and temporary download URLs do not enter message metadata.
-type MediaRef struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Bytes int64  `json:"bytes"`
-	Image bool   `json:"image,omitempty"`
-}
+type MediaRef = channelwire.MediaRef
 
 func multipartMedia(field, name string, raw []byte, fields map[string]string) ([]byte, string, error) {
 	if len(raw) > 32<<20 || name == "" || len(name) > 512 || strings.ContainsAny(name, "\x00\r\n/\\") {

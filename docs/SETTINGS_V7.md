@@ -2,7 +2,7 @@
 
 v7.0 keeps one lightweight execution core for the desktop Chat and CLI. Both
 surfaces attach to the same owner when it is running; they do not open a second
-SQLite writer. Persistent settings are applied through the typed control service
+database Owner. Persistent settings are applied through the typed control service
 and take effect in the next Run.
 
 ## Control And Attach
@@ -58,7 +58,7 @@ facts distinguish the frozen Run, saved defaults and current blocking changes.
 
 ## Data Boundary
 
-The package data directory is `Harness-v8`, with store format
-`freeagent-harness-v10`. Older stores are rejected and are never migrated or
+The package data directory is `Harness-pg-v1`, with store format
+`freeagent-postgres-v1`. Older stores are rejected and are never migrated or
 imported. Keys remain outside model-visible data and are resolved only for one
 provider dispatch or probe.

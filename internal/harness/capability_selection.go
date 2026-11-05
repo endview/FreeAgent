@@ -10,13 +10,23 @@ import (
 const capabilityMetaPrefix = "chat/capabilities/"
 
 func (store *Store) selectedCapabilities(ctx context.Context, conversationID string, config Config) (CapabilitySelection, error) {
-	if _, err := store.GetConversation(ctx, conversationID); err != nil {
+	chat, err := store.GetConversation(ctx, conversationID)
+	if err != nil {
 		return CapabilitySelection{}, err
 	}
 	var raw string
-	err := store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`,
+	err = store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`,
 		capabilityMetaPrefix+conversationID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
+		if chat.SpaceID != LocalSpaceID {
+			policy, err := store.spacePermission(ctx, chat.SpaceID)
+			if err != nil {
+				return CapabilitySelection{}, err
+			}
+			if !policy.OwnerPrivate {
+				return CapabilitySelection{}, nil
+			}
+		}
 		return defaultCapabilities(config), nil
 	}
 	if err != nil {
@@ -53,7 +63,7 @@ func (tasks *TaskService) SelectCapabilities(ctx context.Context, conversationID
 	if err != nil {
 		return err
 	}
-	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?)
+	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		capabilityMetaPrefix+conversationID, string(raw))
 	return err

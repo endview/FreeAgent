@@ -4,7 +4,7 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 SQLite Store，基础文件操作不需要安装 MCP。
 
-当前源码为 **v7.12.0-dev.1 开发候选**，尚未发布到 GitHub。
+当前源码为 **v8.0.0-dev.1 开发候选**，尚未发布到 GitHub。
 [历史 Windows / Linux 发行包](https://github.com/endview/FreeAgent/releases)
 · [English](README.md) · [v7.12 实施与验收](docs/FREEAGENT_V7_12_IMPLEMENTATION_PROGRESS.md)。
 
@@ -15,7 +15,7 @@ Full 仍遵守显式 deny/ask 和非空可执行文件白名单，旧命令快�
 新安装默认开启 4096 字节自动压缩，已有关闭设置保持关闭；同时修正提案到期、
 附件最终版本选择和普通限额结算，只有用户明确继续才创建关联的下一轮。
 
-使用独立的 `Harness-v8` 数据目录、Store v10 和 backup-v4。不导入旧配置、
+使用独立的 `Harness-pg-v1` 数据目录、Store v10 和 backup-v4。不导入旧配置、
 数据库或备份；请解压到新目录，保留旧程序自己的数据。便携包未签名，
 不包含用户数据或凭据，无需安装 Go 或 Node。
 
@@ -24,7 +24,7 @@ Full 仍遵守显式 deny/ask 和非空可执行文件白名单，旧命令快�
 Windows 解压后双击 `FreeAgent.exe`；CLI 位于 `bin\freeagent.exe`。
 桌面使用系统 WebView2，缺少运行时时改为打开本地浏览器。
 Linux amd64 解压后执行 `./FreeAgent`，在浏览器打开本次启动输出的私有地址。
-默认数据在包内 `data/Harness-v8`，工作区在 `workspace`。
+默认数据在包内 `data/Harness-pg-v1`，工作区在 `workspace`。
 
 新安装没有模型。先在 Key 管理页面添加服务地址和 Key、选择模型，再显式开启
 对应 Provider。Provider 默认关闭；保存配置不会自动联网。测试连接和获取模型
@@ -38,7 +38,7 @@ Windows 保存时使用当前用户的 DPAPI，Linux 使用受限权限文件。
 
 ```powershell
 $exe = (Resolve-Path '.\bin\freeagent.exe').Path
-$data = Join-Path (Get-Location).Path 'data\Harness-v8'
+$data = Join-Path (Get-Location).Path 'data\Harness-pg-v1'
 & $exe sessions --data-dir $data
 & $exe chat --data-dir $data --resume '<会话ID>'
 ```

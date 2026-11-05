@@ -55,7 +55,7 @@ func inputPrefix(chat string) string   { return "input/" + chat + "/" }
 func inputKey(chat, key string) string { return inputPrefix(chat) + contentHash([]byte(key)) }
 func saveInput(ctx context.Context, tx *sql.Tx, input PendingInput) error {
 	input.Prompt = ""
-	_, err := tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, inputKey(input.ConversationID, input.Key), string(mustJSON(input)))
+	_, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, inputKey(input.ConversationID, input.Key), string(mustJSON(input)))
 	return err
 }
 func loadInput(ctx context.Context, reader interface {
@@ -63,7 +63,7 @@ func loadInput(ctx context.Context, reader interface {
 }, chat, key string) (PendingInput, error) {
 	var input PendingInput
 	var raw string
-	err := reader.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, inputKey(chat, key)).Scan(&raw)
+	err := reader.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, inputKey(chat, key)).Scan(&raw)
 	if err == nil && json.Unmarshal([]byte(raw), &input) != nil {
 		err = ErrStoreFormat
 	}
@@ -151,7 +151,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 	defer tx.Rollback()
 	if old, e := loadInput(ctx, tx, chat, input.Key); e == nil {
 		var body string
-		if e = tx.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE id=?`, old.MessageID).Scan(&body); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE id=$1 AND conversation_id=$2`, old.MessageID, chat).Scan(&body); e != nil {
 			return old, e
 		}
 		var message ModelMessage
@@ -167,7 +167,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 		return input, e
 	}
 	if command.Action == "steer" {
-		run, e := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=? AND conversation_id=?`, command.RunID, chat))
+		run, e := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1 AND conversation_id=$2`, command.RunID, chat))
 		if e != nil {
 			return input, e
 		}
@@ -177,7 +177,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 		if input.Remote != nil {
 			var original PublicEntry
 			var originalRaw string
-			e := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "run/remote/"+run.ID).Scan(&originalRaw)
+			e := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "run/remote/"+run.ID).Scan(&originalRaw)
 			if e != nil || json.Unmarshal([]byte(originalRaw), &original) != nil || original.Principal != input.Remote.Principal {
 				return input, ErrPermissionDenied
 			}
@@ -187,7 +187,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 		}
 	}
 	var count int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM meta WHERE key LIKE ? AND json_extract(value,'$.status')='pending'`, inputPrefix(chat)+"%").Scan(&count); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta WHERE key LIKE $1 AND (document #>> '{status}')='pending'`, inputPrefix(chat)+"%").Scan(&count); err != nil {
 		return input, err
 	}
 	if count >= 20 {
@@ -197,7 +197,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 	if options.channel != nil {
 		input.MessageID = options.channel.InputMessageID
 		var raw string
-		if err := tx.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE id=? AND conversation_id=? AND run_id IS NULL`, input.MessageID, chat).Scan(&raw); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE id=$1 AND conversation_id=$2 AND run_id IS NULL`, input.MessageID, chat).Scan(&raw); err != nil {
 			return input, err
 		}
 		if json.Unmarshal([]byte(raw), &message) != nil {
@@ -215,18 +215,15 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 		}
 		message.Deferred = true
 		message.Attachments = refs
-		if _, err := tx.ExecContext(ctx, `UPDATE messages SET body_json=? WHERE id=?`, string(mustJSON(message)), input.MessageID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.messages SET body_json=$1 WHERE id=$2 AND conversation_id=$3`, string(mustJSON(message)), input.MessageID, chat); err != nil {
 			return input, err
 		}
 	} else {
-		r, e := tx.ExecContext(ctx, `INSERT INTO messages(conversation_id,body_json) VALUES(?,?)`, chat, string(mustJSON(message)))
-		if e != nil {
-			return input, e
-		}
-		input.MessageID, err = r.LastInsertId()
+		err = tx.QueryRowContext(ctx, `INSERT INTO fa.messages(conversation_id,body_json) VALUES($1,$2) RETURNING id`, chat, string(mustJSON(message))).Scan(&input.MessageID)
 		if err != nil {
 			return input, err
 		}
+
 	}
 	// Retain accepted input attachments using their existing committed binding.
 	if err := bindAttachments(ctx, tx, chat, "input:"+input.Key, refs); err != nil {
@@ -265,12 +262,12 @@ func (tasks *TaskService) Inputs(ctx context.Context, chat string) (InputState, 
 	}
 	state := InputState{Entries: []PendingInput{}}
 	var paused string
-	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "input-paused/"+chat).Scan(&paused)
+	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "input-paused/"+chat).Scan(&paused)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return state, err
 	}
 	state.Paused = paused == "true"
-	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE ? ORDER BY (json_extract(value,'$.status')='pending') DESC,CAST(json_extract(value,'$.message_id') AS INTEGER) DESC LIMIT 40`, inputPrefix(chat)+"%")
+	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE $1 ORDER BY ((document #>> '{status}')='pending') DESC,CAST((document #>> '{message_id}') AS INTEGER) DESC LIMIT 40`, inputPrefix(chat)+"%")
 	if err != nil {
 		return state, err
 	}
@@ -293,7 +290,7 @@ func (tasks *TaskService) Inputs(ctx context.Context, chat string) (InputState, 
 	for n := range state.Entries {
 		i := &state.Entries[n]
 		var raw string
-		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE id=?`, i.MessageID).Scan(&raw); err != nil {
+		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE id=$1 AND conversation_id=$2`, i.MessageID, chat).Scan(&raw); err != nil {
 			return state, err
 		}
 		var m ModelMessage
@@ -390,7 +387,7 @@ func (tasks *TaskService) SteerInput(ctx context.Context, chat, key, runID strin
 	if input.Action != "queue" || input.Status != "pending" {
 		return input, ErrInputNotPending
 	}
-	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=? AND conversation_id=?`, runID, chat))
+	run, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1 AND conversation_id=$2`, runID, chat))
 	if err != nil {
 		return input, err
 	}
@@ -403,7 +400,7 @@ func (tasks *TaskService) SteerInput(ctx context.Context, chat, key, runID strin
 	if input.Remote != nil {
 		var raw string
 		var original PublicEntry
-		if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "run/remote/"+run.ID).Scan(&raw); err != nil || json.Unmarshal([]byte(raw), &original) != nil || original.Principal != input.Remote.Principal {
+		if err := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "run/remote/"+run.ID).Scan(&raw); err != nil || json.Unmarshal([]byte(raw), &original) != nil || original.Principal != input.Remote.Principal {
 			return PendingInput{}, ErrPermissionDenied
 		}
 	}
@@ -429,12 +426,12 @@ func (tasks *TaskService) PauseQueue(ctx context.Context, chat string, paused bo
 	if conversation.Workspace != tasks.Config().Workspace {
 		return ErrConversationSpace
 	}
-	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "input-paused/"+chat, fmt.Sprint(paused))
+	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "input-paused/"+chat, fmt.Sprint(paused))
 	return err
 }
 
 func (tasks *TaskService) QueuedConversations(ctx context.Context) ([]string, error) {
-	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT json_extract(m.value,'$.conversation_id') AS chat FROM meta m JOIN conversations c ON c.id=json_extract(m.value,'$.conversation_id') WHERE m.key LIKE 'input/%' AND c.workspace=? AND json_extract(m.value,'$.action')='queue' AND json_extract(m.value,'$.status')='pending' GROUP BY chat ORDER BY min(CAST(json_extract(m.value,'$.message_id') AS INTEGER)) LIMIT 1000`, tasks.Config().Workspace)
+	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT (m.document #>> '{conversation_id}') AS chat FROM fa.meta m JOIN fa.conversations c ON c.id=(m.document #>> '{conversation_id}') WHERE m.key LIKE 'input/%' AND c.workspace=$1 AND (m.document #>> '{action}')='queue' AND (m.document #>> '{status}')='pending' GROUP BY chat ORDER BY min(CAST((m.document #>> '{message_id}') AS INTEGER)) LIMIT 1000`, tasks.Config().Workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -457,12 +454,12 @@ func (tasks *TaskService) RunQueued(ctx context.Context, chat string) (RunResult
 		return RunResult{}, errors.New("harness: task service and context are required")
 	}
 	var paused string
-	_ = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "input-paused/"+chat).Scan(&paused)
+	_ = tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "input-paused/"+chat).Scan(&paused)
 	if paused == "true" {
 		return RunResult{}, ErrQueuePaused
 	}
 	var raw string
-	err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key LIKE ? AND json_extract(value,'$.status')='pending' AND json_extract(value,'$.action')='queue' ORDER BY CAST(json_extract(value,'$.message_id') AS INTEGER) LIMIT 1`, inputPrefix(chat)+"%").Scan(&raw)
+	err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE $1 AND (document #>> '{status}')='pending' AND (document #>> '{action}')='queue' ORDER BY CAST((document #>> '{message_id}') AS INTEGER) LIMIT 1`, inputPrefix(chat)+"%").Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return RunResult{}, nil
 	}
@@ -483,7 +480,7 @@ func (tasks *TaskService) RunQueued(ctx context.Context, chat string) (RunResult
 		return RunResult{}, err
 	}
 	var body string
-	if err := core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM messages WHERE id=?`, input.MessageID).Scan(&body); err != nil {
+	if err := core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE id=$1 AND conversation_id=$2`, input.MessageID, input.ConversationID).Scan(&body); err != nil {
 		return RunResult{}, err
 	}
 	var message ModelMessage
@@ -527,18 +524,18 @@ func (tasks *TaskService) validateQueuedInput(ctx context.Context, chat string, 
 
 func pendingSteer(ctx context.Context, tx *sql.Tx, run string) (bool, error) {
 	var exists bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM meta WHERE key LIKE 'input/%' AND json_extract(value,'$.target_run')=? AND json_extract(value,'$.status')='pending' AND json_extract(value,'$.action')='steer')`, run).Scan(&exists)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key LIKE 'input/%' AND (document #>> '{target_run}')=$1 AND (document #>> '{status}')='pending' AND (document #>> '{action}')='steer')`, run).Scan(&exists)
 	return exists, err
 }
 
 func moveInputMessage(ctx context.Context, tx *sql.Tx, input *PendingInput, run string) error {
 	var next int64
-	if err := tx.QueryRowContext(ctx, `SELECT coalesce(max(id),0)+1 FROM messages`).Scan(&next); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT last_message_seq+1 FROM fa.conversations WHERE id=$1 FOR UPDATE`, input.ConversationID).Scan(&next); err != nil {
 		return err
 	}
 	// Move the existing received record to its adoption boundary. Pending input
 	// never becomes part of an earlier summary's covered prefix.
-	_, err := tx.ExecContext(ctx, `UPDATE messages SET id=?,run_id=?,body_json=json_set(body_json,'$.Deferred',json('false')) WHERE id=? AND run_id IS NULL`, next, run, input.MessageID)
+	err := tx.QueryRowContext(ctx, `UPDATE fa.messages SET id=$1,run_id=$2,body_json=jsonb_set(body_json,'{Deferred}','false'::jsonb,true) WHERE id=$3 AND run_id IS NULL AND conversation_id=$4 RETURNING id`, next, run, input.MessageID, input.ConversationID).Scan(&next)
 	if err != nil {
 		return err
 	}
@@ -549,6 +546,10 @@ func moveInputMessage(ctx context.Context, tx *sql.Tx, input *PendingInput, run 
 }
 
 func (service *Service) adoptSteering(ctx context.Context, run Run) (bool, error) {
+	return service.adoptSteeringForRetry(ctx, run, "")
+}
+
+func (service *Service) adoptSteeringForRetry(ctx context.Context, run Run, retryModel string) (bool, error) {
 	store := service.Store
 	store.inputMu.Lock()
 	defer store.inputMu.Unlock()
@@ -558,13 +559,13 @@ func (service *Service) adoptSteering(ctx context.Context, run Run) (bool, error
 	}
 	defer tx.Rollback()
 	var unresolved bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM attempts WHERE run_id=? AND status IN ('unknown','dispatched'))`, run.ID).Scan(&unresolved); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.attempts a WHERE a.run_id=$1 AND a.status IN ('unknown','dispatched') AND NOT ((a.kind='model' AND a.id=$2) OR `+resolvedAttemptSQL+`))`, run.ID, retryModel).Scan(&unresolved); err != nil {
 		return false, err
 	}
 	if unresolved {
 		return false, ErrUnknownResult
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE ? AND json_extract(value,'$.target_run')=? AND json_extract(value,'$.status')='pending' AND json_extract(value,'$.action')='steer' ORDER BY CAST(json_extract(value,'$.message_id') AS INTEGER)`, inputPrefix(run.ConversationID)+"%", run.ID)
+	rows, err := tx.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE $1 AND (document #>> '{target_run}')=$2 AND (document #>> '{status}')='pending' AND (document #>> '{action}')='steer' ORDER BY CAST((document #>> '{message_id}') AS INTEGER)`, inputPrefix(run.ConversationID)+"%", run.ID)
 	if err != nil {
 		return false, err
 	}
@@ -603,7 +604,7 @@ func (service *Service) adoptSteering(ctx context.Context, run Run) (bool, error
 			return false, ErrStoreFormat
 		}
 		result := ToolResult{Content: "NOT_RUN: superseded by verified user steering before dispatch; no approval was reused", IsError: true, Outcome: &ToolOutcome{Status: "not_run", CompletionKnown: true}}
-		if _, err := tx.ExecContext(ctx, `UPDATE attempts SET status='finished',response_json=? WHERE id=? AND status='pending'`, string(mustJSON(result)), a.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.attempts SET status='finished',response_json=$1 WHERE id=$2 AND status='pending'`, string(mustJSON(result)), a.ID); err != nil {
 			return false, err
 		}
 		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "tool", Name: call.Name, ToolCallID: call.ID, Content: result.Content}); err != nil {
@@ -615,7 +616,7 @@ func (service *Service) adoptSteering(ctx context.Context, run Run) (bool, error
 			return false, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='running',stop_reason='',updated_at=? WHERE id=?`, nowText(), run.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='running',stop_reason='',updated_at=$1 WHERE id=$2`, nowText(), run.ID); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {

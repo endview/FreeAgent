@@ -151,7 +151,7 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 	case "spaces", "space":
 		return runSpaces(ctx, args[1:], stdin, stdout, stderr)
 	case "channel", "channels":
-		return runChannel(ctx, args[1:], stdout, stderr)
+		return runChannel(ctx, args[1:], stdin, stdout, stderr)
 	case "inspect":
 		return runInspect(ctx, args[1:], stdout, stderr)
 	case "preview":
@@ -512,9 +512,15 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	} else if err == nil {
 		defer closeAll()
 		var owner *localOwner
-		owner, err = startLocalOwner(ctx, local, *dataDir, 0, false)
+		owner, err = startLocalOwner(context.WithoutCancel(ctx), local, *dataDir, 0, false)
 		if err == nil {
-			defer owner.Close()
+			defer func() {
+				owner.handler.ForgetClient(owner.client.ClientID)
+				owner.handler.ArmIdleShutdown()
+				fmt.Fprintln(stderr, "CLI 已断开；其他客户端、运行任务、待确认或后台命令会继续保留 Owner。可重新 attach。停止 Owner 请使用明确的停止命令。")
+				<-owner.handler.StopRequested()
+				_ = owner.Close()
+			}()
 			client = owner.client
 			go func() {
 				select {
@@ -528,6 +534,8 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	if err != nil {
 		return err
 	}
+	stopKeepAlive := client.KeepAlive(ctx)
+	defer stopKeepAlive()
 	reader := newTerminalInput(ctx, stdin)
 	tasks := &remoteChat{Client: client, data: *dataDir, reader: reader, stderr: stderr, space: *spaceID}
 	if terminal, ok := stdin.(*os.File); ok {

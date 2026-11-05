@@ -8,7 +8,6 @@ from pathlib import Path
 import re
 import shlex
 import signal
-import sqlite3
 import subprocess
 import threading
 import time
@@ -208,14 +207,15 @@ def run_acceptance(args,state,data,config,result,save):
         wait_for(lambda:(value:=owner()) and value[0]['generation']!=generation,'on-failure restart did not produce a new generation',25)
         process.communicate(timeout=15)
         require(len(calls)==1,'Owner recovery replayed the model request')
-        db=sqlite3.connect('file:'+str(data/'state.sqlite')+'?mode=ro',uri=True)
-        run=db.execute('SELECT id,status FROM runs WHERE conversation_id=? AND request_key=?',(chats[0],'unit-crash-request')).fetchone()
-        require(run and run[1]=='unknown','Interrupted Run did not retain UNKNOWN')
-        attempts=db.execute('SELECT kind,status FROM attempts WHERE run_id=?',(run[0],)).fetchall();db.close()
-        require(('model','unknown') in attempts,'Interrupted Attempt was replayed or lost')
+        view=api('GET','/api/chats/'+chats[0])['view']
+        turn=next((t for t in view['turns'] if t['request_key']=='unit-crash-request'),None)
+        require(turn and turn['state']=='unknown','Interrupted Run did not retain UNKNOWN')
+        inspected=cli('inspect','--run',turn['key'])
+        attempts=inspected['attempts']
+        require(any(a['kind']=='model' and a['status']=='unknown' for a in attempts),'Interrupted Attempt was replayed or lost')
         before=heartbeat.read_bytes();time.sleep(.3);require(heartbeat.read_bytes()==before,'Owner crash left a cgroup descendant writing')
         require(cli('commands','poll','--id',crash_background_id,'--json')['state']!='running','Crash command was replayed or still running')
-        cli('abandon','--run',run[0])
+        cli('abandon','--run',turn['key'])
     finally:
         release.set();fixture.shutdown();fixture.server_close()
         if process.poll() is None:process.kill();process.communicate()

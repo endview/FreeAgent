@@ -115,35 +115,21 @@ func makeCall(id, name string, args any) ToolCall {
 }
 
 func TestOpenStoreRejectsPreviousFormats(t *testing.T) {
-	if !strings.HasSuffix(StoreFormat, "-v10") {
-		t.Fatalf("store format %q", StoreFormat)
-	}
-	for name, statement := range map[string]string{
-		"user_version": `PRAGMA user_version=4`,
-		"format":       `UPDATE meta SET value='` + strings.Replace(StoreFormat, "v10", "v9", 1) + `' WHERE key='format'`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			service, _, _ := testHarness(t, EchoModel{})
-			data := service.Store.DataDir()
-			if _, err := service.Store.db.Exec(statement); err != nil {
+	for _, key := range []string{"format", "schema/version"} {
+		t.Run(key, func(t *testing.T) {
+			core, _, _ := testHarness(t, EchoModel{})
+			data := core.Store.DataDir()
+			admin := testPGAdmin(t, data)
+			if _, err := admin.ExecContext(t.Context(), `UPDATE fa.meta SET value='unsupported' WHERE key=$1`, key); err != nil {
 				t.Fatal(err)
 			}
-			if err := service.Store.Close(); err != nil {
-				t.Fatal(err)
-			}
-			path := filepath.Join(data, "state.sqlite")
-			before, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if store, err := OpenStore(context.Background(), data); !errors.Is(err, ErrStoreFormat) {
+			core.Store.Close()
+			store, err := OpenStore(t.Context(), data)
+			if !errors.Is(err, ErrStoreFormat) {
 				if store != nil {
-					_ = store.Close()
+					store.Close()
 				}
-				t.Fatalf("v3 store error=%v", err)
-			}
-			if after, _ := os.ReadFile(path); contentHash(before) != contentHash(after) {
-				t.Fatal("rejected v3 store was modified")
+				t.Fatal(err)
 			}
 		})
 	}
@@ -201,7 +187,7 @@ func TestFreshStoreIsolationPersistenceAndOwner(t *testing.T) {
 	if err != nil || len(messages) != 2 || messages[1].Content != "Echo: hello" {
 		t.Fatalf("history=%+v error=%v", messages, err)
 	}
-	for _, name := range []string{"config.json", "state.sqlite", "instructions", "backups"} {
+	for _, name := range []string{"config.json", "postgres.json", "instructions", "backups"} {
 		if _, err := os.Stat(filepath.Join(data, name)); err != nil {
 			t.Errorf("missing %s: %v", name, err)
 		}
@@ -210,7 +196,7 @@ func TestFreshStoreIsolationPersistenceAndOwner(t *testing.T) {
 
 func TestInitRejectsNonemptyAndOpenRejectsUnknownWithoutChangingFile(t *testing.T) {
 	base := t.TempDir()
-	path := filepath.Join(base, "state.sqlite")
+	path := filepath.Join(base, "postgres.json")
 	original := []byte("not our database")
 	if err := os.WriteFile(path, original, 0o600); err != nil {
 		t.Fatal(err)

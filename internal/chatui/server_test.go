@@ -988,9 +988,13 @@ func TestChatServerProviderFailureSnapshotRetainsClassification(t *testing.T) {
 		view.Turns[0].Activity[0].Text != "partial response" || len(view.Turns[0].Messages) != 1 {
 		t.Fatalf("snapshot hid Provider failure: %+v", view)
 	}
+	settledCalls := calls.Load()
+	if settledCalls != int32(ui.tasks.Config().ModelRetries+1) {
+		t.Fatal("model recovery did not obey its configured budget", settledCalls)
+	}
 	ui.request(t, "POST", "/api/chats/"+chat+"/submit", map[string]string{"prompt": "task", "request_key": "failure"})
 	ui.settled(t, chat)
-	if calls.Load() != 1 {
+	if calls.Load() != settledCalls {
 		t.Fatal("UI duplicate retried failed request")
 	}
 }

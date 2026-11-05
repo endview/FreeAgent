@@ -1,17 +1,17 @@
 # Optional channels
 
-Updated 2026-11-04 for v7.12. Telegram uses identity-bound applications and
-administrator approval. The [v7.11 private-text record](FREEAGENT_TELEGRAM_PRIVATE_LIVE_ACCEPTANCE_2026-11-03.md)
-does not certify this new admission flow. Two real accounts, groups, callbacks
-and live file delivery require separate acceptance. Lark and QQ are unchanged;
-they retain existing local/mock acceptance and their pairing flow.
+Updated for v8.0. Platform clients run in the optional `freeagent-channel`
+process; Core owns admission, deduplication, permissions, context and execution.
+Default installations open no platform connection. Lark/QQ retain mock coverage;
+new live acceptance is limited to the scenarios recorded in the release report.
 
 ## Setup
 
 1. Start the GUI/web/chat Owner. The CLI attaches to the same Owner. Disabled
    connections do no network work; optional transport errors leave local UI usable.
-2. Save a channel credential in Key management (protocol telegram/lark/qq), then
-   select it in Settings and explicitly enable the connection. Channel keys
+2. Save a channel credential under Settings → Connections → Channels, then
+   select it and explicitly enable the connection. Model Provider management
+   has a separate namespace and never lists platform protocols. Channel keys
    cannot be model keys. Lark/QQ also require their existing official App ID;
    QQ uses a numeric loopback listener behind your own HTTPS reverse proxy.
 3. Telegram: send `/start` privately or `/start@YourBot` in the target group.
@@ -50,11 +50,15 @@ store can bypass it. Stop access retains history. Deleting the external space
 also revokes access and moves conversations to Local; reauthorization does not
 republish that old history.
 
-Upgrade: inspect and resolve old unfinished Runs before switching executables.
-v7.12 refuses continuation of pre-update command snapshots. Existing Telegram
-spaces/history remain but are **not authorized** until an administrator verifies
-the numeric identities in Settings. Missing/ambiguous identities must apply
-again. Old pairing records and `/start` parameters never grant access.
+Desktop/interactive Owners launch the bundled channel process only after a
+connection is enabled; stopping the Owner stops that process. On servers, use
+the separate `deploy/freeagent-channel.service` after configuring the account.
+The generated bootstrap is private, generation-bound and not a database
+connection. Progress files contain platform cursors; durable input adoption and
+reply receipts remain in Core. Never run the same Bot in two polling processes.
+
+v8.0 uses a fresh PG database. Old histories are archived without import; approve
+the numeric Bot/chat/person identities again before exposing the new Bot.
 
 ## v7.13 running inputs
 

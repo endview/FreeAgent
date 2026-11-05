@@ -19,6 +19,7 @@ import (
 // localOwner serves the same authenticated surface for both web and terminal
 // owners. The caller retains the runtime lock until Close has drained requests.
 type localOwner struct {
+	channels      *channelProcess
 	publicSocket  *publicweb.SocketServer
 	publicHandler *chatui.PublicServer
 	address       string
@@ -30,8 +31,6 @@ type localOwner struct {
 	once          sync.Once
 	result        error
 	publish       handoff.Published
-	telegram      *harness.TelegramRuntime
-	lark, qq      *harness.AppChannelRuntime
 }
 
 func startLocalOwner(ctx context.Context, tasks *harness.TaskService, data string, port int, oneShot bool) (*localOwner, error) {
@@ -104,18 +103,11 @@ func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data s
 			}
 		}
 	}()
-	telegram := harness.NewTelegramRuntime(tasks)
-	telegram.SetDispatch(handler.DispatchChannel)
-	handler.AddChannelDelivery(telegram.Deliver)
-	_ = telegram.Start(ctx) // optional channel errors are exposed in local status
-	handler.SetTelegramRuntime(telegram)
-	lark, qq := harness.NewLarkRuntime(tasks), harness.NewQQRuntime(tasks)
-	for _, runtime := range []*harness.AppChannelRuntime{lark, qq} {
-		runtime.SetDispatch(handler.DispatchChannel)
-		handler.AddChannelDelivery(runtime.Deliver)
-		_ = runtime.Start(ctx)
+	if err := handler.ConfigureChannelBridge(); err != nil {
+		handler.Close()
+		published.Close()
+		return nil, err
 	}
-	handler.SetAppChannels(lark, qq)
 	handler.StartInputQueues()
 	client, err := handoff.NewInteractiveClient(published.Info, chatSecret)
 	if err != nil {
@@ -123,7 +115,7 @@ func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data s
 		published.Close()
 		return nil, err
 	}
-	owner := &localOwner{address: origin + "/#key=" + chatSecret, client: client, handler: handler, telegram: telegram, lark: lark, qq: qq,
+	owner := &localOwner{address: origin + "/#key=" + chatSecret, client: client, handler: handler,
 		publicHandler: publicHandler, publicSocket: publicSocket,
 		server: &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second},
 		done:   make(chan struct{}), publish: published}
@@ -131,6 +123,9 @@ func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data s
 		owner.serveErr = owner.server.Serve(listener)
 		close(owner.done)
 	}()
+	if mode != "service" {
+		owner.channels = startChannelProcess(ctx, data)
+	}
 	ready = true
 	return owner, nil
 }
@@ -143,17 +138,8 @@ func (owner *localOwner) Close() error {
 		if owner.publicHandler != nil {
 			owner.publicHandler.Close()
 		}
-		if owner.telegram != nil {
-			if telegramErr := owner.telegram.Stop(); telegramErr != nil {
-				owner.result = errors.Join(owner.result, telegramErr)
-			}
-		}
-		for _, runtime := range []*harness.AppChannelRuntime{owner.lark, owner.qq} {
-			if runtime != nil {
-				owner.result = errors.Join(owner.result, runtime.Stop())
-			}
-		}
 		owner.handler.Close()
+		owner.channels.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		err := owner.server.Shutdown(ctx)

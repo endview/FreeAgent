@@ -1,6 +1,6 @@
 # FreeAgent Linux portable preview
 
-Candidate: v7.12.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
+Candidate: v8.0.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
 the native Windows desktop/WebView2 executable is not included. Go, Node,
 Python and a system web server are not needed to run this package.
 
@@ -10,12 +10,12 @@ Verify the outer SHA256SUMS.txt, extract the complete archive into a writable
 directory, then start:
 
 ```sh
-tar -xzf FreeAgent-v7.12.0-dev.1-linux-amd64-portable.tar.gz
-cd FreeAgent-v7.12.0-dev.1-linux-amd64-portable
+tar -xzf FreeAgent-v8.0.0-dev.1-linux-amd64-portable.tar.gz
+cd FreeAgent-v8.0.0-dev.1-linux-amd64-portable
 ./FreeAgent
 ```
 
-The first start creates `data/Harness-v8` and `workspace`. Open the printed
+The first start creates `data/Harness-pg-v1` and `workspace`. Open the printed
 `http://127.0.0.1:PORT/#key=...` address in a browser on the same computer.
 Keep that address private. Ctrl+C or SIGTERM stops the Owner and its owned
 commands/services. Closing a browser tab does not stop execution.

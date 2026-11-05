@@ -28,12 +28,12 @@ func (s *commandSupervisor) liveUncertain() []CommandRecord {
 }
 func (s *commandSupervisor) unknownCount(ctx context.Context) (int, error) {
 	var count int
-	if err := s.store.db.QueryRowContext(ctx, `SELECT count(*) FROM meta WHERE key LIKE 'command/process/%' AND json_extract(value,'$.state')='unknown'`).Scan(&count); err != nil {
+	if err := s.store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta WHERE key LIKE 'command/process/%' AND (document #>> '{state}')='unknown'`).Scan(&count); err != nil {
 		return 0, err
 	}
 	for _, r := range s.liveUncertain() {
 		var exists bool
-		if err := s.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM meta WHERE key=? AND json_extract(value,'$.state')='unknown')`, commandMetaPrefix+r.ID).Scan(&exists); err != nil {
+		if err := s.store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key=$1 AND (document #>> '{state}')='unknown')`, commandMetaPrefix+r.ID).Scan(&exists); err != nil {
 			return 0, err
 		}
 		if !exists {
@@ -48,11 +48,11 @@ func (s *commandSupervisor) unknownCount(ctx context.Context) (int, error) {
 // that Attempt rather than losing the command or replaying it.
 func (s *commandSupervisor) recoverMissingCommands(ctx context.Context) error {
 	rows, err := s.store.db.QueryContext(ctx, `SELECT a.id,a.run_id,r.conversation_id,a.request_json,a.response_json
-	FROM attempts a JOIN runs r ON r.id=a.run_id WHERE a.kind='tool'
-	AND json_valid(a.request_json) AND json_extract(a.request_json,'$.Name')='command_run'
-	AND (json_extract(a.request_json,'$.Arguments.background')=1 OR json_extract(a.request_json,'$.Arguments.mode') IN ('background','service'))
-	AND (a.status IN ('unknown','dispatched') OR (a.status='finished' AND json_valid(a.response_json) AND json_extract(a.response_json,'$.Receipts[0].command_id')=a.id))
-	AND NOT EXISTS(SELECT 1 FROM meta WHERE key='command/process/'||a.id) LIMIT 201`)
+	FROM fa.attempts a JOIN fa.runs r ON r.id=a.run_id WHERE a.kind='tool'
+	AND (a.request_doc IS NOT NULL) AND (a.request_doc #>> '{Name}')='command_run'
+	AND (((a.request_doc #>> '{Arguments,background}')::boolean)=true OR (a.request_doc #>> '{Arguments,mode}') IN ('background','service'))
+	AND (a.status IN ('unknown','dispatched') OR (a.status='finished' AND (a.response_doc IS NOT NULL) AND (a.response_doc #>> '{Receipts,0,command_id}')=a.id))
+	AND NOT EXISTS(SELECT 1 FROM fa.meta WHERE key='command/process/'||a.id) LIMIT 201`)
 	if err != nil {
 		return err
 	}

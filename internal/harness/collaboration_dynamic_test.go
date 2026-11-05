@@ -14,9 +14,7 @@ func TestCollaborationRevisionPersistenceFailureRollsBackWholeEdit(t *testing.T)
 	collab, core, plan := collaborationFixture(t, EchoModel{})
 	id := createCollaboration(t, collab, plan)
 	before, _ := collab.Inspect(t.Context(), id)
-	if _, err := core.Store.db.ExecContext(t.Context(), `CREATE TEMP TRIGGER reject_revision
-		BEFORE INSERT ON meta WHEN NEW.key LIKE 'collaboration-revision/%'
-		BEGIN SELECT RAISE(ABORT,'revision persistence failure'); END`); err != nil {
+	if err := installPGFault(t, core.Store, "reject_revision", "meta", "INSERT", "NEW.key LIKE 'collaboration-revision/%'"); err != nil {
 		t.Fatal(err)
 	}
 	edit := CollaborationEdit{ExpectedRevision: 1, Reason: "atomic split", Retire: []string{"one"},
@@ -29,10 +27,10 @@ func TestCollaborationRevisionPersistenceFailureRollsBackWholeEdit(t *testing.T)
 		t.Fatal("failed revision partially changed existing records")
 	}
 	var children int
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM meta WHERE key LIKE 'collaboration-run/%' AND value=?`, id).Scan(&children); err != nil || children != 3 {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.meta WHERE key LIKE 'collaboration-run/%' AND value=$1`, id).Scan(&children); err != nil || children != 3 {
 		t.Fatalf("new run escaped failed revision: %d %v", children, err)
 	}
-	if _, err := core.Store.db.ExecContext(t.Context(), `DROP TRIGGER reject_revision`); err != nil {
+	if err := removePGFault(t, core.Store, "reject_revision", "meta"); err != nil {
 		t.Fatal(err)
 	}
 	if err := collab.Revise(t.Context(), id, edit); err != nil {

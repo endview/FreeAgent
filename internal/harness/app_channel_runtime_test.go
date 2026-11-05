@@ -158,7 +158,7 @@ func TestQQRuntimeLocalApprovalWindowAndSavedStatus(t *testing.T) {
 		t.Fatalf("status replayed model or did not send: %d %d", sends.Load(), calls.Load())
 	}
 	var uncertain int
-	err = tasks.core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM meta WHERE key LIKE 'channel/send/%' AND json_extract(value,'$.state')='failed'`).Scan(&uncertain)
+	err = tasks.core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.meta WHERE key LIKE 'channel/send/%' AND (document->>'state')='failed'`).Scan(&uncertain)
 	if err != nil || uncertain != 1 {
 		t.Fatalf("delivery uncertainty=%d %v", uncertain, err)
 	}
@@ -290,7 +290,7 @@ func TestChannelNoOpCompactRepliesWithoutSyntheticRun(t *testing.T) {
 		t.Fatal("no-op compact silently disappeared", sends.Load())
 	}
 	var count int
-	if err := tasks.core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM runs WHERE conversation_id=?`, space.DefaultConversationID).Scan(&count); err != nil || count != 0 {
+	if err := tasks.core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.runs WHERE conversation_id=$1`, space.DefaultConversationID).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("no-op invented run: %d %v", count, err)
 	}
 }

@@ -632,7 +632,7 @@ func TestAutoAssessmentAndMainShareParentCumulativeGuard(t *testing.T) {
 				t.Fatal(err)
 			}
 			snapshot, _ := service.snapshot()
-			if _, err := core.Store.db.ExecContext(t.Context(), `UPDATE runs SET config_json=? WHERE id=?`, snapshot, child.RunID); err != nil {
+			if _, err := core.Store.db.ExecContext(t.Context(), `UPDATE fa.runs SET config_json=$1 WHERE id=$2`, snapshot, child.RunID); err != nil {
 				t.Fatal(err)
 			}
 			if err := collab.activate(t.Context(), id, []string{child.Spec.Name}); err != nil {

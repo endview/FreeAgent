@@ -230,7 +230,7 @@ func TestAttachmentImagesResendBudgetAndNoBase64Persistence(t *testing.T) {
 		t.Fatal("omission was not reported", omissions)
 	}
 	var requestJSON string
-	if err := tasks.core.Store.db.QueryRowContext(t.Context(), `SELECT request_json FROM attempts WHERE kind='model' LIMIT 1`).Scan(&requestJSON); err != nil {
+	if err := tasks.core.Store.db.QueryRowContext(t.Context(), `SELECT request_json FROM fa.attempts WHERE kind='model' LIMIT 1`).Scan(&requestJSON); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(requestJSON, "iVBOR") || strings.Contains(requestJSON, "base64") {

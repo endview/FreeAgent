@@ -1,10 +1,12 @@
 package harness
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/endview/freeagent/internal/apppaths"
 	"github.com/endview/freeagent/internal/fileops"
+	"github.com/endview/freeagent/internal/postgres"
 )
 
 // Browser session storage can contain the local launch capability. It stays
@@ -18,7 +20,7 @@ func privateApplicationPaths(dataDir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return appendPrivatePaths(nil, append(paths, dataDir, keys)...), nil
+	return appendPrivatePaths(nil, append(paths, dataDir, keys, os.Getenv(postgres.ServiceFileEnv))...), nil
 }
 
 func appendPrivatePaths(paths []string, more ...string) []string {

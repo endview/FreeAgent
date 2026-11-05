@@ -15,7 +15,7 @@ import (
 )
 
 // DataFormat names the only data directory format this build reads.
-const DataFormat = "Harness-v8"
+const DataFormat = "Harness-pg-v1"
 
 // KeysFileEnv overrides the key file location (tests and troubleshooting).
 const KeysFileEnv = "FREEAGENT_KEYS_FILE"

@@ -28,7 +28,12 @@ func (tools disabledMemoryToolRunner) Prepare(ctx context.Context, call ToolCall
 	return tools.base.Prepare(ctx, call)
 }
 
-func (service *Service) runtimeTools(runID, attemptID string) ToolRunner {
+func (service *Service) runtimeTools(runID, attemptID string) (result ToolRunner) {
+	defer func() {
+		if service.verificationMode {
+			result = verificationTools{base: result}
+		}
+	}()
 	if service.operationsDenied() {
 		return deniedTools{}
 	}
@@ -213,8 +218,8 @@ func (tools *memoryTools) Prepare(ctx context.Context, call ToolCall) (PreparedT
 				sources := slices.Clone(args.Sources)
 				if len(sources) == 0 {
 					var id, response string
-					err := tx.QueryRowContext(ctx, `SELECT id,response_json FROM attempts WHERE run_id=? AND kind='model'
-						AND status='finished' ORDER BY rowid DESC LIMIT 1`, tools.runID).Scan(&id, &response)
+					err := tx.QueryRowContext(ctx, `SELECT id,response_json FROM fa.attempts WHERE run_id=$1 AND kind='model'
+						AND status='finished' ORDER BY seq DESC LIMIT 1`, tools.runID).Scan(&id, &response)
 					if err != nil {
 						return ToolResult{}, ErrMemoryDenied
 					}

@@ -11,130 +11,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"strings"
 )
 
-const BackupFormat = "freeagent-harness-backup-v4"
+const BackupFormat = "freeagent-postgres-backup-v1"
 
 type backupManifest struct {
 	Attachments  map[string]string `json:"attachments,omitempty"`
 	Format       string            `json:"format"`
+	IdentityHash string            `json:"identity_sha256"`
+	RefsHash     string            `json:"attachment_refs_sha256"`
 	StateHash    string            `json:"state_sha256"`
 	ConfigHash   string            `json:"config_sha256"`
 	Instructions map[string]string `json:"instructions,omitempty"`
-}
-
-func (store *Store) Backup(ctx context.Context, target string) (returnErr error) {
-	if !store.runMu.TryLock() {
-		return ErrActiveRun
-	}
-	defer store.runMu.Unlock()
-	store.attachmentMu.Lock()
-	defer store.attachmentMu.Unlock()
-	target, err := canonicalDir(target)
-	if err != nil {
-		return err
-	}
-	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("harness: backup target must not exist")
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-		return err
-	}
-	stage, err := os.MkdirTemp(filepath.Dir(target), ".harness-backup-*")
-	if err != nil {
-		return err
-	}
-	defer removeStaging(stage)
-	statePath := filepath.Join(stage, "state.sqlite")
-	// VACUUM INTO captures committed WAL pages in a standalone SQLite snapshot.
-	if _, err := store.db.ExecContext(ctx, `VACUUM INTO ?`, statePath); err != nil {
-		return fmt.Errorf("harness: SQLite snapshot: %w", err)
-	}
-	if err := os.Chmod(statePath, 0o600); err != nil {
-		return err
-	}
-	if err := verifyStore(ctx, statePath); err != nil {
-		return err
-	}
-	if err := copyRegularFile(filepath.Join(store.dataDir, "config.json"), filepath.Join(stage, "config.json")); err != nil {
-		return err
-	}
-	config, err := backupConfig(stage)
-	if err != nil {
-		return err
-	}
-	if err := copyInstructions(store.dataDir, stage, config.Instructions); err != nil {
-		return err
-	}
-	if err := copyAttachmentSnapshot(ctx, store.dataDir, stage); err != nil {
-		return err
-	}
-	manifest, err := manifestFor(stage)
-	if err != nil {
-		return err
-	}
-	raw, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := writeNewFile(filepath.Join(stage, "backup.json"), append(raw, '\n')); err != nil {
-		return err
-	}
-	if err := syncFile(statePath); err != nil {
-		return err
-	}
-	return publishDirectory(stage, target)
-}
-
-func Restore(ctx context.Context, source, target string) error {
-	source, err := canonicalDir(source)
-	if err != nil {
-		return err
-	}
-	target, err = canonicalDir(target)
-	if err != nil {
-		return err
-	}
-	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("harness: restore target must be a new directory")
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-		return err
-	}
-	stage, err := os.MkdirTemp(filepath.Dir(target), ".harness-restore-*")
-	if err != nil {
-		return err
-	}
-	defer removeStaging(stage)
-	// Copy into private staging first, then verify that exact copied snapshot.
-	for _, name := range []string{"state.sqlite", "config.json", "backup.json"} {
-		if err := copyRegularFile(filepath.Join(source, name), filepath.Join(stage, name)); err != nil {
-			return err
-		}
-	}
-	config, err := backupConfig(stage)
-	if err != nil {
-		return err
-	}
-	if err := copyInstructions(source, stage, config.Instructions); err != nil {
-		return err
-	}
-	if err := copyAttachmentSnapshot(ctx, source, stage); err != nil {
-		return err
-	}
-	if err := VerifyBackup(ctx, stage); err != nil {
-		return err
-	}
-	if err := os.Remove(filepath.Join(stage, "backup.json")); err != nil {
-		return err
-	}
-	for _, name := range []string{"instructions", "backups"} {
-		if err := os.MkdirAll(filepath.Join(stage, name), 0o700); err != nil {
-			return err
-		}
-	}
-	return publishDirectory(stage, target)
 }
 
 func VerifyBackup(ctx context.Context, source string) error {
@@ -142,7 +31,7 @@ func VerifyBackup(ctx context.Context, source string) error {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"state.sqlite", "config.json", "backup.json"} {
+	for _, name := range []string{"state.pgdump", "config.json", "backup.json"} {
 		if err := verifyRegularFile(filepath.Join(source, name)); err != nil {
 			return fmt.Errorf("harness: backup %s: %w", name, err)
 		}
@@ -171,14 +60,12 @@ func VerifyBackup(ctx context.Context, source string) error {
 	}
 	for _, entry := range entries {
 		switch entry.Name() {
-		case "state.sqlite", "config.json", "backup.json", "instructions", "attachments":
+		case "state.pgdump", "config.json", "backup.json", "identity.json", "attachment-refs.json", "instructions", "attachments":
 		default:
 			return errors.New("harness: unexpected backup file")
 		}
 	}
-	if err := verifyStore(ctx, filepath.Join(source, "state.sqlite")); err != nil {
-		return err
-	}
+
 	_, err = backupConfig(source)
 	return err
 }
@@ -211,7 +98,7 @@ func backupConfig(source string) (Config, error) {
 }
 
 func manifestFor(directory string) (backupManifest, error) {
-	stateHash, err := hashFile(filepath.Join(directory, "state.sqlite"))
+	stateHash, err := hashFile(filepath.Join(directory, "state.pgdump"))
 	if err != nil {
 		return backupManifest{}, err
 	}
@@ -238,7 +125,15 @@ func manifestFor(directory string) (backupManifest, error) {
 	if err != nil {
 		return backupManifest{}, err
 	}
-	return backupManifest{Format: BackupFormat, StateHash: stateHash, ConfigHash: configHash, Instructions: instructions, Attachments: attachments}, nil
+	identityHash, err := hashFile(filepath.Join(directory, "identity.json"))
+	if err != nil {
+		return backupManifest{}, err
+	}
+	refsHash, err := hashFile(filepath.Join(directory, "attachment-refs.json"))
+	if err != nil {
+		return backupManifest{}, err
+	}
+	return backupManifest{IdentityHash: identityHash, RefsHash: refsHash, Format: BackupFormat, StateHash: stateHash, ConfigHash: configHash, Instructions: instructions, Attachments: attachments}, nil
 }
 
 func copyInstructions(source, target string, names []string) error {
@@ -334,23 +229,22 @@ func publishDirectory(stage, target string) error {
 	return publishDirectoryNoReplace(stage, target)
 }
 
-func removeStaging(directory string) {
-	attachmentEntries, _ := os.ReadDir(filepath.Join(directory, "attachments"))
-	for _, entry := range attachmentEntries {
-		if attachmentID(entry.Name()) {
-			_ = os.Remove(filepath.Join(directory, "attachments", entry.Name()))
-		}
+func removeStaging(directory string) error {
+	// Only our exact MkdirTemp staging directory is eligible. Never remove a
+	// managed cluster whose postmaster did not finish stopping.
+	base := filepath.Base(directory)
+	if !filepath.IsAbs(directory) || !(strings.HasPrefix(base, ".harness-backup-") || strings.HasPrefix(base, ".harness-restore-")) {
+		return errors.New("harness: refusing unexpected staging cleanup path")
 	}
-	_ = os.Remove(filepath.Join(directory, "attachments"))
-	entries, _ := os.ReadDir(filepath.Join(directory, "instructions"))
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
-	for _, entry := range entries {
-		_ = os.Remove(filepath.Join(directory, "instructions", entry.Name()))
+	info, err := os.Lstat(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil // already published
 	}
-	_ = os.Remove(filepath.Join(directory, "instructions"))
-	_ = os.Remove(filepath.Join(directory, "backups"))
-	for _, name := range []string{"state.sqlite", "state.sqlite-wal", "state.sqlite-shm", "config.json", "backup.json"} {
-		_ = os.Remove(filepath.Join(directory, name))
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.Join(errors.New("harness: unsafe staging cleanup directory"), err)
 	}
-	_ = os.Remove(directory)
+	if _, err := os.Lstat(filepath.Join(directory, "postgresql", "postmaster.pid")); !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("harness: PostgreSQL may still be running; staging retained at %s", directory)
+	}
+	return os.RemoveAll(directory)
 }

@@ -98,7 +98,7 @@ func (tasks *TaskService) EnvironmentID() string {
 
 func chatState(run Run, attempts []Attempt) string {
 	for _, attempt := range attempts {
-		if attempt.Status == "unknown" {
+		if attempt.Status == "unknown" && attempt.Replacement == "" && attempt.Resolution == "" {
 			return "unknown"
 		}
 	}
@@ -172,14 +172,14 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 	args := []any{conversationID}
 	if before != "" {
 		var rowID int64
-		if err := tx.QueryRowContext(ctx, `SELECT rowid FROM runs WHERE id=? AND conversation_id=?`, before, conversationID).Scan(&rowID); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT seq FROM fa.runs WHERE id=$1 AND conversation_id=$2`, before, conversationID).Scan(&rowID); err != nil {
 			return ChatView{}, err
 		}
-		condition = " AND rowid<?"
+		condition = " AND seq<$2"
 		args = append(args, rowID)
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT `+runColumns+` FROM runs WHERE conversation_id=?
-		AND NOT(status='completed' AND EXISTS(SELECT 1 FROM meta WHERE key='`+maintenanceMetaPrefix+`'||runs.id))`+condition+` ORDER BY rowid DESC LIMIT 33`, args...)
+	rows, err := tx.QueryContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1
+		AND NOT(status='completed' AND EXISTS(SELECT 1 FROM fa.meta WHERE key='`+maintenanceMetaPrefix+`'||runs.id))`+condition+` ORDER BY seq DESC LIMIT 33`, args...)
 	if err != nil {
 		return ChatView{}, err
 	}
@@ -211,7 +211,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 			ModelID: run.ModelID, Permission: run.Permission, Messages: make([]ChatMessage, 0), Activity: make([]ChatActivity, 0),
 			Sources: make([]MemoryUse, 0), Evidence: attemptEvidence(attempts), Ended: run.Status == "abandoned"}
 		if strings.HasPrefix(run.RequestKey, "compact-") {
-			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM meta WHERE key=?)`, maintenanceMetaPrefix+run.ID).Scan(&turn.Maintenance); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key=$1)`, maintenanceMetaPrefix+run.ID).Scan(&turn.Maintenance); err != nil {
 				return ChatView{}, err
 			}
 		}
@@ -244,7 +244,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		if run.LimitSettled && turn.State != "unknown" {
 			turn.CanEnd = false
 		}
-		messages, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE conversation_id=? AND run_id=? AND (json_extract(body_json,'$.Role')='user' OR json_extract(body_json,'$.Role')='assistant' AND length(json_extract(body_json,'$.Content'))>0 OR json_array_length(json_extract(body_json,'$.Attachments'))>0) ORDER BY id DESC LIMIT 129`, conversationID, run.ID)
+		messages, err := tx.QueryContext(ctx, `SELECT id,body_json FROM fa.messages WHERE conversation_id=$1 AND run_id=$2 AND ((body_json #>> '{Role}')='user' OR (body_json #>> '{Role}')='assistant' AND length((body_json #>> '{Content}'))>0 OR jsonb_array_length((body_json #> '{Attachments}'))>0) ORDER BY id DESC LIMIT 129`, conversationID, run.ID)
 		if err != nil {
 			return ChatView{}, err
 		}
@@ -300,7 +300,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		for _, attempt := range attempts {
 			activity := ChatActivity{Key: attempt.ID, Kind: attempt.Kind, Status: attempt.Status, Name: attempt.ModelID}
 			var start string
-			if e := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "attempt/time/"+attempt.ID).Scan(&start); e == nil {
+			if e := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "attempt/time/"+attempt.ID).Scan(&start); e == nil {
 				if _, e := time.Parse(time.RFC3339Nano, start); e == nil {
 					activity.StartedAt = start
 				}
@@ -377,7 +377,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		view.Before = runs[0].ID
 	}
 	var branchRaw string
-	if e := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "conversation/branch/"+conversationID).Scan(&branchRaw); e == nil {
+	if e := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "conversation/branch/"+conversationID).Scan(&branchRaw); e == nil {
 		var origin BranchOrigin
 		if json.Unmarshal([]byte(branchRaw), &origin) != nil {
 			return ChatView{}, ErrStoreFormat
@@ -387,7 +387,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		return ChatView{}, e
 	}
 	if before == "" {
-		rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM messages WHERE conversation_id=? AND run_id IS NULL AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND (json_extract(body_json,'$.Channel.purpose') IN ('background','command','request') OR EXISTS(SELECT 1 FROM meta WHERE key='conversation/branch/'||messages.conversation_id)) ORDER BY id DESC LIMIT 100`, conversationID)
+		rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM fa.messages WHERE conversation_id=$1 AND run_id IS NULL AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND ((body_json #>> '{Channel,purpose}') IN ('background','command','request') OR EXISTS(SELECT 1 FROM fa.meta WHERE key='conversation/branch/'||messages.conversation_id)) ORDER BY id DESC LIMIT 100`, conversationID)
 		if err != nil {
 			return ChatView{}, err
 		}
@@ -433,7 +433,7 @@ func (tasks *TaskService) ChatRaw(ctx context.Context, conversationID, kind, key
 	var raw string
 	switch kind {
 	case "message":
-		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT m.body_json FROM messages m WHERE m.conversation_id=? AND m.id=?`, conversationID, key).Scan(&raw)
+		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT m.body_json FROM fa.messages m WHERE m.conversation_id=$1 AND m.id=$2`, conversationID, key).Scan(&raw)
 		if err != nil {
 			return "", err
 		}
@@ -447,8 +447,8 @@ func (tasks *TaskService) ChatRaw(ctx context.Context, conversationID, kind, key
 		return message.Content, nil
 	case "activity":
 		var activityKind, activityStatus string
-		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT a.kind,a.status,a.response_json FROM attempts a
-			JOIN runs r ON r.id=a.run_id WHERE r.conversation_id=? AND a.id=?`, conversationID, key).Scan(&activityKind, &activityStatus, &raw)
+		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT a.kind,a.status,a.response_json FROM fa.attempts a
+			JOIN fa.runs r ON r.id=a.run_id WHERE r.conversation_id=$1 AND a.id=$2`, conversationID, key).Scan(&activityKind, &activityStatus, &raw)
 		if err != nil {
 			return "", err
 		}
@@ -485,7 +485,7 @@ func (tasks *TaskService) ChatRaw(ctx context.Context, conversationID, kind, key
 // Keep snapshots bounded independently of task length. Full saved attempts are
 // available through Inspect and explicit raw reads, not repeated on each tick.
 func listChatAttempts(ctx context.Context, tx *sql.Tx, run string) ([]Attempt, bool, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT id,run_id,kind,call_id,status,request_json,response_json,rowid FROM attempts WHERE run_id=? ORDER BY rowid DESC LIMIT 129`, run)
+	rows, err := tx.QueryContext(ctx, `SELECT id,run_id,kind,call_id,status,request_json,response_json,seq FROM fa.attempts WHERE run_id=$1 ORDER BY seq DESC LIMIT 129`, run)
 	if err != nil {
 		return nil, false, err
 	}

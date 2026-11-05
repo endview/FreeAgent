@@ -162,7 +162,7 @@ func TestProbeRedactsKey(t *testing.T) {
 	}
 }
 
-func TestProbeTelegramUsesGetMeAndDoesNotPretendModelsExist(t *testing.T) {
+func TestModelProbeRejectsChannelCredentialsWithoutNetwork(t *testing.T) {
 	var path string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		path = request.URL.Path
@@ -175,7 +175,7 @@ func TestProbeTelegramUsesGetMeAndDoesNotPretendModelsExist(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := ProbeModels(t.Context(), key, server.Client())
-	if err != nil || result.Category != "ok" || result.Models != nil || result.Detail != "@fixture_bot" || path != "/bot12345678:fixture/getMe" {
+	if err == nil || result.Models != nil || path != "" {
 		t.Fatalf("result=%+v path=%q err=%v", result, path, err)
 	}
 }

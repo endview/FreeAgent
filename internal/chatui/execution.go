@@ -104,6 +104,12 @@ func (server *Server) deliverResult(result harness.RunResult) {
 	server.mu.Lock()
 	deliveries := append([]func(context.Context, harness.RunResult) error(nil), server.deliveries...)
 	server.mu.Unlock()
+	server.mu.Lock()
+	bridge := server.channelBridge
+	server.mu.Unlock()
+	if bridge != nil {
+		_ = bridge.Deliver(server.ctx, result)
+	}
 	for _, deliver := range deliveries {
 		if err := deliver(server.ctx, result); err != nil {
 			server.notify("channel_delivery_error", result.Run.ConversationID, "渠道交付未确认；执行不会重放。")

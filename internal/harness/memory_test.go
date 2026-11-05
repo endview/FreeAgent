@@ -131,15 +131,15 @@ func TestMemoryVersionLifecycleIdempotencyAndDeletion(t *testing.T) {
 		t.Fatalf("deleted reference=%v", err)
 	}
 	var count int
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM memory_revisions WHERE entry_id=?`, first.EntryID).Scan(&count); err != nil || count != 0 {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.memory_revisions WHERE entry_id=$1`, first.EntryID).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("deleted revisions=%d err=%v", count, err)
 	}
 	var title, body, sources string
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT title,body,sources_json FROM memories WHERE id=?`, first.EntryID).Scan(&title, &body, &sources); err != nil || title != "" || body != "" || sources != "[]" {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT title,body,sources_json FROM fa.memories WHERE id=$1`, first.EntryID).Scan(&title, &body, &sources); err != nil || title != "" || body != "" || sources != "[]" {
 		t.Fatalf("deleted content retained: %q %q %q %v", title, body, sources, err)
 	}
 	var operations string
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT group_concat(receipt_json) FROM memory_operations`).Scan(&operations); err != nil || strings.Contains(operations, "SENSITIVE_") {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT string_agg(receipt_json::text,',') FROM fa.memory_operations`).Scan(&operations); err != nil || strings.Contains(operations, "SENSITIVE_") {
 		t.Fatalf("operation log retained bodies: %s %v", operations, err)
 	}
 	action.RequestKey, action.Action, action.ExpectedRevision = "resurrect", "enable", 5
@@ -238,11 +238,11 @@ func TestMemorySourceValidationKnowledgeAndBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyStore(t.Context(), filepath.Join(core.Store.DataDir(), "state.sqlite")); err != nil {
+	if err := VerifyData(t.Context(), core.Store.DataDir()); err != nil {
 		t.Fatalf("FTS modified schema identity: %v", err)
 	}
 	var count int
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM knowledge_fts WHERE knowledge_fts MATCH ?`, `"全文检索"`).Scan(&count); err != nil || count != 1 {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.memories WHERE scope='knowledge' AND state='active' AND body LIKE $1`, `%全文检索%`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("FTS=%d err=%v", count, err)
 	}
 	for _, source := range []MemorySource{
@@ -268,7 +268,7 @@ func TestMemorySourceValidationKnowledgeAndBackup(t *testing.T) {
 	if _, err := tasks.SaveMemory(t.Context(), chat, action); err != nil {
 		t.Fatal(err)
 	}
-	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM knowledge_fts`).Scan(&count); err != nil || count != 0 {
+	if err := core.Store.db.QueryRowContext(t.Context(), `SELECT count(*) FROM fa.memories WHERE scope='knowledge' AND state='active'`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("deleted FTS=%d err=%v", count, err)
 	}
 	data := core.Store.DataDir()

@@ -79,6 +79,8 @@ func runMemory(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	fromTask := flags.String("from-task", "", "copy source private task")
 	fromPersonal := flags.Bool("from-personal", false, "copy from a personal source")
 	fromEntry := flags.String("from-entry", "", "exact entry to copy")
+	pinScope := flags.String("pin-scope", "conversation", "conversation, workspace or global; defaults to this conversation")
+	pinTarget := flags.String("pin-target", "", "explicit pin destination; omitted uses current conversation/workspace")
 	reuse := flags.String("reuse-session", "", "explicitly reuse the Agent identity from this session")
 	if err := parseFlags(flags, args[1:]); err != nil {
 		return err
@@ -114,7 +116,7 @@ func runMemory(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		if attachErr != nil {
 			return attachErr
 		}
-		request := harness.MemoryCommand{
+		request := harness.MemoryCommand{PinScope: *pinScope, PinTarget: *pinTarget,
 			Command: command, ConversationID: *chat, ScopeKind: *scopeKind, Owner: *owner, TaskID: *task,
 			Personal: *personal, Entries: append([]string(nil), entries...), Collections: append([]string(nil), collections...),
 			TaskPrivate: *taskPrivate, RunID: *runID, Title: *title, Kind: *kind, Body: *text, RequestKey: *key,
@@ -145,6 +147,13 @@ func runMemory(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		return err
 	}
 	defer closeAll()
+	if command == "pin" || command == "unpin" {
+		result, err := harness.ExecuteMemoryCommand(ctx, tasks, harness.MemoryCommand{Command: command, ConversationID: *chat, ScopeKind: *scopeKind, Owner: *owner, Personal: *personal, Entries: entries, ExpectedRevision: *revision, RequestKey: *key, Yes: *yes, PinScope: *pinScope, PinTarget: *pinTarget})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	}
 	if command == "sources" {
 		if *runID == "" {
 			return usageErr("memory sources: --run is required")

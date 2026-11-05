@@ -67,7 +67,7 @@ type metaReader interface {
 func loadCollaboration(ctx context.Context, reader metaReader, parentID string) (collaborationRecord, error) {
 	var record collaborationRecord
 	var raw string
-	err := reader.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "collaboration/"+parentID).Scan(&raw)
+	err := reader.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "collaboration/"+parentID).Scan(&raw)
 	if err != nil {
 		return record, err
 	}
@@ -86,14 +86,14 @@ func saveCollaboration(ctx context.Context, tx *sql.Tx, record collaborationReco
 	if len(raw) > 2<<20 {
 		return errors.New("harness: collaboration record exceeds limit")
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		"collaboration/"+record.ParentID, string(raw))
 	return err
 }
 
 func (store *Store) controlledParent(ctx context.Context, runID string) (string, error) {
 	var parent string
-	err := store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "collaboration-run/"+runID).Scan(&parent)
+	err := store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "collaboration-run/"+runID).Scan(&parent)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -102,8 +102,8 @@ func (store *Store) controlledParent(ctx context.Context, runID string) (string,
 
 func (store *Store) checkUncontrolled(ctx context.Context, conversationID string) error {
 	var count int
-	err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM runs r JOIN meta m ON m.key='collaboration-run/'||r.id
-		WHERE r.conversation_id=? AND r.status NOT IN ('completed','failed','abandoned')`, conversationID).Scan(&count)
+	err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM fa.runs r JOIN fa.meta m ON m.key='collaboration-run/'||r.id
+		WHERE r.conversation_id=$1 AND r.status NOT IN ('completed','failed','abandoned')`, conversationID).Scan(&count)
 	if err != nil {
 		return err
 	}
@@ -119,14 +119,14 @@ type collaborationGuard struct {
 }
 
 func (guard collaborationGuard) Reserve(ctx context.Context, tx *sql.Tx, attempt Attempt) error {
-	record, err := loadCollaboration(ctx, tx, guard.parentID)
+	record, err := loadCollaborationForUpdate(ctx, tx, guard.parentID)
 	if err != nil {
 		return err
 	}
 	if record.Control != "running" {
 		return ErrChildPaused
 	}
-	parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM runs WHERE id=?`, guard.parentID))
+	parent, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE id=$1`, guard.parentID))
 	if err != nil {
 		return err
 	}
@@ -154,8 +154,8 @@ func (guard collaborationGuard) Reserve(ctx context.Context, tx *sql.Tx, attempt
 					return ErrControlledRun
 				}
 				var count int
-				if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM attempts WHERE run_id=? AND kind='model'
-					AND json_extract(request_json,'$.Purpose')='planning'`, record.ParentID).Scan(&count); err != nil {
+				if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.attempts WHERE run_id=$1 AND kind='model'
+					AND (request_doc #>> '{Purpose}')='planning'`, record.ParentID).Scan(&count); err != nil {
 					return err
 				}
 				if count != 0 {
@@ -200,7 +200,7 @@ func (guard collaborationGuard) Reserve(ctx context.Context, tx *sql.Tx, attempt
 					}
 					var status string
 					if child.Control != "running" ||
-						tx.QueryRowContext(ctx, `SELECT status FROM runs WHERE id=?`, child.RunID).Scan(&status) != nil ||
+						tx.QueryRowContext(ctx, `SELECT status FROM fa.runs WHERE id=$1`, child.RunID).Scan(&status) != nil ||
 						status != "completed" {
 						return ErrControlledRun
 					}
@@ -270,7 +270,7 @@ func reserveCollaborationCall(ctx context.Context, tx *sql.Tx, record *collabora
 }
 
 func (guard collaborationGuard) Record(ctx context.Context, tx *sql.Tx, attempt Attempt, size int, final bool) error {
-	record, err := loadCollaboration(ctx, tx, guard.parentID)
+	record, err := loadCollaborationForUpdate(ctx, tx, guard.parentID)
 	if err != nil {
 		return err
 	}
@@ -300,8 +300,8 @@ func (guard collaborationGuard) Record(ctx context.Context, tx *sql.Tx, attempt 
 		return err
 	}
 	if final && guard.childName == "" && record.Control == "cancelled" {
-		if _, err := tx.ExecContext(ctx, `UPDATE runs SET status='abandoned',
-			stop_reason='collaboration cancelled; saved results and UNKNOWN retained',updated_at=? WHERE id=?`, nowText(), record.ParentID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='abandoned',
+			stop_reason='collaboration cancelled; saved results and UNKNOWN retained',updated_at=$1 WHERE id=$2`, nowText(), record.ParentID); err != nil {
 			return err
 		}
 	}
@@ -331,7 +331,7 @@ func recordChild(record collaborationRecord, name string) childRecord {
 }
 
 func recoverCollaborationLeases(ctx context.Context, tx *sql.Tx) error {
-	rows, err := tx.QueryContext(ctx, `SELECT key,value FROM meta WHERE key LIKE 'collaboration/%'`)
+	rows, err := tx.QueryContext(ctx, `SELECT key,value FROM fa.meta WHERE key LIKE 'collaboration/%'`)
 	if err != nil {
 		return err
 	}

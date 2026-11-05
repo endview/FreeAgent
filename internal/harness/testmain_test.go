@@ -37,6 +37,8 @@ func TestMain(m *testing.M) {
 // stopped shipping a model.
 func testEchoConfig(workspace string) Config {
 	config := DefaultConfig(workspace)
+	// Failure fixtures exercise a single dispatch; recovery has its own tests.
+	config.ModelRetries = 0
 	config.Models = map[string]ModelConfig{"default": {Provider: "echo"}}
 	config.DefaultModel = "default"
 	return config

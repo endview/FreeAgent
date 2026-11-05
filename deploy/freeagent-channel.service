@@ -1,0 +1,27 @@
+[Unit]
+Description=FreeAgent optional channel transport (one Core)
+After=network-online.target freeagent.service
+Requires=freeagent.service
+PartOf=freeagent.service
+
+[Service]
+Type=exec
+User=freeagent
+Group=freeagent
+UMask=0077
+WorkingDirectory=/var/lib/freeagent
+Environment=XDG_CACHE_HOME=/var/lib/freeagent/cache
+ExecStart=/opt/freeagent/current/bin/freeagent-channel --bootstrap-file /var/lib/freeagent/data/Harness-pg-v1/channel-runtime/telegram.json --state-dir /var/lib/freeagent/channel-progress
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillMode=control-group
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/freeagent
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

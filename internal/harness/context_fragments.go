@@ -37,7 +37,7 @@ func (service *Service) generateSummary(ctx context.Context, run Run, request Mo
 // Only the summarizer sees fragments; the model's real history remains intact.
 // The source digest advances only after every fragment has been summarized.
 func (service *Service) summarizeLargeGroup(ctx context.Context, run Run, prefix sourcePrefix, through int64, previous string, limit int, calls *int) (string, sourcePrefix, error) {
-	rows, err := service.Store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM messages WHERE conversation_id=? AND coalesce(json_extract(body_json,'$.Deferred'),0)=0 AND id>? AND id<=? ORDER BY id LIMIT 1001`, run.ConversationID, prefix.Through, through)
+	rows, err := service.Store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM fa.messages WHERE conversation_id=$1 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND id>$2 AND id<=$3 ORDER BY id LIMIT 1001`, run.ConversationID, prefix.Through, through)
 	if err != nil {
 		return previous, prefix, err
 	}
@@ -79,7 +79,7 @@ func (service *Service) summarizeLargeGroup(ctx context.Context, run Run, prefix
 		return previous, prefix, ErrContextLimit
 	}
 	projected := group
-	if service.publicContext() {
+	if service.scopedHistory() {
 		projected = service.projectPublicMessages(group)
 	}
 	data := string(mustJSON(projected))

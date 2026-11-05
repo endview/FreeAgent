@@ -100,7 +100,7 @@ func TestCollaborationResultFreezeAtomicAndUnavailableSources(t *testing.T) {
 	if err := collab.Control(t.Context(), id, "two", "resume"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := core.Store.db.ExecContext(t.Context(), `CREATE TEMP TRIGGER freeze_fault BEFORE UPDATE ON messages BEGIN SELECT RAISE(ABORT,'freeze failure'); END`); err != nil {
+	if err := installPGFault(t, core.Store, "freeze_fault", "messages", "UPDATE", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := collab.deliverResults(t.Context(), core, id, "two", 1); err == nil {
@@ -110,7 +110,7 @@ func TestCollaborationResultFreezeAtomicAndUnavailableSources(t *testing.T) {
 	if after.Children[1].Run.Prompt != report.Children[1].Run.Prompt || len(after.Children[1].Delivered) != 0 {
 		t.Fatal("failed transaction partially delivered results")
 	}
-	if _, err := core.Store.db.ExecContext(t.Context(), `DROP TRIGGER freeze_fault`); err != nil {
+	if err := removePGFault(t, core.Store, "freeze_fault", "messages"); err != nil {
 		t.Fatal(err)
 	}
 	if err := collab.deliverResults(t.Context(), core, id, "two", 1); err != nil {
@@ -194,13 +194,13 @@ func TestCollaborationFrozenResultIntegrityBeforeDispatch(t *testing.T) {
 							}
 							result.Content += " "
 							raw, _ := json.Marshal(result)
-							_, err := tx.ExecContext(t.Context(), `UPDATE attempts SET response_json=? WHERE id=?`, string(raw), attempt.ID)
+							_, err := tx.ExecContext(t.Context(), `UPDATE fa.attempts SET response_json=$1 WHERE id=$2`, string(raw), attempt.ID)
 							return err
 						}
 					}
 					t.Fatal("source has no tool attempt")
 				case "source_unknown":
-					_, err := tx.ExecContext(t.Context(), `UPDATE attempts SET status='unknown' WHERE run_id=? AND kind='tool'`, record.Children[0].RunID)
+					_, err := tx.ExecContext(t.Context(), `UPDATE fa.attempts SET status='unknown' WHERE run_id=$1 AND kind='tool'`, record.Children[0].RunID)
 					return err
 				}
 				return nil
@@ -394,7 +394,7 @@ func TestCollaborationResultsRestoreWithoutSourceReplay(t *testing.T) {
 		len(report.Children[1].Delivered) != 1 {
 		t.Fatalf("restore=%+v %v calls=%d", report, err, sourceCalls.Load())
 	}
-	if _, err := os.Stat(filepath.Join(restored, "state.sqlite")); err != nil {
+	if _, err := os.Stat(filepath.Join(restored, "postgres.json")); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -1,13 +1,12 @@
 package chatui
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
-	"github.com/endview/freeagent/internal/channels"
+	"github.com/endview/freeagent/internal/channelwire"
 	"github.com/endview/freeagent/internal/harness"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -15,47 +14,42 @@ import (
 
 func TestTelegramAccessRequiresInteractiveSurfaceAndUsesOwnerLifetime(t *testing.T) {
 	ui := setupUI(t, harness.EchoModel{})
-	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "sendMessage") {
-			var message struct {
-				ChatID int64 `json:"chat_id"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&message)
-			fmt.Fprintf(w, `{"ok":true,"result":{"message_id":42,"chat":{"id":%d}}}`, message.ChatID)
-			return
-		}
-		if strings.HasSuffix(r.URL.Path, "getMe") {
-			fmt.Fprint(w, `{"ok":true,"result":{"id":1,"is_bot":true,"username":"fixture_bot"}}`)
-			return
-		}
-		select {
-		case <-r.Context().Done():
-			return
-		case <-time.After(20 * time.Millisecond):
-			fmt.Fprint(w, `{"ok":true,"result":[]}`)
-		}
-	}))
-	defer remote.Close()
-	key, err := ui.tasks.Keys().Add(harness.KeyInput{Name: "fixture bot", BaseURL: remote.URL, Protocol: harness.KeyProtocolTelegram, Source: "saved", Secret: []byte("12345678:FIXTURE_TOKEN")})
+	key, err := ui.tasks.ChannelKeys().Add(harness.KeyInput{Name: "fixture bot", BaseURL: "https://api.telegram.org", Protocol: harness.KeyProtocolTelegram, Source: "saved", Secret: []byte("12345678:FIXTURE_TOKEN")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := harness.NewTelegramRuntime(ui.tasks)
-	ui.server.SetTelegramRuntime(runtime)
-	runtime.SetDispatch(ui.server.DispatchChannel)
-	ui.server.AddChannelDelivery(runtime.Deliver)
-	t.Cleanup(func() { runtime.Stop() })
-	code, raw := ui.request(t, "PATCH", "/api/channels/telegram", map[string]any{"enabled": true, "key": key.ID})
+	connection := channelwire.Connection{ID: "telegram-test", Source: "telegram", ApplicationID: "1", Credential: key.ID, Enabled: true}
+	code, raw := ui.request(t, "PATCH", "/api/channels", map[string]any{"connections": []channelwire.Connection{connection}})
 	if code != 200 {
 		t.Fatal(code, string(raw))
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for !runtime.Status().Running && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
+	bridge := ui.server.channelBridge
+	if bridge == nil {
+		t.Fatal("configured connection did not create a Core bridge")
 	}
-	if !runtime.Status().Running {
-		t.Fatalf("request lifetime stopped optional channel: %+v", runtime.Status())
-	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				ops, err := bridge.Outbox(ctx, "telegram-test")
+				if err != nil {
+					return
+				}
+				for _, op := range ops {
+					_ = bridge.Receipt(ctx, "telegram-test", channelwire.Receipt{ID: op.ID, Dispatch: op.Dispatch, State: "sent", MessageID: "42"})
+				}
+			}
+		}
+	}()
+	defer func() { cancel(); <-done }()
 	request, err := http.NewRequestWithContext(t.Context(), "GET", ui.http.URL+"/api/attach/channels", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +72,7 @@ func TestTelegramAccessRequiresInteractiveSurfaceAndUsesOwnerLifetime(t *testing
 	if code != 410 {
 		t.Fatal("obsolete TG pairing remained", code, string(raw))
 	}
-	if err := runtime.HandleUpdate(t.Context(), channels.TelegramUpdate{ID: 1, Message: &channels.TelegramMessage{ID: 1, Date: 1, Chat: channels.TelegramChat{ID: 90, Type: "private"}, From: &channels.TelegramUser{ID: 7, FirstName: "Applicant"}, Text: "/start payload-cannot-authorize"}}); err != nil {
+	if err := bridge.Inbound(t.Context(), "telegram-test", channelwire.Event{ID: "1", Target: channelwire.Target{Source: "telegram", ApplicationID: "1", ChatID: "90"}, Person: "telegram:user:7", Name: "Applicant", Message: "1", Kind: "private", Text: "/start payload-cannot-authorize", Trigger: true}); err != nil {
 		t.Fatal(err)
 	}
 	code, raw = ui.request(t, "GET", "/api/channels/telegram/access", nil)

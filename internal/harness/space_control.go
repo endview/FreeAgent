@@ -78,7 +78,7 @@ func (service *ControlService) spaceControlState(ctx context.Context, personID s
 		person = &p
 	}
 	attachmentHash := sha256.New()
-	rows, err := service.core.Store.db.QueryContext(ctx, `SELECT key,value FROM meta WHERE key LIKE 'attachment/%' ORDER BY key`)
+	rows, err := service.core.Store.db.QueryContext(ctx, `SELECT key,value FROM fa.meta WHERE key LIKE 'attachment/%' ORDER BY key`)
 	if err != nil {
 		return nil, err
 	}
@@ -175,9 +175,13 @@ func (service *ControlService) buildSpaceControl(ctx context.Context, record *co
 		if err != nil {
 			return err
 		}
+		if next.OwnerPrivate && space.ChatKind != "private" {
+			return ErrPermissionDenied
+		}
 		next.SpaceID = args.SpaceID
 		args.Selection = &next
 		record.Operation.Preview = fmt.Sprintf("Change space %q from %s to %s for ALL its conversations. Existing Runs never gain authority; reductions stop new operations and request command termination.", space.Title, previous.Mode, next.Mode)
+		record.Operation.Preview += fmt.Sprintf("\nOwner private context: %t -> %t; only an explicitly verified Owner private chat may inherit private defaults.", previous.OwnerPrivate, next.OwnerPrivate)
 	case ControlPersonPermission:
 		if !validPersonID(args.PersonID) || args.Mode.Validate() != nil || len([]rune(args.DisplayName)) > 128 || hasControl(args.DisplayName) {
 			return ErrPermissionDenied

@@ -2,20 +2,14 @@ package harness
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 )
 
-func snapshotAttachmentRefs(ctx context.Context, state string) ([]AttachmentRef, error) {
-	db, err := sql.Open("sqlite", sqliteDSN(state, "ro"))
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-	rows, err := db.QueryContext(ctx, `SELECT value FROM meta WHERE key LIKE 'attachment/%' AND COALESCE(json_extract(value,'$.deleted'),0)=0 ORDER BY key LIMIT 10001`)
+func snapshotAttachmentRefs(ctx context.Context, db attemptReader) ([]AttachmentRef, error) {
+	rows, err := db.QueryContext(ctx, `SELECT value FROM fa.meta WHERE key LIKE 'attachment/%' AND COALESCE(((document #>> '{deleted}')::boolean),false)=false ORDER BY key LIMIT 10001`)
 	if err != nil {
 		return nil, err
 	}
@@ -37,11 +31,23 @@ func snapshotAttachmentRefs(ctx context.Context, state string) ([]AttachmentRef,
 	}
 	return refs, rows.Err()
 }
-func copyAttachmentSnapshot(ctx context.Context, source, target string) error {
-	refs, err := snapshotAttachmentRefs(ctx, filepath.Join(target, "state.sqlite"))
-	if err != nil {
-		return err
+func readSnapshotAttachmentRefs(directory string) ([]AttachmentRef, error) {
+	raw, err := os.ReadFile(filepath.Join(directory, "attachment-refs.json"))
+	if err != nil || len(raw) > 4<<20 {
+		return nil, ErrAttachment
 	}
+	var refs []AttachmentRef
+	if json.Unmarshal(raw, &refs) != nil || len(refs) > 10000 {
+		return nil, ErrAttachment
+	}
+	for _, ref := range refs {
+		if !attachmentID(ref.ID) || len(ref.SHA256) != 64 {
+			return nil, ErrAttachment
+		}
+	}
+	return refs, nil
+}
+func copyAttachmentRefs(source, target string, refs []AttachmentRef) error {
 	if len(refs) == 0 {
 		return nil
 	}
@@ -59,7 +65,7 @@ func copyAttachmentSnapshot(ctx context.Context, source, target string) error {
 	return nil
 }
 func attachmentManifest(ctx context.Context, directory string) (map[string]string, error) {
-	refs, err := snapshotAttachmentRefs(ctx, filepath.Join(directory, "state.sqlite"))
+	refs, err := readSnapshotAttachmentRefs(directory)
 	if err != nil {
 		return nil, err
 	}

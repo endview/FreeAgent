@@ -128,8 +128,7 @@ func TestCollaborationSynthesisSavedAfterCompletionFaultNoReplay(t *testing.T) {
 			plan = analysisPlan(plan)
 			plan.Synthesis = true
 			id := createCollaboration(t, collab, plan)
-			if _, err := core.Store.db.ExecContext(t.Context(), `CREATE TEMP TRIGGER completion_fault BEFORE UPDATE OF status ON runs
-		WHEN NEW.id='`+id+`' AND NEW.status='completed' BEGIN SELECT RAISE(ABORT,'completion failure'); END`); err != nil {
+			if err := installPGFault(t, core.Store, "completion_fault", "runs", "UPDATE OF status", "NEW.id='"+id+"' AND NEW.status='completed'"); err != nil {
 				t.Fatal(err)
 			}
 			report, err := collab.Continue(t.Context(), id)
@@ -139,6 +138,11 @@ func TestCollaborationSynthesisSavedAfterCompletionFaultNoReplay(t *testing.T) {
 				t.Fatalf("save fault=%+v %v", report, err)
 			}
 			data := core.Store.DataDir()
+			// A PG fault trigger is explicit DDL, unlike SQLite's connection-local
+			// TEMP trigger. Repair the injected dependency before the restart.
+			if err := removePGFault(t, core.Store, "completion_fault", "runs"); err != nil {
+				t.Fatal(err)
+			}
 			if err := core.Store.Close(); err != nil {
 				t.Fatal(err)
 			}

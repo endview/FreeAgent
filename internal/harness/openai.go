@@ -135,9 +135,9 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 		raw, _ := io.ReadAll(io.LimitReader(response.Body, (64<<10)+1))
 		var decoded openAIEnvelope
 		if len(raw) <= 64<<10 && json.Unmarshal(raw, &decoded) == nil {
-			return ModelResponse{}, normalizeProviderError(response.StatusCode, decoded.Error, key)
+			return ModelResponse{}, withRetryAfter(normalizeProviderError(response.StatusCode, decoded.Error, key), response.Header)
 		}
-		return ModelResponse{}, normalizeProviderError(response.StatusCode, nil, key)
+		return ModelResponse{}, withRetryAfter(normalizeProviderError(response.StatusCode, nil, key), response.Header)
 	}
 	kind, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	var result ModelResponse
@@ -567,7 +567,7 @@ func normalizeProviderError(status int, detail *openAIError, key string) *CallEr
 	switch {
 	case code == "context_length_exceeded":
 		err.Category = "context_limit"
-	case code == "insufficient_quota" || kind == "insufficient_quota" ||
+	case status == 402 || code == "insufficient_quota" || kind == "insufficient_quota" ||
 		code == "credit_balance_exhausted" || code == "organization_spend_limit_exceeded" ||
 		code == "project_spend_limit_exceeded" || code == "organization_usage_limit_exceeded":
 		err.Category = "quota"

@@ -294,12 +294,12 @@ func reviewStepStore(tb testing.TB, models, tools int) (*Store, string) {
 		if err != nil {
 			tb.Fatal(err)
 		}
-		if _, err := store.db.ExecContext(ctx, `INSERT INTO attempts VALUES(?,?,'model','','finished',?,'')`,
+		if _, err := store.db.ExecContext(ctx, `INSERT INTO fa.attempts(id,run_id,kind,call_id,status,request_json,response_json) VALUES($1,$2,'model','','finished',$3,'')`,
 			newID(), run.ID, string(raw)); err != nil {
 			tb.Fatal(err)
 		}
 		if index < tools {
-			if _, err := store.db.ExecContext(ctx, `INSERT INTO attempts VALUES(?,?,'tool',?,'finished','{}','')`,
+			if _, err := store.db.ExecContext(ctx, `INSERT INTO fa.attempts(id,run_id,kind,call_id,status,request_json,response_json) VALUES($1,$2,'tool',$3,'finished','{}','')`,
 				newID(), run.ID, newID()); err != nil {
 				tb.Fatal(err)
 			}

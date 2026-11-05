@@ -5,13 +5,17 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/endview/freeagent/internal/channelwire"
 	"github.com/endview/freeagent/internal/harness"
 	"io"
 	"strconv"
 	"strings"
 )
 
-func runChannel(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+func runChannel(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if len(args) >= 2 && args[1] == "credential" {
+		return runChannelCredential(ctx, args, stdin, stdout, stderr)
+	}
 	if len(args) < 2 || args[0] != "telegram" && args[0] != "lark" && args[0] != "qq" || args[1] != "status" && args[1] != "pair-code" && args[1] != "configure" && args[1] != "access" {
 		return usageErr("usage: freeagent channel <telegram|lark|qq> <status|pair-code|configure> --data-dir <directory> [--enabled true|false --key ID --app-id ID --listen 127.0.0.1:PORT]")
 	}
@@ -26,6 +30,7 @@ func runChannel(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	data := flags.String("data-dir", defaultDataDir(), "Owner data directory")
 	enabled := flags.String("enabled", "", "true or false")
 	key := flags.String("key", "", "saved credential profile ID")
+	connection := flags.String("connection", "", "explicit optional connection ID")
 	app := flags.String("app-id", "", "official application ID")
 	listen := flags.String("listen", "", "QQ loopback callback host:port")
 	code := flags.String("request-code", "", "approve one identity-bound Telegram application")
@@ -109,50 +114,54 @@ func runChannel(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	case "pair-code":
 		out, err = client.ChannelPair(ctx, args[0])
 	case "configure":
-		current, e := client.ChannelStatus(ctx, args[0])
+		if *connection == "" {
+			return usageErr("--connection is required; use one explicit connection per account")
+		}
+		current, e := client.ChannelStatus(ctx, "")
 		if e != nil {
 			return e
 		}
-		on := false
+		var status struct {
+			Config harness.ChannelsConfig `json:"config"`
+		}
+		if json.Unmarshal(current, &status) != nil {
+			return usageErr("invalid channel state")
+		}
+		config := status.Config
+		index := -1
+		for n, c := range config.Connections {
+			if c.ID == *connection {
+				index = n
+			}
+		}
+		c := channelwire.Connection{ID: *connection, Source: args[0]}
+		if index >= 0 {
+			c = config.Connections[index]
+		}
+		if c.Source != args[0] {
+			return usageErr("connection belongs to another platform")
+		}
 		if *enabled != "" {
 			if *enabled != "true" && *enabled != "false" {
 				return usageErr("--enabled must be true or false")
 			}
-			on = *enabled == "true"
+			c.Enabled = *enabled == "true"
 		}
-		if args[0] == "telegram" {
-			var s harness.TelegramChannelStatus
-			if json.Unmarshal(current, &s) != nil {
-				return usageErr("invalid channel status")
-			}
-			config := harness.TelegramConfig{Enabled: s.Enabled, Key: s.Key}
-			if *key != "" {
-				config.Key = *key
-			}
-			if *enabled != "" {
-				config.Enabled = on
-			}
-			out, err = client.ChannelConfigure(ctx, args[0], config)
+		if *key != "" {
+			c.Credential = *key
+		}
+		if *app != "" {
+			c.ApplicationID = *app
+		}
+		if *listen != "" {
+			c.Listen = *listen
+		}
+		if index < 0 {
+			config.Connections = append(config.Connections, c)
 		} else {
-			var status harness.AppChannelStatus
-			if json.Unmarshal(current, &status) != nil {
-				return usageErr("invalid channel status")
-			}
-			c := status.Config
-			if *enabled != "" {
-				c.Enabled = on
-			}
-			if *key != "" {
-				c.Key = *key
-			}
-			if *app != "" {
-				c.AppID = *app
-			}
-			if *listen != "" {
-				c.Listen = *listen
-			}
-			out, err = client.ChannelConfigure(ctx, args[0], c)
+			config.Connections[index] = c
 		}
+		out, err = client.ChannelConfigure(ctx, "", config)
 	}
 	if err != nil {
 		return err

@@ -43,7 +43,7 @@ func (store *Store) spacePermission(ctx context.Context, spaceID string) (Permis
 	}
 	selection := PermissionSelection{SpaceID: spaceID, Source: "space", Mode: PermissionNone}
 	var raw string
-	err := store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "space/permission/"+spaceID).Scan(&raw)
+	err := store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "space/permission/"+spaceID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return selection, nil
 	}
@@ -92,7 +92,13 @@ func (tasks *TaskService) persistSpacePermission(ctx context.Context, spaceID st
 	if json.Unmarshal(raw, &next) != nil || next.validate() != nil || next.SpaceID != spaceID || next.Source != "space" {
 		return ErrInvalidSpace
 	}
-	if _, err := tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+	if next.OwnerPrivate {
+		space, err := tasks.core.Store.GetSpace(ctx, spaceID)
+		if err != nil || space.ChatKind != "private" {
+			return ErrPermissionDenied
+		}
+	}
+	if _, err := tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		"space/permission/"+spaceID, string(raw)); err != nil {
 		return err
 	}
@@ -120,7 +126,7 @@ func (tasks *TaskService) PersonPermission(ctx context.Context, id string) (Pers
 	}
 	result := PersonPermission{ID: id, Mode: PermissionNone}
 	var raw string
-	err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, "person/"+id).Scan(&raw)
+	err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "person/"+id).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return result, nil
 	}
@@ -148,7 +154,7 @@ func (tasks *TaskService) SetPersonPermission(ctx context.Context, id, displayNa
 		return ErrFullAccessConfirmation
 	}
 	next := PersonPermission{ID: id, DisplayName: displayName, Mode: mode, UpdatedAt: nowText()}
-	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "person/"+id, string(mustJSON(next)))
+	_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "person/"+id, string(mustJSON(next)))
 	if err == nil && permissionRank(mode) < permissionRank(previous.Mode) {
 		return tasks.stopPermissionCommands(ctx, "", id)
 	}
@@ -195,6 +201,9 @@ func (service *Service) checkCurrentPermission(ctx context.Context, run Run) err
 	space, err := service.Store.spacePermission(ctx, selected.SpaceID)
 	if err != nil {
 		return err
+	}
+	if selected.OwnerPrivate && !space.OwnerPrivate {
+		return ErrPermissionRevoked
 	}
 	current := space.Mode
 	if selected.RemoteLimit != "" {
@@ -256,12 +265,12 @@ func (service *Service) operationsDenied() bool {
 	return service != nil && service.permission != nil && service.permission.Mode == PermissionNone
 }
 
-func (service *Service) externalContext() bool {
-	return service != nil && service.permission != nil && service.permission.Entry != "" && service.permission.Entry != SpaceSourceLocal
+func (service *Service) spaceContext() bool {
+	return service != nil && service.permission != nil && service.permission.SpaceID != "" && service.permission.SpaceID != LocalSpaceID
 }
 
-func (service *Service) publicContext() bool {
-	return service.operationsDenied() || service.externalContext()
+func (service *Service) scopedHistory() bool {
+	return service.operationsDenied() || service.spaceContext() && !service.permission.OwnerPrivate
 }
 
 func publicMessages(messages []Message) []Message {

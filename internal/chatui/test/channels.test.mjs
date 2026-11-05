@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { channelConfig, channelSections, telegramAccessSection } from '../src/channels.mjs';
-test('channel forms preserve explicit false, scope keys and escape platform text', () => {
- const status = {config:{lark:{enabled:false,key:'k',app_id:'cli_1'}},lark:{config:{enabled:true},last_error:'<secret>',limitations:['<limit>']}};
+test('optional connections preserve explicit false and isolate channel credentials',()=>{
+ const status={config:{connections:[{id:'lark-one',source:'lark',enabled:false,credential:'k',application_id:'app:tenant'}]},connections:[]};
  assert.equal(channelConfig(status,'lark').enabled,false);
- const html=channelSections(status,[{id:'k',protocol:'lark',name:'Saved app'},{id:'model',protocol:'openai-compatible',name:'Must not appear'}]);
- assert.match(html,/Saved app/);assert.doesNotMatch(html,/Must not appear|<secret>|<limit>/);assert.match(html,/&lt;secret&gt;/);assert.match(html,/\/qq\/events/);assert.match(html,/channel-qq-listen/);
+ const html=channelSections(status,[{id:'k',protocol:'lark',name:'Saved app'}]);
+ assert.match(html,/Saved app/);assert.match(html,/channel-connection-delete/);assert.match(html,/\/qq\/events/);
+ assert.doesNotMatch(channelSections(),/channel-telegram-enabled|channel-lark-enabled|channel-qq-enabled|Telegram 准入/);
+ const escaped=channelSections({config:{connections:[{id:'<id>',source:'telegram',application_id:'1',enabled:true}]}});
+ assert.doesNotMatch(escaped,/<id>/);assert.match(escaped,/&lt;id&gt;/);
 });
 
 test('Telegram replaces bearer pairing with identity-bound admin approval and separate tool limits', () => {
- const html=channelSections({telegram:{running:true},telegram_access:{requests:[{id:'r',code:'ABCD2345',display_name:'<admin>',target:{application_id:'1',chat_id:'-2'},person_id:'telegram:user:9',kind:'group',expires_at:'2026-11-04'}]}});
+ const html=channelSections({config:{connections:[{id:'bot',source:'telegram',enabled:true,application_id:'1'}]},telegram_access:{requests:[{id:'r',code:'ABCD2345',display_name:'<admin>',target:{application_id:'1',chat_id:'-2'},person_id:'telegram:user:9',kind:'group',expires_at:'2026-11-04'}]}});
  const telegram=html.split('data-channel="lark"')[0];
  assert.doesNotMatch(telegram,/channel-code|\/pair|<admin>/);
  assert.match(telegram,/ABCD2345|telegram-access-approve/);assert.match(telegram,/&lt;admin&gt;/);

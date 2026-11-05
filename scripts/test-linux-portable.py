@@ -72,7 +72,7 @@ def main():
     require(len(packages) == 1, 'Expected one portable package')
     package = packages[0]
     manifest = json.loads((package / 'manifest.json').read_text())
-    require(manifest['target'] == 'linux/amd64' and manifest['data_format'] == 'Harness-v8', 'Wrong target/format')
+    require(manifest['target'] == 'linux/amd64' and manifest['data_format'] == 'Harness-pg-v1', 'Wrong target/format')
     require(not manifest['bundled_credentials'] and not manifest['bundled_user_data'], 'Bundled state claimed')
     require(not (package / 'data').exists() and not (package / 'workspace').exists(), 'Package contains runtime state')
     for line in (package / 'SHA256SUMS.txt').read_text().splitlines():
@@ -169,7 +169,7 @@ def main():
 
     try:
         port = start_owner()
-        data, workspace = package / 'data/Harness-v8', package / 'workspace'
+        data, workspace = package / 'data/Harness-pg-v1', package / 'workspace'
         config = json.loads((data / 'config.json').read_text())
         require(config['workspace'] == str(workspace) and config['models'] == {}, 'Fresh init is not isolated/empty')
         require(all(not c['enabled'] for c in config['channels'].values()), 'Channel enabled by default')
