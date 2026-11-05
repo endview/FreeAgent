@@ -1,6 +1,6 @@
-# FreeAgent v7.0 Settings
+# FreeAgent Global Settings (v8.0)
 
-v7.0 keeps one lightweight execution core for the desktop Chat and CLI. Both
+FreeAgent keeps one lightweight execution core for the desktop Chat and CLI. Both
 surfaces attach to the same owner when it is running; they do not open a second
 database Owner. Persistent settings are applied through the typed control service
 and take effect in the next Run.

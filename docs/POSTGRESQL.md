@@ -74,3 +74,8 @@ python scripts/test-postgres.py --runtime <准备好的 postgresql> -- go test -
 
 真实存储测试使用临时 PG 服务和各自独立库，不能用 SQLite 或 SQL 转译模拟 PG。
 真实 Provider/Telegram 需要外部条件；未运行的验收须明确列出。
+
+
+大历史基准可通过相同包装器运行 `go run scripts/benchmark-postgres.go`。它会在临时服务内
+创建独立 Core，生成 10 万 Run、40 万消息、30 万 Attempt（约 1.8 GiB），以 Echo 测量
+真实 TaskService 的任务与启动耗时，并保留同步提交。它不测试真实模型等待或冷缓存性能。

@@ -12,6 +12,12 @@ It uses a new
 current-only `Harness-pg-v1` data directory and the PostgreSQL v1 store format. Old
 configurations, databases, backups, commands, and SDKs are not supported or
 imported. Do not point it at an old data directory.
+v8.0 uses PostgreSQL 15.19 as its only Store and bundles the local runtime.
+It adds bounded model recovery, read-only verification of uncertain tools,
+optional platform transport processes, pinned Memory and grouped settings.
+No old history is imported; see [PostgreSQL](docs/POSTGRESQL.md) and the
+[implementation record](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md).
+
 The v7 control service, GUI/CLI attach path, sandboxed Windows command
 launcher and current provider adapters are implemented. The v7.0 acceptance
 checks passed on 2026-10-21: real DeepSeek Chat, tools, Responses and web
@@ -222,7 +228,7 @@ restore --source <backup-directory> --data-dir <new-directory>
 ```
 
 Use `--data-dir` on each runtime command. Otherwise the default is
-`os.UserConfigDir()/FreeAgent/Harness-v5`. On Windows this is normally under
+`os.UserConfigDir()/FreeAgent/Harness-pg-v1`. On Windows this is normally under
 `APPDATA`, not the preview directory in the example above.
 Flags must precede task text. `config model` updates one named local profile;
 `--default` also changes the default used by unselected Chats. `--remove`

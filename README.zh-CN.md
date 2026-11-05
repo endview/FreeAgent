@@ -2,11 +2,15 @@
 
 一个精简的本地 Harness：持久对话、模型与工具调用、流式输出、精确审批、
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
-TaskService 与 SQLite Store，基础文件操作不需要安装 MCP。
+TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
 当前源码为 **v8.0.0-dev.1 开发候选**，尚未发布到 GitHub。
 [历史 Windows / Linux 发行包](https://github.com/endview/FreeAgent/releases)
-· [English](README.md) · [v7.12 实施与验收](docs/FREEAGENT_V7_12_IMPLEMENTATION_PROGRESS.md)。
+· [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
+
+v8.0 统一使用随包 PostgreSQL 15.19；增加有限执行恢复、未知工具结果只读核查、
+可选渠道进程、固定 Memory 与二级设置。旧历史只留备份，不导入新库。
+数据库启停和维护见 [PostgreSQL 使用说明](docs/POSTGRESQL.md)。
 
 v7.12 使用 Telegram `/start` 身份申请、管理员批准与统一名单替换旧通用配对码。
 接入只授予聊天，不自动提升工具权限；撤权保留空间与历史，阻止后续派发和回传。
@@ -15,7 +19,7 @@ Full 仍遵守显式 deny/ask 和非空可执行文件白名单，旧命令快�
 新安装默认开启 4096 字节自动压缩，已有关闭设置保持关闭；同时修正提案到期、
 附件最终版本选择和普通限额结算，只有用户明确继续才创建关联的下一轮。
 
-使用独立的 `Harness-pg-v1` 数据目录、Store v10 和 backup-v4。不导入旧配置、
+使用独立的 `Harness-pg-v1` 数据目录、PostgreSQL v1 Store 和 backup-v1。不导入旧配置、
 数据库或备份；请解压到新目录，保留旧程序自己的数据。便携包未签名，
 不包含用户数据或凭据，无需安装 Go 或 Node。
 

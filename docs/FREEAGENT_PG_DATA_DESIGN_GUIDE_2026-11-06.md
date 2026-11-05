@@ -95,7 +95,7 @@ Core 可以通过获授权工具维护更大的知识集合；索引构建、批
 | `spaces` | 本 Core PG 表 | 空间可见范围；沿用 v7.15 去平台后的绑定契约，不重新把平台运行时编入 Core |
 | `conversations` | PG 表；关联 space/workspace | 增加消息/Run 局部序列计数；同一会话写入顺序可确定 |
 | `runs` | PG 表；保存配置快照、状态、耗时、输出 | `UNIQUE(conversation_id, request_key)`；保留既有活跃 Run 限制 |
-| `messages` | PG 表；消息内容 JSONB、明确的关系与顺序列 | `UNIQUE(conversation_id, seq)`；非空来源请求去重键唯一，普通消息允许没有该键；分支/摘要引用稳定 |
+| `messages` | PG 表；消息内容 JSONB、明确的关系与顺序列 | `PRIMARY KEY(conversation_id,id)`，id 为会话局部序号；非空来源请求去重键唯一，普通消息允许没有该键；分支/摘要引用稳定 |
 | `attempts` | PG 表；调用种类、状态、请求、结果、序号 | `UNIQUE(run_id, seq)`；UNKNOWN 与处置关联分开，禁止覆盖历史不确定性 |
 | `memories` / `memory_revisions` / `memory_operations` | 沿用三类记录，放入 PG | 版本比较后更新；旧版本只读；发布请求幂等；维持现有范围授权 |
 | `meta` | 小型、带命名空间的 JSONB 值 | 输入采用、控制确认、摘要、渠道回执、附件元数据、现有协作关联优先继续复用 |

@@ -62,6 +62,19 @@ def build(target, go, output, allow_dirty=False, postgres_runtime=None):
     dependency = json.loads(runtime_manifest.read_text(encoding='utf-8'))
     if dependency.get('version') != '15.19' or dependency.get('target') != target:
         raise SystemExit('PostgreSQL runtime version/target differs from the release contract.')
+    declared = {r['path'] for r in dependency['files']}
+    if len(declared) != len(dependency['files']):
+        raise SystemExit('Repeated PostgreSQL runtime inventory entry.')
+    actual = set()
+    for path in runtime.rglob('*'):
+        if path.is_symlink() and (path.is_dir() or not path.resolve().is_relative_to(runtime)):
+            raise SystemExit('Unsafe PostgreSQL runtime link.')
+        if path.is_file():
+            actual.add(path.relative_to(runtime).as_posix())
+        elif not path.is_dir():
+            raise SystemExit('Unexpected PostgreSQL runtime special file.')
+    if actual != declared | {'runtime-source.json'}:
+        raise SystemExit('PostgreSQL runtime has missing or undeclared files; prepare a clean runtime.')
     for record in dependency['files']:
         relative = Path(record['path'])
         if relative.is_absolute() or '..' in relative.parts or relative.as_posix() != record['path']:

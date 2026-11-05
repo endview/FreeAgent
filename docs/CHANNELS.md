@@ -33,14 +33,15 @@ CLI (Owner running; --confirm explicitly authorizes the displayed numeric scope)
 
 ```powershell
 freeagent channel telegram status --data-dir <data>
-freeagent channel telegram configure --data-dir <data> --key <saved-id> --enabled true
+freeagent channel telegram credential add --data-dir <data> --name <account> --base-url https://api.telegram.org --key-stdin
+freeagent channel telegram configure --connection telegram --data-dir <data> --key <channel-credential-id> --app-id <numeric-bot-id> --enabled true
 freeagent channel telegram access --data-dir <data>
 freeagent channel telegram access --data-dir <data> --request-code ABCD2345 --confirm
 freeagent channel telegram access --data-dir <data> --chat-id 123456 --kind private --members 123456 --confirm
 freeagent channel telegram access --data-dir <data> --chat-id 123456 --access-enabled=false --confirm
-freeagent channel lark configure --data-dir <data> --key <saved-id> --app-id <app> --enabled true
+freeagent channel lark configure --connection lark --data-dir <data> --key <saved-id> --app-id <app> --enabled true
 freeagent channel lark pair-code --data-dir <data>
-freeagent channel qq configure --data-dir <data> --key <saved-id> --app-id <app> --listen 127.0.0.1:8098 --enabled true
+freeagent channel qq configure --connection qq --data-dir <data> --key <saved-id> --app-id <app> --listen 127.0.0.1:8098 --enabled true
 ```
 
 AI proposals use `channels.set_policy` and `telegram.set_access` with existing

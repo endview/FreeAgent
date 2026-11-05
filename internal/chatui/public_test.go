@@ -157,6 +157,41 @@ func TestPublicProxyOriginAuthenticationCSRFAndRouteBoundary(t *testing.T) {
 	}
 }
 
+func TestPublicDatabaseStatusRequiresLoginAndDoesNotExposeConnection(t *testing.T) {
+	f := newPublicFixture(t, nil)
+	if w := f.request(t, "GET", "/api/settings/database", nil, nil); w.Code != 401 {
+		t.Fatal("database status bypassed login", w.Code)
+	}
+	f.login(t)
+	w := f.request(t, "GET", "/api/settings/database", nil, nil)
+	var status harness.DatabaseStatus
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &status) != nil || status.Backend != "PostgreSQL" || status.CoreID == "" || status.PoolLimit != 4 {
+		t.Fatal("authenticated PG status unavailable", w.Code, w.Body.String())
+	}
+	raw, err := os.ReadFile(filepath.Join(f.ui.tasks.DataDir(), "postgres.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var connection struct {
+		Password string `json:"password"`
+		User     string `json:"user"`
+	}
+	if err := json.Unmarshal(raw, &connection); err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{connection.Password, connection.User, f.ui.server.token} {
+		if secret != "" && strings.Contains(w.Body.String(), secret) {
+			t.Fatal("database status exposed private connection/capability")
+		}
+	}
+	if w := f.request(t, "PUT", "/api/settings/database", strings.NewReader(`{}`), nil); w.Code != 404 {
+		t.Fatal("read-only status allowed mutation", w.Code)
+	}
+	if w := f.request(t, "POST", "/api/client/detach", nil, map[string]string{"X-FreeAgent-Client": "public-closing"}); w.Code != 200 {
+		t.Fatal("public normal-close notification failed", w.Code)
+	}
+}
+
 func TestPublicAttachmentOwnershipAndAsynchronousEntryPermission(t *testing.T) {
 	requests := make(chan harness.ModelRequest, 4)
 	f := newPublicFixture(t, fixtureModel(func(_ context.Context, r harness.ModelRequest, _ func(string)) (harness.ModelResponse, error) {

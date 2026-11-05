@@ -12,7 +12,111 @@ import (
 	"time"
 
 	"github.com/endview/freeagent/internal/postgres"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestPostgresDeadlockAndSerializationFailuresRollbackAtomically(t *testing.T) {
+	core, _, _ := testHarness(t, EchoModel{})
+	a, b := conversation(t, core), conversation(t, core)
+	t.Run("deadlock", func(t *testing.T) {
+		tx1, err := core.Store.db.BeginTx(t.Context(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx1.Rollback()
+		tx2, err := core.Store.db.BeginTx(t.Context(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx2.Rollback()
+		for tx, id := range map[*sql.Tx]string{tx1: a, tx2: b} {
+			if _, err := tx.ExecContext(t.Context(), `UPDATE fa.conversations SET title='uncommitted' WHERE id=$1`, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var pid int
+		if err := tx1.QueryRowContext(t.Context(), `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+			t.Fatal(err)
+		}
+		first := make(chan error, 1)
+		go func() {
+			_, err := tx1.ExecContext(t.Context(), `UPDATE fa.conversations SET title='first' WHERE id=$1`, b)
+			first <- err
+		}()
+		deadline := time.Now().Add(3 * time.Second)
+		blocked := false
+		for time.Now().Before(deadline) {
+			if err := core.Store.db.QueryRowContext(t.Context(), `SELECT cardinality(pg_blocking_pids($1))>0`, pid).Scan(&blocked); err != nil {
+				t.Fatal(err)
+			}
+			if blocked {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		if !blocked {
+			t.Fatal("first transaction did not actually block")
+		}
+		_, secondErr := tx2.ExecContext(t.Context(), `UPDATE fa.conversations SET title='second' WHERE id=$1`, a)
+		if secondErr != nil {
+			_ = tx2.Rollback()
+		} else if err := tx2.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		firstErr := <-first
+		if firstErr != nil {
+			_ = tx1.Rollback()
+		} else if err := tx1.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		var pg *pgconn.PgError
+		if !errors.As(errors.Join(firstErr, secondErr), &pg) || pg.Code != "40P01" || (firstErr == nil) == (secondErr == nil) {
+			t.Fatal("deadlock did not surface exactly one aborted transaction", firstErr, secondErr)
+		}
+		var titleA, titleB string
+		if err := core.Store.db.QueryRowContext(t.Context(), `SELECT a.title,b.title FROM fa.conversations a,fa.conversations b WHERE a.id=$1 AND b.id=$2`, a, b).Scan(&titleA, &titleB); err != nil {
+			t.Fatal(err)
+		}
+		if firstErr != nil && (titleA != "second" || titleB != "uncommitted") || secondErr != nil && (titleA != "uncommitted" || titleB != "first") {
+			t.Fatal("aborted transaction leaked partial changes", titleA, titleB)
+		}
+	})
+	t.Run("serialization", func(t *testing.T) {
+		var txs []*sql.Tx
+		defer func() {
+			for _, tx := range txs {
+				_ = tx.Rollback()
+			}
+		}()
+		for range 2 {
+			tx, err := core.Store.db.BeginTx(t.Context(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+			if err != nil {
+				t.Fatal(err)
+			}
+			txs = append(txs, tx)
+			var title string
+			if err := tx.QueryRowContext(t.Context(), `SELECT title FROM fa.conversations WHERE id=$1`, a).Scan(&title); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := txs[0].ExecContext(t.Context(), `UPDATE fa.conversations SET title='committed winner' WHERE id=$1`, a); err != nil {
+			t.Fatal(err)
+		}
+		if err := txs[0].Commit(); err != nil {
+			t.Fatal(err)
+		}
+		_, err := txs[1].ExecContext(t.Context(), `UPDATE fa.conversations SET title='must not commit' WHERE id=$1`, a)
+		var pg *pgconn.PgError
+		if !errors.As(err, &pg) || pg.Code != "40001" {
+			t.Fatal("serialization conflict was hidden", err)
+		}
+		_ = txs[1].Rollback()
+		var title string
+		if err := core.Store.db.QueryRowContext(t.Context(), `SELECT title FROM fa.conversations WHERE id=$1`, a).Scan(&title); err != nil || title != "committed winner" {
+			t.Fatal("serialization failure changed committed state", title, err)
+		}
+	})
+}
 
 func TestPostgresPoolWaitCancellationAndTransactionRollback(t *testing.T) {
 	core, _, _ := testHarness(t, EchoModel{})
