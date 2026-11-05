@@ -527,7 +527,8 @@ func TestSettingsNetworkToolRequiresOriginsAndHotReloads(t *testing.T) {
 
 func (ui *testUI) settled(t *testing.T, chat string) harness.ChatView {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// Two default retries wait up to 4.4s before PG work and race/CI overhead.
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		code, raw := ui.request(t, "GET", "/api/chats/"+chat, nil)
 		var payload struct {

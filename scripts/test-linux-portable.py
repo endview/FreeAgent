@@ -172,7 +172,8 @@ def main():
         data, workspace = package / 'data/Harness-pg-v1', package / 'workspace'
         config = json.loads((data / 'config.json').read_text())
         require(config['workspace'] == str(workspace) and config['models'] == {}, 'Fresh init is not isolated/empty')
-        require(all(not c['enabled'] for c in config['channels'].values()), 'Channel enabled by default')
+        require(not any(c.get('enabled') for c in config.get('channels', {}).get('connections', [])),
+                'Channel enabled by default')
         checks['fresh_launcher'] = True
         with urllib.request.urlopen(origin + '/', timeout=5) as page:
             require(page.status == 200 and b'<html' in page.read().lower(), 'Embedded Web UI not served')
