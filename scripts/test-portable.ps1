@@ -172,6 +172,7 @@ try {
         $desktopCheck = [pscustomobject]@{
             fresh_desktop_launch = 'NOT_RUN'; desktop_reopen = 'NOT_RUN'
             desktop_engine_path = 'NOT_RUN'; desktop_http = 'NOT_RUN'; desktop_close = 'NOT_RUN'
+            desktop_close_preserves_web = 'NOT_RUN'
         }
     } else {
         $desktopCheck = & (Join-Path $PSScriptRoot 'test-desktop-startup.ps1') -Package $package
@@ -294,6 +295,7 @@ try {
         desktop_engine_path = $desktopCheck.desktop_engine_path
         desktop_http = $desktopCheck.desktop_http
         desktop_close = $desktopCheck.desktop_close
+        desktop_close_preserves_web = $desktopCheck.desktop_close_preserves_web
         portable_init = $true
         init_refuses_existing = $true
         portable_keys = $true

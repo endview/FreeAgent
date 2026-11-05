@@ -5,6 +5,7 @@ package main
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"log"
 	"net/url"
 	"reflect"
@@ -21,6 +22,7 @@ import (
 
 type desktopWebView struct {
 	clientID        string
+	closed          atomic.Bool
 	view            webview2.WebView
 	subclass        *windowSubclass
 	origin          string
@@ -180,6 +182,9 @@ func (w *desktopWebView) initGuard() {
 }
 
 func (w *desktopWebView) checkSource() error {
+	if w.closed.Load() {
+		return errors.New("desktop window is closed")
+	}
 	source, err := webViewSource(w.view)
 	if err != nil {
 		return err
@@ -221,26 +226,31 @@ func (w *desktopWebView) updateDarkTitleBar(dark bool) {
 }
 
 func (w *desktopWebView) navigate(address string) {
-	if w == nil || w.view == nil {
+	if w == nil || w.view == nil || w.closed.Load() {
 		return
 	}
 	w.view.Dispatch(func() {
-		if w.view != nil {
+		if !w.closed.Load() {
 			w.view.Navigate(address)
 		}
 	})
 }
 
 func (w *desktopWebView) Close() {
-	if w == nil || w.view == nil {
+	if w == nil || w.view == nil || !w.closed.CompareAndSwap(false, true) {
 		return
+	}
+	// go-webview2.Destroy only posts WM_CLOSE; it does not close the COM
+	// controller. Explicitly release the document and its SSE before waiting
+	// for an idle Owner, including when the native window was already closed.
+	if err := closeWebViewController(w.view); err != nil {
+		log.Printf("close WebView2 controller: %v", err)
 	}
 	if w.subclass != nil {
 		w.subclass.allowWindowClose()
 		w.subclass.restore()
 	}
 	w.view.Destroy()
-	w.view = nil
 }
 
 func (w *desktopWebView) onCloseForError() {
@@ -263,23 +273,56 @@ type coreWebViewVtbl struct {
 	GetSource   edge.ComProc
 }
 
-func webViewSource(view webview2.WebView) (string, error) {
+func webViewBrowser(view webview2.WebView) (*edge.Chromium, error) {
 	raw := reflect.ValueOf(view)
 	if raw.Kind() != reflect.Pointer || raw.IsNil() {
-		return "", errors.New("WebView2 source is unavailable")
+		return nil, errors.New("WebView2 source is unavailable")
 	}
 	raw = raw.Elem()
 	browserField := raw.FieldByName("browser")
 	if !browserField.IsValid() {
-		return "", errors.New("WebView2 browser is unavailable")
+		return nil, errors.New("WebView2 browser is unavailable")
 	}
 	browserField = reflect.NewAt(browserField.Type(), unsafe.Pointer(browserField.UnsafeAddr())).Elem()
-	browser := reflect.ValueOf(browserField.Interface())
-	if browser.Kind() != reflect.Pointer || browser.IsNil() {
-		return "", errors.New("WebView2 browser is unavailable")
+	browser, ok := browserField.Interface().(*edge.Chromium)
+	if !ok || browser == nil {
+		return nil, errors.New("WebView2 browser is unavailable")
 	}
-	browser = browser.Elem()
-	webviewField := browser.FieldByName("webview")
+	return browser, nil
+}
+
+func closeWebViewController(view webview2.WebView) error {
+	browser, err := webViewBrowser(view)
+	if err != nil {
+		return err
+	}
+	controller := browser.GetController()
+	if controller == nil {
+		return errors.New("WebView2 controller is unavailable")
+	}
+	// ICoreWebView2Controller v1: IUnknown and 21 methods precede Close.
+	// The dependency is pinned; this is the same COM layout used for GetSource.
+	type controllerVTable struct {
+		BeforeClose [24]edge.ComProc
+		Close       edge.ComProc
+	}
+	type controllerLayout struct{ VTable *controllerVTable }
+	layout := (*controllerLayout)(unsafe.Pointer(controller))
+	result, _, _ := layout.VTable.Close.Call(uintptr(unsafe.Pointer(controller)))
+	runtime.KeepAlive(controller)
+	runtime.KeepAlive(browser)
+	if int32(result) < 0 {
+		return fmt.Errorf("WebView2 controller Close HRESULT %#x", result)
+	}
+	return nil
+}
+
+func webViewSource(view webview2.WebView) (string, error) {
+	browser, err := webViewBrowser(view)
+	if err != nil {
+		return "", err
+	}
+	webviewField := reflect.ValueOf(browser).Elem().FieldByName("webview")
 	if !webviewField.IsValid() {
 		return "", errors.New("WebView2 source is unavailable")
 	}

@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Package
+    [string]$Package,
+    [ValidateRange(2, 10)]
+    [int]$Iterations = 2
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,7 +57,7 @@ $configDigest = $null
 try {
     Remove-Item Env:FREEAGENT_DESKTOP_FORCE_BROWSER -ErrorAction SilentlyContinue
     Remove-Item Env:FREEAGENT_KEYS_FILE -ErrorAction SilentlyContinue
-    foreach ($iteration in 1..2) {
+    foreach ($iteration in 1..$Iterations) {
         # No arguments and no CLI pre-initialization: the actual desktop entry point.
         $start = [Diagnostics.ProcessStartInfo]::new()
         $start.FileName = $desktop
@@ -104,7 +106,27 @@ try {
             throw 'Desktop engine did not serve the embedded frontend.'
         }
 
+        # Exercise close after the embedded document has time to open its SSE,
+        # as well as the earlier immediate-close case. A separate authenticated
+        # client must remain usable while this desktop document is destroyed.
+        Start-Sleep -Milliseconds 750
+        $otherWeb = $null
+        if ($iteration -eq 2) {
+            $launchText = & $cli owner url --data-dir $data
+            if ($LASTEXITCODE -ne 0) { throw 'Could not attach a second client.' }
+            $launchURL = [uri]($launchText -join '').Trim()
+            $otherOrigin = $launchURL.GetLeftPart([UriPartial]::Authority)
+            $otherWeb = @{ Origin=$otherOrigin; 'X-FreeAgent-Key'=$launchURL.Fragment.Substring(5); 'X-FreeAgent-Client'='desktop-regression-other-web' }
+            $null = Invoke-RestMethod -Uri "$otherOrigin/api/connect" -Headers $otherWeb -Method Post -TimeoutSec 5
+        }
+
         $null = [FreeAgentStartupWindow]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        if ($null -ne $otherWeb) {
+            if ($desktopProcess.WaitForExit(1500)) { throw 'Closing the desktop stopped the connected Web client Owner.' }
+            $remaining = Invoke-RestMethod -Uri "$otherOrigin/api/environment" -Headers $otherWeb -TimeoutSec 5
+            if (-not $remaining.environment) { throw 'Remaining Web client lost its shared Owner.' }
+            $null = Invoke-RestMethod -Uri "$otherOrigin/api/client/detach" -Headers $otherWeb -Method Post -TimeoutSec 5
+        }
         if (-not $desktopProcess.WaitForExit(15000) -or $desktopProcess.ExitCode -ne 0) {
             throw 'Desktop did not exit cleanly after closing its idle main window.'
         }
@@ -123,6 +145,7 @@ try {
         desktop_engine_path = $true
         desktop_http = $true
         desktop_close = $true
+        desktop_close_preserves_web = $true
     }
 } finally {
     # Only processes whose executable belongs to this fresh test package.
