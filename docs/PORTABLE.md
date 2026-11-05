@@ -22,8 +22,10 @@ Extract the entire ZIP to a writable directory, then double-click
 
 The desktop app uses Microsoft WebView2 when it is installed. If WebView2 is
 unavailable, it opens the same local Chat in the default browser and shows a
-stop prompt. Closing that prompt stops FreeAgent. The launch address and token
-are private to that local process.
+notice. Closing the browser or notice does not cancel work. Use
+`bin\freeagent.exe owner status` to inspect the Owner and
+`bin\freeagent.exe owner stop` to stop it explicitly. The launch address and
+token are private to that local process.
 
 The first start has no configured model. Open Key management, save a Provider
 profile, explicitly enable its switch, and add/select a model. Test connection
