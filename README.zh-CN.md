@@ -4,11 +4,13 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-当前工作树为 **v8.3.0-dev.2 开发候选**，包含 React/TypeScript 工作台、排障工具、长历史访问和可选独立 Go AffectWeave 扩展接口。以下链接指向已发布的 v8.3 候选 1；工作树功能与真实验收见[实施记录](docs/FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)。
-[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.3.0-dev.1)
+已发布 **v8.3.0-dev.2 开发候选**，包含 React/TypeScript 工作台、排障工具、长历史访问和可选独立 Go AffectWeave 扩展接口。实际检查及设备边界见[验收报告](docs/FREEAGENT_V8_3_ACCEPTANCE_2026-11-07.md)，实施过程见[记录](docs/FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)。
+[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.3.0-dev.2)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 
 后续工作按 [v8.0.1–v8.3 实施计划](docs/FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md) 推进。
+
+[AffectWeave Go 可选包](https://github.com/endview/affectweave/releases/tag/v1.0.0-dev.1)独立发行，默认关闭；普通 Core 不因此启动人物进程或创建扩展库。
 
 v8.0 统一使用随包 PostgreSQL 15.19；增加有限执行恢复、未知工具结果只读核查、
 可选渠道进程、固定 Memory 与二级设置。旧历史只留备份，不导入新库。

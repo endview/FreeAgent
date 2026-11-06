@@ -2,6 +2,8 @@
 
 开始日期：2026-11-06。实施范围与验收以[主计划](FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md)为准；未运行的项目不计通过。
 
+2026-11-07 最终状态：v8.0.1—v8.3 主体已以 [v8.3.0-dev.2](https://github.com/endview/FreeAgent/releases/tag/v8.3.0-dev.2) 开发候选发布，独立 AffectWeave 1.0.0-dev.1 已发布，Hytron 已保留数据更新。最终源码的 Windows/Ubuntu 普通与 race 四组 CI 全部 PASS；实际设备/外部平台缺口和独立经验总结批次见[最终验收](FREEAGENT_V8_3_ACCEPTANCE_2026-11-07.md)。下文按时间保留早期“进行中/未完成”和失败记录，以本段及最终验收为当前状态。
+
 ## GitHub 基线交付
 
 - 已推送 v8.0 的 14 个本地提交与后续计划/开发指南，main 为 `81b00bb`。
@@ -102,7 +104,16 @@ F1：`design/v8.1` 对话、工具耗时、审批和二级设置样例已运行�
 
 - 8 小时 v8.0.1 阶段 TaskService 隔离长测正式 PASS：28,809 秒、1,298 轮、9,086 操作、130 备份；无遗留 active/waiting/command，预期取消 UNKNOWN Attempt 保留。不是最终 v8.3 所有补丁、SSE/命令/真实 Provider 的 8 小时长测。
 - `35bd1e3` 的 Windows/Linux 归档均 clean、重复构建一致，完整便携验收通过；最终包另跑 10 项真实 DeepSeek GUI→CLI→GUI 接续及刷新/回到空闲/单 SSE/CSP 检查通过，无凭据落盘或进入输出。
-- 已发布 FreeAgent v8.3.0-dev.1 与独立 AffectWeave 1.0.0-dev.1；Hytron 已程序更新，保留原 2 会话、11 Run、34 消息、11 Attempt，原配置/Key/PG/公网凭据文件不变，Core 身份与 socket 目录保持，Core/渠道健康。真实新密码登录及 TG 回传等进一步结果单列。
+- 已发布 FreeAgent v8.3.0-dev.1 与独立 AffectWeave 1.0.0-dev.1；Hytron 已程序更新，保留原 2 会话、11 Run、34 消息、11 Attempt，原配置/Key/PG/公网凭据文件不变，Core 身份与 socket 目录保持，Core/渠道健康。更新后的原密码登录及 TG 回传等进一步结果单列。
 - 当前提交 Linux GitHub 普通与 race 全量 PASS。Windows 首个失败是 Python 临时目录的管理员 ACL，pg_ctl 降权后读不了密码文件；显式当前用户 SID 修复。
 - Windows 后续全量只失败于恢复测试的旧 Owner 仍在最终写入，测试就创建新 Owner 并伪造遗留记录；旧写入可能覆盖测试刚造的 UNKNOWN。实际换代要求旧 Owner 已退出。恢复测试先排空旧 supervisor，保留原“Full 也必须核查 UNKNOWN”断言；Windows 定向 race 连续 20 次 PASS（45.839 秒）。未改宽权限规则。
 - 候选 2 只修正上述验收前提并更新版本/文档；CI 普通与 race 改为独立并行 job，保持完整覆盖。Windows 托管机普通全量约 20 分钟，因此其 race 的有界 package timeout 为 45 分钟，不跳过慢测试。候选 2 最终 CI/包/部署状态待收齐。
+
+### 最终交付完成（2026-11-07）
+
+- 程序源码 `d1f0633`，[四组完整 CI 全部通过](https://github.com/endview/FreeAgent/actions/runs/42266648888)，Windows Harness 普通/race 为 894.386 / 1060.742 秒，Ubuntu race 为 280.437 秒。测试修复保留原 UNKNOWN 核查断言；没有为了 CI 修改生产权限规则。
+- 候选 2 Windows/Linux 各两次完整归档和源码清单一致；最终 ZIP/tar.gz 便携验收、两平台恢复测试各连续 20 次 race，以及最终 Windows 包真实 DeepSeek GUI→CLI→GUI 十项复验 PASS。
+- 已发布 [FreeAgent v8.3.0-dev.2](https://github.com/endview/FreeAgent/releases/tag/v8.3.0-dev.2) 与 [AffectWeave 1.0.0-dev.1](https://github.com/endview/affectweave/releases/tag/v1.0.0-dev.1)，上传并核对下载附件；候选 1 保留并标明被候选 2 替代，没有改写旧标签。
+- Hytron 已切换最终程序，原 5 会话、19 Run、57 消息、21 Attempt 完整保留，配置/PG/Key/公网密码文件不变；Core 身份和 socket 目录保持，Core/渠道健康、doctor 正常、HTTPS 200。用户已确认 v8.3 公网原密码登录、流式逐步输出和 TG 回传，真实 TG completed/finished/sent 核对一致；候选 2 只调整测试/CI/版本元数据。
+- 独立 AffectWeave 包已备置 Hytron，保持未导入/关闭，未创建扩展库。私有 VPS 文档与忽略目录运维记录已同步；公开源码/包不包含凭据或生产对话。
+- 原生 IME/缩放/高对比度/实际手机、其他 Provider/Responses/搜索及多账号/群等真实条件缺口仍 NOT_RUN；经验总结是后续独立批次。没有把它们算作本版 PASS 或完成。

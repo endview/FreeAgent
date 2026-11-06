@@ -1,6 +1,6 @@
 # FreeAgent v8.0.1—v8.3 后续版本实施计划
 
-日期：2026-11-06（Asia/Shanghai）。状态：已开始实施；实际进度见[实施记录](FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)。
+日期：2026-11-06（Asia/Shanghai）。2026-11-07 状态：v8.0.1—v8.3 主体已以 v8.3.0-dev.2 开发候选发布并更新 Hytron；设备/外部平台未验边界及独立经验总结批次继续保留。实际结果见[验收报告](FREEAGENT_V8_3_ACCEPTANCE_2026-11-07.md)与[实施记录](FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)。
 
 本文件是 v8.0 之后的统一实施入口，整合前端框架评估、核心优化、AffectWeave 成品要求和经验总结安排。版本范围与实施顺序以本文件为准；专项设计继续引用配套文档。计划日期不等于发布日期，各版通过实际验收后发布。
 
@@ -8,7 +8,7 @@
 
 近期目标是一个日常使用顺畅、长期执行可靠、能按需扩展的单 Core Harness。
 
-当前已交付 v8.0.0-dev.1：唯一 PostgreSQL Store、可选渠道进程、执行恢复、固定 Memory、统一设置及 Windows/Linux 便携包。Windows 和 Debian 12 全量/竞态、真实 DeepSeek、备份恢复等已有验收记录。Hytron 已更新，用户已确认 TG 私聊模型回复与公网原密码登录，服务端记录核对通过。
+开工基线为已交付的 v8.0.0-dev.1：唯一 PostgreSQL Store、可选渠道进程、执行恢复、固定 Memory、统一设置及 Windows/Linux 便携包。Windows 和 Debian 12 全量/竞态、真实 DeepSeek、备份恢复等已有验收记录。后续已发布 v8.3.0-dev.2 并保留数据更新 Hytron，用户已确认 TG 私聊模型回复与公网原密码登录、流式输出，服务端记录核对通过。
 
 开工基线的前端为 Vite + 原生 JavaScript。2026-11-07 工作树已切换 React/TypeScript/Vite 8 正式前端，独立 Go AffectWeave 及状态/确认/配套备份已实现；具体回归、候选发布和 Hytron 更新状态以实施记录为准，不把开工小样或编译当作成品验收。
 
