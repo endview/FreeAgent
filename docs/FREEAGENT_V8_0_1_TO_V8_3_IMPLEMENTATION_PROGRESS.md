@@ -97,3 +97,12 @@ F1：`design/v8.1` 对话、工具耗时、审批和二级设置样例已运行�
 - stateful 扩展重启首次注入前核对其持久来源清单；领先缺源拒绝注入。输入来源/版本/参与者/群空间隔离、分页补读游标和不重放的竞态测试已补充。
 - 原操作核对通过后保留原 UNKNOWN，追加原扩展事务结果证明，复用已有 attempt/verified receipt 并结束原提案 Run，不残留卡住的执行槽。
 - AffectWeave 源码已推送独立仓库；Windows/Linux 可选归档各重复构建两次，文件字节一致，无 Go/Python/Node 用户运行前提。发布状态仍以实际 Release 为准。
+
+### 最终包与 CI 收束（2026-11-07）
+
+- 8 小时 v8.0.1 阶段 TaskService 隔离长测正式 PASS：28,809 秒、1,298 轮、9,086 操作、130 备份；无遗留 active/waiting/command，预期取消 UNKNOWN Attempt 保留。不是最终 v8.3 所有补丁、SSE/命令/真实 Provider 的 8 小时长测。
+- `35bd1e3` 的 Windows/Linux 归档均 clean、重复构建一致，完整便携验收通过；最终包另跑 10 项真实 DeepSeek GUI→CLI→GUI 接续及刷新/回到空闲/单 SSE/CSP 检查通过，无凭据落盘或进入输出。
+- 已发布 FreeAgent v8.3.0-dev.1 与独立 AffectWeave 1.0.0-dev.1；Hytron 已程序更新，保留原 2 会话、11 Run、34 消息、11 Attempt，原配置/Key/PG/公网凭据文件不变，Core 身份与 socket 目录保持，Core/渠道健康。真实新密码登录及 TG 回传等进一步结果单列。
+- 当前提交 Linux GitHub 普通与 race 全量 PASS。Windows 首个失败是 Python 临时目录的管理员 ACL，pg_ctl 降权后读不了密码文件；显式当前用户 SID 修复。
+- Windows 后续全量只失败于恢复测试的旧 Owner 仍在最终写入，测试就创建新 Owner 并伪造遗留记录；旧写入可能覆盖测试刚造的 UNKNOWN。实际换代要求旧 Owner 已退出。恢复测试先排空旧 supervisor，保留原“Full 也必须核查 UNKNOWN”断言；Windows 定向 race 连续 20 次 PASS（45.839 秒）。未改宽权限规则。
+- 候选 2 只修正上述验收前提并更新版本/文档；CI 普通与 race 改为独立并行 job，保持完整覆盖。Windows 托管机普通全量约 20 分钟，因此其 race 的有界 package timeout 为 45 分钟，不跳过慢测试。候选 2 最终 CI/包/部署状态待收齐。

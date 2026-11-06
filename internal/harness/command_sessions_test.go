@@ -280,6 +280,13 @@ func TestBackgroundRecoveryMarksProjectionOnlyAndRequiresReview(t *testing.T) {
 	tasks, chat, _, _ := backgroundFixture(t, 5)
 	result, r := startBackgroundFixture(t, tasks, chat, "ok")
 	r = settleBackgroundFixture(t, tasks, r.ID)
+	// A live poll can observe process exit before its terminal projection is
+	// persisted. Recovery starts only after the old Owner has exited; drain its
+	// supervisor before writing the simulated leftover startup record. Otherwise
+	// the old writer can overwrite the new Owner's UNKNOWN recovery in this test.
+	if err := tasks.core.commands.close("test_owner_exit"); err != nil {
+		t.Fatal(err)
+	}
 	before, attempts, _, _ := tasks.Inspect(t.Context(), result.Run.ID)
 	r.State = "running"
 	r.Generation = "old-owner"

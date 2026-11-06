@@ -4,11 +4,11 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The working tree is **v8.3.0-dev.1**, with the React/TypeScript workbench,
+The working tree is **v8.3.0-dev.2**, with the React/TypeScript workbench,
 server-paged conversations/history, installation/update diagnostics and an
 optional independent Go AffectWeave extension under
-acceptance. The latest published baseline remains the
-[v8.0 development candidate](https://github.com/endview/FreeAgent/releases/tag/v8.0.0-dev.1).
+acceptance. The latest published package is the
+[v8.3 development candidate](https://github.com/endview/FreeAgent/releases/tag/v8.3.0-dev.1).
 [简体中文](README.zh-CN.md).
 
 The [v8.0.1–v8.3 plan](docs/FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md)
