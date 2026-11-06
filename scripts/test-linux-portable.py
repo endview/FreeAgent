@@ -327,7 +327,8 @@ def main():
         run('backup', '--out', str(backup))
         run('backup-verify', '--source', str(backup))
         run('restore', '--source', str(backup), '--data-dir', str(restored))
-        restored_chats = run('sessions', '--data-dir', str(restored))
+        restored_page = run('sessions', '--data-dir', str(restored))
+        restored_chats = restored_page['items']
         require(any(item['id'] == chat for item in restored_chats), 'Restored store lost conversation identity')
         checks['backup_restore'] = True
         before = hashlib.sha256((data / 'config.json').read_bytes()).hexdigest()

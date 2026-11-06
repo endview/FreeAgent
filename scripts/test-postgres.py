@@ -63,6 +63,15 @@ def main():
         return result.returncode
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         print('Temporary PostgreSQL acceptance service failed; setup diagnostics retained at ' + str(root))
+        # Hosted runners disappear after the job. Surface bounded diagnostics,
+        # never the password/service files or the full child environment.
+        for name in ('setup.log', 'postgres.log'):
+            path = root / name
+            if path.is_file():
+                with path.open('rb') as log:
+                    log.seek(max(0, path.stat().st_size - 16384))
+                    diagnostic = log.read().decode('utf-8', errors='replace')
+                print(name + ':\n' + diagnostic.replace(password, '[REDACTED]'), flush=True)
         raise
     finally:
         if started:

@@ -93,7 +93,8 @@ if (-not $configured.changed -or $shown.changed -or $shown.network_tested -or $s
     $shown.default_model -ne 'default') {
     throw 'Offline model configuration failed'
 }
-$switchedHistory = @(Invoke-Harness -Arguments @('sessions', '--data-dir', $data, '--show', $session))
+$switchedPage = Invoke-Harness -Arguments @('sessions', '--data-dir', $data, '--show', $session)
+$switchedHistory = @($switchedPage.items)
 if ($switchedHistory.Count -ne 2) { throw 'Model configuration lost conversation history' }
 $reset = Invoke-Harness -Arguments @('config', 'model', '--data-dir', $data, '--id', 'smoke', '--remove')
 if ($reset.models.PSObject.Properties.Name -contains 'smoke' -or $reset.default_model -ne 'default' -or
@@ -102,8 +103,10 @@ if ($reset.models.PSObject.Properties.Name -contains 'smoke' -or $reset.default_
 }
 $second = Invoke-Harness -Arguments @('run', '--data-dir', $data, '--session', $session, '--request', 'second', '--json', 'again')
 if ($second.answer -ne 'Echo: again') { throw 'Second conversation turn failed' }
-$sessions = @(Invoke-Harness -Arguments @('sessions', '--data-dir', $data))
-$history = @(Invoke-Harness -Arguments @('sessions', '--data-dir', $data, '--show', $session))
+$sessionPage = Invoke-Harness -Arguments @('sessions', '--data-dir', $data)
+$sessions = @($sessionPage.items)
+$historyPage = Invoke-Harness -Arguments @('sessions', '--data-dir', $data, '--show', $session)
+$history = @($historyPage.items)
 if ($sessions.Count -ne 1 -or $history.Count -ne 4) { throw 'Conversation persistence failed' }
 $null = Invoke-Harness -Arguments @('config', 'model', '--data-dir', $data, '--provider', 'echo', '--strength', 'strong')
 $null = Invoke-Harness -Arguments @('config', 'model', '--data-dir', $data, '--id', 'light', '--provider', 'echo', '--strength', 'light')
@@ -260,7 +263,8 @@ $backupResult = Invoke-Harness -Arguments @('backup', '--data-dir', $data, '--ou
 $verify = Invoke-Harness -Arguments @('backup-verify', '--source', $backup)
 $restoreResult = Invoke-Harness -Arguments @('restore', '--source', $backup, '--data-dir', $restored)
 $restoredDoctor = Invoke-Harness -Arguments @('doctor', '--data-dir', $restored)
-$restoredHistory = @(Invoke-Harness -Arguments @('sessions', '--data-dir', $restored, '--show', $session))
+$restoredPage = Invoke-Harness -Arguments @('sessions', '--data-dir', $restored, '--show', $session)
+$restoredHistory = @($restoredPage.items)
 if (-not ($doctor.ok -and $backupResult.ok -and $verify.ok -and $restoreResult.ok -and $restoredDoctor.ok) -or $restoredHistory.Count -ne 4) {
     throw 'Backup/verify/restore did not preserve the conversation'
 }
