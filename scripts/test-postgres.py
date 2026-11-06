@@ -3,6 +3,7 @@
 Usage: python scripts/test-postgres.py --runtime <postgresql> -- go test ...
 """
 import argparse
+import csv
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,16 @@ def main():
     bin = runtime / 'bin'
     ctl = bin / ('pg_ctl.exe' if os.name == 'nt' else 'pg_ctl')
     root = Path(tempfile.mkdtemp(prefix='freeagent-pg-tests-')).resolve()
+    if os.name == 'nt':
+        # Python's private temp directory can be owned by Administrators on an
+        # elevated runner. pg_ctl drops that group before starting initdb, so
+        # grant the actual user's SID explicitly, as the product launcher does.
+        identity = subprocess.check_output(['whoami.exe', '/user', '/fo', 'csv', '/nh'], text=True)
+        sid = next(csv.reader(identity.strip().splitlines()))[1]
+        if not sid.startswith('S-1-') or not all(c in '0123456789-' for c in sid[2:]):
+            raise RuntimeError('Cannot determine the Windows PostgreSQL test user SID')
+        subprocess.run(['icacls.exe', str(root), '/grant:r', '*' + sid + ':(OI)(CI)F'],
+                       check=True, stdout=subprocess.DEVNULL, timeout=15)
     cluster, password = root / 'cluster', secrets.token_urlsafe(32)
     pw = root / 'password'
     pw.write_text(password, encoding='utf-8')
