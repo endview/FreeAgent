@@ -1,5 +1,9 @@
 # Extension Authoring Rules
 
+The [development guide](../docs/EXTENSION_DEVELOPMENT_GUIDE.md) provides current
+commands, protocol examples, and verified limitations. In particular, SDK tool
+templates need alignment with Core before production use.
+
 ## Start small
 
 Use one extension for one clear responsibility. Prefer a context hook for
@@ -15,10 +19,12 @@ remains a useful file and chat Harness when the extension is turned off.
 Before sharing an extension:
 
 1. Run `freeagent ext check --path <extension-directory>`.
-2. Add a fixture and run `freeagent ext run --path <extension-directory> --fixture <file>`.
+2. For context/workflow entrypoints, add a fixture and run `freeagent ext test --path <extension-directory> --fixture <file>`.
 3. Run the extension's own unit tests.
 4. Document settings, environment mappings, defaults, and the data written
    below `data_dir`.
+5. Exercise tools through the actual Core dispatch path; discovery and SDK unit
+   tests alone do not verify protocol or permission compatibility.
 
 Node extensions can use `sdk/node/freeagent-ext.mjs` without installing a
 package. Keep the SDK file inside the published kit or copy it into the
@@ -44,6 +50,10 @@ replay and must be reported separately.
 - Keep mutable state under the supplied `data_dir`.
 - Report writes and other durable changes through `activity`, never by claiming
   that a model response is proof of success.
+- Activity is not approval. Model-proposed persistent settings, Persona,
+  relationship, Memory or Skill changes require the Core confirmation path.
+  If the necessary state proposal interface does not yet exist, keep a
+  candidate unapplied; do not use an extension-owned file as an approval bypass.
 - Treat `turn.finished` activity as a user-visible summary only; it cannot
   change the completed Turn status or prove an external side effect.
 - Treat `operation.check` as a pure, repeatable policy check. Return `ask` or

@@ -5,6 +5,9 @@ introduced in FreeAgent v6.0. An extension is one local process started over JSO
 NDJSON. It is not a package manager, a remote service, or a second execution
 engine.
 
+For current authoring commands, known SDK limitations, and capabilities not yet
+implemented, see the [development guide](../docs/EXTENSION_DEVELOPMENT_GUIDE.md).
+
 ## Transport
 
 One JSON object is exchanged per line on stdin and stdout. Stderr is reserved
@@ -78,9 +81,12 @@ fields are:
   process environment or a Key profile; the extension never receives the Key
   profile itself.
 
-The Harness owns budgets, timeouts, permissions, cancellation, data paths,
-process cleanup, and execution records. The extension owns only its local
-implementation and files below the supplied `data_dir`.
+The Harness owns its Host API budgets, timeouts, permissions, cancellation,
+data paths, process cleanup, and execution records. Extensions should keep
+mutable local files below the supplied `data_dir`. The process runs as trusted
+local code: input selection and Host API checks do not sandbox its direct OS
+access. The default extension launcher does not create an AppContainer or
+Bubblewrap sandbox.
 
 ## Hook: context.prepare
 
@@ -170,15 +176,22 @@ Workflow calls use:
 
 and return `{"output":"...","activity":{}}`.
 
-Tool discovery uses `tools/list` and returns MCP-shaped definitions. Tool calls
-use `tools/call` with `name` and `arguments` and return:
+Tool discovery uses `tools/list` and returns definitions with `name`,
+`description`, `inputSchema` and `readOnly`. Current Core tool calls use
+`tool.call` with `invocation`, `name` and `arguments` and return:
 
 ```json
-{"content":[{"type":"text","text":"result"}],"isError":false}
+{"content":"result","is_error":false}
 ```
 
 Read-only annotations are hints that the Harness may use for approval policy;
 they cannot enlarge the selected permission mode.
+
+This is not the full MCP tool protocol. The SDK tool branch and Kit tool
+templates still use `tools/call` and need correction; `ext new tool` generates
+the current Core shape. Keep the two call directions clear: extension-to-Host
+`tool.call` asks Core to execute one of its tools, while Core-to-extension
+`tool.call` invokes a tool declared by that extension.
 
 ## Host API
 

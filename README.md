@@ -4,10 +4,10 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v8.0.0-dev.1 development candidate**, not yet published to GitHub.
-Previously published Windows and Linux portable builds are available from
-[Releases](https://github.com/endview/FreeAgent/releases).
+This is the **v8.0.0-dev.1 development candidate**. Download Windows and Linux
+portable builds from the [v8.0 release](https://github.com/endview/FreeAgent/releases/tag/v8.0.0-dev.1).
 [简体中文](README.zh-CN.md).
+The next stages are documented in the [v8.0.1–v8.3 implementation plan](docs/FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md).
 It uses a new
 current-only `Harness-pg-v1` data directory and the PostgreSQL v1 store format. Old
 configurations, databases, backups, commands, and SDKs are not supported or
@@ -94,6 +94,8 @@ opens the same local Chat in the default browser and shows a stop prompt.
 Some Windows 10 installations need the WebView2 Runtime installed separately.
 
 Requires Go 1.26.5 to build; the executable needs no Go installation.
+Extension authors can start with the [extension development guide](docs/EXTENSION_DEVELOPMENT_GUIDE.md)
+and the existing [Extension Kit](extension-kit/README.md).
 The checked-in Chat assets are embedded. After editing frontend source, use
 Node 24 and pnpm to install the locked dependencies and rebuild before Go:
 

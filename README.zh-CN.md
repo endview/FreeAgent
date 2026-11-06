@@ -4,9 +4,11 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-当前源码为 **v8.0.0-dev.1 开发候选**，尚未发布到 GitHub。
-[历史 Windows / Linux 发行包](https://github.com/endview/FreeAgent/releases)
+当前源码为 **v8.0.0-dev.1 开发候选**。
+[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.0.0-dev.1)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
+
+后续工作按 [v8.0.1–v8.3 实施计划](docs/FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md) 推进。
 
 v8.0 统一使用随包 PostgreSQL 15.19；增加有限执行恢复、未知工具结果只读核查、
 可选渠道进程、固定 Memory 与二级设置。旧历史只留备份，不导入新库。
