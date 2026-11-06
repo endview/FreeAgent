@@ -23,20 +23,23 @@ import (
 
 	"github.com/endview/freeagent/internal/buildinfo"
 	"github.com/endview/freeagent/internal/mcpstdio"
+	"github.com/endview/freeagent/internal/postgres"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 )
 
 const (
-	extensionProtocol        = "freeagent-ext/1"
-	defaultExtensionTimeout  = 2000
-	extensionStartupTimeout  = 10 * time.Second
-	defaultExtensionChars    = 2000
-	maxExtensionManifest     = 1 << 20
-	maxExtensionBlocks       = 128
-	maxExtensionBlockChars   = 1 << 20
-	maxExtensionFiles        = 256
-	maxExtensionTotalBytes   = 8 << 20
+	extensionProtocol       = "freeagent-ext/1"
+	defaultExtensionTimeout = 2000
+	extensionStartupTimeout = 10 * time.Second
+	defaultExtensionChars   = 2000
+	maxExtensionManifest    = 1 << 20
+	maxExtensionBlocks      = 128
+	maxExtensionBlockChars  = 1 << 20
+	maxExtensionFiles       = 256
+	// Native optional extensions (including a stripped Go/PG driver) exceed
+	// 8 MiB. Keep one finite import cap; no runtime is bundled in the Core.
+	maxExtensionTotalBytes   = 32 << 20
 	maxExtensionHistoryMsgs  = 128
 	maxExtensionHistoryBytes = 64 << 10
 	// turn.finished always receives the settled output, cut to this size.
@@ -80,6 +83,7 @@ type ExtensionManifest struct {
 	Run            ExtensionRun        `json:"run"`
 	Env            []string            `json:"env,omitempty"`
 	SettingsSchema json.RawMessage     `json:"settings_schema,omitempty"`
+	ModelSettings  []string            `json:"model_settings,omitempty"`
 	Needs          []string            `json:"needs,omitempty"`
 	Context        ExtensionContext    `json:"context,omitempty"`
 	Events         []string            `json:"events,omitempty"`
@@ -88,6 +92,9 @@ type ExtensionManifest struct {
 	Budget         ExtensionBudget     `json:"budget,omitempty"`
 	TimeoutMS      int                 `json:"timeout_ms,omitempty"`
 	Required       bool                `json:"required,omitempty"`
+	State          bool                `json:"state,omitempty"`
+	PassiveContext bool                `json:"passive_context,omitempty"`
+	Storage        string              `json:"storage,omitempty"`
 }
 
 type ExtensionRun struct {
@@ -164,20 +171,23 @@ type extensionInitializeResult struct {
 }
 
 type extensionInput struct {
-	Invocation     string         `json:"invocation"`
-	Phase          string         `json:"phase"`
-	Purpose        string         `json:"purpose"`
-	Step           *int           `json:"step,omitempty"`
-	Message        any            `json:"message,omitempty"`
-	History        []ModelMessage `json:"history,omitempty"`
-	Workspace      string         `json:"workspace,omitempty"`
-	DataDir        string         `json:"data_dir,omitempty"`
-	ToolResults    any            `json:"tool_results,omitempty"`
-	Settings       map[string]any `json:"settings,omitempty"`
-	Output         string         `json:"output,omitempty"`
-	Status         string         `json:"status,omitempty"`
-	RunID          string         `json:"run_id,omitempty"`
-	ConversationID string         `json:"conversation_id,omitempty"`
+	Invocation     string              `json:"invocation"`
+	Phase          string              `json:"phase"`
+	Purpose        string              `json:"purpose"`
+	Step           *int                `json:"step,omitempty"`
+	Message        any                 `json:"message,omitempty"`
+	History        []ModelMessage      `json:"history,omitempty"`
+	Workspace      string              `json:"workspace,omitempty"`
+	DataDir        string              `json:"data_dir,omitempty"`
+	ToolResults    any                 `json:"tool_results,omitempty"`
+	Settings       map[string]any      `json:"settings,omitempty"`
+	Output         string              `json:"output,omitempty"`
+	Status         string              `json:"status,omitempty"`
+	RunID          string              `json:"run_id,omitempty"`
+	ConversationID string              `json:"conversation_id,omitempty"`
+	Identity       *ExtensionIdentity  `json:"identity,omitempty"`
+	Facts          []ExtensionRunFacts `json:"facts,omitempty"`
+	Variant        string              `json:"variant,omitempty"`
 }
 
 type extensionHost struct {
@@ -243,14 +253,16 @@ func (usage *extensionRunUsage) settle(calls, output, maxOutput int) bool {
 }
 
 type extensionClient struct {
-	definition   ExtensionDefinitionView
-	rpc          *mcpstdio.RPCClient
-	ready        bool
-	signature    string
-	registration extensionInitializeResult
-	toolsMu      sync.Mutex
-	toolsLoaded  bool
-	tools        []extensionRuntimeTool
+	sourceMu        sync.Mutex
+	sourcesVerified bool
+	definition      ExtensionDefinitionView
+	rpc             *mcpstdio.RPCClient
+	ready           bool
+	signature       string
+	registration    extensionInitializeResult
+	toolsMu         sync.Mutex
+	toolsLoaded     bool
+	tools           []extensionRuntimeTool
 }
 
 // ExtensionDefinitionView is the safe catalog representation used by callers
@@ -270,6 +282,9 @@ type ExtensionDefinitionView struct {
 // the Chat UI. It intentionally omits executable paths, arguments, and
 // environment values.
 type ExtensionInfo struct {
+	Storage          string              `json:"storage,omitempty"`
+	StorageReady     bool                `json:"storage_ready,omitempty"`
+	ModelSettings    []string            `json:"model_settings,omitempty"`
 	ID               string              `json:"id"`
 	Version          string              `json:"version"`
 	Name             string              `json:"name"`
@@ -466,6 +481,24 @@ type extensionRuntimeTool struct {
 }
 
 func validateExtensionManifest(manifest ExtensionManifest) error {
+	if manifest.PassiveContext {
+		if !manifest.State || manifest.Tools || len(manifest.Workflows) > 0 || manifest.Budget.ModelCalls != 0 || manifest.Budget.OutputTokens != 0 {
+			return errors.New("passive context requires state and cannot declare tools, workflows or model budgets")
+		}
+		for _, event := range manifest.Events {
+			if event != "turn.finished" {
+				return errors.New("passive context cannot inspect operations")
+			}
+		}
+		for _, need := range manifest.Needs {
+			if need != "message" && need != "status" && need != "output" {
+				return errors.New("passive context cannot request workspace, tools or history")
+			}
+		}
+	}
+	if manifest.Storage != "" && (manifest.Storage != "postgresql" || !manifest.State) {
+		return errors.New("extension storage must be postgresql with declared state capability")
+	}
 	if manifest.Protocol != extensionProtocol || !validExtensionID(manifest.ID) ||
 		manifest.Version == "" || len(manifest.Version) > 128 ||
 		len(manifest.Name) > 256 || len(manifest.Description) > 4096 {
@@ -490,6 +523,25 @@ func validateExtensionManifest(manifest ExtensionManifest) error {
 	}
 	if len(manifest.SettingsSchema) > 64<<10 {
 		return errors.New("extension settings schema is too large")
+	}
+	if len(manifest.ModelSettings) > 32 {
+		return errors.New("too many adjustable extension settings")
+	}
+	if len(manifest.ModelSettings) > 0 {
+		var schema struct {
+			Properties map[string]struct {
+				Type string `json:"type"`
+			} `json:"properties"`
+		}
+		if json.Unmarshal(manifest.SettingsSchema, &schema) != nil {
+			return errors.New("adjustable extension settings require a schema")
+		}
+		for _, key := range manifest.ModelSettings {
+			p, ok := schema.Properties[key]
+			if !ok || p.Type != "string" && p.Type != "boolean" && p.Type != "integer" && p.Type != "number" {
+				return errors.New("adjustable extension settings must declare scalar schema properties")
+			}
+		}
 	}
 	if len(manifest.SettingsSchema) != 0 {
 		if _, err := resolveToolSchema(manifest.SettingsSchema); err != nil {
@@ -711,6 +763,7 @@ func (registry extensionRegistry) views(config Config) []ExtensionDefinitionView
 func extensionInfo(definition extensionDefinition, config Config, available, trusted, workspaceTrusted bool, problem error) ExtensionInfo {
 	manifest := definition.Manifest
 	info := ExtensionInfo{
+		Storage: manifest.Storage, ModelSettings: append([]string(nil), manifest.ModelSettings...),
 		ID: manifest.ID, Version: manifest.Version, Name: manifest.Name,
 		Description: manifest.Description, Source: definition.Source,
 		Provides: []string{}, Workflows: append([]ExtensionWorkflow(nil), manifest.Workflows...),
@@ -729,6 +782,9 @@ func extensionInfo(definition extensionDefinition, config Config, available, tru
 	}
 	if manifest.Tools {
 		info.Provides = append(info.Provides, "tools")
+	}
+	if manifest.State {
+		info.Provides = append(info.Provides, "state")
 	}
 	if problem != nil {
 		info.Error, info.State = safeError(problem), "error"
@@ -820,6 +876,9 @@ func CheckExtensionProcess(ctx context.Context, directory string) (ExtensionChec
 	}
 	if manifest.Tools {
 		expected = append(expected, "tools")
+	}
+	if manifest.State {
+		expected = append(expected, "state")
 	}
 	slices.Sort(expected)
 	provided := append([]string(nil), result.Provides...)
@@ -1471,7 +1530,7 @@ func (client *extensionClient) initialize(parent context.Context, host *extensio
 	}
 	seen := map[string]bool{}
 	for _, provide := range result.Provides {
-		if seen[provide] || provide != "context" && provide != "workflow" && provide != "tools" {
+		if seen[provide] || provide != "context" && provide != "workflow" && provide != "tools" && (provide != "state" || !manifest.State) {
 			return errors.New("extension initialize returned invalid capabilities")
 		}
 		seen[provide] = true
@@ -1645,6 +1704,9 @@ func (host *extensionHost) handleHostRequest(requestCtx context.Context, extensi
 	if err != nil {
 		return nil, err
 	}
+	if invocation.manifest.PassiveContext && request.Method != "activity.report" {
+		return nil, errExtensionUnavailable
+	}
 	if requestCtx == nil {
 		requestCtx = context.Background()
 	}
@@ -1755,7 +1817,7 @@ func (host *extensionHost) handleActivityReport(invocation *extensionInvocation,
 	if summary == "" {
 		summary = "extension activity"
 	}
-	invocation.service.event(Event{Kind: "extension_activity", Message: summary,
+	invocation.service.event(Event{Kind: EventExtensionActivity, Message: summary,
 		Activity: activity, RunID: invocation.run.ID, ConversationID: invocation.run.ConversationID})
 	return map[string]any{"ok": true}, nil
 }
@@ -2058,7 +2120,7 @@ func (host *extensionHost) callTool(ctx context.Context, tool extensionRuntimeTo
 		if summary == "" {
 			summary = "extension activity"
 		}
-		service.event(Event{Kind: "extension_activity", Message: summary,
+		service.event(Event{Kind: EventExtensionActivity, Message: summary,
 			Activity: result.Activity, RunID: run.ID, ConversationID: run.ConversationID})
 	}
 	return ToolResult{Content: host.redact(result.Content), IsError: result.IsError,
@@ -2106,6 +2168,11 @@ func (host *extensionHost) prepare(ctx context.Context, id string, run Run, purp
 	if !contains(client.definition.Provides, "context") {
 		return nil, nil
 	}
+	if manifest.State && len(services) > 0 && services[0] != nil {
+		if err := services[0].verifyExtensionBinding(ctx, id, client); err != nil {
+			return nil, err
+		}
+	}
 	var service *Service
 	if len(services) != 0 {
 		service = services[0]
@@ -2122,6 +2189,18 @@ func (host *extensionHost) prepare(ctx context.Context, id string, run Run, purp
 		Settings: config.Extensions.Settings[id],
 		DataDir:  filepath.Join(host.dataDir, "extensions", manifest.ID, "data")}
 	applyExtensionNeeds(&input, manifest.Needs, run, history, config.Workspace, input.DataDir)
+	if manifest.State && service != nil {
+		input.Settings = extensionRunSettings(run, id, config)
+		input.Identity, err = service.extensionIdentity(callCtx, run)
+		if err != nil {
+			return nil, err
+		}
+		input.Variant = extensionVariant(run, id, config)
+		input.Facts, err = service.extensionRecentFacts(callCtx, run, id, input.Variant)
+		if err != nil {
+			return nil, err
+		}
+	}
 	raw, err := client.rpc.Call(callCtx, "context.prepare", input)
 	if err != nil {
 		abandonExtensionCall(client, invocation, err)
@@ -2214,6 +2293,14 @@ func (host *extensionHost) finish(ctx context.Context, id string, run Run, statu
 		input.Status = run.Status
 	}
 	input.Output = truncateUTF8Bytes(run.Output, maxExtensionFinishedOutput)
+	if definition.Manifest.State && service != nil {
+		input.Settings = extensionRunSettings(run, id, config)
+		input.Identity, err = service.extensionIdentity(callCtx, run)
+		if err != nil {
+			return nil, err
+		}
+		input.Variant = extensionVariant(run, id, config)
+	}
 	raw, err := client.rpc.Call(callCtx, "turn.finished", input)
 	if err != nil {
 		return nil, err
@@ -2742,6 +2829,19 @@ func (host *extensionHost) environment(id string, manifest ExtensionManifest, co
 				host.mu.Unlock()
 			}
 		}
+	}
+	if manifest.Storage == "postgresql" {
+		path := extensionStoragePath(host.dataDir, id)
+		connection, err := postgres.Read(path)
+		if err != nil {
+			return nil, errors.New("extension PostgreSQL storage is not initialized; initialize it explicitly in extension settings")
+		}
+		set("FREEAGENT_EXTENSION_PG_FILE", path)
+		host.mu.Lock()
+		if !contains(host.secrets, connection.Password) {
+			host.secrets = append(host.secrets, connection.Password)
+		}
+		host.mu.Unlock()
 	}
 	result := make([]string, 0, len(values))
 	for name, value := range values {

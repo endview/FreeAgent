@@ -27,6 +27,9 @@ type desktopWebView struct {
 	subclass        *windowSubclass
 	origin          string
 	workspace       string
+	clientDataPath  string
+	coreDataDir     string
+	themeMode       atomic.Int32
 	busy            atomic.Bool
 	changing        atomic.Bool
 	darkTitleFailed atomic.Bool
@@ -35,7 +38,7 @@ type desktopWebView struct {
 	onShutdown      func()
 }
 
-func newDesktopWebView(launch engineLaunch, dataPath, workspace string, onClose func()) (*desktopWebView, error) {
+func newDesktopWebView(launch engineLaunch, dataPath, coreDataDir, workspace string, onClose func()) (*desktopWebView, error) {
 	if err := ensureWritableDirectory(dataPath); err != nil {
 		return nil, err
 	}
@@ -61,10 +64,12 @@ func newDesktopWebView(launch engineLaunch, dataPath, workspace string, onClose 
 		return nil, errors.New("WebView2 window creation failed")
 	}
 	desktop := &desktopWebView{
-		clientID:  rand.Text(),
-		view:      view,
-		origin:    launch.Origin,
-		workspace: workspace,
+		clientID:       rand.Text(),
+		view:           view,
+		origin:         launch.Origin,
+		workspace:      workspace,
+		clientDataPath: dataPath,
+		coreDataDir:    coreDataDir,
 	}
 	hwnd := windows.Handle(uintptr(view.Window()))
 	subclass, err := installWindowSubclass(hwnd, func() {
@@ -78,7 +83,9 @@ func newDesktopWebView(launch engineLaunch, dataPath, workspace string, onClose 
 	}
 	desktop.subclass = subclass
 	subclass.onSettingChange = func() {
-		desktop.updateDarkTitleBar(systemDark())
+		if desktop.themeMode.Load() == 0 {
+			desktop.updateDarkTitleBar(systemDark())
+		}
 	}
 	desktop.updateDarkTitleBar(systemDark())
 	view.SetSize(1200, 800, webview2.HintNone)
@@ -94,6 +101,38 @@ func newDesktopWebView(launch engineLaunch, dataPath, workspace string, onClose 
 }
 
 func (w *desktopWebView) bind() error {
+	if err := w.view.Bind("faSetTheme", func(theme string) error {
+		if err := w.checkSource(); err != nil {
+			return err
+		}
+		if theme != "light" && theme != "dark" && theme != "system" {
+			return errors.New("invalid theme")
+		}
+		w.themeMode.Store(map[string]int32{"system": 0, "light": 1, "dark": 2}[theme])
+		w.view.Dispatch(func() { w.updateDarkTitleBar(theme == "dark" || theme == "system" && systemDark()) })
+		return nil
+	}); err != nil {
+		return err
+	}
+	for _, kind := range []string{"View", "Drafts"} {
+		storageKind := map[string]string{"View": "view", "Drafts": "drafts"}[kind]
+		if err := w.view.Bind("faLoad"+kind, func(environment string) (string, error) {
+			if err := w.checkSource(); err != nil {
+				return "", err
+			}
+			return loadClientFile(w.clientDataPath, environment, storageKind)
+		}); err != nil {
+			return err
+		}
+		if err := w.view.Bind("faSave"+kind, func(environment, raw string) error {
+			if err := w.checkSource(); err != nil {
+				return err
+			}
+			return saveClientFile(w.clientDataPath, environment, storageKind, raw)
+		}); err != nil {
+			return err
+		}
+	}
 	if err := w.view.Bind("faOpenExternal", func(raw string) error {
 		if err := w.checkSource(); err != nil {
 			return err
@@ -172,12 +211,19 @@ func (w *desktopWebView) bind() error {
 }
 
 func (w *desktopWebView) initGuard() {
+	initialView := "null"
+	if raw, err := loadClientFile(w.clientDataPath, clientEnvironment(w.coreDataDir, w.workspace), "view"); err == nil && raw != "" {
+		var value clientView
+		if decodeClientJSON(raw, &value) == nil {
+			initialView = raw
+		}
+	}
 	script := `(function(){` +
 		`var expected=` + jsString(w.origin) + `;` +
 		`if(window.location.origin!==expected){` +
-		`try{delete window.faOpenExternal;delete window.faChangeWorkspace;delete window.faSelectFolder;delete window.faSelectFile;delete window.faSetBusy;delete window.faAttention;}catch(e){}` +
+		`try{delete window.faOpenExternal;delete window.faChangeWorkspace;delete window.faSelectFolder;delete window.faSelectFile;delete window.faSetBusy;delete window.faAttention;delete window.faSetTheme;delete window.faLoadView;delete window.faSaveView;delete window.faLoadDrafts;delete window.faSaveDrafts;}catch(e){}` +
 		`try{if(window.external){window.external.invoke=function(){return Promise.reject("external page");};}}catch(e){}` +
-		`}else{Object.defineProperty(window,'__freeagentClientID',{value:` + jsString(w.clientID) + `});}})();`
+		`}else{Object.defineProperty(window,'__freeagentClientID',{value:` + jsString(w.clientID) + `});Object.defineProperty(window,'__freeagentInitialView',{value:` + initialView + `});}})();`
 	w.view.Init(script)
 }
 

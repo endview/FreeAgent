@@ -207,10 +207,10 @@ func TestCLIConfigModelSwitchPreservesAndUsesHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var messages []harness.Message
-	if err := json.Unmarshal([]byte(raw), &messages); err != nil || len(messages) != 6 ||
-		messages[0].Content != "first turn" || messages[3].Content != "Provider reply" {
-		t.Fatalf("history changed after switching models: %+v error=%v", messages, err)
+	var page harness.HistoryPage
+	if err := json.Unmarshal([]byte(raw), &page); err != nil || len(page.Items) != 6 || page.HasMore ||
+		page.Items[0].Content != "first turn" || page.Items[3].Content != "Provider reply" {
+		t.Fatalf("history changed after switching models: %+v error=%v", page, err)
 	}
 }
 

@@ -47,3 +47,5 @@ desktop.ini
 
 # Local acceptance logs, mock fixtures and UI captures
 /output/
+/design/v8.1/dist/
+/internal/chatui/.next-dist/

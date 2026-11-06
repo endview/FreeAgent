@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { shouldSend, followsLatest, canSubmit, reduceStream, safeStorage, isCurrentSnapshot, restoreRawBodies, providerFailureText, chatTitle,
   stateMeta, activityLabel, submitMode, endRisk, evidenceGroups, shortHash, turnSignature, groupChats, matchChat, attentionTitle,
-  permissionMode, prioritizePinned } from '../src/state.mjs';
+  permissionMode, prioritizePinned } from '../frontend/lib/presentation/state.mjs';
 
 test('Enter, Shift and Chinese IME', () => {
   assert.equal(shouldSend({ key: 'Enter' }, false, false, true), true);

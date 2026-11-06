@@ -122,6 +122,8 @@ const (
 	ControlRemoveExtension             = "extensions.remove"
 	ControlRestartExtension            = "extensions.restart"
 	ControlClearExtensionData          = "extensions.clear_data"
+	ControlInitExtensionStorage        = "extensions.init_storage"
+	ControlChangeExtensionState        = "extensions.change_state"
 	ControlSetConversationModel        = "conversation.set_model"
 	ControlSetSpacePermission          = "space.set_permission"
 	ControlRenameConversation          = "conversation.rename"
@@ -274,15 +276,16 @@ type ControlModelState struct {
 }
 
 type ControlState struct {
-	TelegramRequests        []TelegramAccessRequest `json:"telegram_requests,omitempty"`
-	CurrentRun              *RuntimeFacts           `json:"current_run,omitempty"`
-	Spaces                  []ControlSpaceState     `json:"spaces,omitempty"`
-	Generation              string                  `json:"generation"`
-	ResourceRevisions       map[string]uint64       `json:"resource_revisions"`
-	Config                  ControlConfigState      `json:"config"`
-	Pending                 []ControlOperation      `json:"pending,omitempty"`
-	ExternalChangePending   bool                    `json:"external_change_pending,omitempty"`
-	ExternalChangeResources []string                `json:"external_change_resources,omitempty"`
+	ExtensionStates         map[string]json.RawMessage `json:"extension_states,omitempty"`
+	TelegramRequests        []TelegramAccessRequest    `json:"telegram_requests,omitempty"`
+	CurrentRun              *RuntimeFacts              `json:"current_run,omitempty"`
+	Spaces                  []ControlSpaceState        `json:"spaces,omitempty"`
+	Generation              string                     `json:"generation"`
+	ResourceRevisions       map[string]uint64          `json:"resource_revisions"`
+	Config                  ControlConfigState         `json:"config"`
+	Pending                 []ControlOperation         `json:"pending,omitempty"`
+	ExternalChangePending   bool                       `json:"external_change_pending,omitempty"`
+	ExternalChangeResources []string                   `json:"external_change_resources,omitempty"`
 }
 
 type ControlSpaceState struct {
@@ -322,11 +325,12 @@ type controlConfirmationState struct {
 }
 
 type controlRecord struct {
-	Operation  ControlOperation           `json:"operation"`
-	Arguments  json.RawMessage            `json:"arguments"`
-	Before     map[string]json.RawMessage `json:"before,omitempty"`
-	After      map[string]json.RawMessage `json:"after,omitempty"`
-	ResultData json.RawMessage            `json:"result_data,omitempty"`
+	Operation           ControlOperation           `json:"operation"`
+	Arguments           json.RawMessage            `json:"arguments"`
+	Before              map[string]json.RawMessage `json:"before,omitempty"`
+	After               map[string]json.RawMessage `json:"after,omitempty"`
+	ResultData          json.RawMessage            `json:"result_data,omitempty"`
+	ExtensionDispatched bool                       `json:"extension_dispatched,omitempty"`
 }
 
 type controlJournalLine struct {
@@ -479,6 +483,12 @@ func (service *ControlService) recoverAppliedProposals() error {
 			}
 		}
 		if record.Operation.Status != ControlApplied || record.Operation.AttemptID == "" {
+			continue
+		}
+		if record.Operation.Kind == ControlChangeExtensionState {
+			if err := service.settleReconciledExtension(ctx, record); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
 			continue
 		}
 		attempt, err := service.core.Store.GetAttempt(ctx, record.Operation.AttemptID)
@@ -643,6 +653,8 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlRemoveExtension, ResourceFamily: "extensions.catalog", Risk: ControlRiskDestructive, Description: "Remove one user Extension and its local settings.", ModelProposable: false, Reversible: false},
 		{Kind: ControlRestartExtension, ResourceFamily: "extensions.runtime", Risk: ControlRiskAuthority, Description: "Restart one Extension process through the owner runtime.", ModelProposable: false, Reversible: false},
 		{Kind: ControlClearExtensionData, ResourceFamily: "extensions.data", Risk: ControlRiskDestructive, Description: "Clear one Extension data directory.", ModelProposable: false, Reversible: false},
+		{Kind: ControlInitExtensionStorage, ResourceFamily: "extensions.storage", Risk: ControlRiskAuthority, Description: "Explicitly initialize one extension's separate PostgreSQL database and restricted role; no credentials accepted.", ModelProposable: false},
+		{Kind: ControlChangeExtensionState, ResourceFamily: "extensions.state", Risk: ControlRiskOrdinary, Description: "Propose one extension state change. Requires extension ID, scope (space_id, role_id, actor_id), action, expected_revision and declared payload. The extension returns exact before/after; persistent changes require confirmation.", ModelProposable: true},
 		{Kind: ControlSetConversationModel, ResourceFamily: "conversation.model", Risk: ControlRiskOrdinary, Description: "Select a configured model for one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetSpacePermission, ResourceFamily: "spaces", Risk: ControlRiskAuthority, Description: "Set a space's operation permission; affects all of its conversations. Full requires explicit local confirmation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlCreateSpace, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Create a local space with None permission.", ModelProposable: true},
@@ -663,7 +675,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 	for i := range entries {
 		if entries[i].Kind == ControlSetRuntimeLimits {
 			entries[i].Description += " task_summary_bytes: 0 disables automatic compaction; 1..16384 enables it and bounds the summary bytes. Existing summaries are retained."
-			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"model_retries":{"type":"integer","minimum":0,"maximum":6},"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
+			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"extension_max_context_chars":{"type":"integer","minimum":0,"maximum":1048576},"extension_max_model_calls_per_turn":{"type":"integer","minimum":0,"maximum":128},"model_retries":{"type":"integer","minimum":0,"maximum":6},"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
 		}
 	}
 	return entries
@@ -780,6 +792,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 			EnabledTools: effectiveBuiltinToolSettings(config), CommandReady: commands.Status == "ready", Commands: commands,
 			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled,
 			Memory: config.Memory, Collaboration: redactCollaborationSettings(config.Collaboration), Limits: map[string]int{
+				"extension_max_context_chars": config.Extensions.MaxContextChars, "extension_max_model_calls_per_turn": config.Extensions.MaxModelCallsPerTurn,
 				"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
 				"max_output_tokens": config.MaxOutputTokens, "max_tool_result_bytes": config.MaxToolResult,
 				"auto_compact_percent": autoCompactPercent(config), "task_summary_bytes": config.TaskSummaryBytes}, EnabledSkills: enabledMapKeys(config.Skills.Enabled), EnabledExts: enabledMapKeys(config.Extensions.Enabled), EnabledMCP: enabledMCPNames(config.MCPServers)}}
@@ -1799,6 +1812,12 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 	if err := service.validatePublicOperation(ctx, *record); err != nil {
 		return err
 	}
+	if record.Operation.Kind == ControlChangeExtensionState {
+		return service.applyExtensionState(ctx, record)
+	}
+	if record.Operation.Kind == ControlInitExtensionStorage {
+		return service.initExtensionStorage(ctx, record)
+	}
 	if record.Operation.Kind == ControlRevert {
 		original, ok := service.operations[record.Operation.RevertOf]
 		if !ok {
@@ -2189,8 +2208,13 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		if err := json.Unmarshal(request.Arguments, &fields); err != nil {
 			return controlRecord{}, errors.New("harness: invalid extension policy")
 		}
-		if fields["settings"] != nil || fields["env_from"] != nil {
-			return controlRecord{}, errors.New("harness: extension settings are user-only")
+		if fields["env_from"] != nil {
+			return controlRecord{}, errors.New("harness: extension secret mappings are user-only")
+		}
+		if fields["settings"] != nil {
+			if err := service.validateModelExtensionSettings(request.Arguments); err != nil {
+				return controlRecord{}, err
+			}
 		}
 	}
 	record := controlRecord{Operation: ControlOperation{Kind: request.Kind, Authorization: request.Authorization, ConversationID: request.ConversationID,
@@ -2199,7 +2223,11 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		record.Arguments = json.RawMessage(`{}`)
 	}
 	config := cloneConfig(service.core.currentConfig())
-	if request.Kind == ControlBranchConversation {
+	if request.Kind == ControlChangeExtensionState || request.Kind == ControlInitExtensionStorage {
+		if err := service.buildExtensionState(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlBranchConversation {
 		if err := service.buildBranchControl(ctx, &record); err != nil {
 			return controlRecord{}, err
 		}
@@ -2779,13 +2807,15 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		config.Collaboration = args
 	case ControlSetRuntimeLimits:
 		var args struct {
-			ModelRetries     *int `json:"model_retries"`
-			AutoCompactAt    *int `json:"auto_compact_percent"`
-			HistoryPageSize  *int `json:"history_page_size"`
-			MaxContextBytes  *int `json:"max_context_bytes"`
-			MaxOutputTokens  *int `json:"max_output_tokens"`
-			MaxToolResult    *int `json:"max_tool_result_bytes"`
-			TaskSummaryBytes *int `json:"task_summary_bytes"`
+			ModelRetries          *int `json:"model_retries"`
+			AutoCompactAt         *int `json:"auto_compact_percent"`
+			HistoryPageSize       *int `json:"history_page_size"`
+			MaxContextBytes       *int `json:"max_context_bytes"`
+			MaxOutputTokens       *int `json:"max_output_tokens"`
+			MaxToolResult         *int `json:"max_tool_result_bytes"`
+			TaskSummaryBytes      *int `json:"task_summary_bytes"`
+			ExtensionContextChars *int `json:"extension_max_context_chars"`
+			ExtensionModelCalls   *int `json:"extension_max_model_calls_per_turn"`
 		}
 		if err := decodeControlJSON(raw, &args); err != nil {
 			return err
@@ -2810,6 +2840,12 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		}
 		if args.TaskSummaryBytes != nil {
 			config.TaskSummaryBytes = *args.TaskSummaryBytes
+		}
+		if args.ExtensionContextChars != nil {
+			config.Extensions.MaxContextChars = *args.ExtensionContextChars
+		}
+		if args.ExtensionModelCalls != nil {
+			config.Extensions.MaxModelCallsPerTurn = *args.ExtensionModelCalls
 		}
 	case ControlSetSkillPolicy:
 		var args struct {
@@ -2999,6 +3035,7 @@ func configResourceValue(config Config, resource string) any {
 		return config.Collaboration
 	case "config.limits":
 		return map[string]any{"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
+			"extension_max_context_chars": config.Extensions.MaxContextChars, "extension_max_model_calls_per_turn": config.Extensions.MaxModelCallsPerTurn,
 			"model_retries":     config.ModelRetries,
 			"max_output_tokens": config.MaxOutputTokens, "max_tool_result_bytes": config.MaxToolResult, "auto_compact_percent": autoCompactPercent(config), "task_summary_bytes": config.TaskSummaryBytes}
 	case "config.workspace":
@@ -3175,13 +3212,15 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		return decodeAndAssign(raw, &config.Collaboration)
 	case "config.limits":
 		var data struct {
-			ModelRetries     int `json:"model_retries"`
-			AutoCompactAt    int `json:"auto_compact_percent"`
-			HistoryPageSize  int `json:"history_page_size"`
-			MaxContextBytes  int `json:"max_context_bytes"`
-			MaxOutputTokens  int `json:"max_output_tokens"`
-			MaxToolResult    int `json:"max_tool_result_bytes"`
-			TaskSummaryBytes int `json:"task_summary_bytes"`
+			ModelRetries          int `json:"model_retries"`
+			AutoCompactAt         int `json:"auto_compact_percent"`
+			HistoryPageSize       int `json:"history_page_size"`
+			MaxContextBytes       int `json:"max_context_bytes"`
+			MaxOutputTokens       int `json:"max_output_tokens"`
+			MaxToolResult         int `json:"max_tool_result_bytes"`
+			TaskSummaryBytes      int `json:"task_summary_bytes"`
+			ExtensionContextChars int `json:"extension_max_context_chars"`
+			ExtensionModelCalls   int `json:"extension_max_model_calls_per_turn"`
 		}
 		if err := json.Unmarshal(raw, &data); err != nil {
 			return err
@@ -3190,6 +3229,8 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		config.MaxToolResult, config.TaskSummaryBytes = data.MaxToolResult, data.TaskSummaryBytes
 		config.AutoCompactAt = data.AutoCompactAt
 		config.ModelRetries = data.ModelRetries
+		config.Extensions.MaxContextChars = data.ExtensionContextChars
+		config.Extensions.MaxModelCallsPerTurn = data.ExtensionModelCalls
 	default:
 		if strings.HasPrefix(resource, "config.model:") {
 			id := strings.TrimPrefix(resource, "config.model:")

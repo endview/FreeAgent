@@ -361,7 +361,7 @@ func TestSettingsCommandRunCanBeEnabledAndSelected(t *testing.T) {
 		t.Fatalf("enable command_run %d %s", code, raw)
 	}
 	enabled := getSettings()
-	wantSandbox := "unsupported"
+	wantSandbox := "backend_unavailable"
 	if winlaunch.SandboxSupported() {
 		wantSandbox = "ready"
 	}

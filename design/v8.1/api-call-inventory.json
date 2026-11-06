@@ -1,0 +1,561 @@
+{
+  "baseline": "v8.0.0-dev.1",
+  "source": "internal/chatui/src/main.mjs",
+  "sites": [
+    {
+      "line": 366,
+      "source": "const info = await api('public-settings'), config = info.config;",
+      "destination": "internal/chatui/frontend/features/settings/PublicSettings.tsx",
+      "validation": "Core public-auth tests and settings browser passed; final Hytron HTTPS test recorded separately"
+    },
+    {
+      "line": 397,
+      "source": "try { await api('public-settings', next, 'PUT'); notice.textContent = '设置已保存。首次启用或监听地址变化后，请通过服务器本机入口重启 Owner。'; }",
+      "destination": "internal/chatui/frontend/features/settings/PublicSettings.tsx",
+      "validation": "Core public-auth tests and settings browser passed; final Hytron HTTPS test recorded separately"
+    },
+    {
+      "line": 404,
+      "source": "try { await api(publicMode ? 'public/password' : 'public-password', publicMode ? { Current: current, Password: next } : { password: next }); notice.textContent = '密码已保存，远程会话已撤销。'; if (publicMode) { dialog.close(); recoverPublicSession(); } }",
+      "destination": "internal/chatui/frontend/features/settings/PublicSettings.tsx",
+      "validation": "Core public-auth tests and settings browser passed; final Hytron HTTPS test recorded separately"
+    },
+    {
+      "line": 407,
+      "source": "const loadSecurity = async () => { const events = await api(publicMode ? 'public/security' : 'public-recovery'); form.querySelector('.public-security-events').textContent = JSON.stringify(events, null, 2); };",
+      "destination": "internal/chatui/frontend/features/settings/PublicSettings.tsx",
+      "validation": "Core public-auth tests and settings browser passed; final Hytron HTTPS test recorded separately"
+    },
+    {
+      "line": 408,
+      "source": "const unlock = form.querySelector('[data-public-unlock]'); if (unlock) unlock.onclick = async () => { try { await api('public-recovery', {}); await loadSecurity(); } catch (failure) { notice.textContent = failure.message; } };",
+      "destination": "internal/chatui/frontend/features/settings/PublicSettings.tsx",
+      "validation": "Core public-auth tests and settings browser passed; final Hytron HTTPS test recorded separately"
+    },
+    {
+      "line": 429,
+      "source": "const chatAPI = (action, body) => api(`chats/${encodeURIComponent(state.chat)}${action ? `/${action}` : ''}`, body);",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 589,
+      "source": "const [skills, extensions] = await Promise.all([api('skills'), api('extensions')]);",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 681,
+      "source": "const result = await api(`conversations/${encodeURIComponent(state.chat)}/permission`, { mode, confirmed }, 'PATCH');",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 775,
+      "source": "if(route.id==='database'){state.database=await api('settings/database');renderPermissionsView();}",
+      "destination": "internal/chatui/frontend/features/settings/DataSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 776,
+      "source": "if(route.id==='memory'&&state.chat){state.managedMemory=await api('attach/memory',{command:'list',conversation_id:state.chat,scope_kind:'private',limit:64});renderPermissionsView();}",
+      "destination": "internal/chatui/frontend/features/settings/MemorySettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 789,
+      "source": "await api('channels/credentials',{name:$('#channel-credential-name').value.trim(),protocol:$('#channel-credential-protocol').value,base_url:$('#channel-credential-origin').value.trim(),source:'saved',secret:$('#channel-credential-secret').value});",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 792,
+      "source": "async function removeChannelCredential(id) {if(!window.confirm('删除此渠道凭据？仍被连接引用时会拒绝。'))return;await api('channels/credentials',{id,remove:true});await loadPermissions();renderPermissionsView();}",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 793,
+      "source": "async function removeChannelConnection(id) {if(!window.confirm('删除此连接？已有对话保留。'))return;await api('channels',{connections:(state.channels?.config?.connections||[]).filter(c=>c.id!==id)},'PATCH');await loadPermissions();renderPermissionsView();}",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 798,
+      "source": "await api('attach/memory',{command:'save',conversation_id:state.chat,scope_kind:'private',kind:'background',title,body,yes:true,request_key:crypto.randomUUID()});",
+      "destination": "internal/chatui/frontend/features/settings/MemorySettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 806,
+      "source": "await api('attach/memory',{command:operation,conversation_id:state.chat,scope_kind:item.scope.kind,owner:item.scope.owner,personal:!item.scope.project,entries:[id],expected_revision:item.revision,pin_scope,yes:true,request_key:crypto.randomUUID()});",
+      "destination": "internal/chatui/frontend/features/settings/MemorySettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 844,
+      "source": "state.env = await api('environment');",
+      "destination": "internal/chatui/frontend/lib/store/runtime.ts",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 856,
+      "source": "const [settings, permissions, serverInfo] = await Promise.all([api('settings'), api(`permissions${query}`), api('server')]);",
+      "destination": "internal/chatui/frontend/features/settings/RuntimeSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 860,
+      "source": "if(state.settingsPage==='channels'){try { [state.channels,state.channelKeys] = await Promise.all([api('channels'),api('channels/credentials')]); } catch {state.channels=null;} }",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 861,
+      "source": "if (state.settingsPage==='channels' && state.channels) { try { state.channels.telegram_access = await api('channels/telegram/access'); } catch { state.channels.telegram_access = {}; } }",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 991,
+      "source": "const result = await api('settings/command-run', {",
+      "destination": "internal/chatui/frontend/features/settings/RuntimeSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1014,
+      "source": "const result = await api('settings/file-access', { scope: enabled ? scope : 'workspace', allowed_roots: roots, global_blocked_paths: permissionPageBlocked(), expected_revision: state.settings?.revision || '' }, 'PATCH');",
+      "destination": "internal/chatui/frontend/features/settings/RuntimeSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1022,
+      "source": "state.settings = await api('settings/permissions', { default_permission_mode: mode, expected_revision: state.settings?.revision || '' }, 'PATCH');",
+      "destination": "internal/chatui/frontend/features/settings/RuntimeSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1028,
+      "source": "state.settings = await api('settings/tools', {",
+      "destination": "internal/chatui/frontend/features/settings/RuntimeSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1038,
+      "source": "await api(`channels/${source}`, {}, 'POST');",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 1039,
+      "source": "state.channels = await api('channels');",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 1052,
+      "source": "state.settings = await api('settings/context', {task_summary_bytes: limit, auto_compact_percent:Number($('#context-trigger-percent').value), model_retries:Number($('#model-retries').value),max_output_tokens:Number($('#context-output-tokens').value),max_context_bytes:Number($('#context-max-bytes').value), expected_revision: state.settings?.revision || ''}, 'PATCH');",
+      "destination": "internal/chatui/frontend/features/settings/RuntimeSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1089,
+      "source": "const result = await api('channels/telegram/access', change, 'POST');",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 1113,
+      "source": "await api('channels',{connections:list},'PATCH');await loadPermissions();renderPermissionsView();",
+      "destination": "internal/chatui/frontend/features/settings/ChannelSettings.tsx",
+      "validation": "Core channel tests and settings page load passed; real multi-account/group/Lark/QQ NOT_RUN"
+    },
+    {
+      "line": 1172,
+      "source": "await api(`conversations/${encodeURIComponent(state.chat)}/permission`,body,'PATCH');",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 1211,
+      "source": "const current = await api(`attach/context?conversation_id=${encodeURIComponent(chat)}`);",
+      "destination": "internal/chatui/frontend/features/conversations/ContextPanel.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1244,
+      "source": "const result = await api('attach/context', { conversation_id: chat, request_key: state.contextRequest, command });",
+      "destination": "internal/chatui/frontend/features/conversations/ContextPanel.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1251,
+      "source": "try { state.context = await api(`attach/context?conversation_id=${encodeURIComponent(chat)}`); } catch { /* Keep the last visible state. */ }",
+      "destination": "internal/chatui/frontend/features/conversations/ContextPanel.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1321,
+      "source": "const result = await api('spaces', { kind, arguments: args, confirmed: true });",
+      "destination": "internal/chatui/frontend/features/settings/SpacesSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1349,
+      "source": "const value = await api(`chats/${encodeURIComponent(chat)}/memory`);",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 1453,
+      "source": "state.keys = await api('keys');",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 1583,
+      "source": "state.mcp = await api('mcp');",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1589,
+      "source": "state.skillDetail = state.skillName ? await api(`skills/${encodeURIComponent(state.skillName)}/view`) : null;",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1593,
+      "source": "state.skills = await api('skills');",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1602,
+      "source": "state.extensions = await api('extensions');",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1619,
+      "source": "const imported = await api('skills', { path: path.trim() });",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1624,
+      "source": "await api(`skills/${encodeURIComponent(name)}/update`, { enabled });",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1628,
+      "source": "await api('skills/trust', { trusted });",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1634,
+      "source": "const imported = await api('extensions', { path: path.trim() });",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1639,
+      "source": "await api(`extensions/${encodeURIComponent(id)}/update`, { enabled });",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1643,
+      "source": "await api('extensions/trust', { trusted });",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1663,
+      "source": "await api(`extensions/${encodeURIComponent(state.extensionId)}/update`, extensionFormValue());",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1668,
+      "source": "await api(`extensions/${encodeURIComponent(state.extensionId)}/restart`, {});",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1683,
+      "source": "await api(`extensions/${encodeURIComponent(state.extensionId)}/clear-data`, {});",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1688,
+      "source": "await api(`skills/${encodeURIComponent(name)}/delete`, {});",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1698,
+      "source": "if (state.mcpServer) await api(`mcp/${encodeURIComponent(id)}/update`, value);",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1699,
+      "source": "else await api('mcp', { id, config: value });",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1706,
+      "source": "const result = await api(`mcp/${encodeURIComponent(id)}/test`, value);",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1711,
+      "source": "await api(`mcp/${encodeURIComponent(state.mcpServer)}/delete`, {});",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1716,
+      "source": "await api('mcp/restart', {});",
+      "destination": "internal/chatui/frontend/features/settings/CapabilitySettings.tsx",
+      "validation": "Core extension/SDK/Go-process tests and settings browser passed; stateful AffectWeave browser separately passed"
+    },
+    {
+      "line": 1818,
+      "source": "[state.chats, state.spaces] = await Promise.all([api('chats'), api('spaces')]);",
+      "destination": "internal/chatui/frontend/lib/store/runtime.ts",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1824,
+      "source": "await api(`chats/${encodeURIComponent(chatID)}/pin`, { pinned: Boolean(pinned) });",
+      "destination": "internal/chatui/frontend/features/conversations/Navigation.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 1930,
+      "source": "const chat = await api('chats', { title: chatTitle(prompt), space_id: state.space });",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 2061,
+      "source": "const result = await api(`chats/${encodeURIComponent(chat)}${before ? `?before=${encodeURIComponent(before)}` : ''}`);",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 2309,
+      "source": "const records = await api('attach/commands');",
+      "destination": "internal/chatui/frontend/features/settings/CommandSessions.tsx",
+      "validation": "Existing Core command-session regressions; page loads in settings browser; native device interaction NOT_RUN"
+    },
+    {
+      "line": 2523,
+      "source": "control = await api(`control/confirmation?operation_id=${encodeURIComponent(value.control_operation_id)}&conversation_id=${encodeURIComponent(chat)}`);",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 2572,
+      "source": "const saved = await api(path, value);",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 2574,
+      "source": "try { await api('providers', { id: saved.id, enabled: true }, 'PUT'); }",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed",
+      "intentional_change": "Saving credentials no longer automatically enables Provider; explicit user toggle retained."
+    },
+    {
+      "line": 2601,
+      "source": "const result = await api('keys/test', unchangedSavedProfile ? { id: value.id } : value);",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 2616,
+      "source": "const result = await api(`keys/${encodeURIComponent(profile.id)}/models`, {});",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 2626,
+      "source": "await api('models/enable-batch', { key: profile.id, models: names });",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 2634,
+      "source": "await api('models/enable', {",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 2642,
+      "source": "await api('models/default', { id });",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 2654,
+      "source": "await api(`models/${encodeURIComponent(id)}/disable`, { new_default: newDefault });",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 2673,
+      "source": "await api(`keys/${encodeURIComponent(profile.id)}/delete`, { disable_models: disableModels, new_default: newDefault });",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 2725,
+      "source": "case 'database-status': state.database=await api('settings/database');renderPermissionsView();break;",
+      "destination": "internal/chatui/frontend/features/settings/DataSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 2774,
+      "source": "state.server = await api('server', { port: Number($('#server-port').value) }, 'PUT');",
+      "destination": "internal/chatui/frontend/features/settings/GeneralSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 2782,
+      "source": "case 'inputs-pause': case 'inputs-resume': await api('attach/inputs',{conversation_id:state.chat,operation:action==='inputs-pause'?'pause':'resume'}); await refreshInputs(); break;",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 2789,
+      "source": "const record = await api(`attach/commands?id=${encodeURIComponent(node.dataset.id)}&cursor=0`);",
+      "destination": "internal/chatui/frontend/features/settings/CommandSessions.tsx",
+      "validation": "Existing Core command-session regressions; page loads in settings browser; native device interaction NOT_RUN"
+    },
+    {
+      "line": 2794,
+      "source": "const record=await api(`attach/commands?id=${encodeURIComponent(commandOutputID)}&cursor=${commandOutputCursor}`);renderCommandOutput(record);break;",
+      "destination": "internal/chatui/frontend/features/settings/CommandSessions.tsx",
+      "validation": "Existing Core command-session regressions; page loads in settings browser; native device interaction NOT_RUN"
+    },
+    {
+      "line": 2799,
+      "source": "await api('attach/commands',{action:'extend',extension:{id:node.dataset.id,revision:Number(node.dataset.revision),expires_at:new Date(Date.parse(node.dataset.expires)+seconds*1000).toISOString(),request_key:crypto.randomUUID()}});",
+      "destination": "internal/chatui/frontend/features/settings/CommandSessions.tsx",
+      "validation": "Existing Core command-session regressions; page loads in settings browser; native device interaction NOT_RUN"
+    },
+    {
+      "line": 2803,
+      "source": "const record = await api('attach/commands', { action: 'stop', id: node.dataset.id });",
+      "destination": "internal/chatui/frontend/features/settings/CommandSessions.tsx",
+      "validation": "Existing Core command-session regressions; page loads in settings browser; native device interaction NOT_RUN"
+    },
+    {
+      "line": 2812,
+      "source": "await api('attach/commands', { action: 'start', conversation_id: state.chat, request_key: crypto.randomUUID(),",
+      "destination": "internal/chatui/frontend/features/settings/CommandSessions.tsx",
+      "validation": "Existing Core command-session regressions; page loads in settings browser; native device interaction NOT_RUN"
+    },
+    {
+      "line": 2823,
+      "source": "case 'context-stop': await api('attach/cancel', { conversation_id: state.contextChat, binding: state.contextRequest }); break;",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 2850,
+      "source": "case 'public-logout': await api('public/logout', {}); publicCSRF = ''; sse?.close(); await loginPublic(true); await refreshEnvironment(); await listChats(); connectEvents(); break;",
+      "destination": "internal/chatui/frontend/features/settings/PublicSettings.tsx",
+      "validation": "Core public-auth tests and settings browser passed; final Hytron HTTPS test recorded separately"
+    },
+    {
+      "line": 2926,
+      "source": "else if (node.dataset.replySave) { const chat=node.dataset.attachmentChat;const ref=await api('attachments/reply',{conversation_id:chat,run_id:node.dataset.replySave,request_key:crypto.randomUUID()});await downloadAttachment(chat,ref.id,ref.name); }",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 2927,
+      "source": "else if (node.dataset.attachmentDelete) { const id=node.dataset.attachmentDelete;const refs=await api(`attachments?conversation_id=${encodeURIComponent(state.chat)}`);const item=refs.find(item=>item.ref.id===id);if(item && confirm(`永久删除 ${item.ref.name}？历史引用将不可用，只能从备份恢复。`)){await api('attachments/delete',{conversation_id:state.chat,id,sha256:item.ref.sha256});await openAttachmentSettings();await snapshot();} }",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 3209,
+      "source": "await api('providers', { id: toggle.dataset.providerId, enabled }, 'PUT');",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 3269,
+      "source": "await api('connect', {});",
+      "destination": "internal/chatui/frontend/app/bootstrap.ts",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 3340,
+      "source": "const policy = await api('attachment-policy');",
+      "destination": "internal/chatui/frontend/features/settings/AttachmentSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 3342,
+      "source": "const refs=state.chat ? await api(`attachments?conversation_id=${encodeURIComponent(state.chat)}`) : [];",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 3350,
+      "source": "await api('attachment-policy', policy, 'PUT');state.env.attachments=policy;$('#attachment-settings-dialog').close();",
+      "destination": "internal/chatui/frontend/features/settings/AttachmentSettings.tsx",
+      "validation": "Core/API regressions plus corresponding settings/core/continuity browser family; no claim that destination map alone proves every gesture"
+    },
+    {
+      "line": 3370,
+      "source": "await api('models/vision',{id:$('#vision-form').dataset.model,vision});$('#vision-dialog').close();state.env=await api(\"environment\");await loadKeys();",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    },
+    {
+      "line": 3389,
+      "source": "const inputs=await api(`attach/inputs?conversation_id=${encodeURIComponent(chat)}`);",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 3397,
+      "source": "await api('attach/inputs',{conversation_id:state.chat,operation,key,run_id:runID});",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 3413,
+      "source": "const receipt=await api('attach/inputs',{conversation_id:chat,operation:'accept',command});",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 3425,
+      "source": "const result=await api('attach/branch',{conversation_id:state.chat,command:{request_key:crypto.randomUUID(),message_id:Number(id),mode,prompt:text}});",
+      "destination": "internal/chatui/frontend/features/conversations/ConversationPage.tsx",
+      "validation": "Core/tool/continuity browser scenarios passed; details in frontend feature map and acceptance artifacts"
+    },
+    {
+      "line": 3436,
+      "source": "await api('models/context',{id,tokens:Number(input)});await refreshEnvironment();",
+      "destination": "internal/chatui/frontend/features/settings/Providers.tsx",
+      "validation": "Provider browser: test/probe, models, default/delete and retained secret drafts passed"
+    }
+  ],
+  "reviewed": "2026-11-07",
+  "status": "All original call sites mapped to the sole production React frontend; device/live limits remain explicit."
+}

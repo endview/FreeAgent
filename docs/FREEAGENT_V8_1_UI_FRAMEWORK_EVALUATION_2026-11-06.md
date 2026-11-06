@@ -1,6 +1,6 @@
 # FreeAgent v8.1 UI 框架评估
 
-日期：2026-11-06。状态：源码/官方资料核查与隔离技术小样通过；产品迁移尚未开始。
+日期：2026-11-06。状态：本文件保留选型时的历史小样证据。正式前端现已采用 React 19 / Vite 8，当前实现与命令以[前端架构](FRONTEND_ARCHITECTURE_V8_1.md)、[开发指南](FRONTEND_DEVELOPMENT_GUIDE_V8_1.md)和[实施记录](FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)为准。
 
 实施排期与退出条件见 [v8.0.1—v8.3 实施计划](FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md)。本文件保留选型依据与小样结果。
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextIndex, modelMenuItems } from '../src/menu.mjs';
+import { nextIndex, modelMenuItems } from '../frontend/lib/presentation/menu.mjs';
 
 test('nextIndex skips disabled items and wraps', () => {
   const items = [{ disabled: false }, { disabled: true }, { disabled: false }];

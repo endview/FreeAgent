@@ -4,19 +4,25 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-This is the **v8.0.0-dev.1 development candidate**. Download Windows and Linux
-portable builds from the [v8.0 release](https://github.com/endview/FreeAgent/releases/tag/v8.0.0-dev.1).
+The working tree is **v8.3.0-dev.1**, with the React/TypeScript workbench,
+server-paged conversations/history, installation/update diagnostics and an
+optional independent Go AffectWeave extension under
+acceptance. The latest published baseline remains the
+[v8.0 development candidate](https://github.com/endview/FreeAgent/releases/tag/v8.0.0-dev.1).
 [简体中文](README.zh-CN.md).
-The next stages are documented in the [v8.0.1–v8.3 implementation plan](docs/FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md).
-It uses a new
-current-only `Harness-pg-v1` data directory and the PostgreSQL v1 store format. Old
-configurations, databases, backups, commands, and SDKs are not supported or
-imported. Do not point it at an old data directory.
-v8.0 uses PostgreSQL 15.19 as its only Store and bundles the local runtime.
-It adds bounded model recovery, read-only verification of uncertain tools,
-optional platform transport processes, pinned Memory and grouped settings.
-No old history is imported; see [PostgreSQL](docs/POSTGRESQL.md) and the
-[implementation record](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md).
+
+The [v8.0.1–v8.3 plan](docs/FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md)
+and [actual progress](docs/FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)
+separate implemented behavior, executed checks and remaining device/live tests.
+See the [frontend architecture](docs/FRONTEND_ARCHITECTURE_V8_1.md),
+[development guide](docs/FRONTEND_DEVELOPMENT_GUIDE_V8_1.md) and
+[diagnosis/update guide](docs/DIAGNOSIS_AND_UPDATES.md).
+
+PostgreSQL 15.19 is the only Store and is bundled in portable packages.
+Current `Harness-pg-v1` data continues across these versions. Old SQLite data,
+old platforms and historical imports are not supported; upgrading the current
+PG format does not mean clearing conversations. Keep credentials, workspace
+and verified database/attachment backups. See [PostgreSQL](docs/POSTGRESQL.md).
 
 The v7 control service, GUI/CLI attach path, sandboxed Windows command
 launcher and current provider adapters are implemented. The v7.0 acceptance
@@ -223,7 +229,7 @@ collab adjust --parent <id> --child <name> --spec <json-file>
 collab preview --parent <id> --child <name>
 collab confirm --parent <id> --child <name> --digest <sha256> [--approve]
 collab resolve --parent <id> --digest <sha256> --decision <text>
-doctor
+doctor [--text] [--export <new.zip>] [--preflight --backup <directory>]
 backup --out <new-directory>
 backup-verify --source <backup-directory>
 restore --source <backup-directory> --data-dir <new-directory>

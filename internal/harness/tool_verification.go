@@ -104,7 +104,7 @@ func (service *Service) verifyUnknownTool(ctx context.Context, run Run, original
 		if err != nil {
 			return err
 		}
-		copy.event(Event{Kind: "tool_verification", RunID: run.ID, ConversationID: run.ConversationID, AttemptID: original.ID, Message: "Uncertain effect: read-only verification; commands, writes, delegation and extensions disabled"})
+		copy.event(Event{Kind: EventToolVerification, RunID: run.ID, ConversationID: run.ConversationID, AttemptID: original.ID, Message: "Uncertain effect: read-only verification; commands, writes, delegation and extensions disabled"})
 		_, response, err := copy.generate(ctx, run, request)
 		if err != nil {
 			return errors.Join(ErrUnknownResult, err)

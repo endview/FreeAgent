@@ -47,6 +47,12 @@ func (server *Server) chatCommand(writer http.ResponseWriter, request *http.Requ
 		result = projection
 	case "messages":
 		result, err = tasks.Messages(ctx, command.Chat)
+	case "history-page":
+		var query harness.HistoryQuery
+		if !decode(&query) {
+			return
+		}
+		result, err = tasks.HistoryPage(ctx, command.Chat, query)
 	case "latest":
 		result, err = tasks.Latest(ctx, command.Chat)
 	case "runtime-facts":

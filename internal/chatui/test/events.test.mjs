@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { eventStream } from '../src/events.mjs';
+import { eventStream } from '../frontend/lib/presentation/events.mjs';
 
 test('header event stream decodes fragmented UTF-8 and closes without reconnect', async () => {
  const saved=globalThis.fetch;

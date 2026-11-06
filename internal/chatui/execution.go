@@ -51,7 +51,7 @@ func (server *Server) release(chat string, item *ownerExecution) {
 	}
 	server.mu.Unlock()
 	server.wg.Done()
-	server.notify("refresh", chat, "")
+	server.notify(harness.EventRefresh, chat, "")
 	// A queue accepted in another idle conversation may have been waiting for
 	// the same foreground slot. Reuse this Owner dispatch boundary on release.
 	server.advanceInputQueues()
@@ -87,7 +87,7 @@ func (server *Server) dispatchBoundContext(parent context.Context, chat, binding
 		server.deliverResult(result)
 		if err != nil {
 			code, message := userError(err)
-			server.notify("request_error", chat, code+": "+message)
+			server.notify(harness.EventRequestError, chat, code+": "+message)
 		}
 	}()
 	return nil
@@ -112,7 +112,7 @@ func (server *Server) deliverResult(result harness.RunResult) {
 	}
 	for _, deliver := range deliveries {
 		if err := deliver(server.ctx, result); err != nil {
-			server.notify("channel_delivery_error", result.Run.ConversationID, "渠道交付未确认；执行不会重放。")
+			server.notify(harness.EventChannelDeliveryError, result.Run.ConversationID, "渠道交付未确认；执行不会重放。")
 		}
 	}
 }

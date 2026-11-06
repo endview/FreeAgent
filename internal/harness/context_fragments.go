@@ -112,7 +112,7 @@ func (service *Service) summarizeLargeGroup(ctx context.Context, run Run, prefix
 		if end <= offset {
 			return previous, prefix, fmt.Errorf("%w: summary instructions and previous summary leave no source capacity", ErrContextLimit)
 		}
-		service.event(Event{Kind: "context_compacting", RunID: run.ID, ConversationID: run.ConversationID, Message: fmt.Sprintf("summarizing completed source fragment %d", part+1)})
+		service.event(Event{Kind: EventContextCompacting, RunID: run.ID, ConversationID: run.ConversationID, Message: fmt.Sprintf("summarizing completed source fragment %d", part+1)})
 		previous, err = service.generateSummary(ctx, run, makeRequest(end), limit, calls)
 		if err != nil {
 			return previous, prefix, err

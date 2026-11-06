@@ -19,6 +19,9 @@ type backupIdentity struct {
 }
 
 func (store *Store) Backup(ctx context.Context, target string) error {
+	return store.backupSnapshot(ctx, target, nil)
+}
+func (store *Store) backupSnapshot(ctx context.Context, target string, check func(context.Context, *sql.Tx) error) error {
 	// Attachment retirement and snapshot copying exclude one another. Task
 	// dispatch/model calls and normal database writes remain available.
 	store.attachmentMu.Lock()
@@ -65,6 +68,11 @@ func (store *Store) Backup(ctx context.Context, target string) error {
 	var snapshot string
 	if err := tx.QueryRowContext(backupCtx, `SELECT pg_export_snapshot()`).Scan(&snapshot); err != nil {
 		return err
+	}
+	if check != nil {
+		if err := check(backupCtx, tx); err != nil {
+			return err
+		}
 	}
 	refs, err := snapshotAttachmentRefs(backupCtx, tx)
 	if err != nil {

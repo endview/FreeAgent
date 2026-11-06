@@ -1,8 +1,8 @@
 # Extension Authoring Rules
 
 The [development guide](../docs/EXTENSION_DEVELOPMENT_GUIDE.md) provides current
-commands, protocol examples, and verified limitations. In particular, SDK tool
-templates need alignment with Core before production use.
+commands, protocol examples, and verified limitations. SDK tool templates and
+Core dispatch have contract regression coverage as of v8.0.1.
 
 ## Start small
 

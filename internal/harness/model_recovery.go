@@ -76,7 +76,7 @@ func (service *Service) retryModel(ctx context.Context, run Run, previous Attemp
 	if failure != nil {
 		delay = max(delay, time.Duration(failure.RetryAfterMS)*time.Millisecond)
 	}
-	service.event(Event{Kind: "model_retry_wait", RunID: run.ID, ConversationID: run.ConversationID, AttemptID: previous.ID, Message: fmt.Sprintf("model retry %d/%d in %s; prior result retained; provider may charge each request", recovery.Number, service.Config.ModelRetries, delay)})
+	service.event(Event{Kind: EventModelRetryWait, RunID: run.ID, ConversationID: run.ConversationID, AttemptID: previous.ID, Message: fmt.Sprintf("model retry %d/%d in %s; prior result retained; provider may charge each request", recovery.Number, service.Config.ModelRetries, delay)})
 	wait := service.retryWait
 	if wait == nil {
 		wait = waitModelRetry

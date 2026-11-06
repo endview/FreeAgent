@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hasModels, keyDraftChanged, keyFormValue, keyHost, keyStatus, modelDisplay, modelsForKey } from '../src/keys.mjs';
+import { hasModels, keyDraftChanged, keyFormValue, keyHost, keyStatus, modelDisplay, modelsForKey } from '../frontend/lib/presentation/keys.mjs';
 
 test('key status prioritizes re-entry, then source and last check', () => {
   assert.equal(keyStatus({ needs_reentry: true }).kind, 'reentry');

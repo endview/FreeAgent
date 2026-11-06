@@ -10,7 +10,9 @@ import (
 
 type spaceView struct {
 	harness.Space
-	Permission harness.PermissionMode `json:"permission"`
+	Permission   harness.PermissionMode      `json:"permission"`
+	OwnerPrivate bool                        `json:"owner_private"`
+	Selection    harness.PermissionSelection `json:"selection"`
 }
 
 func (server *Server) spacesAPI(w http.ResponseWriter, r *http.Request) bool {
@@ -31,7 +33,7 @@ func (server *Server) spacesAPI(w http.ResponseWriter, r *http.Request) bool {
 				server.fail(w, err)
 				return true
 			}
-			result = append(result, spaceView{space, p.Mode})
+			result = append(result, spaceView{space, p.Mode, p.OwnerPrivate, p})
 		}
 		server.writeJSON(w, http.StatusOK, result)
 		return true

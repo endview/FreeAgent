@@ -24,3 +24,20 @@ test("node SDK registers capabilities and handles context", async () => {
   assert.deepEqual(output[0].result.provides, ["context"]);
   assert.equal(output[1].result.blocks[0].text, "hello");
 });
+
+test("node SDK accepts the Core tool.call contract", async () => {
+  const output = [];
+  const stdout = new Writable({ write(chunk, encoding, done) {
+    output.push(JSON.parse(chunk.toString())); done();
+  } });
+  const ext = new Extension("com.example.node", { stdout });
+  ext.tool("echo", { schema: { type: "object" }, readOnly: true }, (ctx, args) => {
+    assert.equal(ctx.invocation, "tool-1");
+    return { content: args.text, is_error: false };
+  });
+  await ext.dispatchLine(JSON.stringify({ jsonrpc: "2.0", id: "1", method: "initialize",
+    params: { protocol: "freeagent-ext/1" } }));
+  await ext.dispatchLine(JSON.stringify({ jsonrpc: "2.0", id: "2", method: "tool.call",
+    params: { invocation: "tool-1", name: "echo", arguments: { text: "hello" } } }));
+  assert.deepEqual(output[1].result, { content: "hello", is_error: false });
+});

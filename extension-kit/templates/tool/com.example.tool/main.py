@@ -14,7 +14,7 @@ ext = Extension("com.example.tool")
     "additionalProperties": False,
 }, read_only=True, description="Return the supplied text.")
 async def echo(ctx, value):
-    return {"content": [{"type": "text", "text": value.get("text", "")}]}
+    return {"content": value.get("text", ""), "is_error": False}
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampLayout, readLayout, writeLayout, DEFAULTS, LIMITS, storageKey } from '../src/layout.mjs';
+import { clampLayout, readLayout, writeLayout, DEFAULTS, LIMITS, storageKey } from '../frontend/lib/presentation/layout.mjs';
 
 test('layout values stay within stable bounds', () => {
   assert.equal(clampLayout('sidebar', 100), LIMITS.sidebar[0]);

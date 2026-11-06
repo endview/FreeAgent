@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { allowedExternalURL, desktopMode, editableTarget, menuAvailability, openDesktopExternal } from '../src/desktop.mjs';
+import { allowedExternalURL, desktopMode, editableTarget, menuAvailability, openDesktopExternal } from '../frontend/lib/presentation/desktop.mjs';
 
 function target({ tag = 'input', type = 'text', value = '', start = 0, end = 0, link = null } = {}) {
   return {

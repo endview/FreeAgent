@@ -100,6 +100,14 @@ try {
             [void]$text.AppendLine('```')
         }
     }
+    [void]$text.AppendLine()
+    [void]$text.AppendLine('## shadcn/ui source components')
+    [void]$text.AppendLine()
+    [void]$text.AppendLine('Button and Dialog adapted from shadcn-ui/ui commit 8a3536678a528cc012b9e62484290e79d0be410f; FreeAgent token and focus changes.')
+    [void]$text.AppendLine()
+    [void]$text.AppendLine('```text')
+    [void]$text.AppendLine([IO.File]::ReadAllText((Join-Path $chat 'frontend/components/ui/SHADCN-LICENSE.md')).Replace("`r`n", "`n").TrimEnd())
+    [void]$text.AppendLine('```')
     $destination = Join-Path $root 'THIRD_PARTY_NOTICES.md'
     $generated = $text.ToString().Replace("`r`n", "`n")
     if ($Check) {

@@ -20,6 +20,7 @@ type chatTasks interface {
 	NewConversation(context.Context, string) (harness.Conversation, error)
 	Conversations(context.Context) ([]harness.Conversation, error)
 	Messages(context.Context, string) ([]harness.Message, error)
+	HistoryPage(context.Context, string, harness.HistoryQuery) (harness.HistoryPage, error)
 	Latest(context.Context, string) (harness.Run, error)
 	RuntimeFacts(context.Context, string, string) (harness.RuntimeFacts, error)
 	Inspect(context.Context, string) (harness.Run, []harness.Attempt, harness.Evidence, error)
@@ -130,6 +131,9 @@ func (remote *remoteChat) NewConversation(ctx context.Context, title string) (ha
 }
 func (remote *remoteChat) Messages(ctx context.Context, chat string) ([]harness.Message, error) {
 	return chatValue[[]harness.Message](remote, ctx, "messages", chat, "", nil)
+}
+func (remote *remoteChat) HistoryPage(ctx context.Context, chat string, query harness.HistoryQuery) (harness.HistoryPage, error) {
+	return chatValue[harness.HistoryPage](remote, ctx, "history-page", chat, "", query)
 }
 func (remote *remoteChat) Latest(ctx context.Context, chat string) (harness.Run, error) {
 	return chatValue[harness.Run](remote, ctx, "latest", chat, "", nil)

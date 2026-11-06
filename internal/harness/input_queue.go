@@ -25,6 +25,7 @@ type InputCommand struct {
 // Only sequence, disposition and authorization bindings are stored in meta.
 // User content remains in messages; there are no placeholder Runs or jobs.
 type PendingInput struct {
+	AdoptedAt      string               `json:"adopted_at,omitempty"`
 	ProfileHash    string               `json:"profile_hash"`
 	Key            string               `json:"key"`
 	Action         string               `json:"action"`
@@ -245,7 +246,7 @@ func (tasks *TaskService) inputEvent(input PendingInput) {
 	emit := tasks.emit
 	tasks.mu.Unlock()
 	if emit != nil {
-		emit(Event{Kind: "input_changed", ConversationID: input.ConversationID, RunID: input.TargetRun, Message: input.Status})
+		emit(Event{Kind: EventInputChanged, ConversationID: input.ConversationID, RunID: input.TargetRun, Message: input.Status})
 	}
 }
 
@@ -541,6 +542,7 @@ func moveInputMessage(ctx context.Context, tx *sql.Tx, input *PendingInput, run 
 	}
 	input.MessageID = next
 	input.Status = "adopted"
+	input.AdoptedAt = nowText()
 	input.RunID = run
 	return saveInput(ctx, tx, *input)
 }
@@ -629,6 +631,6 @@ func (service *Service) adoptSteeringForRetry(ctx context.Context, run Run, retr
 			}
 		}
 	}
-	service.event(Event{Kind: "input_adopted", ConversationID: run.ConversationID, RunID: run.ID, Message: fmt.Sprintf("%d user steering inputs adopted; undispatched plans marked NOT_RUN", len(inputs))})
+	service.event(Event{Kind: EventInputAdopted, ConversationID: run.ConversationID, RunID: run.ID, Message: fmt.Sprintf("%d user steering inputs adopted; undispatched plans marked NOT_RUN", len(inputs))})
 	return true, nil
 }

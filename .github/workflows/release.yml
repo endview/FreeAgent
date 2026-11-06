@@ -36,6 +36,10 @@ jobs:
         working-directory: internal/chatui
       - run: pnpm test
         working-directory: internal/chatui
+      - run: pnpm typecheck
+        working-directory: internal/chatui
+      - run: pnpm lint
+        working-directory: internal/chatui
       - run: pnpm build
         working-directory: internal/chatui
       - run: git diff --exit-code -- internal/chatui/dist

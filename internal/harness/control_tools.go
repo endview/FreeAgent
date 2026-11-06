@@ -92,6 +92,24 @@ func (tools *controlTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 			if err != nil {
 				return ToolResult{}, err
 			}
+			if run, loadErr := tools.service.Store.GetRun(ctx, tools.runID); loadErr == nil && tools.service.capabilities != nil {
+				if identity, identityErr := tools.service.extensionIdentity(ctx, run); identityErr == nil {
+					for _, id := range tools.service.capabilities.Extensions {
+						definition, definitionErr := tools.service.extensions.definition(id)
+						if definitionErr != nil || !definition.Manifest.State {
+							continue
+						}
+						role := extensionVariant(run, id, tools.service.Config)
+						actor := identity.Inputs[len(identity.Inputs)-1].ActorID
+						if raw, readErr := NewTaskService(tools.service).ExtensionState(ctx, id, run.ConversationID, role, actor); readErr == nil && len(raw) <= 64<<10 {
+							if state.ExtensionStates == nil {
+								state.ExtensionStates = map[string]json.RawMessage{}
+							}
+							state.ExtensionStates[id] = raw
+						}
+					}
+				}
+			}
 			if tools.runID != "" {
 				facts, err := NewTaskService(tools.service).RuntimeFacts(ctx, "", tools.runID)
 				if err != nil {

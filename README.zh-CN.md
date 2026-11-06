@@ -4,7 +4,7 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-当前源码为 **v8.0.0-dev.1 开发候选**。
+当前工作树为 **v8.3.0-dev.1 开发候选**，包含 React/TypeScript 工作台、排障工具、长历史访问和可选独立 Go AffectWeave 扩展接口。以下链接仍指向最近已发布的 v8.0 包；工作树功能与真实验收见[实施记录](docs/FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)。
 [下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.0.0-dev.1)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 

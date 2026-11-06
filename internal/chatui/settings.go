@@ -51,6 +51,9 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 		}
 	case path == "/api/settings" && request.Method == http.MethodGet:
 		server.writeSettings(writer, request)
+	case path == "/api/settings/prompt" && request.Method == http.MethodGet:
+		config := server.tasks.Config()
+		server.writeJSON(writer, http.StatusOK, map[string]any{"system_prompt": config.SystemPrompt, "instructions": config.Instructions, "revision": server.tasks.RuntimePolicy().Generation})
 	case path == "/api/settings/permissions" && request.Method == http.MethodPatch:
 		server.patchSettingsPermissions(writer, request)
 	case path == "/api/settings/file-access" && request.Method == http.MethodPatch:

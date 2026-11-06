@@ -10,5 +10,5 @@ var files embed.FS
 
 func Assets() fs.FS {
 	assets, _ := fs.Sub(files, "dist")
-	return assets
+	return developmentAssets(assets)
 }

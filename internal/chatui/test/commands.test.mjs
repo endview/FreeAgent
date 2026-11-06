@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { commandEntries, commandQuery, filterCommands, commandNeedsInput, commandInputDefaults } from '../src/commands.mjs';
+import { commandEntries, commandQuery, filterCommands, commandNeedsInput, commandInputDefaults } from '../frontend/lib/presentation/commands.mjs';
 
 const catalog = {
   skills: [

@@ -406,7 +406,7 @@ func (service *ControlService) applyTelegramAccess(ctx context.Context, record *
 		NewTaskService(service.core).CancelConversation(chat.ID)
 	}
 	if err := NewTaskService(service.core).stopPermissionCommands(ctx, space.ID, ""); err != nil {
-		service.core.event(Event{Kind: "telegram_access_stop_failed", Message: safeError(err)})
+		service.core.event(Event{Kind: EventTelegramAccessStopFailed, Message: safeError(err)})
 	}
 	return nil
 }

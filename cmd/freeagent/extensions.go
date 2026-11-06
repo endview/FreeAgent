@@ -20,6 +20,12 @@ func runExtensions(ctx context.Context, args []string, stdin io.Reader, stdout, 
 		return usageErr("usage: freeagent ext <new|check|test|run|logs> [flags]")
 	}
 	switch args[0] {
+	case "sync":
+		return runExtensionSync(ctx, args[1:], stdout, stderr)
+	case "state":
+		return runExtensionState(ctx, args[1:], stdout, stderr)
+	case "backup", "restore", "verify-backup":
+		return runExtensionBackup(ctx, args[0], args[1:], stdout, stderr)
 	case "new":
 		return runExtensionNew(ctx, args[1:], stdout, stderr)
 	case "check":
@@ -33,6 +39,112 @@ func runExtensions(ctx context.Context, args []string, stdin io.Reader, stdout, 
 	default:
 		return usagef("freeagent ext: unknown command %q; use new, check, run or logs", args[0])
 	}
+}
+
+func runExtensionState(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("ext state", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	data := flags.String("data-dir", defaultDataDir(), "current Harness data directory")
+	id := flags.String("id", "", "extension ID")
+	chat := flags.String("conversation", "", "conversation scope")
+	role := flags.String("role", "", "role ID")
+	actor := flags.String("actor", "owner", "verified actor ID")
+	space := flags.String("space", "", "space ID")
+	if err := parseFlags(flags, args); err != nil {
+		return err
+	}
+	if *id == "" || flags.NArg() != 0 {
+		return usageErr("ext state: --id is required")
+	}
+	if err := resolveDataDir(data); err != nil {
+		return err
+	}
+	_, _, service, closeAll, err := openRuntime(ctx, *data)
+	if errors.Is(err, harness.ErrOwnerActive) {
+		client, e := interactiveOwner(ctx, *data)
+		if e != nil {
+			return e
+		}
+		raw, e := client.ExtensionState(ctx, *id, *chat, *role, *actor, *space)
+		if e != nil {
+			return e
+		}
+		return writeJSON(stdout, raw)
+	}
+	if err != nil {
+		return err
+	}
+	defer closeAll()
+	raw, err := harness.NewTaskService(service).ExtensionState(ctx, *id, *chat, *role, *actor, *space)
+	if err != nil {
+		return err
+	}
+	return writeJSON(stdout, raw)
+}
+
+func runExtensionBackup(ctx context.Context, command string, args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("ext "+command, flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	data := flags.String("data-dir", defaultDataDir(), "Core data directory")
+	id := flags.String("id", "", "extension ID")
+	target := flags.String("to", "", "new backup directory")
+	source := flags.String("from", "", "paired backup directory")
+	pkg := flags.String("package", "", "matching extension package folder")
+	if err := parseFlags(flags, args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return usageErr("unexpected extension backup arguments")
+	}
+	if command == "verify-backup" {
+		if *source == "" {
+			return usageErr("ext verify-backup requires --from")
+		}
+		if _, err := harness.VerifyExtensionPair(ctx, *source); err != nil {
+			return err
+		}
+		return writeJSON(stdout, map[string]bool{"ok": true})
+	}
+	if err := resolveDataDir(data); err != nil {
+		return err
+	}
+	if command == "restore" {
+		explicitData := false
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name == "data-dir" {
+				explicitData = true
+			}
+		})
+		if *source == "" || *pkg == "" || !explicitData {
+			return usageErr("ext restore requires --from, --package and a new --data-dir")
+		}
+		if err := harness.RestoreExtensionPair(ctx, *source, *data, *pkg); err != nil {
+			return err
+		}
+		return writeJSON(stdout, map[string]any{"ok": true, "data_dir": *data})
+	}
+	if *id == "" || *target == "" {
+		return usageErr("ext backup requires --id and --to")
+	}
+	_, _, service, closeAll, err := openRuntime(ctx, *data)
+	if errors.Is(err, harness.ErrOwnerActive) {
+		client, e := interactiveOwner(ctx, *data)
+		if e != nil {
+			return e
+		}
+		if e = client.ExtensionBackup(ctx, *id, *target); e != nil {
+			return e
+		}
+		return writeJSON(stdout, map[string]any{"ok": true, "directory": *target})
+	}
+	if err != nil {
+		return err
+	}
+	defer closeAll()
+	if err = harness.NewTaskService(service).BackupExtensionPair(ctx, *id, *target); err != nil {
+		return err
+	}
+	return writeJSON(stdout, map[string]any{"ok": true, "directory": *target})
 }
 
 func runExtensionNew(ctx context.Context, args []string, stdout, stderr io.Writer) error {

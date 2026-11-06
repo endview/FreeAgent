@@ -55,6 +55,15 @@ func runControl(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		return err
 	}
 	switch command {
+	case "reconcile-extension":
+		if *operationID == "" {
+			return usageErr("control reconcile-extension: --operation is required")
+		}
+		result, err := control.ReconcileExtensionChange(ctx, *operationID)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
 	case "review":
 		if err := control.ReviewExternalChange(ctx); err != nil {
 			return err

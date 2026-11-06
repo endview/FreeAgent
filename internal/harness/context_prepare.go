@@ -83,7 +83,7 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 	})
 	if err != nil {
 		service.compactionFailed = true
-		service.event(Event{Kind: "context_compaction_failed", ConversationID: run.ConversationID, RunID: run.ID, Message: safeError(err)})
+		service.event(Event{Kind: EventContextCompactionFailed, ConversationID: run.ConversationID, RunID: run.ID, Message: safeError(err)})
 		return prepared, err
 	}
 	if !result.Changed {

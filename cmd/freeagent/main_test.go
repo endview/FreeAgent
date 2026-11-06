@@ -271,7 +271,8 @@ func TestRunWithoutModelExit2(t *testing.T) {
 		}
 	}
 	raw, _, err := invoke(t, "", "sessions", "--data-dir", data)
-	if err != nil || strings.TrimSpace(raw) != "[]" {
+	var page harness.ConversationPage
+	if err != nil || json.Unmarshal([]byte(raw), &page) != nil || len(page.Items) != 0 || page.HasMore {
 		t.Fatalf("no model run left a session: %q err=%v", raw, err)
 	}
 }

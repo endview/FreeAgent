@@ -174,6 +174,20 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 		return true
 	}
 	switch {
+	case path == "/api/control/reconcile-extension" && request.Method == http.MethodPost:
+		var body struct {
+			OperationID string `json:"operation_id"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		result, err := control.ReconcileExtensionChange(request.Context(), body.OperationID)
+		if err != nil {
+			server.fail(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, result)
+		return true
 	case path == "/api/control/config" && request.Method == http.MethodGet:
 		server.writeJSON(writer, http.StatusOK, server.configProjection())
 		return true
@@ -406,9 +420,11 @@ func (server *Server) configProjection() map[string]any {
 		"model_capabilities": capabilities, "commands": config.Commands, "http": config.HTTP,
 		"collaboration": config.Collaboration, "memory": config.Memory,
 		"limits": map[string]int{
-			"history_page_size": config.HistoryPageSize,
-			"model_retries":     config.ModelRetries,
-			"max_context_bytes": config.MaxContextBytes, "max_output_tokens": config.MaxOutputTokens,
+			"extension_max_context_chars":        config.Extensions.MaxContextChars,
+			"extension_max_model_calls_per_turn": config.Extensions.MaxModelCallsPerTurn,
+			"history_page_size":                  config.HistoryPageSize,
+			"model_retries":                      config.ModelRetries,
+			"max_context_bytes":                  config.MaxContextBytes, "max_output_tokens": config.MaxOutputTokens,
 			"max_tool_result_bytes": config.MaxToolResult,
 			"task_summary_bytes":    config.TaskSummaryBytes,
 			"auto_compact_percent":  config.AutoCompactAt,

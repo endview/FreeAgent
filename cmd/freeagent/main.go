@@ -114,7 +114,7 @@ tools list
 commands <list|poll|stop|start> [--id <attempt>] [--session <id> --arguments <JSON>] [--cursor <n>] [--interactive] [--json]
   Start requires a running GUI/web/chat owner. /commands [list|poll <id>|stop <id>|start <JSON>] uses that same owner.
 tools test <server>
-doctor
+doctor [--text] [--export <new.zip>] [--preflight --backup <directory>]
 backup --out <new-directory>
 backup-verify --source <backup-directory>
 restore --source <backup-directory> --data-dir <new-directory>
@@ -231,7 +231,12 @@ func runSessions(ctx context.Context, args []string, stdout, stderr io.Writer) e
 	flags := flag.NewFlagSet("sessions", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
-	show := flags.String("show", "", "show session history")
+	show := flags.String("show", "", "show bounded session history")
+	before := flags.Int64("before", 0, "history cursor from the prior page")
+	limit := flags.Int("limit", 40, "items per history or conversation page (1..100)")
+	cursor := flags.String("cursor", "", "conversation page cursor")
+	query := flags.String("search", "", "search session titles")
+	export := flags.String("export-history", "", "stream complete --show history to a new JSONL file")
 	spaceID := flags.String("space", harness.LocalSpaceID, "limit sessions to this space")
 	if err := parseFlags(flags, args); err != nil {
 		return err
@@ -251,13 +256,35 @@ func runSessions(ctx context.Context, args []string, stdout, stderr io.Writer) e
 		if _, err := store.GetConversation(ctx, *show); err != nil {
 			return err
 		}
-		history, err := store.ListMessages(ctx, *show)
+		if *export != "" {
+			file, err := os.OpenFile(*export, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			if err != nil {
+				return err
+			}
+			count, writeErr := store.ExportHistory(ctx, *show, file)
+			if writeErr == nil {
+				writeErr = file.Sync()
+			}
+			writeErr = errors.Join(writeErr, file.Close())
+			if writeErr != nil {
+				_ = os.Remove(*export)
+				return writeErr
+			}
+			return writeJSON(stdout, map[string]any{"exported": true, "messages": count, "file": *export})
+		}
+		history, err := store.HistoryPage(ctx, *show, harness.HistoryQuery{Before: *before, Limit: *limit})
 		if err != nil {
 			return err
 		}
 		return writeJSON(stdout, history)
 	}
-	sessions, err := store.ListConversationsInSpace(ctx, *spaceID)
+	if *export != "" || *before != 0 {
+		return errors.New("sessions: --export-history and --before require --show")
+	}
+	if _, err := store.GetSpace(ctx, *spaceID); err != nil {
+		return err
+	}
+	sessions, err := store.ListConversationPage(ctx, harness.ConversationQuery{SpaceID: *spaceID, Query: *query, Cursor: *cursor, Limit: *limit})
 	if err != nil {
 		return err
 	}
@@ -604,13 +631,31 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			}
 			continue
 		}
-		if prompt == "/history" {
-			messages, err := tasks.Messages(ctx, *conversationID)
+		if prompt == "/history" || strings.HasPrefix(prompt, "/history ") {
+			var before int64
+			parts := strings.Fields(prompt)
+			if len(parts) > 2 {
+				_, _ = fmt.Fprintln(stderr, "Use /history [before-message-id]")
+				continue
+			}
+			if len(parts) == 2 {
+				if _, err := fmt.Sscan(parts[1], &before); err != nil || before < 1 {
+					_, _ = fmt.Fprintln(stderr, "Invalid history cursor")
+					continue
+				}
+			}
+			page, err := tasks.HistoryPage(ctx, *conversationID, harness.HistoryQuery{Before: before, Limit: 40})
 			if err != nil {
 				return err
 			}
-			for _, item := range messages {
+			for _, item := range page.Items {
 				_, _ = fmt.Fprintf(stdout, "[%d] %s: %s\n", item.ID, item.Role, item.Content)
+				if item.Truncated {
+					_, _ = fmt.Fprintln(stderr, "Displayed text is truncated; use sessions --show <id> --export-history <new.jsonl> for full content.")
+				}
+			}
+			if page.HasMore {
+				_, _ = fmt.Fprintf(stderr, "Earlier messages: /history %d\n", page.Before)
 			}
 			continue
 		}
@@ -915,16 +960,42 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", defaultDataDir(), "harness data directory")
 	textOutput := flags.Bool("text", false, "show checks and recovery steps as readable text (default: JSON)")
+	exportPath := flags.String("export", "", "export allowlisted diagnosis to a new ZIP; excludes raw logs, secrets and conversation content")
+	preflight := flags.Bool("preflight", false, "check existing work and verified backup before updating; does not stop dispatch")
+	backupPath := flags.String("backup", "", "backup directory to verify for --preflight")
 	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return usageError()
 	}
+	if *backupPath != "" && !*preflight {
+		return usageErr("doctor: --backup requires --preflight")
+	}
 	if err := resolveDataDir(dataDir); err != nil {
 		return err
 	}
 	report, checks, ok := doctorReport(ctx, *dataDir)
+	if *preflight || *exportPath != "" {
+		maintenance := inspectMaintenance(ctx, *dataDir, *backupPath)
+		if *preflight {
+			report["maintenance"] = maintenance
+			ok = ok && maintenance.ReadyToUpdate
+			report["ok"] = ok
+			status := "ready"
+			if !maintenance.ReadyToUpdate {
+				status = "error"
+			}
+			checks = append(checks, doctorCheck{ID: "update", Status: status, Detail: fmt.Sprintf("Active Runs=%d, waiting=%d, active commands=%d; backup=%s; blockers=%v.", maintenance.State.ActiveRuns, maintenance.State.WaitingConfirmations, maintenance.State.ActiveCommands, maintenance.Backup, maintenance.Blockers), Action: "Wait for active work, resolve proposals and verify a same-Core backup. Recheck immediately before the normal maintenance stop; do not replay UNKNOWN."})
+			report["checks"] = checks
+		}
+		if *exportPath != "" {
+			if err := exportDiagnosis(*exportPath, checks, maintenance); err != nil {
+				return err
+			}
+			report["diagnosis_export"] = *exportPath
+		}
+	}
 	if *textOutput {
 		if err := writeDoctorText(stdout, *dataDir, checks); err != nil {
 			return err

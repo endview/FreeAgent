@@ -27,6 +27,7 @@ type EventFunc func(Event)
 type Event struct {
 	Seq            uint64         `json:"seq,omitempty"`
 	Generation     string         `json:"generation,omitempty"`
+	ServerVersion  string         `json:"server_version,omitempty"`
 	Kind           string         `json:"kind"`
 	Message        string         `json:"message,omitempty"`
 	Activity       map[string]any `json:"activity,omitempty"`
@@ -480,9 +481,9 @@ func (service *Service) Run(ctx context.Context, conversationID, requestKey, pro
 		return RunResult{Run: run}, err
 	}
 	if warning != "" {
-		service.event(Event{Kind: "unresolved", Message: warning})
+		service.event(Event{Kind: EventUnresolved, Message: warning})
 	}
-	service.event(Event{Kind: "run_started", Message: run.ID, RunID: run.ID, ConversationID: run.ConversationID})
+	service.event(Event{Kind: EventRunStarted, Message: run.ID, RunID: run.ID, ConversationID: run.ConversationID})
 	return service.process(ctx, run)
 }
 
@@ -591,7 +592,7 @@ func (service *Service) Continue(ctx context.Context, runID string) (RunResult, 
 		return RunResult{}, err
 	}
 	run.Status = "running"
-	service.event(Event{Kind: "run_started", RunID: run.ID, ConversationID: run.ConversationID})
+	service.event(Event{Kind: EventRunStarted, RunID: run.ID, ConversationID: run.ConversationID})
 	return service.process(ctx, run)
 }
 
@@ -640,7 +641,7 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 			evidence, err := service.Store.Evidence(persistCtx, run.ID)
 			result.Evidence = evidence
 			returnErr = errors.Join(returnErr, err)
-			service.event(Event{Kind: "run_settled", Message: current.Status, RunID: run.ID, ConversationID: run.ConversationID})
+			service.event(Event{Kind: EventRunSettled, Message: current.Status, RunID: run.ID, ConversationID: run.ConversationID})
 			if current.Status != "waiting_confirmation" && current.Status != "running" {
 				service.finishExtensions(persistCtx, current)
 			}
@@ -741,7 +742,7 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 			if saved.Status == "running" {
 				continue
 			}
-			service.event(Event{Kind: "run_completed"})
+			service.event(Event{Kind: EventRunCompleted})
 			return result, nil
 		}
 	}
@@ -930,13 +931,13 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 		return attempt, ModelResponse{}, err
 	}
 	if len(request.Memory) != 0 {
-		service.event(Event{Kind: "memory_sources", Sources: request.Memory})
+		service.event(Event{Kind: EventMemorySources, Sources: request.Memory})
 	}
 	modelEvent := func(kind, text string) {
 		service.event(Event{Kind: kind, Message: text, RunID: run.ID,
 			ConversationID: run.ConversationID, AttemptID: attempt.ID, Purpose: request.Purpose})
 	}
-	modelEvent("model_started", request.ModelID)
+	modelEvent(EventModelStarted, request.ModelID)
 	streamBytes := 0
 	var streamText strings.Builder
 	callCtx, cancelCall := context.WithCancel(ctx)
@@ -956,7 +957,7 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 			}
 		}
 		if request.Purpose == "" {
-			modelEvent("model_text", text)
+			modelEvent(EventModelText, text)
 		}
 	})
 	response.LatencyMS = max(0, time.Since(providerStarted).Milliseconds())
@@ -970,12 +971,12 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 	outputSize := max(streamBytes, len(responseRaw))
 	outputErr := errors.Join(streamErr, service.recordOutput(persistCtx, attempt, outputSize, false))
 	if outputErr != nil && !isOutputLimit(outputErr) {
-		modelEvent("model_interrupted", "output accounting stopped")
+		modelEvent(EventModelInterrupted, "output accounting stopped")
 		saveErr := service.Store.markUnknown(persistCtx, attempt, "output accounting stopped; result must be inspected")
 		return attempt, response, errors.Join(outputErr, saveErr)
 	}
 	if callErr != nil {
-		modelEvent("model_interrupted", "response was not retained as a final answer")
+		modelEvent(EventModelInterrupted, "response was not retained as a final answer")
 		var certainty *CallError
 		if errors.As(callErr, &certainty) && certainty.Certain {
 			saveErr := service.Store.failModel(persistCtx, run, attempt, response, certainty, service.guard, outputSize)
@@ -1032,7 +1033,7 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 				if err != nil {
 					return attempt, response, err
 				}
-				service.event(Event{Kind: "context_retry", RunID: run.ID, ConversationID: run.ConversationID, Message: "definite provider context refusal; retrying once after compaction"})
+				service.event(Event{Kind: EventContextRetry, RunID: run.ID, ConversationID: run.ConversationID, Message: "definite provider context refusal; retrying once after compaction"})
 				return service.dispatchModel(ctx, run, retryRequest, retryRaw, rebuild, true)
 			}
 			return attempt, response, errors.Join(callErr, outputErr, saveErr)
@@ -1066,7 +1067,7 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 		responseErr = ErrModelCapability
 	}
 	if responseErr != nil {
-		modelEvent("model_interrupted", "invalid or incomplete response")
+		modelEvent(EventModelInterrupted, "invalid or incomplete response")
 		var certain *CallError
 		if errors.As(responseErr, &certain) && certain != nil && certain.Certain {
 			saveErr := service.Store.failModel(persistCtx, run, attempt, response, certain, service.guard, outputSize)
@@ -1081,11 +1082,11 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 	}
 	saveErr := service.Store.saveGuardedModel(persistCtx, run, attempt, response, service.guard, outputSize)
 	if saveErr != nil && !isOutputLimit(saveErr) {
-		modelEvent("model_interrupted", "response persistence failed")
+		modelEvent(EventModelInterrupted, "response persistence failed")
 		return attempt, response, saveErr
 	}
 	attempt.Status, attempt.ResponseJSON = "finished", string(responseRaw)
-	modelEvent("model_finished", "")
+	modelEvent(EventModelFinished, "")
 	outputErr = errors.Join(outputErr, saveErr)
 	if outputErr != nil {
 		return attempt, response, errors.Join(outputErr, service.Store.FinishRun(persistCtx, run.ID, "limited", safeError(outputErr)))
@@ -1156,7 +1157,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		if err := pause(); err != nil {
 			return err
 		}
-		service.event(Event{Kind: "control_confirmation", Tool: call.Name, Preview: prepared.Preview,
+		service.event(Event{Kind: EventControlConfirmation, Tool: call.Name, Preview: prepared.Preview,
 			RunID: run.ID, ConversationID: run.ConversationID, AttemptID: attempt.ID})
 		if err := service.Store.FinishRun(parent, run.ID, "waiting_confirmation", StopReasonControlProposal); err != nil {
 			return err
@@ -1188,7 +1189,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		if err := pause(); err != nil {
 			return err
 		}
-		service.event(Event{Kind: "confirmation", Tool: call.Name, Preview: prepared.Preview,
+		service.event(Event{Kind: EventConfirmation, Tool: call.Name, Preview: prepared.Preview,
 			RunID: run.ID, ConversationID: run.ConversationID, AttemptID: attempt.ID})
 		if service.Approve == nil {
 			if rejectWithoutApproval {
@@ -1249,7 +1250,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		service.event(Event{Kind: kind, Tool: call.Name, RunID: run.ID, Activity: activity,
 			ConversationID: run.ConversationID, AttemptID: attempt.ID})
 	}
-	toolEvent("tool_started")
+	toolEvent(EventToolStarted)
 	if prepared.executeTransaction != nil {
 		var result ToolResult
 		var err error
@@ -1275,10 +1276,10 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 			return err
 		}
 		if len(result.Memory) != 0 {
-			service.event(Event{Kind: "memory_sources", Sources: result.Memory})
+			service.event(Event{Kind: EventMemorySources, Sources: result.Memory})
 		}
 		observedOutcome = result.Outcome
-		toolEvent("tool_finished")
+		toolEvent(EventToolFinished)
 		return err
 	}
 	var result ToolResult
@@ -1350,7 +1351,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	if outputErr != nil {
 		return outputErr
 	}
-	toolEvent("tool_finished")
+	toolEvent(EventToolFinished)
 	return nil
 }
 
@@ -1377,7 +1378,7 @@ func (service *Service) checkOperation(ctx context.Context, run Run, call ToolCa
 			if service.Config.Extensions.Required[id] {
 				return false, "", fmt.Errorf("required extension %q is unavailable for operation.check: %w", id, definitionErr)
 			}
-			service.event(Event{Kind: "extension_error", Message: id + " operation.check: " + safeError(definitionErr),
+			service.event(Event{Kind: EventExtensionError, Message: id + " operation.check: " + safeError(definitionErr),
 				RunID: run.ID, ConversationID: run.ConversationID})
 			continue
 		}
@@ -1390,7 +1391,7 @@ func (service *Service) checkOperation(ctx context.Context, run Run, call ToolCa
 			if required {
 				return false, "", fmt.Errorf("required extension %q operation.check failed: %w", id, err)
 			}
-			service.event(Event{Kind: "extension_error", Message: id + " operation.check: " + safeError(err),
+			service.event(Event{Kind: EventExtensionError, Message: id + " operation.check: " + safeError(err),
 				RunID: run.ID, ConversationID: run.ConversationID})
 			continue
 		}
@@ -1666,14 +1667,20 @@ func (service *Service) finishExtensions(ctx context.Context, run Run) {
 	}
 	history, err := service.Store.contextMessages(ctx, run, 64, 64<<10)
 	if err != nil {
-		service.event(Event{Kind: "extension_error", Message: "turn.finished history: " + safeError(err),
+		service.event(Event{Kind: EventExtensionError, Message: "turn.finished history: " + safeError(err),
 			RunID: run.ID, ConversationID: run.ConversationID})
 		return
 	}
 	for _, id := range selection.Extensions {
+		if service.operationsDenied() {
+			definition, e := service.extensions.definition(id)
+			if e != nil || !definition.Manifest.PassiveContext {
+				continue
+			}
+		}
 		activity, err := service.extensions.finish(ctx, id, run, run.Status, modelHistory(history), service)
 		if err != nil {
-			service.event(Event{Kind: "extension_error", Message: id + " turn.finished: " + safeError(err),
+			service.event(Event{Kind: EventExtensionError, Message: id + " turn.finished: " + safeError(err),
 				RunID: run.ID, ConversationID: run.ConversationID})
 			continue
 		}
@@ -1682,7 +1689,7 @@ func (service *Service) finishExtensions(ctx context.Context, run Run) {
 			if summary == "" {
 				summary = "extension activity"
 			}
-			service.event(Event{Kind: "extension_activity", Message: summary, Activity: activity,
+			service.event(Event{Kind: EventExtensionActivity, Message: summary, Activity: activity,
 				RunID: run.ID, ConversationID: run.ConversationID})
 		}
 	}

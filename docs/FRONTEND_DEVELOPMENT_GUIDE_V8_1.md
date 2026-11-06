@@ -1,190 +1,84 @@
 # FreeAgent v8.1 前端开发指南
 
-日期：2026-11-06。状态：框架开发约定草案，配合 [目标架构](FRONTEND_ARCHITECTURE_V8_1.md)。产品尚未迁移；下文新增脚本、目录与示例是 v8.1 需要实现的契约。
+工作目录为 `internal/chatui`，Node 24.22.1、pnpm 11.25.0；Go 工具链以仓库 go.mod 为准。发行包无需 Node。目录和数据规则见[架构](FRONTEND_ARCHITECTURE_V8_1.md)。
 
-阶段与验收范围见 [后续实施计划](FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md)。
+## 构建与测试
 
-遵循修订后的 F1—F5：先完成目标栈的交互样例，用户确认视觉后冻结 token，再进入 F2；F3 即接入真实 Core 的工具、审批和控制面提案。当前仅修订计划，不表示已取得视觉确认或完成这些步骤。
+在仓库根目录：
 
-## 1. 开发环境和构建
-
-工作目录为 `internal/chatui`。当前仓库 CI 使用 Node 24.22.1、pnpm 11.25.0；框架迁移保持明确的版本锁定和唯一 pnpm 锁文件。新增依赖同时检查 Node 引擎与 peer 范围。
-
-React 主版本固定；F2 先验证 Vite 8 与兼容 React 插件的构建、生产 CSP 和重复构建，通过采用，否则退回固定 Vite 7 并记录原因/升级条件。已有 Vite 7 技术小样只是历史证据。固定 shadcn CLI，提交 `components.json`，runtime 依赖逐项记用途、产物体积影响和许可证。
-
-目标命令：
-
-| 命令 | 用途 | 当前状态 |
-| --- | --- | --- |
-| `pnpm install --frozen-lockfile` | 按锁文件安装 | 已有 |
-| `pnpm test` | 保留的逻辑/契约测试 | 已有 Node 测试；迁移时整理分组 |
-| `pnpm build` | 静态发行构建 | 已有 |
-| `pnpm dev` | 隔离开发页面及受控同源代理，或 Core 服务 build-watch 产物的替代方式 | F2 核实 Origin/Host 后确定 |
-| `pnpm typecheck` | TypeScript strict | 待产品接入；隔离小样已通过 |
-| `pnpm test:components` | 组件交互、实际事件常量覆盖和 Go JSON 样本字段校验 | 待建立 |
-| `pnpm test:e2e` | Playwright 主要产品流程 | 待建立 |
-| `pnpm lint` | Hooks、无障碍基础规则、禁止直接调色板颜色及非 Markdown HTML 插入 | 待建立 |
-
-开发连接独立测试 Core/数据目录。真实凭据不放在 Vite `VITE_*` 变量里，因为这些变量会进入客户端构建。需要开发代理时，仅代理明确的本地 Core 地址，沿用真实认证；不能用全局开放 CORS 代替。
-
-现有 Core 有 Origin/Host 检查。F2 核实可用代理配置；确需支持时只加本机开发构建的窄入口且保留认证，或采用 `vite build --watch` 加开发 Core 读取磁盘产物。发行构建不存在这些放宽/挂载入口。CSP 必须使用生产构建和 Go 服务验证，HMR 下能运行不算通过。
-
-不引入 Storybook。开发专用 `?view=gallery` 展示真实契约的合成/脱敏状态、长中文、错误、空态和窄屏；生产检查排除其页面、fixture 和路由模块。F3 新旧开发界面可连接同一个隔离 Core，以不同客户端标识对照；不自动重放操作，不连接生产做故障测试。
-
-发行顺序为前端测试和构建、Go 产品回归、构建归档。现有 CI 检查 dist 与源码一致，迁移需更新该流程并保留可重复构建验证。
-
-## 2. 新增页面
-
-1. 从已有 API/Control 操作确认功能语义、权限和生效范围。
-2. 在 `features/<domain>` 定义输入、加载和错误处理，在 `pages` 组合布局。
-3. 优先使用既有 FreeAgent 组件；确实需要新基础控件时才引入 shadcn/Radix。
-4. 加入有限路由枚举，处理返回、刷新和初次进入状态。
-5. 检查加载、空数据、失败、无权限、保存冲突和离线状态。
-6. 运行覆盖真实行为的测试，检查键盘、窄窗口和深浅主题。
-
-前端按钮和 AI 对话操作都调用同一 Core 契约。不要在浏览器复制一套权限裁决或审批状态机。
-
-新增设置必须同步“字段→保存位置/范围→GUI→CLI/AI→生效时机”清单，覆盖测试发现遗漏时失败。F2 从已有 `/api/control/catalog` 核实字段级可枚举范围，补最小静态映射；不新增一套设置平台。
-
-扩展详情页采用应用内部路由注册和按需加载，能力列表以 Core 返回数据为准。AffectWeave 后续直接使用这套入口，不加载插件提供的任意 UI 脚本。
-
-## 3. 组件规范
-
-组件使用函数式 React 与 strict TypeScript。props 表达具体含义；不要用任意 `Record<string, any>` 逃避边界。展示组件不自行 fetch，不自行解析全局 location。
-
-Button 等通用控件使用有限 variants；有业务含义的操作放到领域组件。示意接口：
-
-```ts
-type ApprovalCardProps = {
-  preview: ApprovalPreview;
-  phase: "ready" | "submitting" | "stale" | "failed";
-  error?: string;
-  onApprove: () => void;
-  onDecline: () => void;
-  onRefreshPreview: () => void;
-};
+```powershell
+pnpm --dir internal/chatui install --frozen-lockfile
+pnpm --dir internal/chatui typecheck
+pnpm --dir internal/chatui lint
+pnpm --dir internal/chatui test
+pnpm --dir internal/chatui build
+go build -o output/freeagent-ui.exe ./cmd/freeagent
+python scripts/test-frontend.py --engine output/freeagent-ui.exe --runtime output/postgresql-runtime/windows/pgsql --channel msedge
 ```
 
-`ApprovalPreview` 需与现有服务端完整契约对应，不能简化掉 digest、绑定目标或版本。按钮禁用只改善交互，服务端仍做最终校验。
+`--runtime` 指向已准备的 PG runtime 根目录，在 Debian 使用 Linux runtime 并以非 root 身份运行；浏览器安装用 `pnpm --dir internal/chatui exec playwright install chromium firefox webkit`，Linux 系统库按 Playwright 的安装提示准备。Windows 可用已安装 Edge 的 `--channel msedge`，省去另一份 Chromium；Firefox/WebKit 仍需安装。
 
-可复用组件提供 title、label、description 和焦点策略。使用真实 `form`、`label`、`button`；button type 明确。菜单不能套嵌交互元素，模态操作要能返回触发位置。
+浏览器脚本建立全新数据/工作区和独立端口，使用临时 PG、Echo 与回环合成 Provider，不接入生产 Owner。结果保存在 output/frontend-acceptance 的本次子目录；原始运行目录和 owner.log 可能含本地 capability，不作为可公开附件。脚本退出经 handoff 清理测试 Owner，外层停止临时 PG。
 
-工具审批和控制面提案使用对话中的非模态卡片，运行中出现时不抢输入焦点。危险操作模态由用户主动发起；窄屏抽屉按导航语义处理。风险/读写类型标签只辅助呈现，不裁决审批结果。
+逻辑测试没有伪装成原生 IME 或手机验收。`browser-browsers.cjs` 的 229 检查是合成键盘事件；真实手机、Windows IME 与原生 WebView2 另行记录。所有测试失败先调查，不能删安全测试来使构建通过。
 
-## 4. Tailwind 和 CSS
+Go 契约/API 检查需要 PG 时：
 
-目标入口 `src/styles/app.css` 的形式：
-
-```css
-@import "tailwindcss" source("../");
-/* source 相对当前 CSS 文件；此处覆盖 src。 */
-@custom-variant dark (&:where(.dark, .dark *));
-
-@theme inline {
-  --color-background: var(--fa-background);
-  --color-foreground: var(--fa-foreground);
-  --color-primary: var(--fa-accent);
-}
+```powershell
+python scripts/test-postgres.py --runtime output/postgresql-runtime/windows/pgsql -- go test -race -p 2 -count=1 -timeout=30m ./internal/chatui ./internal/harness ./cmd/freeagent ./cmd/freeagent-desktop
 ```
 
-token 真值在统一文件维护，深浅主题分别定义。迁移前核对 Preflight 对 Markdown 标题、列表、代码、表格、表单和按钮的影响。
+## 同源开发
 
-F1 用户确认样例后再冻结 token。系统中文字体栈、不打包中文字体；正文约 15px/1.7，手机输入至少 16px，中文不使用 `tracking-tight` 等负字距。定义完整的运行/排队/确认/UNKNOWN/失败/取消/完成状态以及风险/diff token；lint 禁止业务组件直接使用 `bg-red-500` 等调色板类。
+一个终端 `pnpm --dir internal/chatui dev` 持续生成 `.next-dist`。在独立数据目录初始化 Core，另一个终端构建 `go build -tags freeagentdev -o output/freeagent-ui-dev.exe ./cmd/freeagent`，给该进程设置 `FREEAGENT_UI_DEV_ROOT` 为 `.next-dist` 的绝对路径后启动 `web`。初次构建先运行 `pnpm --dir internal/chatui build:dev`。
 
-动态状态用完整类名枚举；动态拖拽尺寸用经过范围约束的 CSS 变量。生产 UI 不拼装未知 Tailwind 类名，不把模型输出当作样式。
+不要在开发环境变量中放 Key；所有 `VITE_*` 都可能进入浏览器产物。无需开放 CORS、关闭 Origin/Host 或放松 CSP。开发 Core 的同源响应使用与生产相同的安全策略。发行程序忽略开发目录变量。
 
-复用布局优先组件；只有明确复用需求才用自定义 utility。不要为每个 Tailwind 类再建立一层 CSS 类。Markdown/代码/公式用限定容器样式，避免全局选择器影响弹窗和表单。
+仅开发构建的 `?view=gallery` 用合成样本检查长中文、窄屏、错误、审批和 UNKNOWN。生产构建检查不包含 Gallery chunk、源码 map 或开发标记。旧正式入口已删除，不维护两套交付前端。
 
-外壳自行实现，不采用 shadcn Sidebar；消息区原生滚动，Radix ScrollArea 只用于弹层短列表。浅色/深色/跟随系统在首屏正确初始化，同步原生标题栏；outline 保证 forced-colors 下焦点可见。处理 visualViewport、dvh 和安全区，触控目标不小于 44px。
+## 增加一个设置项
 
-## 5. 状态、草稿和表单
+以 `extension_max_model_calls_per_turn` 为实际例子：
 
-- 持久状态来自 Core；本地状态只保存用户界面过程。
-- draft key 至少包含当前实例/环境、身份、具体客户端/设备及页面或会话；切换实例清理旧身份内容。不能只按“桌面/Web”合并草稿。
-- Provider Key 草稿留在受控内存，切页恢复；不写 localStorage、URL、console 或诊断包。
-- 整页刷新会清除秘密草稿。有未保存 Key 时只提示更新，不自动刷新；用户可先正常保存、明确放弃后重输或暂不刷新。不要为刷新恢复新增秘密持久化机制。
-- 输入草稿、待提交请求键与消息采用结果分开处理。网络超时先按原请求键核对，不能自动换键再发。
-- 保存时带期望 revision；发生冲突呈现新事实，保留用户草稿供重新核对。
-- 保存成功可通知约两秒；错误在字段附近持续显示直到修正或明确关闭。
-- 全局设置页说明对新 Run、当前 Run 或重启后的生效边界；以 Core 返回事实为准。
+1. 在 Core Config/校验中定义有界标量。沿用 `runtime.set_limits`；不要另建 settings 平台。
+2. 同时修改 apply、资源快照、精确 revert、只读 config/state 投影和 Control catalog 输入 schema。否则保存成功也可能在撤回时清空其他预算。
+3. `AdvancedSettings.tsx` 添加 typed 字段，使用 ControlPreview。预览展示具体值，批准后才落库；错误/拒绝保留原配置。
+4. 在 `frontend/settings-map.json` 核对字段和操作目的地；`TestFrontendSettingsCoverage` 对新增遗漏失败。显式设置 `FREEAGENT_UPDATE_FRONTEND_SETTINGS=1` 运行该测试才重生成，之后移除环境变量，审阅差异。
+5. CLI 复用 `control plan --kind runtime.set_limits --arguments '{"extension_max_model_calls_per_turn":3}'`，按终端提示确认；AI 通过已有 control 工具提出同一操作，秘密值不进入模型参数。
+6. 增加部分更新/精确撤回和实际 GUI 行为回归。不要把字段映射存在当作控件已经可用。
 
-F2 在自建小型 store（`useSyncExternalStore`）和 Zustand 二选一，不叠加 TanStack Query 等缓存。设置表单先不引入表单库。草稿放组件外，避免 Tabs/Dialog 默认卸载丢失；会话滚动位置同样按会话保存。
+Config 保存位置与作用域、GUI/CLI/AI 入口和生效时机见[覆盖说明](FRONTEND_SETTINGS_COVERAGE_V8_1.md)。UI 偏好必须写明当前设备，不能借 Core 控制操作虚报另一客户端已调整。
 
-localStorage 按 origin 隔离，端口改变会改变存储空间。F2 核实桌面端口回退和 WebView2 数据目录；必要时选择稳定来源或受限 Core 客户端偏好/获准草稿存储。该机制不持久保存 Provider Key/token；公网主动登出清除该身份草稿。
+## 增加一种事件
 
-仅用户输入可用临时 ID 先行显示，保留原请求键，实际回执到达后合并。审批/运行状态不做乐观更新。消息分支结构以 F2 核实的 Core 记录为准。
+1. 在 `internal/harness/event_kinds.go` 注册常量，实际发送点使用常量。
+2. `frontend/lib/events/policy.ts` 为该类型写明 refresh/stream/ignore 策略；只有确需即时显示才新增局部 reducer。
+3. 增加必要 TS 字段。更新 `contract_fixture_test.go` 的合成真实 Go 投影，经 `FREEAGENT_UPDATE_FRONTEND_CONTRACT=1` 显式重生成样本，再移除环境变量。
+4. 跑 Go `TestFrontendEvent*` / `TestFrontendContractFixture` 和 `pnpm test`；实际发送入口覆盖检查防止绕过清单。
+5. 测重复、跳号、代次变化与快照加载期间到达；不把查询结束时最大 seq 直接假设为快照已覆盖。
 
-## 6. API 与事件
+不建设通用 Go/TS 协议生成器或持久事件回放库。
 
-所有请求走 `lib/api`：路径构造、认证头/CSRF、取消、错误码、大小限制和边界解析在一处维护。TypeScript 类型断言不是数据验证；关键 DTO 必须检查必要字段和类型，未知状态保留为可诊断错误。
+## 引入 shadcn/Radix 组件
 
-F2 写清本地与公网路由映射，使用已有受限快照/聊天/事件查询，缺字段才补现有响应；公网继续拒绝 `/api/attach/*`。复用处理代码不等于扩大公网权限，相关拒绝用例需保留。
+`components.json` 已提交；CLI 固定为 shadcn 4.23.0，使用 `pnpm ui:add <组件>`。命令会下载源码，必须审阅产物；升级 CLI 时显式改脚本并复测，不使用 latest。
 
-SSE 由根级 manager 创建，清理要关闭 reader、计时器和 AbortController。页面只订阅。不要在路由切换、组件 render、useEffect 初始化中执行发送消息或批准操作。
+保留来源/许可证和本项目修改说明，使用现有 token 及 `lib/utils.ts`。禁止添加另一个主题系统；基础交互优先已有 Radix。生产 CSP 下检查运行时 style、键盘/焦点、强制颜色和窄屏。Markdown 是唯一 HTML 插入边界，第三方依赖不能扩大它。
 
-React StrictMode 保留，用它暴露未清理的订阅；不要通过关掉 StrictMode 隐藏双连接。重连根据 generation/seq 获取快照；快照中的执行状态覆盖临时显示，历史已保存数据不被未完成流片段覆盖。
+## 新增扩展详情页
 
-序号只在同一 Owner generation 比较。快照与其覆盖水位必须具有明确一致性；加载期间有界缓存事件，重复幂等，跳号、过期游标、溢出或换代默认重读授权快照。不能用快照查询结束时读取的最新 seq 直接丢掉所有更早事件。已有字段优先复用，必要时使用现成有限事件补读，不增加持久事件库或通用回放接口。
+在 `features/settings` 的应用代码中增加详情模块，用 React.lazy 加载；由已启用扩展 ID 的有限路由表选择。服务端只返回数据和本轮能力目录，不提供待执行脚本 URL。页内仍经现有授权/确认 API，不从扩展获得 Core 数据库或 Provider 秘密。v8.3 的具体页面与扩展协议另列实际能力，不能把本段当作已经可调用的新 API。
 
-实际发送路径使用同一事件常量清单；一项覆盖测试核对其与 TS 处理映射，包含传输控制帧及明确的刷新/忽略策略。JSON 样本用于字段校验；仅新增样本不能证明所有类型已覆盖。缺少处理时测试失败，运行中未知版本类型保留诊断、提示刷新，不让全页崩溃。无需协议注册服务或全量代码生成器。
+## 性能与排障
 
-核查刷新、HMR、休眠唤醒、多个本地标签页的连接/Owner 宽限。HTTP/1.1 常见每源连接上限以实际浏览器测试为准，F3 处理挂起；不能用页面定时器保证浏览器后台永不掉线。
+生产首屏 JS 预算 250 KiB gzip，Markdown/KaTeX/高亮和设置页按需加载。不要从旧的 HTML 展示 helper 导入纯计算函数，否则会把渲染库拉入首屏。
 
-接口错误按产品含义处理：401 提示认证、版本冲突要求重新核对、Owner stopping 提示重连，UNKNOWN 引导查看证据。错误文案不输出 token、Key、完整秘密配置或不必要的内部对象。
+长历史与 10 分钟流式基准：
 
-带哈希的公开静态资源可长期缓存；index、API、认证和私有内容保持不缓存。通过握手/快照的服务端版本与 `vite:preloadError` 提示刷新；已保存的非秘密草稿可恢复，秘密草稿按第 5 节处理，不自动重复请求或无限刷新。验证旧 chunk 不可用时的实际行为。
+```powershell
+python scripts/test-frontend.py --engine output/freeagent-ui.exe --runtime output/postgresql-runtime/windows/pgsql --channel msedge --benchmark
+```
 
-## 7. 消息渲染和输入
+该基准仅对自己的临时库生成一万会话和五千轮，输出 API 200 样本统计、分页、输入延迟和 JS heap；不等于真实模型延迟或 WebView2 全进程组内存。正式重复构建、全量 Go/竞态、打包和原生设备验收另行执行。
 
-- `MessageBody` 封装现有 Markdown、代码与数学规则。原文、渲染文本与流片段各自保留明确来源。
-- `dangerouslySetInnerHTML` 仅限经过审阅的渲染适配器；业务代码不能插入用户/模型原始 HTML。
-- 输入中 Enter 发送、Shift+Enter 换行；composition 期间不发送，保留已有 `keyCode 229` 补充保护。覆盖部分 Safari/IME 确认候选词时 `isComposing` 已为 false 的情况；实际中文 IME 必须真实设备实测，合成事件不能替代。
-- 用户向上阅读时停止自动追随；展开工具、加载旧消息、更新公式不跳动阅读位置。
-- token 更新按帧/有限批次合并，避免整页状态刷新；后台有界定时器兜底，恢复前台重新核对。最终结果由 Core 保存记录确认。
-- GUI/CLI 的队列与转引导、TG 的默认插话来自 Core 入口行为；界面不得私自转换成新的 Run。
-
-未闭合代码块/公式先显示纯文本，闭合后按需高亮/排版；KaTeX 与高亮懒加载不得破坏原文与锚点。每条消息设置独立错误边界。会话导航使用虚拟列表，消息区仅分页加 `content-visibility: auto`（不支持时普通布局），v8.1 不做消息区虚拟化；Ctrl+F 只能覆盖已加载 DOM。
-
-## 8. 平台、弹层与拖拽
-
-平台功能从 adapter 使用，包括外链、文件选择、剪贴板辅助、忙碌/关注提示和关闭通知。浏览器场景不能调用不存在的 WebView2 binding。
-
-统一弹层容器和层级 token，测试 Dialog 内 Select/Popover、Esc、Tab、外部点击和关闭后的焦点。重要审批不能只靠弹窗自动关闭表达成功。
-
-拖拽面板按像素设上下限，核实 react-resizable-panels 能否满足，不能则实现小型分隔条；支持键盘和双击恢复默认。阅读区宽度与侧栏宽度是两个设置。输入器自动增高，拖拽的是最大高度。保存布局按实例/身份/设备作用域处理，过窄窗口采用 drawer/设置列表→详情，避免桌面尺寸溢出。
-
-WebView2 验证输入区外文件拖放不导航、附件下载、系统浏览器外链、既定快捷键/菜单、125%/150% 缩放及标题栏主题。后台命令、上下文、首次启动、公网登录/锁定/Cookie 错误、Provider 测试/模型自动填充/默认值等均按功能映射迁移。
-
-## 9. 依赖与 shadcn 更新
-
-引入组件前检查其真实依赖及所选基础。统一采用 Radix 的源码版本，记录来源/提交和本项目改动。项目使用的是本地组件源码，上游升级不会自动修改它们。
-
-固定 shadcn CLI 并提交 `components.json`。新运行时依赖记录用途、体积和许可证，在真实 Go 服务的生产 CSP 下检查；动态插入 style 的依赖重点验证，不为其扩展生产脚本权限。
-
-先预览 CLI 的增量/差异，再有选择地引入；不覆盖定制文件。更新应重跑相关组件行为及真实页面，而不只检查编译。主产品锁文件不能因为小样或临时脚本被无意更新。
-
-图标使用 `lucide-react` 的明确导入，避免每个 render 扫描并修改 DOM。只有实际使用的控件进入应用。图表、富文本编辑器、通用 AI 聊天 SDK 等大型依赖由实际功能再决定。
-
-## 10. 验收与提交
-
-| 改动 | 最低相关检查 |
-| --- | --- |
-| 纯格式/布局/token | 构建、受影响页面视觉、窄窗口和主题；不用给每个颜色写单元测试 |
-| 组件交互 | 类型、组件测试、键盘/焦点和真实浏览器 |
-| 消息/事件/输入 | 现有契约用例、中文输入、流式、重连、快照和请求幂等 |
-| 设置/权限/审批 | 草稿、revision 冲突、批准/拒绝、stale、Core 权限回归 |
-| 桌面适配 | 原生启动/关闭、其他客户端接续、后台任务存活 |
-| 依赖/构建 | 锁文件、产物清单、包体积、CSP、离线资源与重复构建 |
-
-PR 描述说明用户行为变化、迁移对应的旧功能、实际运行的检查和未验项。涉及秘密输入的截图只能使用合成内容。单独截图和本地 mock 不能认证真实 Provider、TG 或公网链路。
-
-F2 固定性能基线/计时方法：首屏全部 JS gzip ≤ 250 KB，流式输入到字符显示 p95 < 50ms，200 轮固定会话默认页 1 秒内可操作；调整说明实测原因。内存统计本实例整组 WebView2 进程，不能混入其他应用。实际手机公网使用、NPM 不缓冲、多标签、升级刷新、视觉方向和开发 gallery 审阅均进入最终矩阵；未运行如实标记。
-
-框架完成时，本指南须替换所有“待建立”的命令，补上实际 fixture 使用方法与以下四个可照做的例子，并在独立目录执行：
-
-1. 新增设置：Core 字段/操作 → API → 设置页 → CLI/AI → 覆盖检查。
-2. 新增事件：实际发送的常量清单 → Go JSON 样本 → TS 类型/store → 类型覆盖和字段检查。
-3. 引入 shadcn 组件：来源/许可证 → token → 生产 CSP → 键盘/焦点。
-4. 新增扩展详情：应用内路由/导航 → 按需加载 → Core 本轮能力列表。
-
-文档可执行性与发行不含 gallery/fixture 都属于 v8.1 的验收项。
+请求失败先看界面分类和 Core 记录；UNKNOWN 不是普通重试按钮。可用 `freeagent doctor --export <新.zip>` 导出允许项诊断，不发送原始配置、owner.log、凭据、正文或数据库连接文件到公开 issue。

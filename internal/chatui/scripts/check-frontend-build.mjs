@@ -1,0 +1,12 @@
+import {readFileSync,readdirSync,statSync} from 'node:fs';
+import {resolve,relative} from 'node:path';
+import {gzipSync} from 'node:zlib';
+const root=resolve(import.meta.dirname,'../dist');
+const files=[];function walk(dir){for(const name of readdirSync(dir)){const path=resolve(dir,name);if(statSync(path).isDirectory())walk(path);else files.push(path);}}walk(root);
+for(const path of files)if(/(?:Gallery-|\.map$|freeagent-development-ui)/.test(path))throw new Error('Development content in production assets: '+relative(root,path));
+const html=readFileSync(resolve(root,'index.html'),'utf8');
+const scripts=[...html.matchAll(/(?:src|rel="modulepreload"[^>]+href)="(\/[^"]+\.js)"/g)].map(match=>match[1]);
+if(!scripts.length||html.includes('/src/main.mjs'))throw new Error('Production entry is missing.');
+let bytes=0;for(const name of new Set(scripts))bytes+=gzipSync(readFileSync(resolve(root,'.'+name))).length;
+if(bytes>250000)throw new Error('Initial JS exceeds 250 KB gzip: '+bytes);
+console.log(JSON.stringify({production_assets:files.length,initial_js_gzip_bytes:bytes,budget_bytes:250000,development_content:false}));

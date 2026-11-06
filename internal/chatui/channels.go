@@ -50,7 +50,7 @@ func (server *Server) channelStatus(source string) any {
 }
 func (server *Server) reconfigureChannels() {
 	if err := server.ConfigureChannelBridge(); err != nil {
-		server.notify("channel_error", "", "渠道进程配置未生效，请检查账号与凭据。")
+		server.notify(harness.EventChannelError, "", "渠道进程配置未生效，请检查账号与凭据。")
 	}
 }
 func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {

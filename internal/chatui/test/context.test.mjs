@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeCurrentTurns, stateMeta } from '../src/state.mjs';
-import { summaryByteLimit, contextActions, contextStatus } from '../src/context.mjs';
+import { mergeCurrentTurns, stateMeta } from '../frontend/lib/presentation/state.mjs';
+import { summaryByteLimit, contextActions, contextStatus } from '../frontend/lib/presentation/context.mjs';
 
 test('completed maintenance disappears from current snapshots without dropping older history or UNKNOWN', () => {
   const old = { key: 'old', state: 'completed' };

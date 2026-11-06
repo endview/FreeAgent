@@ -249,7 +249,7 @@ func (s *commandSupervisor) event(r CommandRecord) {
 	emit := s.emit
 	s.mu.Unlock()
 	if emit != nil {
-		emit(Event{Kind: "command_changed", Purpose: "command", ConversationID: r.ConversationID, RunID: r.RunID, AttemptID: r.ID, Message: r.State})
+		emit(Event{Kind: EventCommandChanged, Purpose: "command", ConversationID: r.ConversationID, RunID: r.RunID, AttemptID: r.ID, Message: r.State})
 	}
 }
 

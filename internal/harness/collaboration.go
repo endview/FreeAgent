@@ -42,7 +42,7 @@ func (collab *Collaboration) core() (*Service, error) {
 func (collab *Collaboration) emit(core *Service, child, kind string) {
 	collab.eventMu.Lock()
 	defer collab.eventMu.Unlock()
-	core.event(Event{Kind: "collaboration", Tool: child, Message: kind})
+	core.event(Event{Kind: EventCollaboration, Tool: child, Message: kind})
 }
 
 func (collab *Collaboration) childService(core *Service, record collaborationRecord, child childRecord) (*Service, error) {

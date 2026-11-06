@@ -1,0 +1,175 @@
+import type {
+  Attachment,
+  CapabilitySelection,
+  Permission,
+} from "./api/types.ts";
+// Secrets and settings drafts are volatile, and never enter client storage.
+const forms = new Map<string, Record<string, unknown>>();
+const messages = new Map<string, string>();
+const requests = new Map<string, PendingSend>();
+const attachments = new Map<string, Attachment[]>();
+export interface PendingSend {
+  request_key: string;
+  prompt: string;
+  attachments: string[];
+  kind: "submit" | "queue";
+  permission: Permission;
+  confirm_full_access: boolean;
+  capabilities: CapabilitySelection;
+  model: string;
+}
+let scope = "",
+  timer: ReturnType<typeof setTimeout> | undefined;
+let storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | undefined;
+const storageKey = () => "freeagent.drafts.v81:" + scope;
+function persist() {
+  if (!scope || !storage) return;
+  const text = JSON.stringify({
+    messages: [...messages].slice(-100),
+    requests: [...requests].slice(-100),
+    attachments: [...attachments].slice(-100),
+  });
+  try {
+    storage.setItem(storageKey(), text);
+  } catch {
+    /* Denied or full client storage must not prevent input. */
+  }
+}
+function schedule() {
+  clearTimeout(timer);
+  timer = setTimeout(persist, 180);
+}
+export function configureDrafts(
+  environment: string,
+  source?: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+) {
+  if (environment === scope) return;
+  clearTimeout(timer);
+  persist();
+  forms.clear();
+  messages.clear();
+  requests.clear();
+  attachments.clear();
+  scope = environment;
+  try {
+    storage =
+      source ||
+      (typeof sessionStorage !== "undefined" ? sessionStorage : undefined);
+    const raw = storage?.getItem(storageKey());
+    if (!raw || raw.length > 4 * 1048576) return;
+    const parsed = JSON.parse(raw);
+    for (const pair of (parsed.messages || []).slice(-100))
+      if (
+        Array.isArray(pair) &&
+        typeof pair[0] === "string" &&
+        typeof pair[1] === "string"
+      )
+        messages.set(pair[0], pair[1]);
+    for (const pair of (parsed.attachments || []).slice(-100))
+      if (
+        Array.isArray(pair) &&
+        typeof pair[0] === "string" &&
+        Array.isArray(pair[1])
+      )
+        attachments.set(
+          pair[0],
+          pair[1].filter((item: unknown) => {
+            const ref = item as Attachment;
+            return (
+              ref &&
+              typeof ref.id === "string" &&
+              typeof ref.name === "string" &&
+              typeof ref.bytes === "number"
+            );
+          }),
+        );
+    for (const pair of (parsed.requests || []).slice(-100)) {
+      const value = pair?.[1];
+      if (
+        Array.isArray(pair) &&
+        typeof pair[0] === "string" &&
+        value &&
+        typeof value.request_key === "string" &&
+        typeof value.prompt === "string" &&
+        Array.isArray(value.attachments) &&
+        (value.kind === "submit" || value.kind === "queue")
+      )
+        requests.set(pair[0], value);
+    }
+  } catch {}
+}
+export function formDraft<T extends Record<string, unknown>>(
+  id: string,
+  initial: T,
+): T {
+  return (forms.get(id) || initial) as T;
+}
+export function saveFormDraft(id: string, value: Record<string, unknown>) {
+  forms.set(id, value);
+}
+export function clearFormDraft(id: string) {
+  forms.delete(id);
+}
+export function messageDraft(chat: string) {
+  return messages.get(chat) || "";
+}
+export function saveMessageDraft(chat: string, value: string) {
+  if (value) messages.set(chat, value);
+  else messages.delete(chat);
+  schedule();
+}
+export function attachmentDraft(chat: string) {
+  return attachments.get(chat) || [];
+}
+export function saveAttachmentDraft(chat: string, value: Attachment[]) {
+  attachments.set(chat, value);
+  schedule();
+}
+export function pendingSend(chat: string) {
+  return requests.get(chat);
+}
+export function savePendingSend(chat: string, value: PendingSend | null) {
+  if (value) requests.set(chat, value);
+  else requests.delete(chat);
+  persist();
+}
+export function clearDrafts() {
+  clearTimeout(timer);
+  forms.clear();
+  messages.clear();
+  requests.clear();
+  attachments.clear();
+  try {
+    storage?.removeItem(storageKey());
+  } catch {}
+}
+if (typeof window !== "undefined") window.addEventListener("pagehide", persist);
+
+export async function prepareClientDrafts(environment: string) {
+  if (scope === environment) return;
+  if (
+    typeof window === "undefined" ||
+    !window.faLoadDrafts ||
+    !window.faSaveDrafts
+  ) {
+    configureDrafts(environment);
+    return;
+  }
+  let raw = "";
+  try {
+    raw = await window.faLoadDrafts(environment);
+  } catch {}
+  if (scope === environment) return;
+  const empty = '{"messages":[],"requests":[],"attachments":[]}';
+  configureDrafts(environment, {
+    getItem: () => raw || null,
+    setItem: (_key, value) => {
+      raw = value;
+      void window.faSaveDrafts!(environment, value).catch(() => {});
+    },
+    removeItem: () => {
+      raw = "";
+      void window.faSaveDrafts!(environment, empty).catch(() => {});
+    },
+  });
+}

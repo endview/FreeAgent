@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMarkdown, splitStable } from '../src/render.mjs';
+import { renderMarkdown, splitStable } from '../frontend/lib/presentation/render.mjs';
 
 for (const raw of [String.raw`\(x^2\)`, String.raw`\[x^2\]`, '$$x^2$$', '$x^2$', '```math\nx^2\n```', '$$\nx^2\n$$']) {
   test(`formula ${raw}`, () => {

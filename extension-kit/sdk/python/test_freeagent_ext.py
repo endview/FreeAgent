@@ -35,7 +35,7 @@ class ExtensionSDKTest(unittest.TestCase):
         incoming = io.StringIO(
             '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocol":"freeagent-ext/1"}}\n'
             '{"jsonrpc":"2.0","id":"2","method":"tools/list","params":{}}\n'
-            '{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"length","arguments":{"text":"abc"}}}\n'
+            '{"jsonrpc":"2.0","id":"3","method":"tool.call","params":{"invocation":"tool-1","name":"length","arguments":{"text":"abc"}}}\n'
             '{"jsonrpc":"2.0","id":"4","method":"workflow.run","params":{"invocation":"w","name":"hello","input":{}}}\n'
         )
         outgoing = io.StringIO()
@@ -47,13 +47,15 @@ class ExtensionSDKTest(unittest.TestCase):
 
         @extension.tool("length", schema={"type": "object"}, read_only=True)
         async def length(ctx, value):
-            return {"content": [{"type": "text", "text": str(len(value["text"]))}]}
+            self.assertEqual(ctx.invocation, "tool-1")
+            return {"content": str(len(value["text"])), "is_error": False}
 
         extension.serve()
         output = lines(outgoing)
         self.assertEqual(set(output[0]["result"]["provides"]), {"workflow", "tools"})
         self.assertTrue(output[1]["result"]["tools"][0]["readOnly"])
-        self.assertEqual(output[2]["result"]["content"][0]["text"], "3")
+        self.assertEqual(output[2]["result"]["content"], "3")
+        self.assertFalse(output[2]["result"]["is_error"])
         self.assertEqual(output[3]["result"]["output"], "workflow")
 
 

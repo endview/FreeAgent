@@ -631,12 +631,13 @@ func TestRuntimeLimitsRevertRestoresExactSnapshot(t *testing.T) {
 	apply(ControlSetRuntimeLimits, map[string]any{
 		"history_page_size": 80, "max_context_bytes": 65536,
 		"max_output_tokens": 2048, "max_tool_result_bytes": 32768,
-		"task_summary_bytes": 4096,
+		"task_summary_bytes":          4096,
+		"extension_max_context_chars": 8192, "extension_max_model_calls_per_turn": 3,
 	})
 	before := service.Config
-	changed := apply(ControlSetRuntimeLimits, map[string]any{"history_page_size": 90})
+	changed := apply(ControlSetRuntimeLimits, map[string]any{"history_page_size": 90, "extension_max_model_calls_per_turn": 5})
 	if service.Config.HistoryPageSize != 90 || service.Config.MaxContextBytes != before.MaxContextBytes ||
-		service.Config.TaskSummaryBytes != before.TaskSummaryBytes {
+		service.Config.TaskSummaryBytes != before.TaskSummaryBytes || service.Config.Extensions.MaxModelCallsPerTurn != 5 || service.Config.Extensions.MaxContextChars != 8192 {
 		t.Fatalf("partial limits update changed the wrong fields: before=%+v after=%+v", before, service.Config)
 	}
 	revert, err := control.PlanRevertControlChange(ctx, changed.ID, ControlUserDirect, conversationID)
@@ -658,7 +659,7 @@ func TestRuntimeLimitsRevertRestoresExactSnapshot(t *testing.T) {
 	if service.Config.HistoryPageSize != before.HistoryPageSize ||
 		service.Config.MaxContextBytes != before.MaxContextBytes || service.Config.MaxOutputTokens != before.MaxOutputTokens ||
 		service.Config.MaxToolResult != before.MaxToolResult ||
-		service.Config.TaskSummaryBytes != before.TaskSummaryBytes {
+		service.Config.TaskSummaryBytes != before.TaskSummaryBytes || service.Config.Extensions.MaxContextChars != before.Extensions.MaxContextChars || service.Config.Extensions.MaxModelCallsPerTurn != before.Extensions.MaxModelCallsPerTurn {
 		t.Fatalf("limits revert did not restore exact snapshot: before=%+v after=%+v", before, service.Config)
 	}
 }

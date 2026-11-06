@@ -1,0 +1,120 @@
+{
+  "control_operation": {
+    "operation_id": "synthetic-operation",
+    "kind": "auto.set_policy",
+    "authorization_source": "",
+    "resource_ids": null,
+    "expected_revisions": null,
+    "risk": "",
+    "preview": "合成控制变更",
+    "created_at": "",
+    "expires_at": "",
+    "status": "pending",
+    "revert_class": ""
+  },
+  "event": {
+    "seq": 8,
+    "generation": "synthetic-generation",
+    "kind": "model_text",
+    "message": "合成片段",
+    "conversation_id": "synthetic-chat",
+    "run_id": "synthetic-run",
+    "attempt_id": "synthetic-attempt"
+  },
+  "event_kinds": [
+    "attachment_omitted",
+    "channel_delivery_error",
+    "channel_error",
+    "collaboration",
+    "command_changed",
+    "confirmation",
+    "context_compacted",
+    "context_compacting",
+    "context_compaction_failed",
+    "context_retry",
+    "context_usage",
+    "control_confirmation",
+    "extension_activity",
+    "extension_error",
+    "heartbeat",
+    "input_adopted",
+    "input_changed",
+    "memory_sources",
+    "model_finished",
+    "model_interrupted",
+    "model_retry_wait",
+    "model_selected",
+    "model_started",
+    "model_text",
+    "reconnect",
+    "refresh",
+    "request_error",
+    "run_completed",
+    "run_settled",
+    "run_started",
+    "telegram_access_stop_failed",
+    "tool_finished",
+    "tool_started",
+    "tool_verification",
+    "unresolved"
+  ],
+  "snapshot": {
+    "active_chat": "",
+    "active_chats": [],
+    "background_active": false,
+    "busy": false,
+    "foreground_capacity": 2,
+    "generation": "synthetic-generation",
+    "running_elsewhere": false,
+    "server_version": "contract-sample",
+    "snapshot_seq": 7,
+    "snapshot_stable": true,
+    "stopping": false,
+    "streams": [],
+    "view": {
+      "conversation": {
+        "id": "synthetic-chat",
+        "title": "合成对话",
+        "workspace": "/synthetic",
+        "space_id": "local",
+        "created_at": "",
+        "updated_at": "",
+        "pinned": false
+      },
+      "model_id": "echo",
+      "permission": {
+        "mode": "ask",
+        "source": ""
+      },
+      "capabilities": {},
+      "turns": [
+        {
+          "key": "synthetic-run",
+          "state": "completed",
+          "request_key": "",
+          "steps": 0,
+          "elapsed_ms": 0,
+          "messages": [
+            {
+              "key": "1",
+              "role": "user",
+              "raw": "合成输入"
+            },
+            {
+              "key": "2",
+              "role": "assistant",
+              "raw": "合成输出"
+            }
+          ],
+          "activity": [],
+          "evidence": {},
+          "sources": null,
+          "can_continue": false,
+          "can_end": false,
+          "ended": false
+        }
+      ],
+      "has_earlier": false
+    }
+  }
+}

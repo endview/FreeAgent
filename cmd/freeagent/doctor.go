@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/endview/freeagent/internal/harness"
 )
@@ -27,8 +28,13 @@ func doctorReport(ctx context.Context, data string) (map[string]any, []doctorChe
 	report := map[string]any{"ok": true, "data_dir": data, "network_tested": false,
 		"credentials_tested": false, "encrypted": harness.KeysEncrypted()}
 	checks := make([]doctorCheck, 0, 8)
+	timings := map[string]int64{}
+	stageStarted := time.Now()
+	report["check_durations_ms"] = timings
 	ok := true
 	add := func(id, status, detail, action string) {
+		timings[id] = time.Since(stageStarted).Milliseconds()
+		stageStarted = time.Now()
 		checks = append(checks, doctorCheck{id, status, detail, action})
 		ok = ok && status != "error"
 	}
@@ -96,7 +102,7 @@ func doctorReport(ctx context.Context, data string) (map[string]any, []doctorChe
 		}
 		add("commands", status, detail, action)
 		if config.PublicWeb.Enabled {
-			add("public_web", "configured", "Public Web is configured; TLS, the reverse proxy and public reachability were not tested.", "Use public status and owner status locally; validate the Caddy configuration and inspect the service journal.")
+			add("public_web", "configured", "Public Web is configured; TLS, the reverse proxy and public reachability were not tested.", "Use public status and owner status locally; check the configured reverse proxy and inspect the service journal.")
 		} else {
 			add("public_web", "disabled", "Public Web is disabled. Local GUI/CLI access is independent.", "")
 		}
@@ -148,7 +154,7 @@ func doctorSelection(config harness.Config, profiles map[string]harness.KeyProfi
 	return check
 }
 
-// Raw decoding/SQLite errors may quote user content. Report an actionable
+// Raw decoding/database errors may quote user content. Report an actionable
 // category rather than copying configuration values or database rows.
 func doctorError(err error) string {
 	var syntax *json.SyntaxError

@@ -39,7 +39,7 @@ func (server *Server) inputsAPI(writer http.ResponseWriter, request *http.Reques
 			return
 		}
 		server.writeJSON(writer, http.StatusAccepted, item)
-		server.notify("input_changed", body.Chat, item.Status)
+		server.notify(harness.EventInputChanged, body.Chat, item.Status)
 		if body.Command.Action == "queue" {
 			server.advanceQueue(body.Chat)
 		}
@@ -49,7 +49,7 @@ func (server *Server) inputsAPI(writer http.ResponseWriter, request *http.Reques
 			server.fail(writer, err)
 		} else {
 			server.writeJSON(writer, http.StatusOK, item)
-			server.notify("input_changed", body.Chat, item.Status)
+			server.notify(harness.EventInputChanged, body.Chat, item.Status)
 		}
 	case "cancel":
 		item, err := server.tasks.CancelInput(request.Context(), body.Chat, body.Key)
@@ -57,7 +57,7 @@ func (server *Server) inputsAPI(writer http.ResponseWriter, request *http.Reques
 			server.fail(writer, err)
 		} else {
 			server.writeJSON(writer, http.StatusOK, item)
-			server.notify("input_changed", body.Chat, item.Status)
+			server.notify(harness.EventInputChanged, body.Chat, item.Status)
 		}
 	case "pause", "resume":
 		if err := server.tasks.PauseQueue(request.Context(), body.Chat, body.Operation == "pause"); err != nil {
@@ -143,6 +143,6 @@ func (server *Server) branchAPI(writer http.ResponseWriter, request *http.Reques
 		server.fail(writer, err)
 	} else {
 		server.writeJSON(writer, http.StatusCreated, result)
-		server.notify("refresh", body.Chat, "")
+		server.notify(harness.EventRefresh, body.Chat, "")
 	}
 }

@@ -167,6 +167,13 @@ func (tasks *TaskService) Extensions(ctx context.Context) ([]ExtensionInfo, erro
 		}
 		return result[i].Source < result[j].Source
 	})
+	for i := range result {
+		if result[i].Storage == "postgresql" {
+			if _, err := os.Stat(extensionStoragePath(tasks.DataDir(), result[i].ID)); err == nil {
+				result[i].StorageReady = true
+			}
+		}
+	}
 	return result, nil
 }
 
@@ -1036,7 +1043,7 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 			evidence, evidenceErr := bound.Store.Evidence(ctx, run.ID)
 			return RunResult{Run: run, Answer: run.Output, Duplicate: true, Evidence: evidence}, evidenceErr
 		}
-		bound.event(Event{Kind: "run_started", Message: run.ID, RunID: run.ID, ConversationID: run.ConversationID})
+		bound.event(Event{Kind: EventRunStarted, Message: run.ID, RunID: run.ID, ConversationID: run.ConversationID})
 		clock := &runClock{parent: ctx, store: bound.Store, runID: run.ID,
 			limit: time.Duration(bound.childSeconds()) * time.Second, activity: bound.activity}
 		if err := clock.resume(); err != nil {
@@ -1062,7 +1069,7 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 			if summary == "" {
 				summary = "workflow activity"
 			}
-			bound.event(Event{Kind: "extension_activity", Message: summary, Activity: activity,
+			bound.event(Event{Kind: EventExtensionActivity, Message: summary, Activity: activity,
 				RunID: run.ID, ConversationID: run.ConversationID})
 		}
 		persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)

@@ -1,5 +1,17 @@
 # FreeAgent Extension Protocol
 
+v8.3 adds opt-in state/storage/passive-context contracts; existing non-state
+extensions keep their methods and execution semantics. See
+[the implemented state contract](../docs/AFFECTWEAVE_HOST_CONTRACT_V8_3.md).
+`model_settings` explicitly lists scalar settings that may be proposed through
+the Core control boundary. Environment/credential mappings remain user-only.
+`identity` uses adopted conversation/message IDs and verified actors; it is
+never model supplied. `state.apply` receives the original ControlOperation ID
+and digest, and commits its local result with state in one PG transaction.
+An uncertain response is reconciled with `state.result`, never blindly replayed.
+Optional packages are limited to 256 regular files / 32 MiB; no symlinks or
+implicit dependency installer. See the development guide for actual commands.
+
 This directory describes `freeagent-ext/1`, the local extension protocol
 introduced in FreeAgent v6.0. An extension is one local process started over JSON-RPC 2.0
 NDJSON. It is not a package manager, a remote service, or a second execution
@@ -187,9 +199,8 @@ Tool discovery uses `tools/list` and returns definitions with `name`,
 Read-only annotations are hints that the Harness may use for approval policy;
 they cannot enlarge the selected permission mode.
 
-This is not the full MCP tool protocol. The SDK tool branch and Kit tool
-templates still use `tools/call` and need correction; `ext new tool` generates
-the current Core shape. Keep the two call directions clear: extension-to-Host
+This is not the full MCP tool protocol. SDKs and templates use this same shape
+as of v8.0.1. Keep the two call directions clear: extension-to-Host
 `tool.call` asks Core to execute one of its tools, while Core-to-extension
 `tool.call` invokes a tool declared by that extension.
 

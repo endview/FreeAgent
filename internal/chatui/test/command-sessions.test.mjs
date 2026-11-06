@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { commandRows, commandOutput, commandState, remainingSeconds, directCommandText } from '../src/command-sessions.mjs';
+import { commandRows, commandOutput, commandState, remainingSeconds, directCommandText } from '../frontend/lib/presentation/command-sessions.mjs';
 
 test('command panel escapes untrusted executable/output and distinguishes UNKNOWN', () => {
   const record = {id:'id"',state:'unknown',mode:'background',receipt:{command:'<script>',cleanup:'unknown'},output:[{text:'<raw>'}],output_gap:true};

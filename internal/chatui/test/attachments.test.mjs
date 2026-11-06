@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attachmentDraft, uploadProblem, attachmentCards } from '../src/attachments.mjs';
+import { attachmentDraft, uploadProblem, attachmentCards } from '../frontend/lib/presentation/attachments.mjs';
 
 test('attachment drafts reject unsafe or broken stored references', () => {
   assert.deepEqual(attachmentDraft('{broken'), []);

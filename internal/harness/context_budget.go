@@ -199,7 +199,7 @@ func (service *Service) recordContextUsage(ctx context.Context, run Run, usage C
 	if err == nil {
 		var activity map[string]any
 		_ = json.Unmarshal(mustJSON(usage), &activity)
-		service.event(Event{Kind: "context_usage", ConversationID: run.ConversationID, RunID: run.ID, Activity: activity})
+		service.event(Event{Kind: EventContextUsage, ConversationID: run.ConversationID, RunID: run.ID, Activity: activity})
 	}
 	return err
 }

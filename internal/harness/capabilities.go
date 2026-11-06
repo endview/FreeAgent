@@ -2,6 +2,7 @@ package harness
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"sort"
 )
@@ -65,15 +66,17 @@ func (tasks *TaskService) CapabilityCatalog() CapabilityCatalog {
 // CapabilitySelection is a compact, turn-local selection. It is stored inside
 // the existing run snapshot rather than becoming another persisted object.
 type CapabilitySelection struct {
-	Skills     []string `json:"skills,omitempty"`
-	MCPServers []string `json:"mcp_servers,omitempty"`
-	Extensions []string `json:"extensions,omitempty"`
+	Skills     []string          `json:"skills,omitempty"`
+	MCPServers []string          `json:"mcp_servers,omitempty"`
+	Extensions []string          `json:"extensions,omitempty"`
+	Variants   map[string]string `json:"extension_variants,omitempty"`
 }
 
 func (selection CapabilitySelection) normalize() CapabilitySelection {
 	selection.Skills = uniqueSorted(selection.Skills)
 	selection.MCPServers = uniqueSorted(selection.MCPServers)
 	selection.Extensions = uniqueSorted(selection.Extensions)
+	selection.Variants = maps.Clone(selection.Variants)
 	return selection
 }
 
@@ -96,6 +99,14 @@ func (selection CapabilitySelection) validate(config Config) error {
 	for _, name := range selection.Extensions {
 		if !config.Extensions.Enabled[name] {
 			return errors.New("harness: selected extension is not enabled")
+		}
+	}
+	if len(selection.Variants) > 256 {
+		return errors.New("harness: too many extension variants")
+	}
+	for id, variant := range selection.Variants {
+		if !slices.Contains(selection.Extensions, id) || !validCapabilityID(variant) {
+			return errors.New("harness: variant requires a selected extension and a valid identifier")
 		}
 	}
 	return nil

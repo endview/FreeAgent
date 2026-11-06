@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/endview/freeagent/internal/buildinfo"
 	"github.com/endview/freeagent/internal/handoff"
 	"github.com/endview/freeagent/internal/harness"
 )
@@ -52,6 +53,7 @@ type Server struct {
 	listeners       map[chan []byte]bool
 	generation      string
 	eventSeq        uint64
+	stateSeq        uint64 // excludes transient model text, which streams snapshot in memory
 	eventLog        []harness.Event
 	wg              sync.WaitGroup
 	stopRequested   chan struct{}
@@ -107,6 +109,7 @@ func (server *Server) SetGeneration(generation string) {
 	server.generation = generation
 	server.tasks.SetCommandGeneration(generation)
 	server.eventSeq = 0
+	server.stateSeq = 0
 	server.eventLog = nil
 	server.mu.Unlock()
 }
@@ -149,6 +152,9 @@ func (server *Server) onEvent(event harness.Event) {
 	server.mu.Lock()
 	defer server.mu.Unlock()
 	server.eventSeq++
+	if event.Kind != harness.EventModelText {
+		server.stateSeq = server.eventSeq
+	}
 	event.Seq = server.eventSeq
 	event.Generation = server.generation
 	server.eventLog = append(server.eventLog, event)
@@ -189,7 +195,7 @@ func (server *Server) onEvent(event harness.Event) {
 		}
 	}
 	if len(event.Message) > 64<<10 {
-		event.Message, event.Kind = "", "refresh"
+		event.Message, event.Kind = "", harness.EventRefresh
 	}
 	raw, _ := json.Marshal(event)
 	server.broadcastLocked(raw)
@@ -211,6 +217,7 @@ func (server *Server) notify(kind, chat, message string) {
 	server.mu.Lock()
 	defer server.mu.Unlock()
 	server.eventSeq++
+	server.stateSeq = server.eventSeq
 	event := harness.Event{Seq: server.eventSeq, Generation: server.generation, Kind: kind, ConversationID: chat, Message: message}
 	server.eventLog = append(server.eventLog, event)
 	if len(server.eventLog) > 256 {
@@ -237,6 +244,9 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			writer.WriteHeader(http.StatusMethodNotAllowed)
 			return
+		}
+		if strings.HasPrefix(path, "/assets/") {
+			header.Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		http.FileServerFS(Assets()).ServeHTTP(writer, request)
 		return
@@ -367,6 +377,10 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	}
 	if path == "/api/chats" {
 		if request.Method == http.MethodGet {
+			if request.URL.Query().Get("page") == "1" {
+				server.conversationPage(writer, request)
+				return
+			}
 			chats, err := server.tasks.Conversations(request.Context())
 			if err != nil {
 				server.fail(writer, err)
@@ -453,44 +467,12 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	if len(parts) == 1 && request.Method == http.MethodGet {
-		view, err := server.tasks.Chat(request.Context(), chat, request.URL.Query().Get("before"))
+		payload, err := server.chatSnapshot(request.Context(), chat, request.URL.Query().Get("before"))
 		if err != nil {
 			server.fail(writer, err)
 			return
 		}
-		server.mu.Lock()
-		activeAtReadEnd := server.running[chat] != nil
-		server.mu.Unlock()
-		// A repeatable-read snapshot can precede the commit that released the
-		// in-memory execution slot. Refresh once before reporting idle together
-		// with an obsolete "generating" turn; do not hold server.mu over SQL.
-		if !activeAtReadEnd {
-			for _, turn := range view.Turns {
-				if turn.State == "generating" {
-					view, err = server.tasks.Chat(request.Context(), chat, request.URL.Query().Get("before"))
-					break
-				}
-			}
-			if err != nil {
-				server.fail(writer, err)
-				return
-			}
-		}
-		server.mu.Lock()
-		streams := make([]Stream, 0)
-		for _, stream := range server.streams {
-			for _, turn := range view.Turns {
-				if stream.Run == turn.Key {
-					streams = append(streams, stream)
-				}
-			}
-		}
-		activeChat, _ := server.firstActiveLocked()
-		activeChats := server.activeChatsLocked()
-		busy, stopping, elsewhere := server.running[chat] != nil, server.stopping && server.running[chat] != nil, len(server.running) >= harness.MaxForegroundRuns && server.running[chat] == nil
-		server.mu.Unlock()
-		server.writeJSON(writer, http.StatusOK, map[string]any{"view": view, "streams": streams, "busy": busy,
-			"stopping": stopping, "running_elsewhere": elsewhere, "active_chat": activeChat, "active_chats": activeChats, "foreground_capacity": harness.MaxForegroundRuns, "background_active": server.tasks.HasCommands()})
+		server.writeJSON(writer, http.StatusOK, payload)
 		return
 	}
 	if request.Method != http.MethodPost || len(parts) != 2 {
@@ -926,7 +908,14 @@ func (server *Server) events(writer http.ResponseWriter, request *http.Request) 
 		flusher.Flush()
 		return err
 	}
-	if send([]byte(`{"kind":"reconnect"}`)) != nil {
+	controlFrame := func(kind string) []byte {
+		server.mu.Lock()
+		generation := server.generation
+		server.mu.Unlock()
+		raw, _ := json.Marshal(harness.Event{Kind: kind, Generation: generation, ServerVersion: buildinfo.Version})
+		return raw
+	}
+	if send(controlFrame(harness.EventReconnect)) != nil {
 		return
 	}
 	tick := time.NewTicker(15 * time.Second)
@@ -942,7 +931,7 @@ func (server *Server) events(writer http.ResponseWriter, request *http.Request) 
 				return
 			}
 		case <-tick.C:
-			if send([]byte(`{"kind":"heartbeat"}`)) != nil {
+			if send(controlFrame(harness.EventHeartbeat)) != nil {
 				return
 			}
 		}

@@ -1,6 +1,6 @@
 # FreeAgent Linux portable preview
 
-Candidate: v8.0.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
+Candidate: v8.3.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
 the native Windows desktop/WebView2 executable is not included. Go, Node,
 Python and a system web server are not needed to run this package.
 
@@ -10,8 +10,8 @@ Verify the outer SHA256SUMS.txt, extract the complete archive into a writable
 directory, then start:
 
 ```sh
-tar -xzf FreeAgent-v8.0.0-dev.1-linux-amd64-portable.tar.gz
-cd FreeAgent-v8.0.0-dev.1-linux-amd64-portable
+tar -xzf FreeAgent-v8.3.0-dev.1-linux-amd64-portable.tar.gz
+cd FreeAgent-v8.3.0-dev.1-linux-amd64-portable
 ./FreeAgent
 ```
 
@@ -146,3 +146,18 @@ Connection tests remain explicit and may be run while the Provider is off.
 Owner is running, using its interactive attach capability. A backup takes the
 existing exclusive snapshot boundary and reports busy during active execution.
 Observer credentials cannot perform these mutations.
+
+
+## Current native data and optional AffectWeave
+
+Keep the existing Harness-pg-v1 directory during updates. Stop the old Owner and
+verify a backup before replacing programs; do not initialize or import an old
+SQLite store. Layout and drafts belong to the current client; secrets are held
+in dedicated memory while editing.
+
+The React workbench groups product controls under Settings. AffectWeave is a
+separate optional download, imported under Settings → Capabilities → Extensions.
+It requires explicit independent PG initialization and enablement; ordinary Core
+startup does not run it. Character state and space sharing changes are previewed
+and confirmed. See docs/EXTENSION_DEVELOPMENT_GUIDE.md and
+[the AffectWeave repository](https://github.com/endview/affectweave).

@@ -1,8 +1,8 @@
 # FreeAgent 扩展开发指南
 
-核对日期：2026-11-06。代码基线：FreeAgent v8.0.0-dev.1。现行协议：`freeagent-ext/1`。
+核对日期：2026-11-07。代码基线：FreeAgent v8.3.0-dev.1 开发候选；下述命令按已实现代码说明。现行协议：`freeagent-ext/1`。
 
-本指南说明当前可以开发什么、如何运行和调试，以及哪些能力还未实现。AffectWeave 的新增契约单列在第 11 节，不能把路线图当作已存在的 API。
+本指南说明现行工具、上下文、状态和持久确认接口。AffectWeave 的已实现增量见第 11 节；验收范围与外部条件不足的项目分开记录。
 
 ## 1. 先选最小接入方式
 
@@ -21,7 +21,7 @@ Core 负责会话、模型/工具、上下文装配、权限、审批、Run/Atte
 
 仓库已有 [Extension Kit](../extension-kit/README.md)、[协议](../extension-kit/SPEC.md)、[作者约定](../extension-kit/AUTHORING.md)、[manifest schema](../extension-kit/schema/extension.schema.json)、[Python SDK](../extension-kit/sdk/python/freeagent_ext.py) 和 [Node SDK](../extension-kit/sdk/node/freeagent-ext.mjs)。协议字段最终与当前宿主实现核对，不能单靠 JSON schema 或 SDK 自测判断兼容。
 
-**当前已确认的工具 SDK 缺口：** Core 调用扩展工具使用 `tool.call`，结果是字符串 `content`、`is_error`；Python SDK 的分支是 `tools/call`，工具模板还返回 MCP 内容数组。离线探测已复现 `-32601`。Node SDK 也需一并核对修正。工具接入暂以 `ext new tool` 生成的直接协议模板为准；不要把 Kit 工具模板标成已通过真实宿主调用。该修复进入 v8.0.1，本文没有修改 SDK 代码。
+**v8.0.1 已修正工具 SDK 契约：** Python/Node SDK 与工具模板现统一使用 `tool.call`、字符串 `content`、`is_error`。原 v8.0 的 `tools/call`/MCP 内容数组差异已复现后修正，并通过真实 Core/PG→SDK stdio 工具调度回归。工具发现和 SDK 自测仍不能代替该联测。
 
 Python SDK 是小型串行实现，内部 Host 调用同步读写 stdio；不能并发调用多个 `ctx.host.*`，也不要在 handler 返回后留后台任务使用旧 invocation。需要并发的业务先串行化，实际有需求时再完善有限并发和取消联测。
 
@@ -111,7 +111,7 @@ CLI 生成模板是自包含的最小 stdio 程序。Kit 中的 SDK 模板依赖
 <data-dir>/logs/ext-<id>.log                  stderr 日志（名称会作安全化处理）
 ```
 
-当前 `extensions.import` 只复制普通文件，最多 256 个、合计 8 MiB，不接受符号链接；它不是通用依赖安装器。带解释器或大二进制的成品须另外验证目录式安装、更新与卸载流程，不能宣称必然能通过此导入入口。
+当前 `extensions.import` 只复制普通文件，最多 256 个、合计 32 MiB，不接受符号链接；它不是通用依赖安装器。此上限已用独立 Go/PG 扩展实际导入及恢复验证；仍不在启动时下载解释器或安装依赖。
 
 ## 5. 传输、握手和生命周期
 
@@ -224,7 +224,7 @@ $arguments = @{ id = 'com.example.guide'; enabled = $true } | ConvertTo-Json -Co
 
 `$inputFile` 是自己准备的对象 JSON 文件。该入口需要已配置模型；第一次可自动导入并启用扩展，并创建会话/Run，不能当作无副作用检查。当前 `ext run` 的打开路径未实现遇到活跃 Owner 自动 attach；需安排独立开发实例，不能为此停生产 Owner。固定 `--session`、`--request` 才能核对同一工作流请求。
 
-现有 AI 控制工具可提出部分开关策略，**普通 extension settings 与 env_from 当前是 user-only**；导入/移除/重启也有用户专用限制。AffectWeave 的普通非秘密设置和长期状态需在 v8.3 补成受类型约束、可预览确认的 AI 入口，不能直接开放任意配置 JSON。秘密仍走专用输入。
+AI 可提出开关和 manifest.model_settings 白名单中的标量普通设置；字段必须存在于 settings_schema，类型校验后仍走确认。任意 settings、env_from、导入/移除/重启继续 user-only。长期人物状态使用 extensions.change_state，具体内容与 revision 先预览再确认；秘密不进入这条接口。
 
 `env` 默认只继承很少的系统项；声明其他变量后才取值。显式 `env_from` 的 `key:<id>` 映射会把该 Key 的秘密值交给进程，这不是通用模型调用的必要条件；通常直接用 Host 模型接口。Core 数据库凭据和 Provider Key 不应交给 AffectWeave。
 
@@ -255,29 +255,41 @@ fixture 的 `expect` 按列出的顶层字段比较 JSON，不是通用 JSONPath
 
 - 找不到进程：核对启动器实际 PATH 或使用包内/绝对入口，检查最终包是否含运行时。
 - 无法解析协议：检查 stdout 是否混入 print、是否漏换行/flush、返回字段是否是当前 Core 的类型。
-- `method not found`：检查 SDK/宿主方法名，尤其上述工具契约差异。
+- `method not found`：检查 SDK/宿主方法名，v8.0 的工具 SDK 需要升级到修正后的版本。
 - 2 秒后失败：检查 manifest timeout 和初始化/模型耗时；不把提高超时当作 UNKNOWN 自动重试许可。
 - 拒绝启用：核对工作区信任、全局开关、本空间授权、会话选择与 required。
 - 参数或状态冲突：重新读取状态并重新预览；不要修改旧确认记录后继续提交。
 
 发布包需要固定源码/依赖、许可证、准确的最低宿主要求、运行时说明、启用/停用/更新/备份/卸载步骤。Windows 与 Debian 12 分别从新目录验证，不要求用户全局安装构建工具；不在启动时 pip/npm install。停用不等于删除数据，更新不覆盖 data。
 
-## 11. AffectWeave 计划能力，当前尚未提供
+## 11. v8.3 已实现的可选状态扩展
 
-| 需要补齐 | 当前差距 | v8.3 的边界 |
-| --- | --- | --- |
-| 已采用输入和可信作用域 | context.prepare 无完整稳定消息/输入、空间、参与者身份；invocation 只在本次调用有效 | 复用 Core 现有输入和身份记录，提供有界字段，不新建事件平台 |
-| 真实交付事实 | turn.finished 只证明执行结束 | 基于现有消息/receipt 的受限读取或通知及补读；不把生成当发送、发送当已读 |
-| 非秘密设置与长期状态提案 | extension settings 当前 user-only；无扩展状态的统一提交/查结果协议 | 复用 ControlOperation 和确认；类型/范围白名单、revision、事务内幂等和原结果查询 |
-| PG 和配套恢复 | 无自动分配扩展 PG、跨库配套备份的现成 Host API | 扩展独立逻辑库；组合现有备份及有界扩展写回暂停，不建设分布式事务 |
-| 可选 Go 成品包 | AffectWeave 整体 Go 重写尚未实施；二进制也可能超过当前小目录导入上限 | AffectWeave 仓库维护唯一 Go 生产实现，主动适配并发行双平台可执行包；用户无需 Go/Python/Node，默认 Core 不加载人物业务 |
-| 完整管理页 | 当前有通用扩展开关/配置，尚无人物管理页 | FreeAgent 自己的前端代码按需加载，复用 v8.1 扩展详情位置 |
+完整字段与状态表见 [宿主契约](AFFECTWEAVE_HOST_CONTRACT_V8_3.md)。没有新增 Go SDK；其他语言继续使用相同 NDJSON。
 
-具体新方法名、字段和兼容规则在 A1 以双端契约测试冻结；不预先发布不存在的 SDK 调用。取消/幂等/确认/交付的语义不能借“加字段”悄悄改变 `freeagent-ext/1`。
+| manifest/字段 | 已实现行为 |
+| --- | --- |
+| `state: true` | initialize 可以声明 state；宿主调用 state.read/preview/apply/result |
+| `storage: "postgresql"` | 用户显式 extensions.init_storage 后创建独立库和受限角色；宿主只交付 FREEAGENT_EXTENSION_PG_FILE，未初始化不临时降级 |
+| `passive_context: true` | 可为 None 聊天注入已授权人物片段；不能有工具/工作流/模型预算/私有历史 needs，Host 仅允许 activity.report |
+| `model_settings` | 列出 settings_schema 中允许 AI 提案的标量字段；未列出和 env_from 保持用户专用 |
+| `identity.adopted_inputs` | Core/空间/会话/Run，以及已采用消息“会话ID/序号”、可信参与者和时间；不包含排队未采用输入 |
+| `variant` | 现有 CapabilitySelection.extension_variants 中的本轮人物选择，冻结在原 Run |
+| `facts` | 从原 Run/消息/渠道 delivery meta 有界补读；生成、部分、UNKNOWN 独立，不重发模型或工具 |
 
-AffectWeave 选择 Go 不限制其他扩展语言。本指南的现行快速入门仍对应 `ext new` 实际生成的 Python 模板。A1 补充经宿主实测的 Go 最小程序、manifest、fixture、构建与取消调试步骤；当前没有 `ext new --language go` 或专用 Go SDK，不能把计划中的入口当现成功能。旧 AffectWeave Python 只作离线规则参考，不进入其成品运行依赖。
+`extensions.change_state` 参数包括 id、scope、action、expected_revision 和声明的具体 payload。Core 覆盖 core_id、限制会话范围，扩展负责角色授权/CAS；前端显示精确 before/after。CLI control plan/confirm 和 AI control_plan_change 使用同一控制面。任意扩展数据库 SQL 不向模型开放。
 
-实现方案见 [AffectWeave 适配决策](AFFECTWEAVE_FREEAGENT_ADAPTATION_DECISION_2026-11-06.md)和[统一路线图](FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md)。指南随实际接口更新，同一份代码样例做联测，不另建 SDK 平台。
+状态提交前 Core 持久记录派发意图；扩展事务内同时保存变更与原操作结果。回执丢失只调用 state.result 核对；同 ID 不同内容拒绝，不能确认时保留 UNKNOWN。使用 `control reconcile-extension --operation <原ID>` 核对；Run 内原 UNKNOWN 保留，后补已核实 receipt，模型与工具不重放。
+
+```text
+freeagent ext state --id cc.endview.affectweave --role maya --space local --data-dir <data>
+freeagent ext backup --id cc.endview.affectweave --to <new-paired-backup> --data-dir <data>
+freeagent ext verify-backup --from <paired-backup>
+freeagent ext restore --from <paired-backup> --data-dir <new-data> --package <matching-extension-folder>
+```
+
+GUI 人物详情由 FreeAgent 自己的前端代码按需加载，不运行第三方 JS。独立可选 Go 包在 AffectWeave 仓库构建，用户无需 Go/Python/Node。停用保留数据库；移除程序不会隐式删除独立库。`clear-data` 只清扩展工作目录，不伪称删除独立 PG。持久状态清理使用具体 state 动作和确认。
+
+配套备份只有限暂停扩展写回，Core 派发继续；核对来源、原结果和两份备份。恢复要求原 Owner 已停、目标新目录、同版本扩展；失败保留有效 Core，关闭扩展。不存在通用跨库事务或自动重放平台。
 
 ## 12. 本轮验证记录
 
@@ -285,7 +297,29 @@ AffectWeave 选择 Go 不限制其他扩展语言。本指南的现行快速入�
 
 - PASS：3 类 ext new 与对应 ext check；生成模板 context/workflow mock；SDK prompt-router/triage-cluster mock。
 - PASS：Python SDK 自带 2 项单元测试。
-- FAIL（已确认、未修复）：用当前 Core 的 tool.call 请求探测 Python SDK 工具模板，收到 `-32601`。
+- 历史 FAIL，已修复：v8.0 的 Python 工具模板收到 `-32601`；v8.0.1 修正 Python/Node SDK 与模板后，实际 Core 调度联测通过。
 - NOT_RUN：本轮 live PG 工作流、真实 Provider、Linux 包、AffectWeave 自身实现和测试。文中控制面/live 命令已核对源码，未对用户实例执行。
 
 实际源码入口：[CLI](../cmd/freeagent/extensions.go)、[扩展宿主](../internal/harness/extensions.go)、[工具桥接](../internal/harness/extension_tools.go)、[控制面](../internal/harness/control.go)、[GUI API](../internal/chatui/extensions.go)。
+
+
+## 13. 经实际宿主验证的 Go 最小入口
+
+[go-context](../extension-kit/examples/go-context) 是独立零依赖 Go 程序，使用同一 freeagent-ext/1 NDJSON；不是新 SDK。进程接收 initialize/context.prepare/shutdown，stdout 只写协议，最多四个并发 invocation，取消通知按 invocation 分开处理。它不提供 PG、人物状态、控制提案或交付证明。
+
+在仓库根目录执行：
+
+```powershell
+go -C extension-kit/examples/go-context test -race ./...
+go -C extension-kit/examples/go-context build -trimpath -ldflags="-s -w" -o go-context.exe .
+```
+
+Windows 把该目录的 extension.json 中 `run.command` 改为 `./go-context.exe`；Linux 保持 `./go-context` 并构建对应二进制。将程序和 manifest 放到选定用户扩展目录，再从能力管理明确启用/选择。不要把输出留在源码目录后误提交；正式扩展发行保留许可证。
+
+真实 Core 联测命令：
+
+```powershell
+python scripts/test-postgres.py --runtime output/postgresql-runtime/windows/pgsql -- go test -count=1 ./internal/harness -run '^TestGoContextExampleThroughActualCore$'
+```
+
+该测试在新数据目录编译当前 Go 样例，经真实 stdio/Host/context.prepare 把标记送入模型请求，再关闭进程；没有真实 Provider 或生产数据库。Windows 和 Hytron Debian 12 的实际宿主测试均已运行通过。样例自身 race 测试通过。Go 版本与主仓库一致，不引入编译代码到 Core 或并行生产人物引擎。

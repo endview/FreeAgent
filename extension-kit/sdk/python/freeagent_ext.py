@@ -228,7 +228,7 @@ class Extension:
             return self._invoke_workflow(params)
         if method == "tools/list":
             return {"tools": self._tool_definitions()}
-        if method == "tools/call":
+        if method == "tool.call":
             return self._invoke_tool(params)
         raise RPCError(-32601, "method not found")
 

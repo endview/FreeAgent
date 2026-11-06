@@ -132,7 +132,7 @@ func (service *Service) prepareAttachmentRequest(ctx context.Context, run Run, m
 					return request, fmt.Errorf("%w: image %s exceeds the selected model's declared vision limits", ErrModelCapability, ref.Name)
 				}
 				fmt.Fprintln(&text, "[Image omitted from this request; only the reference is visible. Select the original image explicitly to view it again.]")
-				service.event(Event{Kind: "attachment_omitted", RunID: run.ID, ConversationID: run.ConversationID, Message: ref.Name})
+				service.event(Event{Kind: EventAttachmentOmitted, RunID: run.ID, ConversationID: run.ConversationID, Message: ref.Name})
 				continue
 			}
 			raw, err := readAttachmentBlob(service.Store.dataDir, ref)

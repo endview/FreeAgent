@@ -163,7 +163,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 	if err != nil {
 		return ChatView{}, err
 	}
-	tx, err := tasks.core.Store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := tasks.core.Store.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {
 		return ChatView{}, err
 	}

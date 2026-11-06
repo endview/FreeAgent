@@ -112,6 +112,7 @@ func publicRoute(path, method string) (string, bool) {
 		"/api/permissions/selection": "PUT", "/api/permissions/files": "PUT", "/api/permissions/profile": "PUT", "/api/commands": "GET PUT", "/api/commands/rules": "PUT",
 		"/api/settings": "GET", "/api/settings/permissions": "PATCH", "/api/settings/file-access": "PATCH", "/api/settings/tools": "PATCH", "/api/settings/command-run": "PATCH", "/api/settings/context": "PATCH", "/api/runtime-tools": "GET",
 		"/api/settings/database": "GET",
+		"/api/settings/prompt":   "GET",
 		"/api/server":            "GET PUT", "/api/providers": "PUT", "/api/attachment-policy": "GET PUT", "/api/attachments": "GET POST", "/api/attachments/reply": "POST", "/api/attachments/delete": "POST",
 		"/api/keys": "GET POST", "/api/keys/test": "POST", "/api/models/enable": "POST", "/api/models/enable-batch": "POST", "/api/models/default": "POST", "/api/models/vision": "POST", "/api/models/context": "POST",
 		"/api/channels": "GET PATCH", "/api/mcp": "GET", "/api/skills": "GET", "/api/extensions": "GET", "/api/commands/catalog": "GET",

@@ -2,15 +2,15 @@
 
 For the separate Linux amd64 CLI/Web archive, see [Linux portable](https://github.com/endview/FreeAgent/blob/main/docs/LINUX_PORTABLE.md).
 
-Current candidate: `v8.0.0-dev.1`, Windows amd64. This is an unsigned
+Current candidate: `v8.3.0-dev.1`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are bundled with the engine.
 
 Settings includes optional Telegram, Lark/Feishu and official QQ connections.
 Save channel credentials under Settings → Connections → Channels, select the matching account,
 then enable it in Settings. Telegram uses /start applications and administrator approval; Lark/QQ retain pairing. See [Channel setup](https://github.com/endview/FreeAgent/blob/main/docs/CHANNELS.md).
-Real app/chat acceptance remains NOT_RUN; the package is a local development
-preview. Two foreground conversations share one workspace; command and service
+The Owner Telegram private chat was verified in v8.0; multi-account/group and
+real Lark/QQ acceptance remain NOT_RUN. This package is a development preview. Two foreground conversations share one workspace; command and service
 quotas do not increase. Global configuration commits require idle execution,
 while permission reductions still take effect immediately.
 
@@ -144,3 +144,18 @@ Connection tests remain explicit and may be run while the Provider is off.
 Owner is running, using its interactive attach capability. A backup takes the
 existing exclusive snapshot boundary and reports busy during active execution.
 Observer credentials cannot perform these mutations.
+
+
+## Current native data and optional AffectWeave
+
+Keep the existing Harness-pg-v1 directory during updates. Stop the old Owner and
+verify a backup before replacing programs; do not initialize or import an old
+SQLite store. Layout and drafts belong to the current client; secrets are held
+in dedicated memory while editing.
+
+The React workbench groups product controls under Settings. AffectWeave is a
+separate optional download, imported under Settings → Capabilities → Extensions.
+It requires explicit independent PG initialization and enablement; ordinary Core
+startup does not run it. Character state and space sharing changes are previewed
+and confirmed. See docs/EXTENSION_DEVELOPMENT_GUIDE.md and
+[the AffectWeave repository](https://github.com/endview/affectweave).

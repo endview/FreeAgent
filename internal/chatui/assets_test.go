@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -30,6 +31,21 @@ func TestAssetsOnlyWoff2Fonts(t *testing.T) {
 	}
 }
 
+func TestReleaseAssetsExcludeDevelopmentContent(t *testing.T) {
+	err := fs.WalkDir(Assets(), ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if strings.HasSuffix(name, ".map") || strings.Contains(name, "Gallery-") || strings.Contains(name, "freeagent-development-ui") {
+			t.Errorf("development asset shipped: %s", name)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEmbeddedChatAssetsRespectSameOriginCSP(t *testing.T) {
 	assets := Assets()
 	index, err := fs.ReadFile(assets, "index.html")
@@ -37,12 +53,14 @@ func TestEmbeddedChatAssetsRespectSameOriginCSP(t *testing.T) {
 		t.Fatalf("production page is missing its local favicon: %v", err)
 	}
 	styles, err := fs.Glob(assets, "assets/*.css")
-	if err != nil || len(styles) != 1 {
-		t.Fatalf("expected one bundled stylesheet: %v %v", styles, err)
+	if err != nil || len(styles) == 0 {
+		t.Fatalf("expected bundled stylesheets: %v %v", styles, err)
 	}
-	css, err := fs.ReadFile(assets, styles[0])
-	if err != nil || strings.Contains(string(css), "data:") {
-		t.Fatalf("bundled styles must not inline fonts rejected by font-src self: %v", err)
+	for _, name := range styles {
+		css, err := fs.ReadFile(assets, name)
+		if err != nil || regexp.MustCompile(`(?i)url\(\s*['"]?(?:data:|https?:|//)`).Match(css) {
+			t.Fatalf("bundled styles must keep fonts and resources same-origin (%s): %v", name, err)
+		}
 	}
 	fonts, err := fs.Glob(assets, "assets/*.woff2")
 	if err != nil || len(fonts) == 0 {

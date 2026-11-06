@@ -110,7 +110,9 @@ def build(target, go, output, allow_dirty=False, postgres_runtime=None):
         readme = 'LINUX_PORTABLE.md'
     files = {'docs/' + readme: 'README.md', **{p:p for p in ('VERSION','LICENSE','THIRD_PARTY_NOTICES.md')}}
     files.update({f'docs/{p}': f'docs/{p}' for p in (
-        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','CONTEXT_AND_CONTINUOUS_EXECUTION.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md','PUBLIC_WEB.md','POSTGRESQL.md')})
+        'CONFIGURATION.md','SETTINGS_V7.md','RECOVERY.md','CONTEXT_AND_CONTINUOUS_EXECUTION.md','COMMAND_SESSIONS.md','CHANNELS.md','ATTACHMENTS.md','PUBLIC_WEB.md','POSTGRESQL.md',
+        'DIAGNOSIS_AND_UPDATES.md','EXTENSION_DEVELOPMENT_GUIDE.md','AFFECTWEAVE_HOST_CONTRACT_V8_3.md',
+        'FRONTEND_ARCHITECTURE_V8_1.md','FRONTEND_DEVELOPMENT_GUIDE_V8_1.md')})
     if goos=='linux':
         files.update({'deploy/freeagent.service':'deploy/freeagent.service',
                       'deploy/freeagent-channel.service':'deploy/freeagent-channel.service',

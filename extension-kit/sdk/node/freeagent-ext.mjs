@@ -228,7 +228,7 @@ export class Extension {
       return this.invoke(item.handler, params, {});
     }
     if (method === "tools/list") return { tools: this.toolDefinitions() };
-    if (method === "tools/call") {
+    if (method === "tool.call") {
       const item = this.tools.get(params.name);
       if (!item) throw new RPCError(-32601, "tool not found");
       return this.invoke(item.handler, params, {});

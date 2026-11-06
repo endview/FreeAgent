@@ -63,7 +63,7 @@ func (tools *extensionToolRunner) Prepare(ctx context.Context, call ToolCall) (P
 						if summary == "" {
 							summary = "workflow activity"
 						}
-						tools.service.event(Event{Kind: "extension_activity", Message: summary,
+						tools.service.event(Event{Kind: EventExtensionActivity, Message: summary,
 							Activity: activity, RunID: run.ID, ConversationID: run.ConversationID})
 					}
 					if err != nil {

@@ -225,7 +225,7 @@ func runDesktop(ctx context.Context) error {
 		return nil
 	}
 
-	view, err = newDesktopWebView(launch, webviewData, config.Workspace, func() {
+	view, err = newDesktopWebView(launch, webviewData, dataDir, config.Workspace, func() {
 		beginClose(false)
 	})
 	if err != nil {

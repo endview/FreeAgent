@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { apiPath, authHeaders, publicSession, loginPublicPassword } from '../src/public-auth.mjs';
+import { apiPath, authHeaders, publicSession, loginPublicPassword } from '../frontend/lib/presentation/public-auth.mjs';
 
 test('public transport cannot carry local capabilities or arbitrary attach routes', () => {
   assert.deepEqual(authHeaders({ remote: true, key: 'private-local', csrf: 'csrf', active: true }), { 'X-FreeAgent-CSRF': 'csrf', 'X-FreeAgent-Activity': '1' });

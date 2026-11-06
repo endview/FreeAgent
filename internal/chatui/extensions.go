@@ -89,6 +89,89 @@ func (server *Server) extensionsAPI(writer http.ResponseWriter, request *http.Re
 		return true
 	}
 	switch parts[1] {
+	case "sync":
+		if request.Method != http.MethodPost {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return true
+		}
+		var body struct {
+			Chat   string `json:"conversation_id"`
+			Role   string `json:"role_id"`
+			Cursor string `json:"cursor"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		result, err := server.tasks.SyncExtensionFacts(request.Context(), id, body.Chat, body.Role, body.Cursor)
+		if err != nil {
+			server.extensionFailure(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, result)
+	case "backup":
+		if request.Method != http.MethodPost {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return true
+		}
+		var body struct {
+			Target string `json:"target"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		if !filepath.IsAbs(body.Target) {
+			server.writeError(writer, http.StatusBadRequest, "input", "备份位置需要绝对路径，且目标目录尚不存在。")
+			return true
+		}
+		if err := server.tasks.BackupExtensionPair(request.Context(), id, body.Target); err != nil {
+			server.extensionFailure(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, map[string]bool{"ok": true})
+	case "storage-init":
+		if request.Method != http.MethodPost {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return true
+		}
+		result, err := server.applyDirectControl(request.Context(), "", "", harness.ControlInitExtensionStorage, map[string]string{"id": id})
+		if err != nil {
+			server.extensionFailure(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, result)
+	case "state":
+		if request.Method != http.MethodGet {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return true
+		}
+		raw, err := server.tasks.ExtensionState(request.Context(), id, request.URL.Query().Get("conversation_id"), request.URL.Query().Get("role_id"), request.URL.Query().Get("actor_id"), request.URL.Query().Get("space_id"))
+		if err != nil {
+			server.extensionFailure(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, json.RawMessage(raw))
+	case "reconcile":
+		if request.Method != http.MethodPost {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return true
+		}
+		var body struct {
+			OperationID string `json:"operation_id"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		control, err := server.tasks.Control()
+		if err != nil {
+			server.extensionFailure(writer, err)
+			return true
+		}
+		result, err := control.ReconcileExtensionChange(request.Context(), body.OperationID)
+		if err != nil {
+			server.extensionFailure(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, result)
 	case "view":
 		if request.Method != http.MethodGet {
 			writer.WriteHeader(http.StatusMethodNotAllowed)

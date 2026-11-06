@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spaceChatGroups, spaceSelection, publicationMessage } from '../src/spaces.mjs';
+import { spaceChatGroups, spaceSelection, publicationMessage } from '../frontend/lib/presentation/spaces.mjs';
 
 test('global pins appear once while local chats stay at the top level', () => {
   const spaces = [{id:'local',source:'local'},{id:'group',source:'telegram'},{id:'empty',source:'local'}];

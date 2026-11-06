@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { channelConfig, channelSections, telegramAccessSection } from '../src/channels.mjs';
+import { channelConfig, channelSections, telegramAccessSection } from '../frontend/lib/presentation/channels.mjs';
 test('optional connections preserve explicit false and isolate channel credentials',()=>{
  const status={config:{connections:[{id:'lark-one',source:'lark',enabled:false,credential:'k',application_id:'app:tenant'}]},connections:[]};
  assert.equal(channelConfig(status,'lark').enabled,false);

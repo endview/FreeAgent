@@ -16,7 +16,7 @@ func (service *Service) prepareCapabilityRequest(ctx context.Context, run Run, r
 	if service.operationsDenied() {
 		request.Tools = nil
 		request.DenyOperations = true
-		return request, nil
+		return service.preparePassiveContext(ctx, run, request)
 	}
 	includeTools := request.Tools != nil
 	if service.skills == nil {
@@ -91,7 +91,7 @@ func (service *Service) prepareExtensionTurn(ctx context.Context, run Run, reque
 			if service.extensionRequired(id) {
 				return fmt.Errorf("required extension %q failed: %w", id, err)
 			}
-			service.event(Event{Kind: "extension_error", Message: id + ": " + safeError(err), RunID: run.ID})
+			service.event(Event{Kind: EventExtensionError, Message: id + ": " + safeError(err), RunID: run.ID})
 			continue
 		}
 		service.extensionBlocks = append(service.extensionBlocks, blocks...)
@@ -107,7 +107,7 @@ func (service *Service) prepareExtensionTurn(ctx context.Context, run Run, reque
 				if required {
 					return fmt.Errorf("required extension %q tools failed: %w", id, toolErr)
 				}
-				service.event(Event{Kind: "extension_error", Message: id + ": " + safeError(toolErr), RunID: run.ID})
+				service.event(Event{Kind: EventExtensionError, Message: id + ": " + safeError(toolErr), RunID: run.ID})
 			} else {
 				tools = append(tools, extensionTools...)
 			}
@@ -119,7 +119,7 @@ func (service *Service) prepareExtensionTurn(ctx context.Context, run Run, reque
 				if required {
 					return fmt.Errorf("required extension %q workflows failed: %w", id, workflowErr)
 				}
-				service.event(Event{Kind: "extension_error", Message: id + ": " + safeError(workflowErr), RunID: run.ID})
+				service.event(Event{Kind: EventExtensionError, Message: id + ": " + safeError(workflowErr), RunID: run.ID})
 			} else {
 				tools = append(tools, workflowTools...)
 			}
@@ -154,6 +154,9 @@ func (service *Service) extensionRequired(id string) bool {
 }
 
 func (service *Service) prepareExtensionStep(ctx context.Context, run Run, request ModelRequest) (ModelRequest, error) {
+	if service.operationsDenied() {
+		return request, nil
+	}
 	if service.extensions == nil || service.capabilities == nil ||
 		strings.HasPrefix(request.Purpose, "ext:") {
 		return request, nil
@@ -183,7 +186,7 @@ func (service *Service) prepareExtensionStep(ctx context.Context, run Run, reque
 			if service.extensionRequired(id) {
 				return ModelRequest{}, fmt.Errorf("required extension %q failed: %w", id, err)
 			}
-			service.event(Event{Kind: "extension_error", Message: id + ": " + safeError(err), RunID: run.ID})
+			service.event(Event{Kind: EventExtensionError, Message: id + ": " + safeError(err), RunID: run.ID})
 			continue
 		}
 		stepBlocks = append(stepBlocks, blocks...)

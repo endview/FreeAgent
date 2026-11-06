@@ -55,6 +55,12 @@ func interactiveOwner(ctx context.Context, dataDir string) (*handoff.Client, err
 func runAttachedControl(ctx context.Context, client *handoff.Client, command, operationID, kind, arguments, conversationID, code string,
 	stdin io.Reader, stdout, stderr io.Writer, asJSON bool) error {
 	switch command {
+	case "reconcile-extension":
+		result, err := client.ReconcileExtension(ctx, operationID)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
 	case "state":
 		state, err := client.ControlState(ctx)
 		if err != nil {

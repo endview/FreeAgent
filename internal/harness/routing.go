@@ -390,7 +390,7 @@ func (service *Service) saveRouting(ctx context.Context, run *Run, binding Model
 	}
 	service.bindings, service.routing = copy.bindings, copy.routing
 	run.ConfigJSON = snapshot
-	service.event(Event{Kind: "model_selected", Message: decision.SelectedModel + ": " + decision.Reason})
+	service.event(Event{Kind: EventModelSelected, Message: decision.SelectedModel + ": " + decision.Reason})
 	return nil
 }
 

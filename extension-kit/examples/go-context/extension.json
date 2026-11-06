@@ -1,0 +1,12 @@
+{
+  "protocol":"freeagent-ext/1",
+  "id":"com.example.go-context",
+  "version":"0.1.0",
+  "name":"Go context example",
+  "description":"A bounded context block from a standalone Go process.",
+  "run":{"command":"./go-context"},
+  "needs":["message"],
+  "context":{"phases":["turn"],"purposes":["chat"],"max_chars":500,"placement":["tail"]},
+  "timeout_ms":2000,
+  "required":false
+}

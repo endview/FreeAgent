@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activityTime, windowText, inputDisposition, inputLabel } from '../src/execution-context.mjs';
-import { apiPath } from '../src/public-auth.mjs';
-import { turnSignature } from '../src/state.mjs';
+import { activityTime, windowText, inputDisposition, inputLabel } from '../frontend/lib/presentation/execution-context.mjs';
+import { apiPath } from '../frontend/lib/presentation/public-auth.mjs';
+import { turnSignature } from '../frontend/lib/presentation/state.mjs';
 
 test('measured tool duration, active elapsed and missing historical timing remain distinct',()=>{
   assert.equal(activityTime({duration_ms:0}), '0.00s');

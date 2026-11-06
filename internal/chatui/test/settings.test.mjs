@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SETTINGS,settingsRoute,settingsNavigation,SettingsDrafts } from '../src/settings.mjs';
+import { SETTINGS,settingsRoute,settingsNavigation,SettingsDrafts } from '../frontend/lib/presentation/settings.mjs';
 
 test('all settings pages belong to one group and keep current route visible',()=>{
   const ids=SETTINGS.flatMap(([, ,pages])=>pages.map(([id])=>id));
