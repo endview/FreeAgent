@@ -184,7 +184,7 @@ func anthropicRequestFrom(request ModelRequest, model string, caps ModelCapabili
 		}
 		result.Messages = append(result.Messages, anthropicMessage{Role: role, Content: blocks})
 	}
-	for _, message := range request.Messages {
+	for _, message := range providerImageMessages(request.Messages) {
 		switch message.Role {
 		case "system":
 			if message.Content != "" {

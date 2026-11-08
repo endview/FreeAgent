@@ -68,7 +68,7 @@ def main():
                 time.sleep(0.1)
             groups=['core', 'provider', 'tool-core', 'settings', 'continuity', 'bridge', 'browsers']
             names=['performance'] if args.benchmark else args.only.split(',') if args.only else groups
-            if any(name not in [*groups,'performance','affectweave'] for name in names):
+            if any(name not in [*groups,'performance','affectweave','analysis'] for name in names):
                 raise ValueError('Unknown browser test group')
             for name in names:
                 result = subprocess.run(['node', str(repo / f'internal/chatui/scripts/browser-{name}.cjs')],

@@ -19,6 +19,7 @@ type ChannelDispatch func(string, func(context.Context) (RunResult, error)) erro
 type channelButton struct{ Text, Token string }
 type channelSend func(context.Context, ChannelTarget, string, string, []channelButton) (string, error)
 type channelEvent struct {
+	Sticker                           *channelwire.Sticker
 	Media                             []channelwire.MediaRef
 	ReplyTo                           string
 	Target                            ChannelTarget
@@ -37,6 +38,9 @@ type channelApproval struct {
 // channelSession contains only volatile transport capabilities. All durable
 // authority, messages and execution receipts live in the existing Harness.
 type channelSession struct {
+	deliveryMu          sync.Mutex
+	renderText          func(string) ([]channelwire.TextPart, error)
+	formatVersion       string
 	remote              bool
 	download            func(context.Context, channelEvent, channelwire.MediaRef, int64) ([]byte, error)
 	sendFile            func(context.Context, ChannelTarget, string, AttachmentRef, []byte) (string, error)
@@ -250,7 +254,30 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 	if strings.HasPrefix(cmd, "/") && e.Trigger {
 		purpose = "command"
 	}
-	received, err := s.tasks.ReceiveChannelText(ctx, ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: purpose, Media: e.Media}, e.Text)
+	if e.Sticker != nil {
+		chat := space.DefaultConversationID
+		if space.MultiConversation {
+			chat = space.ActiveConversationID
+		}
+		if intent, ok := ctx.Value(channelReplayKey{}).(channelInputIntent); ok && intent.ConversationID != "" {
+			chat = intent.ConversationID
+		}
+		ref, err := s.tasks.rememberSticker(ctx, e.Target, *e.Sticker, chat)
+		if err != nil {
+			return err
+		}
+		e.Text += " [可回复的贴纸引用=" + ref.ID + "]"
+		selected, _ := s.tasks.SelectedModel(ctx, chat)
+		config := s.tasks.Config()
+		if selected == "auto" || selected == "" {
+			selected = config.DefaultModel
+		}
+		if !config.Models[selected].Capabilities.Vision.Enabled {
+			e.Media = nil
+			e.Text += " [当前模型未声明视觉能力；本轮只提供元信息，未识别画面]"
+		}
+	}
+	received, err := s.tasks.ReceiveChannelText(ctx, ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: purpose, Media: e.Media, ReplyTo: e.ReplyTo}, e.Text)
 	if received.Duplicate && received.RunID == "" && purpose == "request" {
 		if _, replay := ctx.Value(channelReplayKey{}).(channelInputIntent); replay {
 			revision := uint64(0)
@@ -259,7 +286,7 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 			}
 			received.Duplicate = false
 			received.origin = &ChannelRunOrigin{ChannelTarget: e.Target, InputMessageID: received.MessageID, HistoryThrough: received.MessageID, RequestKey: ChannelMessageSource{ChannelTarget: e.Target, MessageID: e.Message}.requestKey(), AccessRevision: revision}
-			received.source = ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: purpose, Media: e.Media}
+			received.source = ChannelMessageSource{ChannelTarget: e.Target, PersonID: e.Person, DisplayName: e.Name, MessageID: e.Message, Purpose: purpose, Media: e.Media, ReplyTo: e.ReplyTo}
 			received.text = e.Text
 		}
 	}
@@ -327,6 +354,8 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		return err
 	}
 	switch cmd {
+	case "/analyze":
+		return s.sourceAnalysisCommand(ctx, e, chat, args)
 	case "/save-reply":
 		return s.saveReplyFile(ctx, e, chat)
 	case "/mode":
@@ -582,6 +611,8 @@ func (s *channelSession) button(item channelApproval) (string, error) {
 	return token, nil
 }
 func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnErr error) {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
 	defer s.notifyBusy(ctx)
 	run, origin, err := s.tasks.ChannelRun(ctx, result.Run.ID)
 	if err != nil {
@@ -599,10 +630,18 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 	if !s.matchesApp(application, origin.ApplicationID) {
 		return nil
 	}
+	preparationPending := false
 	if run.Status != "waiting_confirmation" && !result.Maintenance {
-		defer func() { returnErr = errors.Join(returnErr, s.deliverFiles(ctx, run, *origin)) }()
+		defer func() {
+			if !preparationPending {
+				returnErr = errors.Join(returnErr, s.deliverFiles(ctx, run, *origin))
+			}
+		}()
 	}
-	text := strings.TrimSpace(result.Answer)
+	text := result.Answer
+	if strings.TrimSpace(text) == "" {
+		text = ""
+	}
 	var buttons []channelButton
 	defer func() {
 		s.mu.Lock()
@@ -639,7 +678,13 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 			}
 		}
 	}
-	if text == "" {
+	expressionOnly := false
+	if text == "" && run.Status == "completed" && s.remote {
+		if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key LIKE 'channel/operation/%' AND document->>'run_id'=$1 AND document->>'kind' IN ('sticker','reaction') AND document->>'state' NOT IN ('failed','cancelled'))`, run.ID).Scan(&expressionOnly); err != nil {
+			return err
+		}
+	}
+	if text == "" && !expressionOnly {
 		text = channelRunStatus(run)
 	}
 	if run.Status == "limited" {
@@ -653,7 +698,47 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 	if len(text) > 64<<10 {
 		text = string([]rune(text)[:min(len([]rune(text)), 16000)]) + "\n[回复已截断；完整结果在本机]"
 	}
-	parts := channelwire.SplitText(text)
+	group := "reply/" + run.ID + "/" + contentHash([]byte(revision))
+	var parts []channelwire.TextPart
+	format := ""
+	pendingKey := ""
+	if s.remote {
+		pendingKey, err = s.pendingReply(ctx, group, result, run.Status)
+		if err != nil {
+			return err
+		}
+		person := ""
+		if run.Permission != nil {
+			person = run.Permission.PersonID
+		}
+		ctx = context.WithValue(ctx, telegramFileAuthorityKey{}, telegramFileAuthority{Target: origin.ChannelTarget, Person: person, Revision: origin.AccessRevision, LocalOwner: person == ""})
+		ctx = context.WithValue(ctx, channelDeliveryKey{}, channelDeliveryInfo{Run: run.ID, Chat: run.ConversationID, Group: "prepare/" + group, Total: 1, Sequence: 1})
+	}
+	if !expressionOnly {
+		parts, format, err = s.freezeReplyText(ctx, group, text)
+		if errors.Is(err, errChannelPreparing) {
+			preparationPending = true
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+	gap := 0
+	if snapshot, err := decodeRunSnapshot(run.ConfigJSON); err == nil {
+		gap = snapshot.Config.Delivery.IntervalMS
+	}
+	if s.remote {
+		if err := s.queueReplyGroup(ctx, run, origin, group, revision, format, parts, buttons, result.Maintenance); err != nil {
+			return err
+		}
+		_, err := s.tasks.core.Store.db.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, pendingKey)
+		return err
+	}
+	totalParts, err := s.stageReplyStickers(ctx, run, group, len(parts))
+	if err != nil {
+		return err
+	}
 	for index, part := range parts {
 		if err := s.tasks.checkTelegramRun(ctx, run); err != nil {
 			return err
@@ -674,9 +759,10 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 		if index != len(parts)-1 {
 			b = nil
 		}
-		sendCtx := context.WithValue(ctx, channelDeliveryKey{}, channelDeliveryInfo{Claim: key, Run: run.ID, Chat: run.ConversationID, Maintenance: result.Maintenance})
-		message, sendErr := s.sendRunText(sendCtx, run, origin.ChannelTarget, s.replyMessage(ctx, run), part, b)
-		state, confirmed := "sent", part
+		sendCtx := context.WithValue(ctx, channelDeliveryKey{}, channelDeliveryInfo{Claim: key, Run: run.ID, Chat: run.ConversationID, Maintenance: result.Maintenance,
+			Group: group, Sequence: index + 1, Total: totalParts, Entities: part.Entities, Format: format, LogicalPart: part.LogicalPart, PlatformPart: part.PlatformPart, MinGapMS: gap})
+		message, sendErr := s.sendRunText(sendCtx, run, origin.ChannelTarget, s.replyMessage(ctx, run), part.Text, b)
+		state, confirmed := "sent", part.Text
 		if isChannelQueued(sendErr) {
 			state, confirmed, sendErr = "queued", "", nil
 		} else if sendErr != nil || message == "" {

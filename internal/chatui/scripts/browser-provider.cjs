@@ -1,16 +1,30 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http');
 const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
 const artifacts=process.env.FREEAGENT_UI_ARTIFACTS;
 if(!artifacts||!process.env.FREEAGENT_UI_TEST_ROOT)throw new Error('Use scripts/test-frontend.py with an isolated Core.');
 fs.mkdirSync(artifacts,{recursive:true});
 (async()=>{
  const info=JSON.parse(fs.readFileSync(path.join(process.env.FREEAGENT_UI_TEST_ROOT,'data/engine.json'),'utf8'));
  const capability=fs.readFileSync(path.join(process.env.FREEAGENT_UI_TEST_ROOT,'data/chat.secret'),'utf8').trim();
- const modelServer=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({data:[{id:'fixture-short'},{id:'fixture-long'}]}));});
+ const modelRequests=[];
+ const modelServer=http.createServer((req,res)=>{
+  res.setHeader('Content-Type','application/json');
+  if(req.method!=='POST'){res.end(JSON.stringify({data:[{id:'fixture-short'},{id:'fixture-long'}]}));return;}
+  let raw='';req.on('data',chunk=>{raw+=chunk;});req.on('end',()=>{
+   const body=JSON.parse(raw);modelRequests.push(body);
+   const prompt=body.messages?.filter(message=>message.role==='user').at(-1)?.content||'fixture';
+   res.end(JSON.stringify({id:'fixture-'+modelRequests.length,choices:[{message:{role:'assistant',content:'Fixture reply: '+prompt},finish_reason:'stop'}],usage:{prompt_tokens:16,completion_tokens:8,total_tokens:24}}));
+  });
+ });
  await new Promise(resolve=>modelServer.listen(0,'127.0.0.1',resolve));
  const origin='http://127.0.0.1:'+modelServer.address().port+'/v1';
  const browser=await chromium.launch({...(process.env.FREEAGENT_BROWSER_CHANNEL?{channel:process.env.FREEAGENT_BROWSER_CHANNEL}:{}),headless:true});
  const page=await browser.newPage({viewport:{width:1440,height:1024}});const errors=[],checks={};
+ async function environment(){const response=await fetch(info.origin+'/api/environment',{headers:{'X-FreeAgent-Key':capability,'Origin':info.origin}});assert(response.ok,'read isolated environment');return response.json();}
+ async function api(route,body){const response=await fetch(info.origin+'/api/'+route,{method:body===undefined?'GET':'POST',headers:{'X-FreeAgent-Key':capability,'Origin':info.origin,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const result=await response.json();assert(response.ok,route);return result;}
+ async function choose(scope,label,option){await scope.getByRole('combobox',{name:label,exact:true}).click();await page.getByRole('option',{name:option,exact:true}).click();}
+ async function modelOptions(name){const options=page.locator('.settings-model-list li').filter({hasText:name}).locator('.model-options');if(await options.getAttribute('open')===null)await options.locator('summary').click();return options;}
  page.on('pageerror',error=>errors.push(error.message));
  page.on('dialog',async dialog=>{if(dialog.type()==='prompt')await dialog.accept('echo');else await dialog.accept();});
  try{
@@ -39,6 +53,59 @@ fs.mkdirSync(artifacts,{recursive:true});
   await page.getByRole('button',{name:'自动填充 2 个模型',exact:true}).click();
   await page.locator('.settings-model-list li').filter({hasText:'fixture-short'}).getByRole('button',{name:'设为默认',exact:true}).waitFor();
   checks.auto_fill=await page.locator('.settings-model-list li').count()===2;
+  const beforeReasoning=await environment(),shortID=Object.keys(beforeReasoning.models).find(id=>beforeReasoning.models[id].model==='fixture-short'),longID=Object.keys(beforeReasoning.models).find(id=>beforeReasoning.models[id].model==='fixture-long');
+  assert(shortID&&longID,'both fixture models exist');
+  const originalLong=beforeReasoning.models[longID].capabilities;
+  let options=await modelOptions('fixture-short');
+  await choose(options,'请求协议','chat');await choose(options,'流式输出','none');await choose(options,'思考协议','DeepSeek 思考协议');
+  await options.getByRole('textbox',{name:'允许的等级（逗号分隔）',exact:true}).fill('low,high,max');
+  await choose(options,'主回答默认思考','思考 · high');await choose(options,'压缩 / 扩展分析思考','关闭思考');
+  await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:'上下文',exact:true}).click();
+  await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:'模型与 Key',exact:true}).click();
+  options=await modelOptions('fixture-short');
+  assert.equal(await options.getByRole('textbox',{name:'允许的等级（逗号分隔）',exact:true}).inputValue(),'low,high,max');
+  assert.equal((await options.getByRole('combobox',{name:'主回答默认思考',exact:true}).innerText()).trim(),'思考 · high');
+  assert.equal((await options.getByRole('combobox',{name:'压缩 / 扩展分析思考',exact:true}).innerText()).trim(),'关闭思考');
+  checks.reasoning_draft_survives_navigation=true;
+  await page.evaluate(()=>{window.dispatchEvent(new Event('blur'));window.dispatchEvent(new Event('focus'));});
+  assert.equal((await options.getByRole('combobox',{name:'主回答默认思考',exact:true}).innerText()).trim(),'思考 · high');
+  assert.deepEqual((await environment()).models[shortID].capabilities,beforeReasoning.models[shortID].capabilities);
+  checks.reasoning_draft_is_unapplied=true;
+  const expectedReasoning={control:'deepseek',efforts:'low,high,max',default:{effort:'high'},auxiliary:{mode:'disabled'}};
+  const reasoningPlanResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/control/plan'&&response.request().postDataJSON()?.kind==='model.set_profile');
+  await options.getByRole('button',{name:'预览能力声明',exact:true}).click();
+  const reasoningResponse=await reasoningPlanResponse;assert(reasoningResponse.ok(),'reasoning capability preview');
+  assert.deepEqual(reasoningResponse.request().postDataJSON().arguments.capabilities.reasoning,expectedReasoning);
+  const approval=page.getByRole('region',{name:'待确认操作',exact:true});await approval.waitFor();
+  assert((await approval.innerText()).includes('auxiliary')&&(await approval.innerText()).includes('high'));
+  assert.deepEqual((await environment()).models[shortID].capabilities,beforeReasoning.models[shortID].capabilities);
+  checks.reasoning_preview_exact_and_unapplied=true;
+  await approval.getByRole('button',{name:'批准并继续',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'模型能力声明已保存'}).waitFor();
+  const savedReasoning=await environment();assert.deepEqual(savedReasoning.models[shortID].capabilities.reasoning,expectedReasoning);assert.deepEqual(savedReasoning.models[longID].capabilities,originalLong);
+  checks.reasoning_main_aux_saved_separately=true;checks.reasoning_other_model_unchanged=true;
+  await page.reload();await page.getByRole('navigation',{name:'Provider 配置',exact:true}).getByRole('button').filter({hasText:name}).click();options=await modelOptions('fixture-short');
+  assert.equal((await options.getByRole('combobox',{name:'思考协议',exact:true}).innerText()).trim(),'DeepSeek 思考协议');
+  assert.equal(await options.getByRole('textbox',{name:'允许的等级（逗号分隔）',exact:true}).inputValue(),'low,high,max');
+  assert.equal((await options.getByRole('combobox',{name:'主回答默认思考',exact:true}).innerText()).trim(),'思考 · high');
+  assert.equal((await options.getByRole('combobox',{name:'压缩 / 扩展分析思考',exact:true}).innerText()).trim(),'关闭思考');
+  checks.reasoning_defaults_survive_reload=true;
+  const chat=await api('chats',{title:'Model and reasoning browser acceptance'});
+  await page.goto(info.origin+'/?chat='+chat.id);
+  const modelChoice=page.getByRole('combobox',{name:'当前模型',exact:true});await modelChoice.waitFor();assert((await modelChoice.innerText()).includes('模型：'));checks.model_selector_is_labelled=true;
+  await choose(page,'当前模型','fixture-short');
+  await choose(page,'本轮思考','思考 · max');
+  const composer=page.getByRole('textbox',{name:'消息',exact:true});
+  await composer.fill('deepseek-max');await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.getByText('Fixture reply: deepseek-max',{exact:true}).waitFor({timeout:15000});
+  assert.deepEqual(modelRequests.at(-1).thinking,{type:'enabled'});assert.equal(modelRequests.at(-1).reasoning_effort,'max');checks.deepseek_composer_effort_reaches_wire=true;
+  await choose(page,'本轮思考','关闭思考');await composer.fill('deepseek-off');await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.getByText('Fixture reply: deepseek-off',{exact:true}).waitFor({timeout:15000});assert.deepEqual(modelRequests.at(-1).thinking,{type:'disabled'});assert.equal(Object.hasOwn(modelRequests.at(-1),'reasoning_effort'),false);checks.deepseek_composer_toggle_reaches_wire=true;
+  await choose(page,'当前模型','fixture-long');const configure=page.getByRole('button',{name:'配置当前模型的思考能力',exact:true});await configure.waitFor();await configure.click();await page.getByRole('navigation',{name:'Provider 配置',exact:true}).getByRole('button').filter({hasText:name}).click();checks.undeclared_reasoning_has_settings_entry=true;
+  options=await modelOptions('fixture-long');await choose(options,'请求协议','chat');await choose(options,'流式输出','none');await choose(options,'思考协议','OpenAI 思考等级');await options.getByRole('textbox',{name:'允许的等级（逗号分隔）',exact:true}).fill('low,high');await options.getByRole('button',{name:'预览能力声明',exact:true}).click();await page.getByRole('region',{name:'待确认操作',exact:true}).getByRole('button',{name:'批准并继续',exact:true}).click();await page.getByRole('status').filter({hasText:'模型能力声明已保存'}).waitFor();
+  await page.goto(info.origin+'/?chat='+chat.id);await choose(page,'当前模型','fixture-long');await page.getByRole('combobox',{name:'本轮思考',exact:true}).click();assert.equal(await page.getByRole('option',{name:'关闭思考',exact:true}).count(),0);assert.equal(await page.getByRole('option',{name:'开启思考（默认强度）',exact:true}).count(),0);await page.getByRole('option',{name:'思考 · low',exact:true}).click();
+  await composer.fill('openai-low');await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.getByText('Fixture reply: openai-low',{exact:true}).waitFor({timeout:15000});assert.equal(modelRequests.at(-1).reasoning_effort,'low');assert.equal(Object.hasOwn(modelRequests.at(-1),'thinking'),false);checks.openai_composer_uses_declared_efforts=true;
+  await choose(page,'本轮思考','思考 · high');await choose(page,'当前模型','fixture-short');await page.waitForFunction(()=>document.querySelector('[role="combobox"][aria-label="本轮思考"]')?.textContent.includes('继承模型设置'));checks.model_switch_resets_reasoning_override=true;
+  await page.setViewportSize({width:390,height:844});assert(await modelChoice.isVisible());assert(await page.getByRole('combobox',{name:'本轮思考',exact:true}).isVisible());assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));checks.narrow_model_reasoning_controls=true;await page.setViewportSize({width:1440,height:1024});
+  await page.goto(info.origin+'/?view=settings&section=providers');await page.getByRole('navigation',{name:'Provider 配置',exact:true}).getByRole('button').filter({hasText:name}).click();
   const short=page.locator('.settings-model-list li').filter({hasText:'fixture-short'});
   await short.getByRole('button',{name:'设为默认',exact:true}).click();
   await short.getByText(/默认模型/).waitFor();checks.set_default=await short.getByRole('button',{name:'设为默认',exact:true}).isDisabled();

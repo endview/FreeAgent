@@ -142,11 +142,18 @@ func NewToolRuntimeManager(base *RuntimeTools, config Config) *ToolRuntimeManage
 			NetworkPolicy: NetworkPolicy{Mode: NetworkOff}, CommandPolicy: commandExecutionPolicy(config),
 			Generation: effectiveToolGeneration(config)}
 	}
-	manager.current = manager.build(toolPolicyForProfile(config, profile))
+	manager.current = manager.buildLocked(toolPolicyForProfile(config, profile))
 	return manager
 }
 
 func (manager *ToolRuntimeManager) build(policy ToolPolicy) *RuntimeToolView {
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+	return manager.buildLocked(policy)
+}
+
+// buildLocked requires manager.mu after the manager has been published.
+func (manager *ToolRuntimeManager) buildLocked(policy ToolPolicy) *RuntimeToolView {
 	if policy.Generation == "" {
 		policy.Generation = "1"
 	}
@@ -161,7 +168,7 @@ func (manager *ToolRuntimeManager) SetControlGate(gate *controlDecisionGate) {
 	defer manager.mu.Unlock()
 	manager.gate = gate
 	if manager.current != nil {
-		manager.current = manager.build(manager.current.Policy())
+		manager.current = manager.buildLocked(manager.current.Policy())
 	}
 }
 
@@ -184,12 +191,14 @@ func (manager *ToolRuntimeManager) Build(config Config) *RuntimeToolView {
 	defer manager.mu.RUnlock()
 	profile, err := executionProfileForConfig(config)
 	if err != nil {
-		profile = manager.Acquire().Policy().Profile
+		// The read lock is already held; recursively taking it can deadlock
+		// behind a writer waiting to replace the current policy.
+		profile = manager.current.Policy().Profile
 		if profile.Generation == "" {
 			profile.Generation = effectiveToolGeneration(config)
 		}
 	}
-	return manager.build(toolPolicyForProfile(config, profile))
+	return manager.buildLocked(toolPolicyForProfile(config, profile))
 }
 
 func (manager *ToolRuntimeManager) Replace(view *RuntimeToolView) {

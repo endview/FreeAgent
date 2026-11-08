@@ -38,7 +38,8 @@ func TestControlCatalogCoversPersistentConfigFields(t *testing.T) {
 		seen[entry.ResourceFamily] = true
 	}
 	fieldFamilies := map[string]string{
-		"models": "config.models", "default_model": "config.models", "default_selection": "config.models",
+		"delivery": "config.delivery",
+		"models":   "config.models", "default_model": "config.models", "default_selection": "config.models",
 		"auto": "config.auto", "workspace": "config.workspace",
 		"history_page_size": "config.limits", "max_context_bytes": "config.limits",
 		"max_output_tokens": "config.limits", "max_tool_result_bytes": "config.limits",
@@ -76,6 +77,10 @@ func TestControlCatalogCoversNestedPersistentConfigFields(t *testing.T) {
 		seen[entry.ResourceFamily] = true
 	}
 	types := map[reflect.Type]string{
+		reflect.TypeOf(DeliveryConfig{}):        "config.delivery",
+		reflect.TypeOf(FollowupRule{}):          "config.delivery",
+		reflect.TypeOf(ReasoningCapabilities{}): "config.models",
+		reflect.TypeOf(ReasoningSelection{}):    "config.models",
 		reflect.TypeOf(ModelConfig{}):           "config.models",
 		reflect.TypeOf(ServerConfig{}):          "config.server",
 		reflect.TypeOf(ModelCapabilities{}):     "config.models",

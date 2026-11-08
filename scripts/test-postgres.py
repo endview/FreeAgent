@@ -17,6 +17,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', required=True)
+    parser.add_argument('--temp-root', help='existing or new dedicated test scratch directory (also used by child test processes)')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
@@ -27,7 +28,11 @@ def main():
     runtime = Path(args.runtime).resolve()
     bin = runtime / 'bin'
     ctl = bin / ('pg_ctl.exe' if os.name == 'nt' else 'pg_ctl')
-    root = Path(tempfile.mkdtemp(prefix='freeagent-pg-tests-')).resolve()
+    scratch = Path(args.temp_root).resolve() if args.temp_root else Path(tempfile.gettempdir()).resolve()
+    scratch.mkdir(parents=True, exist_ok=True)
+    if not scratch.is_dir() or scratch.is_symlink():
+        raise RuntimeError('Test scratch must be a regular directory')
+    root = Path(tempfile.mkdtemp(prefix='freeagent-pg-tests-', dir=scratch)).resolve()
     if os.name == 'nt':
         # Python's private temp directory can be owned by Administrators on an
         # elevated runner. pg_ctl drops that group before starting initdb, so
@@ -43,6 +48,9 @@ def main():
     pw.write_text(password, encoding='utf-8')
     pw.chmod(0o600)
     env = dict(os.environ)
+    if args.temp_root:
+        for name in ('TEMP', 'TMP', 'TMPDIR', 'GOTMPDIR'):
+            env[name] = str(scratch)
     if os.name != 'nt':
         env['LD_LIBRARY_PATH'] = str(runtime / 'lib')
     with socket.socket() as listener:
@@ -94,7 +102,7 @@ def main():
             if stopped.returncode == 0:
                 # The only recursive delete is the exact directory created by
                 # mkdtemp above; runtime and project directories are excluded.
-                if root.parent != Path(tempfile.gettempdir()).resolve() or not root.name.startswith('freeagent-pg-tests-'):
+                if root.parent != scratch or not root.name.startswith('freeagent-pg-tests-'):
                     raise RuntimeError('Refusing unexpected cleanup path')
                 shutil.rmtree(root)
             else:

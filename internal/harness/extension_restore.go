@@ -8,7 +8,6 @@ import (
 	"github.com/endview/freeagent/internal/postgres"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // RestoreExtensionPair restores into a new directory with the old Owner stopped.
@@ -23,7 +22,7 @@ func RestoreExtensionPair(ctx context.Context, source, target, packagePath strin
 	if err != nil {
 		return err
 	}
-	if info.ID != manifest.ID || info.Version != manifest.Version {
+	if info.ID != manifest.ID || info.Version != manifest.Version || info.StorageSchema != manifest.Schema || info.StorageVersion != manifest.StorageVersion || info.StateVersion != manifest.StateVersion {
 		return errors.New("harness: matching extension package/version required")
 	}
 	if err = Restore(ctx, filepath.Join(source, "core"), target); err != nil {
@@ -49,57 +48,33 @@ func RestoreExtensionPair(ctx context.Context, source, target, packagePath strin
 	if _, err = tasks.ImportExtension(ctx, packagePath); err != nil {
 		return err
 	}
-	if err = postgres.ProvisionExtension(ctx, target, extensionStoragePath(target, manifest.ID)); err != nil {
+	if err = postgres.ProvisionExtension(ctx, target, extensionStoragePath(target, manifest.ID), manifest.ID, manifest.Schema, manifest.StorageVersion); err != nil {
 		return err
 	}
 	temporary := cloneConfig(tasks.Config())
 	temporary.Extensions.Enabled[manifest.ID] = true
 	core.setConfig(temporary)
-	if _, err = tasks.ExtensionState(ctx, manifest.ID, "", "", "owner"); err != nil {
-		return err
-	}
-	if err = core.extensions.restart(manifest.ID); err != nil {
-		return err
-	}
 	c, err := postgres.Read(extensionStoragePath(target, manifest.ID))
 	if err != nil {
 		return err
 	}
-	db, err := postgres.SQL(c, "", false)
+	list, err := extensionRestoreList(ctx, c, filepath.Join(source, "extension.pgdump"))
 	if err != nil {
 		return err
 	}
-	rows, err := db.QueryContext(ctx, `SELECT tablename FROM pg_tables WHERE schemaname='aw' ORDER BY tablename`)
-	if err != nil {
-		db.Close()
-		return err
-	}
-	var tables []string
-	for rows.Next() {
-		var name string
-		if err = rows.Scan(&name); err != nil {
-			rows.Close()
-			db.Close()
-			return err
-		}
-		tables = append(tables, `aw."`+strings.ReplaceAll(name, `"`, `""`)+`"`)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		db.Close()
-		return err
-	}
-	if len(tables) == 0 {
-		db.Close()
-		return ErrStoreFormat
-	}
-	_, err = db.ExecContext(ctx, "TRUNCATE "+strings.Join(tables, ",")+" RESTART IDENTITY CASCADE")
-	db.Close()
+	toc, err := os.CreateTemp(filepath.Dir(target), ".extension-restore-list-*")
 	if err != nil {
 		return err
 	}
-	command, err := postgres.Command(ctx, c, "pg_restore", "--exit-on-error", "--data-only", "--no-owner", "--no-privileges", "--dbname="+c.Database, filepath.Join(source, "extension.pgdump"))
+	defer os.Remove(toc.Name())
+	if _, err = toc.Write(list); err != nil {
+		toc.Close()
+		return err
+	}
+	if err = toc.Close(); err != nil {
+		return err
+	}
+	command, err := postgres.Command(ctx, c, "pg_restore", "--exit-on-error", "--no-owner", "--no-privileges", "--use-list="+toc.Name(), "--dbname="+c.Database, filepath.Join(source, "extension.pgdump"))
 	if err != nil {
 		return err
 	}

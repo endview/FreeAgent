@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Settled outcome callback. An optional delivery extension may return exact ordered reply_parts; no expression mode is interpreted by Core. The Host verifies that all nonempty UTF-8 parts concatenate byte-for-byte to the complete original Run output, within the 64 KiB preview bound. This callback neither sends content nor proves delivery.",
+  "type": "object",
+  "required": [
+    "invocation",
+    "output",
+    "status"
+  ],
+  "properties": {
+    "invocation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "output": {
+      "type": "string",
+      "maxLength": 65536
+    },
+    "status": {
+      "type": "string"
+    },
+    "settings": {
+      "type": "object"
+    },
+    "delivery": {
+      "$ref": "delivery.common.json#/$defs/context"
+    }
+  },
+  "$defs": {
+    "result": {
+      "type": "object",
+      "properties": {
+        "activity": {
+          "type": "object"
+        },
+        "reply_parts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536,
+            "pattern": "\\S"
+          }
+        },
+        "wake_hint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rule_id",
+            "source_refs",
+            "not_before",
+            "not_after"
+          ],
+          "properties": {
+            "rule_id": {
+              "type": "string"
+            },
+            "source_refs": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "items": {
+                "type": "string",
+                "maxLength": 256
+              }
+            },
+            "not_before": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "not_after": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  }
+}

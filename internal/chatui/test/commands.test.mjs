@@ -6,6 +6,7 @@ const catalog = {
   skills: [
     { name: 'weekly-report', description: 'Write a report', source: 'user', trigger: 'manual', enabled: true, available: true },
     { name: 'disabled', description: 'Hidden', enabled: false, available: true },
+    { name: 'incident-review', invocation: 'selected_sources', description: 'Requires explicit source preview', enabled: true, available: true },
   ],
   extensions: [
     {

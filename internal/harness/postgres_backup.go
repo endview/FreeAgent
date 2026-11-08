@@ -196,6 +196,13 @@ func Restore(ctx context.Context, source, target string) (returnErr error) {
 	if err != nil {
 		return err
 	}
+	config.Delivery.GenerationEnabled = nil
+	if err := WriteConfig(stage, config); err != nil {
+		return err
+	}
+	if _, err := admin.ExecContext(ctx, `UPDATE fa.meta SET value=(document||jsonb_build_object('state','cancelled','reason','restored copy; explicit authorization required'))::text WHERE starts_with(key,'extension/wake/') AND document->>'state' IN ('queued','generating','generated','delivery_queued')`); err != nil {
+		return err
+	}
 	if err := copyInstructions(source, stage, config.Instructions); err != nil {
 		return err
 	}

@@ -1,0 +1,323 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "cc.endview.affectweave",
+  "version": "1.6.0-dev.1",
+  "name": "AffectWeave",
+  "description": "可选的人物、关系与经历连续性。持久提案必须确认，普通 Core 不依赖本扩展。",
+  "run": {
+    "command": "./affectweave"
+  },
+  "state": true,
+  "passive_context": true,
+  "storage": "postgresql",
+  "needs": [],
+  "context": {
+    "phases": [
+      "turn"
+    ],
+    "purposes": [
+      "chat"
+    ],
+    "max_chars": 6000,
+    "placement": [
+      "tail"
+    ]
+  },
+  "events": [
+    "turn.finished",
+    "delivery.check"
+  ],
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "role_id": {
+        "type": "string",
+        "maxLength": 128
+      },
+      "context_bytes": {
+        "type": "integer",
+        "minimum": 1024,
+        "maximum": 24000
+      },
+      "reply_mode": {
+        "type": "string",
+        "title": "回复方式",
+        "default": "single",
+        "oneOf": [
+          {
+            "const": "single",
+            "title": "完整一条"
+          },
+          {
+            "const": "paragraphs",
+            "title": "自然分段"
+          },
+          {
+            "const": "character",
+            "title": "按人物表达"
+          }
+        ]
+      },
+      "max_text_parts": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 3,
+        "default": 3
+      },
+      "analysis_enabled": {
+        "type": "boolean",
+        "default": false,
+        "title": "自动输入分析（每输入最多增加一次模型请求）"
+      },
+      "analysis_deadline_ms": {
+        "type": "integer",
+        "minimum": 2000,
+        "maximum": 30000,
+        "default": 8000
+      },
+      "expression_enabled": {
+        "type": "boolean",
+        "default": false
+      },
+      "fixed_followup_enabled": {
+        "type": "boolean",
+        "default": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "model_settings": [
+    "role_id",
+    "context_bytes",
+    "reply_mode",
+    "max_text_parts",
+    "analysis_enabled",
+    "analysis_deadline_ms",
+    "expression_enabled",
+    "fixed_followup_enabled"
+  ],
+  "timeout_ms": 5000,
+  "required": false,
+  "delivery": true,
+  "state_version": 2,
+  "storage_schema": "aw",
+  "storage_version": "1",
+  "state_operations": {
+    "create_role": {
+      "scope": "global",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "persona": {
+            "type": "object"
+          },
+          "spaces": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        },
+        "required": [
+          "persona",
+          "spaces"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "edit_role": {
+      "scope": "global",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "persona": {
+            "type": "object"
+          },
+          "spaces": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        },
+        "required": [
+          "persona",
+          "spaces"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "delete_role": {
+      "scope": "global",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "reset_state": {
+      "scope": "actor",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "delete_state": {
+      "scope": "actor",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "delete_memory": {
+      "scope": "actor",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "memory_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "apply_proposal": {
+      "scope": "actor",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "proposal": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "source_id",
+          "proposal"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "record_outcome": {
+      "scope": "actor",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "outcome": {
+            "type": "object"
+          },
+          "decision": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "source_id",
+          "outcome"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "adapt_persona": {
+      "scope": "global",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "adaptation": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "adaptation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "set_evolution": {
+      "scope": "global",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "flag": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "flag"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "freeze_persona": {
+      "scope": "global",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "flag": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "flag"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "rollback_persona": {
+      "scope": "global",
+      "model": true,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "to_version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "to_version"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "context_analysis": true,
+  "budget": {
+    "model_calls": 2,
+    "output_tokens": 2048
+  },
+  "scheduled_generation": true
+}

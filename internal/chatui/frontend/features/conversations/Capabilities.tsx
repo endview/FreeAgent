@@ -10,12 +10,14 @@ export function Capabilities({
   selection,
   onChange,
   busy = false,
+  saving = false,
   conversationID,
 }: {
   catalog?: CapabilityCatalog;
   selection: CapabilitySelection;
   onChange: (next: CapabilitySelection) => void;
   busy?: boolean;
+  saving?: boolean;
   conversationID?: string;
 }) {
   return (
@@ -43,19 +45,23 @@ export function Capabilities({
                   <label className="check-line" key={item.id}>
                     <input
                       type="checkbox"
-                      disabled={!item.enabled}
+                      disabled={!item.enabled || saving}
                       checked={Boolean(selection[group]?.includes(item.id))}
                       onChange={(event) => {
                         const values = new Set(selection[group] || []);
                         if (event.target.checked) values.add(item.id);
                         else values.delete(item.id);
                         const variants = { ...selection.extension_variants };
-                        if (group === "extensions" && !event.target.checked)
+                        const settings = { ...selection.extension_settings };
+                        if (group === "extensions" && !event.target.checked) {
                           delete variants[item.id];
+                          delete settings[item.id];
+                        }
                         onChange({
                           ...selection,
                           [group]: [...values].sort(),
                           extension_variants: variants,
+                          extension_settings: settings,
                         });
                       }}
                     />
@@ -71,11 +77,15 @@ export function Capabilities({
             </section>
           ))}
           {conversationID &&
+            catalog?.extensions.some(
+              (item) => item.id === "cc.endview.affectweave" && item.enabled,
+            ) &&
             selection.extensions?.includes("cc.endview.affectweave") && (
               <VariantPicker
                 conversationID={conversationID}
                 selection={selection}
                 onChange={onChange}
+                disabled={saving}
               />
             )}
           <Popover.Arrow className="popover-arrow" />
@@ -85,14 +95,58 @@ export function Capabilities({
   );
 }
 
+export function ExtensionTurnChoices({
+  catalog,
+  selection,
+  onChange,
+}: {
+  catalog?: CapabilityCatalog;
+  selection: CapabilitySelection;
+  onChange: (next: CapabilitySelection) => void;
+}) {
+  return catalog?.extensions
+    .filter((item) => item.enabled && selection.extensions?.includes(item.id))
+    .flatMap((item) =>
+      (item.turn_settings || []).map((field) => (
+        <label className="setting-control" key={`${item.id}:${field.key}`}>
+          <span>
+            {item.name || item.id} · {field.label}
+          </span>
+          <select
+            aria-label={`${item.name || item.id}：${field.label}`}
+            value={selection.extension_settings?.[item.id]?.[field.key] || ""}
+            onChange={(event) => {
+              const settings = { ...selection.extension_settings };
+              const values = { ...settings[item.id] };
+              if (event.target.value) values[field.key] = event.target.value;
+              else delete values[field.key];
+              if (Object.keys(values).length) settings[item.id] = values;
+              else delete settings[item.id];
+              onChange({ ...selection, extension_settings: settings });
+            }}
+          >
+            <option value="">继承扩展设置</option>
+            {field.options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )),
+    );
+}
+
 function VariantPicker({
   conversationID,
   selection,
   onChange,
+  disabled = false,
 }: {
   conversationID: string;
   selection: CapabilitySelection;
   onChange: (next: CapabilitySelection) => void;
+  disabled?: boolean;
 }) {
   const [choices, setChoices] = useState<{ id: string; label: string }[]>([]),
     [error, setError] = useState("");
@@ -117,6 +171,7 @@ function VariantPicker({
       <label className="setting-control">
         <span>本轮人物</span>
         <select
+          disabled={disabled}
           value={selection.extension_variants?.[id] || ""}
           onChange={(e) => {
             const variants = { ...selection.extension_variants };

@@ -96,7 +96,7 @@ func (server *Server) extensionsAPI(writer http.ResponseWriter, request *http.Re
 		}
 		var body struct {
 			Chat   string `json:"conversation_id"`
-			Role   string `json:"role_id"`
+			Role   string `json:"resource"`
 			Cursor string `json:"cursor"`
 		}
 		if !server.readBody(writer, request, &body) {
@@ -144,7 +144,7 @@ func (server *Server) extensionsAPI(writer http.ResponseWriter, request *http.Re
 			writer.WriteHeader(http.StatusMethodNotAllowed)
 			return true
 		}
-		raw, err := server.tasks.ExtensionState(request.Context(), id, request.URL.Query().Get("conversation_id"), request.URL.Query().Get("role_id"), request.URL.Query().Get("actor_id"), request.URL.Query().Get("space_id"))
+		raw, err := server.tasks.ExtensionState(request.Context(), id, request.URL.Query().Get("conversation_id"), request.URL.Query().Get("resource"), request.URL.Query().Get("actor_id"), request.URL.Query().Get("space_id"))
 		if err != nil {
 			server.extensionFailure(writer, err)
 			return true

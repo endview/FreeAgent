@@ -1,0 +1,23 @@
+{
+  "synthetic": true,
+  "source": {
+    "run_id": "synthetic-deploy",
+    "status": "completed",
+    "messages": [
+      {"id": 1, "role": "user", "content": "在隔离验证服务中部署合成版本，再对比实际版本。"},
+      {"id": 2, "role": "assistant", "content": "合成环境返回版本 fixture-1，健康检查通过。"}
+    ],
+    "attempts": [{"id": "synthetic-check", "kind": "tool", "state": "succeeded", "result": "fixture-1; health=ok"}]
+  },
+  "candidate": {
+    "kind": "skill",
+    "id": "verify-synthetic-release",
+    "title": "隔离部署验收",
+    "body": "先核对实际版本，再检查健康状态。",
+    "document": "---\nname: verify-synthetic-release\ndescription: 在隔离环境核对所选发布版本与健康状态。\ntrigger: manual\n---\n\n输入：用户选择的版本和隔离验证服务。\n前提：用户已授权部署，验证服务与生产隔离。\n步骤：确认目标；按项目现有部署说明部署；读取实际版本；检查健康状态。\n分支：版本或健康状态不符时停止，不宣布成功。\n失败处理：保留输出，按原操作控制回退；不盲目重试有副作用的步骤。\n",
+    "sources": ["synthetic-deploy messages 1-2; synthetic-check"],
+    "source_caveats": ["仅合成隔离环境的执行回执；没有生产证据。"],
+    "limitations": ["部署步骤与回退命令须按目标项目核对，跨环境步骤未验证。"],
+    "verification": "实际运行版本与用户选定版本一致，且目标环境健康检查通过；分别保留回执。"
+  }
+}

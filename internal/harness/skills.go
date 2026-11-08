@@ -39,7 +39,10 @@ type SkillFileInfo struct {
 	Bytes int    `json:"bytes"`
 }
 
+const skillInvocationSources = "selected_sources"
+
 type SkillInfo struct {
+	Invocation       string          `json:"invocation,omitempty"`
 	Name             string          `json:"name"`
 	Description      string          `json:"description"`
 	Trigger          string          `json:"trigger"`
@@ -55,6 +58,7 @@ type SkillInfo struct {
 }
 
 type skill struct {
+	Invocation  string
 	Name        string
 	Description string
 	Trigger     skillTrigger
@@ -75,6 +79,9 @@ func (registry skillRegistry) selected(selection CapabilitySelection) (map[strin
 		item, ok := registry.Skills[name]
 		if !ok {
 			return nil, fmt.Errorf("harness: selected skill %q is unavailable", name)
+		}
+		if item.Invocation == skillInvocationSources {
+			continue
 		}
 		result[name] = item
 	}
@@ -133,7 +140,7 @@ func readSkill(directory, source string) (skill, error) {
 	if err != nil {
 		return skill{}, err
 	}
-	name, description, trigger, body, err := parseSkillDocument(raw)
+	name, description, trigger, invocation, body, err := parseSkillDocument(raw)
 	if err != nil || !validCapabilityID(name) {
 		return skill{}, errors.New("invalid skill metadata")
 	}
@@ -144,23 +151,23 @@ func readSkill(directory, source string) (skill, error) {
 	if err != nil {
 		return skill{}, err
 	}
-	item := skill{Name: name, Description: description, Trigger: trigger, Body: body,
+	item := skill{Invocation: invocation, Name: name, Description: description, Trigger: trigger, Body: body,
 		Directory: directory, Source: source, SHA256: contentHash(raw), Files: files}
 	return item, nil
 }
 
-func parseSkillDocument(raw []byte) (name, description string, trigger skillTrigger, body string, err error) {
+func parseSkillDocument(raw []byte) (name, description string, trigger skillTrigger, invocation, body string, err error) {
 	if !utf8.Valid(raw) || len(raw) == 0 {
-		return "", "", "", "", errors.New("skill document must be non-empty UTF-8")
+		return "", "", "", "", "", errors.New("skill document must be non-empty UTF-8")
 	}
 	text := string(raw)
 	if !strings.HasPrefix(text, "---\n") && !strings.HasPrefix(text, "---\r\n") {
-		return "", "", "", "", errors.New("skill document requires front matter")
+		return "", "", "", "", "", errors.New("skill document requires front matter")
 	}
 	reader := bufio.NewReader(strings.NewReader(text))
 	first, readErr := reader.ReadString('\n')
 	if readErr != nil || strings.TrimSpace(first) != "---" {
-		return "", "", "", "", errors.New("invalid skill front matter")
+		return "", "", "", "", "", errors.New("invalid skill front matter")
 	}
 	values := map[string]string{}
 	var bodyStart int
@@ -168,7 +175,7 @@ func parseSkillDocument(raw []byte) (name, description string, trigger skillTrig
 	for {
 		line, lineErr := reader.ReadString('\n')
 		if lineErr != nil && !errors.Is(lineErr, io.EOF) {
-			return "", "", "", "", lineErr
+			return "", "", "", "", "", lineErr
 		}
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "---" {
@@ -180,29 +187,33 @@ func parseSkillDocument(raw []byte) (name, description string, trigger skillTrig
 			if found {
 				key, value = strings.TrimSpace(key), strings.TrimSpace(value)
 				switch key {
-				case "name", "description", "trigger":
+				case "name", "description", "trigger", "invocation":
 					values[key] = strings.Trim(value, `"'`)
 				}
 			}
 		}
 		offset += len(line)
 		if errors.Is(lineErr, io.EOF) {
-			return "", "", "", "", errors.New("unterminated skill front matter")
+			return "", "", "", "", "", errors.New("unterminated skill front matter")
 		}
 	}
 	name, description = values["name"], values["description"]
 	if name == "" || description == "" {
-		return "", "", "", "", errors.New("skill name and description are required")
+		return "", "", "", "", "", errors.New("skill name and description are required")
 	}
 	trigger = skillTrigger(values["trigger"])
 	if trigger == "" {
 		trigger = skillTriggerAuto
 	}
 	if trigger != skillTriggerAuto && trigger != skillTriggerManual {
-		return "", "", "", "", errors.New("skill trigger must be auto or manual")
+		return "", "", "", "", "", errors.New("skill trigger must be auto or manual")
+	}
+	invocation = values["invocation"]
+	if invocation != "" && (invocation != skillInvocationSources || trigger != skillTriggerManual) {
+		return "", "", "", "", "", errors.New("source analysis requires invocation: selected_sources and trigger: manual")
 	}
 	body = text[bodyStart:]
-	return name, description, trigger, body, nil
+	return name, description, trigger, invocation, body, nil
 }
 
 func listSkillFiles(directory string) ([]skillFile, error) {
@@ -491,7 +502,7 @@ func skillInfo(item skill, enabled, available, trusted, workspaceTrusted bool) S
 		files = append(files, SkillFileInfo{Path: file.Path, Bytes: file.Bytes})
 	}
 	return SkillInfo{
-		Name: item.Name, Description: item.Description, Trigger: string(item.Trigger),
+		Name: item.Name, Description: item.Description, Trigger: string(item.Trigger), Invocation: item.Invocation,
 		Source: item.Source, Enabled: enabled, Available: available, Trusted: trusted,
 		WorkspaceTrusted: workspaceTrusted, SHA256: item.SHA256, Bytes: len(item.Body),
 		Files: files, Body: item.Body,

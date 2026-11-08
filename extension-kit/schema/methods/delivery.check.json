@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Core-to-extension review params. Fresh invocation with at most min(manifest timeout, 5 seconds). Only activity.report, delivery.read and delivery.withdraw are available during this callback. $defs.result is the extension response.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["invocation", "identity", "candidate"],
+  "properties": {
+    "invocation": {"type": "string", "minLength": 1},
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["core_id", "space_id", "conversation_id", "run_id", "adopted_inputs"],
+      "properties": {
+        "core_id": {"type": "string"}, "space_id": {"type": "string"},
+        "conversation_id": {"type": "string"}, "run_id": {"type": "string"},
+        "adopted_inputs": {
+          "type": "array", "minItems": 1, "maxItems": 128,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "actor_id", "text", "occurred_at"],
+            "properties": {
+              "id": {"type": "string"}, "actor_id": {"type": "string"},
+              "text": {"type": "string", "maxLength": 65536}, "occurred_at": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "key", "rule_id", "text", "kind", "expires_ms"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "key": {"type": "string", "minLength": 1, "maxLength": 128},
+        "rule_id": {"type": "string"}, "text": {"type": "string", "maxLength": 32768},
+        "kind": {"enum": ["text", "sticker"]}, "expires_ms": {"type": "integer"}
+      }
+    }
+  },
+  "$defs": {
+    "result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["allow"], "properties": {"allow": {"type": "boolean"}}
+    }
+  }
+}

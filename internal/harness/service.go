@@ -41,6 +41,10 @@ type Event struct {
 }
 
 type Service struct {
+	extensionTrigger *ExtensionTrigger
+	analysisOnly     bool
+	analysisSource   json.RawMessage
+	reasoning        *ReasoningSelection
 	inputRequestID   string
 	retryWait        func(context.Context, time.Duration) error
 	verificationMode bool
@@ -109,9 +113,11 @@ func (service *Service) bindCurrentToolView() {
 	if control, err := service.controlService(); err == nil {
 		service.toolManager.SetControlGate(&control.gate)
 	}
-	current := service.toolManager.Acquire().Policy()
-	current = service.permissionScopedPolicy(current)
-	service.toolView = service.toolManager.build(current)
+	// Acquire one immutable view, including its gate. Reading the manager's
+	// mutable gate again would race with another Run binding its control gate.
+	current := service.toolManager.Acquire()
+	service.toolView = &RuntimeToolView{base: current.base,
+		policy: service.permissionScopedPolicy(current.Policy()), gate: current.gate}
 	service.toolPolicy = service.toolView.Policy()
 	service.Tools = service.toolView
 }
@@ -193,6 +199,14 @@ func (service *Service) setConfig(config Config) {
 	service.configMu.Lock()
 	service.Config = config
 	service.configMu.Unlock()
+	if service.Store != nil {
+		service.Store.scheduledMu.Lock()
+		owner := service.Store.scheduled
+		service.Store.scheduledMu.Unlock()
+		if owner != nil {
+			owner.configure()
+		}
+	}
 }
 
 // runCopy returns the per-Run copy of a shared core.
@@ -225,6 +239,12 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 		}
 		bindings = []ModelBinding{binding}
 	}
+	if service.reasoning != nil {
+		model := bindings[len(bindings)-1].Config
+		if _, _, err := model.Capabilities.Reasoning.parameters(*service.reasoning, model.EffectiveCapabilities().Protocol); err != nil {
+			return "", err
+		}
+	}
 	permission := service.permission
 	if permission == nil {
 		mode := effectiveExecutionSettings(config).PermissionMode
@@ -252,7 +272,7 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 	if err := profile.Validate(); err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(runSnapshot{
+	raw, err := json.Marshal(runSnapshot{ExtensionTrigger: service.extensionTrigger,
 		ContinuationOf:      service.continuationOf,
 		InputRequestID:      service.inputRequestID,
 		CommandRulesVersion: 1,
@@ -261,6 +281,9 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 		Bindings:         bindings, Limits: service.runLimits, ChildBudget: service.childBudget,
 		Auto: service.autoPolicy, Routing: service.routing,
 		Memory: service.memory, Permission: permission, Capabilities: capabilities, Channel: service.channel,
+		Reasoning:      service.reasoning,
+		AnalysisOnly:   service.analysisOnly,
+		AnalysisSource: service.analysisSource,
 		ToolGeneration: policy.Generation, EnabledTools: policy.EnabledTools, CommandPolicy: policy.Commands, HTTPPolicy: policy.HTTP, FilePolicy: policy.File,
 		ExecutionProfile: profile,
 	})
@@ -412,6 +435,10 @@ func (service *Service) Run(ctx context.Context, conversationID, requestKey, pro
 		return RunResult{}, err
 	} else if exists {
 		if !sameInputAttachments(repeated.ConfigJSON, service.inputAttachments) {
+			return RunResult{}, ErrRequestKey
+		}
+		saved, decodeErr := decodeRunSnapshot(repeated.ConfigJSON)
+		if decodeErr != nil || string(mustJSON(saved.Reasoning)) != string(mustJSON(service.reasoning)) {
 			return RunResult{}, ErrRequestKey
 		}
 		evidence, err := service.Store.Evidence(ctx, repeated.ID)
@@ -579,6 +606,9 @@ func (service *Service) Continue(ctx context.Context, runID string) (RunResult, 
 		return RunResult{}, err
 	}
 	for _, attempt := range attempts {
+		if isSupplementalAttempt(attempt) {
+			continue
+		}
 		if attempt.Status == "unknown" || attempt.Status == "dispatched" {
 			if resolved, err := service.Store.attemptReplaced(ctx, attempt); err != nil {
 				return RunResult{Run: run}, err
@@ -676,6 +706,9 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 			if resolved, err := service.Store.attemptReplaced(ctx, attempt); err != nil {
 				return result, err
 			} else if resolved {
+				continue
+			}
+			if isSupplementalAttempt(attempt) {
 				continue
 			}
 			switch attempt.Status {
@@ -846,9 +879,12 @@ func (service *Service) embed(ctx context.Context, run Run, purpose string, inpu
 func (service *Service) generate(ctx context.Context, run Run, request ModelRequest) (Attempt, ModelResponse, error) {
 	if service.operationsDenied() {
 		request.Tools, request.Extensions = nil, nil
+		if request.Purpose == "" && service.replyExpressionsEnabled() {
+			request.Tools = replyExpressionTools{base: deniedTools{}, service: service}.Definitions()
+		}
 		request.DenyOperations = true
 	}
-	if request.Purpose != "" && request.Purpose != "compaction" && request.Purpose != "verification" {
+	if request.SupplementalKey == "" && request.Purpose != "" && request.Purpose != "compaction" && request.Purpose != "verification" {
 		messages, uses, err := service.memoryContext(ctx, run)
 		if err != nil {
 			return Attempt{}, ModelResponse{}, err
@@ -860,6 +896,22 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 	if err != nil {
 		return Attempt{}, ModelResponse{}, err
 	}
+	if request.Reasoning == nil {
+		selection := binding.Config.Capabilities.Reasoning.Default
+		if request.Purpose != "" || service.analysisOnly {
+			selection = binding.Config.Capabilities.Reasoning.Auxiliary
+		} else if service.reasoning != nil {
+			selection = *service.reasoning
+		}
+		if binding.Config.Capabilities.Reasoning.Control != "" || service.reasoning != nil {
+			request.Reasoning = &selection
+		}
+	}
+	if request.Reasoning != nil {
+		if _, _, err := binding.Config.Capabilities.Reasoning.parameters(*request.Reasoning, binding.Config.EffectiveCapabilities().Protocol); err != nil {
+			return Attempt{}, ModelResponse{}, err
+		}
+	}
 	if request.ModelID != binding.ID || request.ModelRevision != binding.Revision ||
 		request.MaxOutputTokens < 1 || request.MaxOutputTokens > limits.MaxOutputTokens ||
 		request.Purpose != "" && request.Purpose != "verification" && len(request.Tools) != 0 ||
@@ -869,7 +921,7 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 	var rebuild func(*ConversationSummary) (ModelRequest, error)
 	if request.Purpose == "" {
 		request, err = service.prepareContextRequest(ctx, run, request, binding, &rebuild)
-	} else if request.Purpose != "compaction" && request.Purpose != "verification" {
+	} else if request.SupplementalKey == "" && request.Purpose != "compaction" && request.Purpose != "verification" {
 		request, err = service.prepareExtensionStep(ctx, run, request)
 		if err == nil {
 			request, err = service.prepareAttachmentRequest(ctx, run, binding.Config, request)
@@ -1110,12 +1162,12 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	if err := service.checkConfig(run); err != nil {
 		return err
 	}
-	if service.operationsDenied() {
-		return ErrPermissionDenied
-	}
 	var call ToolCall
 	if err := json.Unmarshal([]byte(attempt.RequestJSON), &call); err != nil {
 		return errors.New("harness: corrupt pending tool call")
+	}
+	if service.operationsDenied() && (!service.replyExpressionsEnabled() || call.Name != "reply_expression") {
+		return ErrPermissionDenied
 	}
 	prepared, err := service.runtimeTools(run.ID, attempt.ID).Prepare(ctx, call)
 	if err == nil && prepared.release != nil {
@@ -1410,6 +1462,9 @@ func (service *Service) checkOperation(ctx context.Context, run Run, call ToolCa
 }
 
 func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest, error) {
+	if service.analysisOnly {
+		return service.buildContextWithSummary(ctx, run, nil)
+	}
 	summary, _, err := service.Store.contextSummary(ctx, run.ConversationID, false)
 	if err == nil {
 		request, buildErr := service.buildContextWithSummary(ctx, run, summary)
@@ -1442,6 +1497,13 @@ func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest
 }
 
 func (service *Service) buildContextWithSummary(ctx context.Context, run Run, summary *ConversationSummary) (ModelRequest, error) {
+	if service.analysisOnly {
+		limits, binding, err := service.requestLimits()
+		if err != nil {
+			return ModelRequest{}, err
+		}
+		return ModelRequest{DenyOperations: true, ModelID: binding.ID, ModelRevision: binding.Revision, MaxOutputTokens: limits.MaxOutputTokens, Messages: []ModelMessage{{Role: "system", Content: executionInvariant + "\nAnalyze only the explicitly selected method and source payload in this Run. No other history, memory or extension context is included."}, {Role: "user", Content: run.Prompt}}}, nil
+	}
 	if service.scopedHistory() && summary != nil && summary.Scope != service.publicSummaryScope() {
 		summary = nil
 	}
@@ -1467,7 +1529,7 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 	if service.scopedHistory() {
 		visible := make([]Message, 0, len(history))
 		for _, item := range history {
-			if !service.operationsDenied() && item.RunID == run.ID {
+			if (!service.operationsDenied() || service.replyExpressionsEnabled()) && item.RunID == run.ID {
 				visible = append(visible, item)
 			} else if item.RunID == run.ID {
 				visible = append(visible, publicMessages([]Message{item})...)
@@ -1555,6 +1617,12 @@ func validateResponse(response ModelResponse) error {
 	if response.Usage != nil && (response.Usage.InputTokens < 0 || response.Usage.OutputTokens < 0 || response.Usage.TotalTokens < 0) {
 		return errors.New("harness: invalid model usage")
 	}
+	if response.Usage != nil && response.Usage.ReasoningTokens != nil && (*response.Usage.ReasoningTokens < 0 || *response.Usage.ReasoningTokens > response.Usage.OutputTokens) {
+		return errors.New("harness: invalid reasoning token usage")
+	}
+	if response.ChatContinuation != nil && !validChatContinuation(response.ChatContinuation) {
+		return errors.New("harness: invalid chat continuation")
+	}
 	if response.Provider != nil {
 		meta := response.Provider
 		if len(meta.ID) > 256 || len(meta.Model) > 256 || len(meta.SystemFingerprint) > 256 ||
@@ -1599,6 +1667,11 @@ func validateResponse(response ModelResponse) error {
 }
 
 func validateModelRequest(config ModelConfig, request ModelRequest) error {
+	if request.Reasoning != nil {
+		if _, _, err := config.Capabilities.Reasoning.parameters(*request.Reasoning, config.EffectiveCapabilities().Protocol); err != nil {
+			return err
+		}
+	}
 	if config.Provider == "anthropic" {
 		if err := validateAnthropicImages(request); err != nil {
 			return err
@@ -1608,11 +1681,21 @@ func validateModelRequest(config ModelConfig, request ModelRequest) error {
 		return err
 	}
 	if request.DenyOperations {
-		if len(request.Tools)+len(request.Extensions) != 0 {
+		if len(request.Extensions) != 0 || len(request.Tools) > 0 && (request.Purpose != "" || !replyOnlyDefinitions(request.Tools)) {
 			return ErrModelCapability
 		}
+		replyCalls := map[string]bool{}
 		for _, message := range request.Messages {
-			if message.Role == "tool" || len(message.ToolCalls)+len(message.ProviderItems) != 0 {
+			if len(message.ProviderItems) != 0 || len(message.ToolCalls) > 0 && !replyOnlyDefinitions(request.Tools) {
+				return ErrModelCapability
+			}
+			for _, call := range message.ToolCalls {
+				if call.Name != "reply_expression" {
+					return ErrModelCapability
+				}
+				replyCalls[call.ID] = true
+			}
+			if message.Role == "tool" && !replyCalls[message.ToolCallID] {
 				return ErrModelCapability
 			}
 		}
@@ -1625,6 +1708,9 @@ func validateModelRequest(config ModelConfig, request ModelRequest) error {
 		return ErrModelCapability
 	}
 	for _, message := range request.Messages {
+		if message.ChatContinuation != nil && (message.Role != "assistant" || !validChatContinuation(message.ChatContinuation)) {
+			return ErrModelCapability
+		}
 		providerCalls := 0
 		for _, raw := range message.ProviderItems {
 			var item struct {
@@ -1698,7 +1784,9 @@ func (service *Service) finishExtensions(ctx context.Context, run Run) {
 func modelHistory(messages []Message) []ModelMessage {
 	result := make([]ModelMessage, 0, len(messages))
 	for _, message := range messages {
-		result = append(result, message.ModelMessage)
+		body := message.ModelMessage
+		body.ChatContinuation, body.ProviderItems = nil, nil
+		result = append(result, body)
 	}
 	return result
 }

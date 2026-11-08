@@ -154,8 +154,14 @@ func runExtensionHostHelper() int {
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 1024), 16<<20)
 	reentrant := false
+	workflowReady := false
+	delivery := extensionDeliveryTestHelper{}
 	for _, arg := range os.Args {
 		reentrant = reentrant || arg == "--freeagent-reentrant-tool-call"
+		workflowReady = workflowReady || arg == "--freeagent-workflow-ready"
+		if strings.HasPrefix(arg, "--freeagent-delivery-check=") {
+			delivery.mode = strings.TrimPrefix(arg, "--freeagent-delivery-check=")
+		}
 	}
 	reply := func(response *jsonrpc.Response) bool {
 		encoded, err := jsonrpc.EncodeMessage(response)
@@ -166,7 +172,7 @@ func runExtensionHostHelper() int {
 		return err == nil
 	}
 	nextID := 0
-	hostCall := func(method string, params map[string]any) (map[string]any, bool) {
+	hostRequest := func(method string, params map[string]any) (*jsonrpc.Response, bool) {
 		nextID++
 		id := fmt.Sprintf("host-%d", nextID)
 		requestID, err := jsonrpc.MakeID(id)
@@ -201,16 +207,20 @@ func runExtensionHostHelper() int {
 				fmt.Sprintf("%T:%v", request.ID.Raw(), request.ID.Raw()) {
 				continue
 			}
-			if response.Error != nil || len(response.Result) == 0 {
-				return nil, false
-			}
-			var result map[string]any
-			if json.Unmarshal(response.Result, &result) != nil {
-				return nil, false
-			}
-			return result, true
+			return response, true
 		}
 		return nil, false
+	}
+	hostCall := func(method string, params map[string]any) (map[string]any, bool) {
+		response, ok := hostRequest(method, params)
+		if !ok || response.Error != nil || len(response.Result) == 0 {
+			return nil, false
+		}
+		var result map[string]any
+		if json.Unmarshal(response.Result, &result) != nil {
+			return nil, false
+		}
+		return result, true
 	}
 	for scanner.Scan() {
 		message, err := jsonrpc.DecodeMessage(scanner.Bytes())
@@ -219,6 +229,18 @@ func runExtensionHostHelper() int {
 		}
 		request, ok := message.(*jsonrpc.Request)
 		if !ok || !request.ID.IsValid() {
+			continue
+		}
+		if delivery.mode != "" {
+			result, rpcErr := delivery.handle(request, hostRequest)
+			raw, _ := json.Marshal(result)
+			response := &jsonrpc.Response{ID: request.ID, Result: raw}
+			if rpcErr != nil {
+				response = &jsonrpc.Response{ID: request.ID, Error: rpcErr}
+			}
+			if !reply(response) {
+				return 8
+			}
 			continue
 		}
 		var params map[string]any
@@ -276,6 +298,11 @@ func runExtensionHostHelper() int {
 				break
 			}
 			if name == "wait" {
+				if workflowReady {
+					_, _ = hostCall("activity.report", map[string]any{
+						"invocation": params["invocation"], "summary": "workflow-wait-started",
+					})
+				}
 				time.Sleep(2 * time.Second)
 			}
 			text, _ := input["text"].(string)

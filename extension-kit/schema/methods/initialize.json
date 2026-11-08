@@ -2,12 +2,41 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": true,
-  "required": ["protocol", "host_version", "workspace", "data_dir"],
+  "required": [
+    "protocol",
+    "host_version",
+    "workspace",
+    "data_dir"
+  ],
   "properties": {
-    "protocol": {"const": "freeagent-ext/1"},
-    "host_version": {"type": "string"},
-    "workspace": {"type": "string"},
-    "data_dir": {"type": "string"},
-    "settings": {}
+    "protocol": {
+      "const": "freeagent-ext/1"
+    },
+    "host_version": {
+      "type": "string"
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "data_dir": {
+      "type": "string"
+    },
+    "settings": {},
+    "core_id": {
+      "type": "string"
+    },
+    "state_version": {
+      "const": 2
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "context_analysis",
+          "scheduled_generation"
+        ]
+      },
+      "uniqueItems": true
+    }
   }
 }

@@ -33,6 +33,10 @@ func runChannel(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	connection := flags.String("connection", "", "explicit optional connection ID")
 	app := flags.String("app-id", "", "official application ID")
 	listen := flags.String("listen", "", "QQ loopback callback host:port")
+	richText := flags.String("rich-text", "", "Telegram rich text: true or false")
+	typing := flags.String("typing", "", "Telegram private processing indicator: true or false")
+	replyStickers := flags.String("reply-stickers", "", "allow scoped sticker replies: true or false")
+	autonomousReactions := flags.String("autonomous-reactions", "", "allow Bot reaction changes on the current input: true or false")
 	code := flags.String("request-code", "", "approve one identity-bound Telegram application")
 	chat := flags.String("chat-id", "", "known Telegram numeric chat ID")
 	kind := flags.String("kind", "private", "private or group")
@@ -155,6 +159,30 @@ func runChannel(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		}
 		if *listen != "" {
 			c.Listen = *listen
+		}
+		for _, setting := range []struct {
+			name, value string
+			field       *bool
+		}{{"rich-text", *richText, &c.PlainText}, {"typing", *typing, &c.DisableTyping}} {
+			if setting.value == "" {
+				continue
+			}
+			if c.Source != "telegram" || setting.value != "true" && setting.value != "false" {
+				return usageErr("--" + setting.name + " requires Telegram and true or false")
+			}
+			*setting.field = setting.value == "false"
+		}
+		for _, setting := range []struct {
+			name, value string
+			field       *bool
+		}{{"reply-stickers", *replyStickers, &c.ReplyStickers}, {"autonomous-reactions", *autonomousReactions, &c.AutonomousReactions}} {
+			if setting.value == "" {
+				continue
+			}
+			if c.Source != "telegram" || setting.value != "true" && setting.value != "false" {
+				return usageErr("--" + setting.name + " requires Telegram and true or false")
+			}
+			*setting.field = setting.value == "true"
 		}
 		if index < 0 {
 			config.Connections = append(config.Connections, c)

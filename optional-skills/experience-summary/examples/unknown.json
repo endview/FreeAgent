@@ -1,0 +1,23 @@
+{
+  "synthetic": true,
+  "source": {
+    "run_id": "synthetic-unknown",
+    "status": "failed",
+    "messages": [
+      {"id": 20, "role": "user", "content": "提交一次合成数据变更后检查结果。"},
+      {"id": 21, "role": "assistant", "content": "请求超时，尚未核对外部系统是否已应用变更。"}
+    ],
+    "attempts": [{"id": "synthetic-timeout", "kind": "tool", "state": "unknown"}]
+  },
+  "candidate": {
+    "kind": "draft",
+    "id": "",
+    "title": "合成变更结果仍为 UNKNOWN",
+    "body": "变更可能已经发生；当前只保留失败调查草稿。先查询外部系统的实际状态及请求标识。",
+    "document": "",
+    "sources": ["synthetic-unknown messages 20-21; synthetic-timeout state=unknown"],
+    "source_caveats": ["超时不等于操作未执行；没有确认成功或失败的外部回执。"],
+    "limitations": ["UNKNOWN 未解决，不能提炼成已验证成功流程。", "禁止盲目重试可能有副作用的变更。"],
+    "verification": "以原请求标识查询实际结果；无法确认时继续保留 UNKNOWN，并由用户决定后续处置。"
+  }
+}

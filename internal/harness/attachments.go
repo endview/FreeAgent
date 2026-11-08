@@ -1,6 +1,6 @@
 package harness
 
-// Attachment bytes live outside SQLite. Only bounded, verified references use
+// Attachment bytes live outside PostgreSQL. Only bounded, verified references use
 // existing message, Run and meta records. Publication always precedes binding.
 import (
 	"bytes"

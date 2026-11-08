@@ -1,4 +1,6 @@
-# AffectWeave / FreeAgent v8.3 宿主契约
+# AffectWeave / FreeAgent 宿主适配
+
+更新：AffectWeave 1.1 使用[通用状态契约 v2](EXTENSION_STATE_CONTRACT_V2.md)。Core 只使用 scope.resource 和 payload；人物 ID 与业务字段由本扩展适配。数据库保留 aw schema 和既有存储格式 1。
 
 参考：AffectWeave Python 提交 `d8be9d3255006c51a96c114e36949771ae26517c`。生产实现仅 Go；旧 Python 只作历史规则对照，不随生产包运行。
 
@@ -37,3 +39,7 @@ GUI、CLI、AI 复用 `extensions.change_state` 控制操作。预览包括具�
 ## 有意语义差异
 
 Python `prepare_turn` 每次按当前 aggregate 生成上下文，Go 按已采用输入冻结；Python `commit_agent_output` 立即应用长期提案，Go 生成事实与持久提案分开，后者确认；Python delivery 二元成功/失败改为真实 sent/partial/failed/unknown/未观察；Core 权限与模型回答链路不被扩展覆盖。
+
+## v8.7 补充：分析与主动执行
+
+见 [有界扩展执行](SUPPLEMENTAL_EXTENSION_EXECUTION.md)。人物/情绪/表达算法不得进入 Core；分析与主动执行分别声明能力、默认关闭。扩展通过原 model.generate 使用当前模型，不保存 Provider Key；原 Run/Attempt/outbox 保留唯一权威。未启用时不增加调度进程或定时器。AffectWeave 1.6 使用此契约，旧版宿主不做兼容分支。

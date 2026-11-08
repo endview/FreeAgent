@@ -59,6 +59,8 @@ shadcn Button/Dialog 源码固定来源及许可证保留，其他基础交互�
 
 扩展详情由 FreeAgent 自己的前端代码有限注册并 lazy 加载。AffectWeave 复用扩展设置和本轮能力入口，不运行第三方提供的浏览器脚本。新增共享模块以实际复用点为依据，不预建组件平台。
 
+能力入口的显示、停用后的历史保留和业务归属遵循[扩展开发原则](EXTENSION_DEVELOPMENT_PRINCIPLES.md)。可以保留简短的能力发现入口；完整配置页与本轮动作应按实际安装、启用和选择状态提供，后端继续独立校验。
+
 ## 开发与发行
 
 使用 `pnpm dev` 生成开发磁盘产物，由带 `freeagentdev` 构建标签的独立 Core 同源服务。开发标记、绝对目录与 symlink 校验仍生效；不放宽 Host、Origin、认证或生产 CSP。普通发行构建始终 embed，不接受开发资源环境变量。

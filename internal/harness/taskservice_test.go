@@ -235,7 +235,7 @@ func TestTaskServiceWorkflowCancellationRetainsUnknown(t *testing.T) {
 		"version":"1.0.0",
 		"name":"Workflow extension",
 		"description":"Runs a bounded workflow",
-		"run":{"command":"` + strings.ReplaceAll(os.Args[0], `\`, `\\`) + `","args":["--freeagent-extension-host-helper"]},
+		"run":{"command":"` + strings.ReplaceAll(os.Args[0], `\`, `\\`) + `","args":["--freeagent-extension-host-helper","--freeagent-workflow-ready"]},
 		"workflows":[{"name":"wait","description":"Wait",
 			"input_schema":{"type":"object","additionalProperties":false}}]
 	}`
@@ -247,11 +247,42 @@ func TestTaskServiceWorkflowCancellationRetainsUnknown(t *testing.T) {
 	t.Cleanup(func() { _ = service.extensions.close() })
 	tasks := NewTaskService(service)
 	chat := conversation(t, service)
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	// Cancellation before workflow dispatch must return the same persisted
+	// terminal state, without inventing an UNKNOWN call or a stale running Run.
+	earlyCtx, earlyCancel := context.WithCancel(t.Context())
+	defer earlyCancel()
+	tasks.SetEvents(func(event Event) {
+		if event.Kind == EventRunStarted {
+			earlyCancel()
+		}
+	})
+	earlyChat := conversation(t, service)
+	early, earlyErr := tasks.RunWorkflow(earlyCtx, earlyChat, "workflow-cancel-before-dispatch", extensionID, "wait", map[string]any{})
+	saved, loadErr := service.Store.GetRun(t.Context(), early.Run.ID)
+	if !errors.Is(earlyErr, context.Canceled) || loadErr != nil || saved.Status != "limited" || early.Run.Status != saved.Status {
+		t.Fatalf("pre-dispatch cancel: returned=%s saved=%s err=%v load=%v", early.Run.Status, saved.Status, earlyErr, loadErr)
+	}
+	earlyAttempts, listErr := service.Store.ListAttempts(t.Context(), early.Run.ID)
+	if listErr != nil || len(earlyAttempts) != 0 {
+		t.Fatalf("pre-dispatch cancel created attempts: count=%d err=%v", len(earlyAttempts), listErr)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
+	var dispatched atomic.Bool
+	tasks.SetEvents(func(event Event) {
+		if event.Kind == EventExtensionActivity && event.Message == "workflow-wait-started" {
+			// Cancel only after the real extension has received workflow.run.
+			// A short startup deadline can instead cancel before dispatch.
+			dispatched.Store(true)
+			cancel()
+		}
+	})
 	result, err := tasks.RunWorkflow(ctx, chat, "workflow-cancel", extensionID, "wait", map[string]any{})
+	if !dispatched.Load() {
+		t.Fatalf("workflow did not reach the cancellation point: status=%s err=%v", result.Run.Status, err)
+	}
 	if !errors.Is(err, ErrUnknownResult) || result.Run.Status != "unknown" {
-		t.Fatalf("cancel result=%+v err=%v", result, err)
+		t.Fatalf("cancel status=%s err=%v", result.Run.Status, err)
 	}
 	attempts, err := service.Store.ListAttempts(t.Context(), result.Run.ID)
 	if err != nil || len(attempts) != 1 || attempts[0].Status != "unknown" {

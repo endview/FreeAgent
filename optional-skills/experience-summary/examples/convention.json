@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "source": {
+    "run_id": "synthetic-convention",
+    "status": "completed",
+    "messages": [
+      {"id": 10, "role": "user", "content": "本项目验证报告应写明实际版本与验证环境。"},
+      {"id": 11, "role": "assistant", "content": "已按要求在本项目合成验证报告中列出版本与环境。"}
+    ]
+  },
+  "candidate": {
+    "kind": "memory",
+    "id": "",
+    "title": "本项目验证报告约定",
+    "body": "本项目验证报告注明实际运行版本和验证环境。建议由用户明确选择固定到当前对话。",
+    "document": "",
+    "sources": ["synthetic-convention messages 10-11"],
+    "source_caveats": ["项目内用户约定；未授权推广到其他项目或全局。"],
+    "limitations": ["此约定不代表某次部署已成功，也不自动固定 Memory。"],
+    "verification": "检查报告中的版本来自实际运行信息，环境名称与本次选定目标一致。"
+  }
+}

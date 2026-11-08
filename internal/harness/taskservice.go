@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/endview/freeagent/internal/postgres"
 	"os"
 	"path/filepath"
 	"sort"
@@ -169,8 +170,8 @@ func (tasks *TaskService) Extensions(ctx context.Context) ([]ExtensionInfo, erro
 	})
 	for i := range result {
 		if result[i].Storage == "postgresql" {
-			if _, err := os.Stat(extensionStoragePath(tasks.DataDir(), result[i].ID)); err == nil {
-				result[i].StorageReady = true
+			if binding, err := postgres.Read(extensionStoragePath(tasks.DataDir(), result[i].ID)); err == nil {
+				result[i].StorageReady = binding.ExtensionID == result[i].ID && binding.Schema == result[i].StorageSchema && binding.StorageVersion == result[i].StorageVersion
 			}
 		}
 	}
@@ -377,9 +378,18 @@ func (tasks *TaskService) DeleteExtension(ctx context.Context, id string) error 
 		delete(config.Extensions.Required, id)
 		delete(config.Extensions.Settings, id)
 		delete(config.Extensions.EnvFrom, id)
+		delete(config.Delivery.GenerationEnabled, id)
 		return nil
 	}); err != nil {
 		return err
+	}
+	if err := tasks.invalidateExtensionWakes(ctx, id, ""); err != nil {
+		return err
+	}
+	if tasks.core.extensions != nil {
+		if err := tasks.core.extensions.restart(id); err != nil {
+			return err
+		}
 	}
 	return os.RemoveAll(path)
 }
@@ -751,7 +761,7 @@ func (tasks *TaskService) execute(ctx context.Context, chat string, call func(co
 		release()
 	}()
 	result, callErr := call(child, &core)
-	if callErr != nil || result.Run.ID != "" && result.Run.Status != "completed" {
+	if core.extensionTrigger == nil && (callErr != nil || result.Run.ID != "" && result.Run.Status != "completed") {
 		persist, done := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = tasks.PauseQueue(persist, chat, true)
 		done()
@@ -769,9 +779,14 @@ func (tasks *TaskService) executeRun(ctx context.Context, runID string, call fun
 
 // CancelConversation never affects another conversation's execution.
 func (tasks *TaskService) CancelConversation(chat string) bool {
+	return tasks.cancelConversationWithReason(chat, "conversation_stopped")
+}
+
+func (tasks *TaskService) cancelConversationWithReason(chat, reason string) (cancelled bool) {
 	if tasks == nil {
 		return false
 	}
+	defer func() { cancelled = tasks.stopChannelDeliveries(chat, reason) || cancelled }()
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
 	if execution := tasks.running[chat]; execution != nil {
@@ -805,19 +820,23 @@ func (tasks *TaskService) Cancel() bool {
 }
 
 type RunOptions struct {
-	inputKey          string
-	continuationKey   string
-	Attachments       []string `json:"attachments,omitempty"`
-	channel           *ChannelRunOrigin
-	personID          string
-	SpaceID           string                 `json:"space_id,omitempty"`
-	ModelID           string                 `json:"model_id,omitempty"`
-	Collaboration     *CollaborationSettings `json:"collaboration,omitempty"`
-	Review            SuggestionReview       `json:"-"`
-	Memory            *MemorySelection       `json:"memory,omitempty"`
-	Permission        PermissionMode         `json:"permission,omitempty"`
-	ConfirmFullAccess bool                   `json:"confirm_full_access,omitempty"`
-	Capabilities      *CapabilitySelection   `json:"capabilities,omitempty"`
+	analysisBindingHash string
+	analysisSource      json.RawMessage
+	analysisOnly        bool
+	Reasoning           *ReasoningSelection `json:"reasoning,omitempty"`
+	inputKey            string
+	continuationKey     string
+	Attachments         []string `json:"attachments,omitempty"`
+	channel             *ChannelRunOrigin
+	personID            string
+	SpaceID             string                 `json:"space_id,omitempty"`
+	ModelID             string                 `json:"model_id,omitempty"`
+	Collaboration       *CollaborationSettings `json:"collaboration,omitempty"`
+	Review              SuggestionReview       `json:"-"`
+	Memory              *MemorySelection       `json:"memory,omitempty"`
+	Permission          PermissionMode         `json:"permission,omitempty"`
+	ConfirmFullAccess   bool                   `json:"confirm_full_access,omitempty"`
+	Capabilities        *CapabilitySelection   `json:"capabilities,omitempty"`
 }
 
 func (tasks *TaskService) Submit(ctx context.Context, conversationID, requestKey, prompt string) (RunResult, error) {
@@ -860,6 +879,13 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 		conversationID = chat.ID
 	}
 	return tasks.execute(ctx, conversationID, func(ctx context.Context, core *Service) (RunResult, error) {
+		if options.Reasoning != nil {
+			// The selection is per Run, including tool-less analysis.
+			selection := *options.Reasoning
+			core.reasoning = &selection
+		}
+		core.analysisOnly = options.analysisOnly
+		core.analysisSource = options.analysisSource
 		refs, err := tasks.resolveAttachments(ctx, conversationID, options.Attachments)
 		if err != nil {
 			return RunResult{}, err
@@ -871,6 +897,15 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 			return RunResult{}, err
 		}
 
+		if options.analysisBindingHash != "" {
+			binding, err := core.newBinding(core.Config, options.ModelID)
+			if err != nil {
+				return RunResult{}, err
+			}
+			if contentHash(mustJSON(binding)) != options.analysisBindingHash {
+				return RunResult{}, ErrApprovalChanged
+			}
+		}
 		if requestKey == "" {
 			requestKey = newID()
 		}
@@ -900,6 +935,9 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 				return RunResult{}, err
 			}
 			core.capabilities = &selected
+		}
+		if err := core.validateCapabilitySettings(*core.capabilities); err != nil {
+			return RunResult{}, err
 		}
 		if err := core.selectMemory(ctx, conversationID, options.Memory); err != nil {
 			return RunResult{}, err
@@ -1049,17 +1087,25 @@ func (tasks *TaskService) RunWorkflow(ctx context.Context, conversationID, reque
 		if err := clock.resume(); err != nil {
 			persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
 			defer done()
-			_ = bound.Store.FinishRun(persistCtx, run.ID, "limited", safeError(err))
-			return RunResult{Run: run}, err
+			finishErr := bound.Store.FinishRun(persistCtx, run.ID, "limited", safeError(err))
+			current, loadErr := bound.Store.GetRun(persistCtx, run.ID)
+			if loadErr != nil {
+				current = run
+			}
+			return RunResult{Run: current}, errors.Join(err, finishErr, loadErr)
 		}
 		attempt, err := bound.Store.startWorkflow(clock.ctx, run, extensionID, workflowName, input,
 			bound.childSteps(), nil)
 		if err != nil {
-			_ = clock.pause()
+			clockErr := clock.pause()
 			persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
 			defer done()
-			_ = bound.Store.FinishRun(persistCtx, run.ID, "failed", safeError(err))
-			return RunResult{Run: run}, err
+			finishErr := bound.Store.FinishRun(persistCtx, run.ID, "failed", safeError(err))
+			current, loadErr := bound.Store.GetRun(persistCtx, run.ID)
+			if loadErr != nil {
+				current = run
+			}
+			return RunResult{Run: current}, errors.Join(err, clockErr, finishErr, loadErr)
 		}
 		output, activity, workflowErr := bound.RunExtensionWorkflow(clock.ctx, run, extensionID, workflowName, input)
 		clockErr := clock.pause()
@@ -1149,6 +1195,14 @@ func (tasks *TaskService) ContinueWithOptions(ctx context.Context, runID string,
 		run, err := core.Store.GetRun(ctx, runID)
 		if err != nil {
 			return RunResult{}, err
+		}
+		if core.Store.channelBridge.Load() != nil {
+			if err := tasks.checkTelegramRun(ctx, run); err != nil {
+				return RunResult{}, err
+			}
+			if _, err := core.Store.db.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "channel/run-cancelled/"+runID); err != nil {
+				return RunResult{}, err
+			}
 		}
 		if controlled, err := core.Store.controlledParent(ctx, runID); err != nil {
 			return RunResult{}, err

@@ -94,6 +94,10 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 	}
 	return nil
 }
+func (c *Client) RegisterCapabilities(ctx context.Context) error {
+	return c.request(ctx, http.MethodPost, "capabilities", capabilities(c.Bootstrap.Connection), nil)
+}
+
 func (c *Client) Credential(ctx context.Context) (channelwire.Credential, error) {
 	var out channelwire.Credential
 	err := c.request(ctx, http.MethodGet, "credential", nil, &out)
@@ -109,6 +113,12 @@ func (c *Client) Outbox(ctx context.Context) ([]channelwire.Operation, error) {
 }
 func (c *Client) Receipt(ctx context.Context, r channelwire.Receipt) error {
 	return c.request(ctx, http.MethodPost, "receipt", r, nil)
+}
+
+func (c *Client) Activities(ctx context.Context) ([]channelwire.Activity, error) {
+	var result []channelwire.Activity
+	err := c.request(ctx, http.MethodGet, "activities", nil, &result)
+	return result, err
 }
 
 type cursor struct {
@@ -195,7 +205,10 @@ func transportOutbox(ctx context.Context, c *Client, send Sender) error {
 			if op.Target.Source != c.Bootstrap.Connection.Source || op.Target.ApplicationID != c.Bootstrap.Connection.ApplicationID {
 				return errors.New("channel: Core offered an operation outside this connection")
 			}
-			r := send(ctx, op)
+			r, prepared := prepareOperation(c.Bootstrap.Connection, op)
+			if !prepared {
+				r = send(ctx, op)
+			}
 			r.ID, r.Dispatch = op.ID, op.Dispatch
 			// Retry the receipt, never repeat the platform operation to obtain it.
 			for n := 0; n < 3; n++ {
@@ -233,8 +246,14 @@ func Run(ctx context.Context, bootstrap channelwire.Bootstrap, stateDir string) 
 	case "telegram":
 		return runTelegram(ctx, c, credential, filepath.Join(stateDir, bootstrap.Connection.ID+".cursor.json"))
 	case "lark":
+		if err := c.RegisterCapabilities(ctx); err != nil {
+			return err
+		}
 		return runLark(ctx, c, credential)
 	case "qq":
+		if err := c.RegisterCapabilities(ctx); err != nil {
+			return err
+		}
 		return runQQ(ctx, c, credential)
 	default:
 		return errors.New("channel: unsupported transport")

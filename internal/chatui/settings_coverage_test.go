@@ -61,6 +61,8 @@ func TestFrontendSettingsCoverage(t *testing.T) {
 			page := ""
 			root := strings.Split(field, ".")[0]
 			switch root {
+			case "delivery":
+				page = "delivery"
 			case "version", "tool_generation":
 				page = "metadata"
 			case "models", "default_model", "providers":
@@ -112,6 +114,8 @@ func TestFrontendSettingsCoverage(t *testing.T) {
 		for _, entry := range catalog {
 			page := ""
 			switch strings.Split(entry.Kind, ".")[0] {
+			case "delivery":
+				page = "delivery"
 			case "execution":
 				page = "permissions"
 			case "tools":

@@ -65,7 +65,7 @@ func TestSkillParserAndTrustBoundaries(t *testing.T) {
 	if len(item.Files) != 1 || item.Files[0].Path != "template.txt" {
 		t.Fatalf("workspace attachment list=%+v", item.Files)
 	}
-	if _, _, _, _, err := parseSkillDocument([]byte("---\nname: bad\n---\nbody")); err == nil {
+	if _, _, _, _, _, err := parseSkillDocument([]byte("---\nname: bad\n---\nbody")); err == nil {
 		t.Fatal("skill without description was accepted")
 	}
 }

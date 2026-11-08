@@ -32,7 +32,7 @@ func TestExtensionStateProcessHelper(t *testing.T) {
 		var result any
 		switch request.Method {
 		case "initialize":
-			result = map[string]any{"id": "com.example.state-test", "version": "1.0.0", "provides": []string{"state"}}
+			result = map[string]any{"id": "com.example.state-test", "version": "1.0.0", "state_version": 2, "provides": []string{"state"}}
 		case "state.preview":
 			var p ExtensionStateChange
 			_ = json.Unmarshal(request.Params, &p)
@@ -82,7 +82,7 @@ func installStateTest(t *testing.T, core *Service) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := ExtensionManifest{Protocol: extensionProtocol, ID: id, Name: "state test", Version: "1.0.0", State: true, Run: ExtensionRun{Command: binary, Args: []string{"-test.run=^TestExtensionStateProcessHelper$"}}, Env: []string{"FREEAGENT_STATE_TEST_ROOT"}}
+	manifest := ExtensionManifest{Protocol: extensionProtocol, ID: id, Name: "state test", Version: "1.0.0", State: true, StateVersion: 2, StateOperations: map[string]ExtensionStateOperation{"set_label": {Scope: "actor", Model: true, InputSchema: json.RawMessage(`{"type":"object","properties":{"label":{"type":"string","maxLength":128}},"required":["label"],"additionalProperties":false}`)}}, Run: ExtensionRun{Command: binary, Args: []string{"-test.run=^TestExtensionStateProcessHelper$"}}, Env: []string{"FREEAGENT_STATE_TEST_ROOT"}}
 	if err = os.WriteFile(filepath.Join(directory, "extension.json"), mustJSON(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestExtensionStateLostACKReconcilesWithoutReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	operation, err := control.PlanControlChange(t.Context(), ControlPlanRequest{Kind: ControlChangeExtensionState, Authorization: ControlUserDirect, Arguments: mustJSON(ExtensionStateChange{ID: "com.example.state-test", Scope: ExtensionStateScope{SpaceID: "local", RoleID: "maya", ActorID: "owner"}, Action: "apply_proposal", ExpectedRevision: 1, SourceID: "input-1", Proposal: json.RawMessage(`{"relationship_delta":{"trust":0.05}}`)})})
+	operation, err := control.PlanControlChange(t.Context(), ControlPlanRequest{Kind: ControlChangeExtensionState, Authorization: ControlUserDirect, Arguments: mustJSON(ExtensionStateChange{ID: "com.example.state-test", Scope: ExtensionStateScope{SpaceID: "local", Resource: "maya", ActorID: "owner"}, Action: "set_label", ExpectedRevision: 1, Payload: json.RawMessage(`{"label":"reviewed"}`)})})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestExtensionVariantsRequireSelectedEnabledCapability(t *testing.T) {
 }
 
 func TestPassiveContextRejectsHostPrivileges(t *testing.T) {
-	manifest := ExtensionManifest{Protocol: extensionProtocol, ID: "com.example.passive", Name: "passive", Version: "1.0.0", Run: ExtensionRun{Command: "program"}, State: true, PassiveContext: true}
+	manifest := ExtensionManifest{Protocol: extensionProtocol, ID: "com.example.passive", Name: "passive", Version: "1.0.0", Run: ExtensionRun{Command: "program"}, State: true, StateVersion: 2, StateOperations: map[string]ExtensionStateOperation{"set_label": {Scope: "actor", InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`)}}, PassiveContext: true}
 	if err := validateExtensionManifest(manifest); err != nil {
 		t.Fatal(err)
 	}

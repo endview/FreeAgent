@@ -8,9 +8,11 @@ import (
 )
 
 type ModelMessage struct {
-	Deferred    bool            `json:",omitempty"`
-	Attachments []AttachmentRef `json:",omitempty"`
-	Images      []ModelImage    `json:"-"`
+	FeedbackSource   string            `json:",omitempty"`
+	ChatContinuation *ChatContinuation `json:",omitempty"`
+	Deferred         bool              `json:",omitempty"`
+	Attachments      []AttachmentRef   `json:",omitempty"`
+	Images           []ModelImage      `json:"-"`
 	// Channel records verified transport provenance. It is source data, never
 	// execution authority. Only received text and confirmed deliveries are Public.
 	Channel    *ChannelMessageSource `json:",omitempty"`
@@ -26,8 +28,10 @@ type ModelMessage struct {
 }
 
 type ModelRequest struct {
-	Recovery        *ModelRecovery `json:",omitempty"`
-	DenyOperations  bool           `json:",omitempty"`
+	SupplementalKey string              `json:",omitempty"`
+	Reasoning       *ReasoningSelection `json:",omitempty"`
+	Recovery        *ModelRecovery      `json:",omitempty"`
+	DenyOperations  bool                `json:",omitempty"`
 	ModelID         string
 	ModelRevision   string
 	Purpose         string `json:",omitempty"`
@@ -53,9 +57,10 @@ type ExtensionUse struct {
 }
 
 type ModelResponse struct {
-	LatencyMS int64 `json:",omitempty"`
-	Content   string
-	ToolCalls []ToolCall
+	ChatContinuation *ChatContinuation `json:",omitempty"`
+	LatencyMS        int64             `json:",omitempty"`
+	Content          string
+	ToolCalls        []ToolCall
 	// ProviderItems is the bounded output-item sequence returned by a
 	// Responses provider. It is replayed as input on the next request without
 	// turning server-side activities into local tool calls.
@@ -69,17 +74,18 @@ type ModelResponse struct {
 // Provider metadata is bounded, credential-redacted protocol data, not evidence
 // that any tool or external effect executed.
 type ProviderResponse struct {
-	Protocol          string                  `json:"protocol"`
-	ID                string                  `json:"id,omitempty"`
-	Model             string                  `json:"model,omitempty"`
-	Created           int64                   `json:"created,omitempty"`
-	SystemFingerprint string                  `json:"system_fingerprint,omitempty"`
-	Streamed          bool                    `json:"streamed"`
-	FinishReason      string                  `json:"finish_reason,omitempty"`
-	RawFinishReason   string                  `json:"raw_finish_reason,omitempty"`
-	UsageStatus       string                  `json:"usage_status"`
-	ResponseStatus    string                  `json:"response_status,omitempty"`
-	WebSearchCalls    []ProviderWebSearchCall `json:"web_search_calls,omitempty"`
+	RequestedReasoning *ReasoningSelection     `json:"requested_reasoning,omitempty"`
+	Protocol           string                  `json:"protocol"`
+	ID                 string                  `json:"id,omitempty"`
+	Model              string                  `json:"model,omitempty"`
+	Created            int64                   `json:"created,omitempty"`
+	SystemFingerprint  string                  `json:"system_fingerprint,omitempty"`
+	Streamed           bool                    `json:"streamed"`
+	FinishReason       string                  `json:"finish_reason,omitempty"`
+	RawFinishReason    string                  `json:"raw_finish_reason,omitempty"`
+	UsageStatus        string                  `json:"usage_status"`
+	ResponseStatus     string                  `json:"response_status,omitempty"`
+	WebSearchCalls     []ProviderWebSearchCall `json:"web_search_calls,omitempty"`
 }
 
 type ProviderWebSearchCall struct {
@@ -91,9 +97,10 @@ type ProviderWebSearchCall struct {
 }
 
 type ModelUsage struct {
-	InputTokens  int64 `json:"input_tokens"`
-	OutputTokens int64 `json:"output_tokens"`
-	TotalTokens  int64 `json:"total_tokens"`
+	ReasoningTokens *int64 `json:"reasoning_tokens,omitempty"`
+	InputTokens     int64  `json:"input_tokens"`
+	OutputTokens    int64  `json:"output_tokens"`
+	TotalTokens     int64  `json:"total_tokens"`
 }
 
 type ModelClient interface {

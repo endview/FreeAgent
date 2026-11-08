@@ -32,6 +32,7 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 			return next, err
 		}
 		next.Extensions = uses
+		next.Reasoning = request.Reasoning
 		next.Messages = append(next.Messages, additions...)
 		for i, m := range next.Messages {
 			if saved, ok := cache[contentHash(mustJSON(m))]; ok {
@@ -49,6 +50,10 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 	}
 	if err := service.recordContextUsage(ctx, run, usage); err != nil {
 		return prepared, err
+	}
+	if service.analysisOnly {
+		*rebuildOut = nil
+		return prepared, usage.budgetError()
 	}
 	if service.Config.TaskSummaryBytes <= 0 || service.compactionFailed || run.ID == "" || usage.Occupancy < autoCompactPercent(service.Config) {
 		return prepared, usage.budgetError()

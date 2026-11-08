@@ -258,7 +258,7 @@ export default function App() {
         </div>
         <strong>FreeAgent</strong>
         <span className="brand-version">
-            {state.snapshot?.server_version?.replace(/^v/, "") || "8.3"}
+          {state.snapshot?.server_version?.replace(/^v/, "") || "8.3"}
         </span>
       </div>
       <Button
@@ -546,6 +546,7 @@ export default function App() {
             composerMax={composerMax}
             onComposerMax={setComposerMax}
             onOpenChat={openChat}
+            onOpenModelSettings={() => route("settings", "providers")}
           />
         )}
         {state.notice && (

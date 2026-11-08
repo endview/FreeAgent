@@ -29,11 +29,15 @@ type ModelBinding struct {
 // Model and limit changes remain bounded data in the existing run snapshot.
 // The first binding is immutable; attempts record the actual dispatched binding.
 type runSnapshot struct {
-	InputRequestID      string            `json:"input_request_id,omitempty"`
-	ContinuationOf      string            `json:"continuation_of,omitempty"`
-	CommandRulesVersion int               `json:"command_rules_version"`
-	InputAttachments    []AttachmentRef   `json:",omitempty"`
-	Channel             *ChannelRunOrigin `json:",omitempty"`
+	ExtensionTrigger    *ExtensionTrigger   `json:"extension_trigger,omitempty"`
+	AnalysisSource      json.RawMessage     `json:"analysis_source,omitempty"`
+	AnalysisOnly        bool                `json:"analysis_only,omitempty"`
+	Reasoning           *ReasoningSelection `json:"reasoning,omitempty"`
+	InputRequestID      string              `json:"input_request_id,omitempty"`
+	ContinuationOf      string              `json:"continuation_of,omitempty"`
+	CommandRulesVersion int                 `json:"command_rules_version"`
+	InputAttachments    []AttachmentRef     `json:",omitempty"`
+	Channel             *ChannelRunOrigin   `json:",omitempty"`
 	Config              Config
 	Tools               []ToolDefinition
 	InstructionsHash    string
@@ -180,6 +184,9 @@ func decodeRunSnapshot(raw string) (runSnapshot, error) {
 	if snapshot.EnabledTools == (BuiltinToolSettings{}) && snapshot.ExecutionProfile.PermissionMode != PermissionNone {
 		snapshot.EnabledTools = defaultBuiltinToolSettings()
 	}
+	if len(snapshot.AnalysisSource) > 4096 || len(snapshot.AnalysisSource) > 0 && !snapshot.AnalysisOnly {
+		return snapshot, ErrStoreFormat
+	}
 	if err := validateSnapshotToolPolicy(ToolPolicy{EnabledTools: snapshot.EnabledTools, Generation: snapshot.ToolGeneration, Commands: snapshot.CommandPolicy, HTTP: snapshot.HTTPPolicy, File: snapshot.FilePolicy}); err != nil {
 		return snapshot, errors.Join(ErrSnapshotIncomplete, err)
 	}
@@ -196,6 +203,12 @@ func decodeRunSnapshot(raw string) (runSnapshot, error) {
 	}
 	for _, binding := range snapshot.Bindings {
 		if err := validateBinding(binding); err != nil {
+			return snapshot, ErrStoreFormat
+		}
+	}
+	if snapshot.Reasoning != nil {
+		model := snapshot.Bindings[len(snapshot.Bindings)-1].Config
+		if _, _, err := model.Capabilities.Reasoning.parameters(*snapshot.Reasoning, model.EffectiveCapabilities().Protocol); err != nil {
 			return snapshot, ErrStoreFormat
 		}
 	}
@@ -425,6 +438,10 @@ func (service *Service) forRun(run Run) (*Service, error) {
 	copy.permission = snapshot.Permission
 	copy.channel = snapshot.Channel
 	copy.capabilities = snapshot.Capabilities
+	copy.reasoning = snapshot.Reasoning
+	copy.extensionTrigger = snapshot.ExtensionTrigger
+	copy.analysisOnly = snapshot.AnalysisOnly
+	copy.analysisSource = snapshot.AnalysisSource
 	if snapshot.FilePolicy.ComputerFiles {
 		roots, rootErr := normalizeComputerRoots(context.Background(), copy.Store.DataDir(), snapshot.FilePolicy.ComputerRoots)
 		if rootErr != nil {

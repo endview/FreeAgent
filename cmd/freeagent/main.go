@@ -123,7 +123,7 @@ restore --source <backup-directory> --data-dir <new-directory>
 Public Web (Linux, default off): public status|configure|disable|password|clear-locks.
   Passwords use hidden input or --password-stdin; HTTPS proxy setup: docs/PUBLIC_WEB.md.
 
-Chat commands: /guide [number|key] /steer <text> /queue [text] /inputs /queue-pause /queue-resume /queue-cancel <key> /branch <message-id> [text] /branch-reply <message-id> /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /history /sessions /resume <number> /new /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
+Chat commands: /guide [number|key] /steer <text> /queue [text] /inputs /queue-pause /queue-resume /queue-cancel <key> /branch <message-id> [text] /branch-reply <message-id> /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /capabilities /history /sessions /resume <number> /new /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
 While running, terminal text is queued; /guide moves the next queued message into the current task.
 Use --data-dir for runtime commands. Ask confirms modifying operations, Workspace access auto-runs workspace file changes and sandboxed commands, and Full access auto-runs enabled modifying tools. On Windows commands run in an AppContainer sandbox; Full access runs them on the host. MCP and loopback HTTP are not sandboxed.
 Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for confirmation, 4 stopped or limited, 5 unknown result.`)
@@ -140,6 +140,12 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runMemory(ctx, args[1:], stdin, stdout, stderr)
 	case "context":
 		return runContext(ctx, args[1:], stdout, stderr)
+	case "delivery":
+		return runDelivery(ctx, args[1:], stdout, stderr)
+	case "analyze":
+		return runAnalysis(ctx, args[1:], stdout, stderr)
+	case "stickers":
+		return runStickers(ctx, args[1:], stdout, stderr)
 	case "attachments":
 		return runAttachments(ctx, args[1:], stdout, stderr)
 	case "public":
@@ -186,7 +192,7 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 }
 
 func usageError() error {
-	return usageErr("usage: freeagent <init|key|config|control|memory|channel|chat|web|ext|public|attachments|owner|run|continue|sessions|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore> [flags]; use --help")
+	return usageErr("usage: freeagent <init|key|config|control|memory|analyze|channel|chat|web|ext|public|attachments|owner|run|continue|sessions|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore> [flags]; use --help")
 }
 
 func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -323,6 +329,9 @@ func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	modelID := flags.String("model", "", "explicit local model profile for this task")
 	permission := flags.String("permission", "", "this task only: ask, workspace or full")
 	confirmFullAccess := flags.Bool("confirm-full-access", false, "confirm Full access for this task")
+	reasoningMode := flags.String("reasoning", "", "this Run only: default, enabled or disabled")
+	reasoningEffort := flags.String("reasoning-effort", "", "this Run only: a declared reasoning effort")
+	capabilitiesJSON := flags.String("capabilities", "", "this Run only: capability selection JSON, including declared extension_settings")
 	collaborationMode := flags.String("collaboration", "", "this task only: off, ask or auto")
 	if err := parseFlags(flags, args); err != nil {
 		return err
@@ -338,6 +347,16 @@ func runTask(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return err
 	}
 	options := harness.RunOptions{SpaceID: *spaceID, ModelID: *modelID, Permission: harness.PermissionMode(*permission), ConfirmFullAccess: *confirmFullAccess, Attachments: attachmentIDs}
+	if *capabilitiesJSON != "" {
+		var selection harness.CapabilitySelection
+		if err := json.Unmarshal([]byte(*capabilitiesJSON), &selection); err != nil {
+			return usageErr("run: invalid capability selection JSON")
+		}
+		options.Capabilities = &selection
+	}
+	if *reasoningMode != "" || *reasoningEffort != "" {
+		options.Reasoning = &harness.ReasoningSelection{Mode: *reasoningMode, Effort: *reasoningEffort}
+	}
 	if *permission != "" {
 		if err := options.Permission.Validate(); err != nil {
 			return usageErr(err.Error())
@@ -592,6 +611,8 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	var references []string
 	var inputAttachments []string
 	var nextCollaboration *harness.CollaborationSettings
+	var nextReasoning *harness.ReasoningSelection
+	var nextCapabilities *harness.CapabilitySelection
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -615,6 +636,37 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		if prompt == "/exit" || prompt == "/quit" {
 			return nil
 		}
+		if prompt == "/capabilities" || strings.HasPrefix(prompt, "/capabilities ") {
+			value := strings.TrimSpace(strings.TrimPrefix(prompt, "/capabilities"))
+			if value == "inherit" {
+				nextCapabilities = nil
+			} else if value == "" {
+				fmt.Fprintln(stderr, "Next Run only: /capabilities <selection JSON> or /capabilities inherit; installed extension choices use extension_settings.")
+			} else {
+				var selection harness.CapabilitySelection
+				if err := json.Unmarshal([]byte(value), &selection); err != nil {
+					fmt.Fprintln(stderr, "Invalid capability selection JSON; unchanged")
+				} else {
+					nextCapabilities = &selection
+				}
+			}
+			continue
+		}
+		if prompt == "/reasoning" || strings.HasPrefix(prompt, "/reasoning ") {
+			parts := strings.Fields(prompt)
+			if len(parts) == 1 {
+				fmt.Fprintln(stderr, "Next Run only: /reasoning default|enabled|disabled|inherit, or /reasoning effort <declared-level>")
+			} else if len(parts) == 2 && parts[1] == "inherit" {
+				nextReasoning = nil
+			} else if len(parts) == 2 && (parts[1] == "default" || parts[1] == "enabled" || parts[1] == "disabled") {
+				nextReasoning = &harness.ReasoningSelection{Mode: parts[1]}
+			} else if len(parts) == 3 && parts[1] == "effort" {
+				nextReasoning = &harness.ReasoningSelection{Effort: parts[2]}
+			} else {
+				fmt.Fprintln(stderr, "Invalid /reasoning selection; unchanged")
+			}
+			continue
+		}
 		if handled, inputErr := chatInputs(ctx, tasks, prompt, conversationID, &inputAttachments, stderr); handled {
 			if inputErr != nil {
 				fmt.Fprintln(stderr, inputErr)
@@ -625,6 +677,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		if handled, err := handleChatSpaces(ctx, tasks, prompt, conversationID, reader, stdout, stderr); handled {
 			if previousChat != *conversationID {
 				inputAttachments, references, nextCollaboration = nil, nil, nil
+				nextReasoning, nextCapabilities = nil, nil
 			}
 			if err != nil {
 				_, _ = fmt.Fprintln(stderr, err)
@@ -678,6 +731,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 					references = nil
 					inputAttachments = nil
 					nextCollaboration = nil
+					nextReasoning, nextCapabilities = nil, nil
 				}
 			}
 			continue
@@ -692,6 +746,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			inputAttachments = nil
 			nextCollaboration = nil
 			_, _ = fmt.Fprintln(stderr, "New conversation")
+			nextReasoning, nextCapabilities = nil, nil
 			continue
 		}
 		if prompt == "/status" {
@@ -900,7 +955,7 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		}
 		tasks.cursor = state.LastSeq
 		tasks.requestError = ""
-		options := harness.RunOptions{Collaboration: nextCollaboration, Review: reviewChatSuggestion(reader, stderr), Attachments: append([]string(nil), inputAttachments...)}
+		options := harness.RunOptions{Collaboration: nextCollaboration, Reasoning: nextReasoning, Capabilities: nextCapabilities, Review: reviewChatSuggestion(reader, stderr), Attachments: append([]string(nil), inputAttachments...)}
 		var result harness.RunResult
 		binding := requestKey
 		if prompt == "/continue" {
@@ -923,6 +978,8 @@ func runChat(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 			nextCollaboration = nil
 			if err == nil {
 				inputAttachments = nil
+				nextReasoning = nil
+				nextCapabilities = nil
 			}
 		}
 		if err == nil {

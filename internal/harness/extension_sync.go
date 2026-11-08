@@ -22,12 +22,12 @@ type extensionSyncCursor struct {
 
 // SyncExtensionFacts copies at most 32 original Run projections per call. The
 // stable cursor can resume after downtime; it never dispatches work to repair
-// missing receipts. A role must have been selected in each original Run.
-func (tasks *TaskService) SyncExtensionFacts(ctx context.Context, id, chat, role, cursor string) (ExtensionSyncPage, error) {
-	if !validExtensionID(id) || !validCapabilityID(role) {
+// missing receipts. Only originally selected extensions receive their original frozen settings.
+func (tasks *TaskService) SyncExtensionFacts(ctx context.Context, id, chat, variant, cursor string) (ExtensionSyncPage, error) {
+	if !validExtensionID(id) || variant != "" && !validCapabilityID(variant) {
 		return ExtensionSyncPage{}, ErrPermissionDenied
 	}
-	binding := contentHash(mustJSON([]string{id, chat, role}))
+	binding := contentHash(mustJSON([]string{id, chat, variant}))
 	position := extensionSyncCursor{Binding: binding}
 	if cursor != "" {
 		raw, err := base64.RawURLEncoding.DecodeString(cursor)
@@ -68,7 +68,7 @@ func (tasks *TaskService) SyncExtensionFacts(ctx context.Context, id, chat, role
 		if json.Unmarshal([]byte(run.ConfigJSON), &snapshot) != nil {
 			return page, ErrSnapshotIncomplete
 		}
-		if snapshot.Capabilities == nil || !contains(snapshot.Capabilities.Extensions, id) || extensionVariant(run, id, snapshot.Config) != role {
+		if snapshot.Capabilities == nil || !contains(snapshot.Capabilities.Extensions, id) || variant != "" && extensionVariant(run, id, snapshot.Config) != variant {
 			page.Skipped++
 			continue
 		}
@@ -76,8 +76,10 @@ func (tasks *TaskService) SyncExtensionFacts(ctx context.Context, id, chat, role
 		if err != nil {
 			return page, err
 		}
-		if _, err = tasks.extensionStateRPC(ctx, id, "facts.sync", map[string]any{"identity": facts.Identity, "variant": role, "facts": []ExtensionRunFacts{facts}}); err != nil {
-			return page, fmt.Errorf("harness: original facts not synced; inspect role space authorization and storage: %w", err)
+		facts.Variant = extensionVariant(run, id, snapshot.Config)
+		facts.Settings = extensionRunSettings(run, id, snapshot.Config)
+		if _, err = tasks.extensionStateRPC(ctx, id, "facts.sync", map[string]any{"identity": facts.Identity, "variant": extensionVariant(run, id, snapshot.Config), "settings": extensionRunSettings(run, id, snapshot.Config), "facts": []ExtensionRunFacts{facts}}); err != nil {
+			return page, fmt.Errorf("harness: original facts not synced; inspect extension scope authorization and storage: %w", err)
 		}
 		page.Processed++
 	}

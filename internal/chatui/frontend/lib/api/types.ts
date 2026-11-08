@@ -43,6 +43,13 @@ export interface ToolReceipt {
   detail?: string;
 }
 export interface Activity {
+  requested_reasoning?: ReasoningSelection;
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    reasoning_tokens?: number;
+  };
   key: string;
   kind: string;
   name?: string;
@@ -71,6 +78,8 @@ export interface Confirmation {
   [key: string]: unknown;
 }
 export interface Turn {
+  analysis?: { skill?: string; digest?: string };
+  trigger?: { kind:string;extension_id:string;rule_id:string;opportunity_id:string };
   sources?: {
     title?: string;
     scope?: { kind?: string; owner?: string };
@@ -112,6 +121,7 @@ export interface CapabilitySelection {
   mcp_servers?: string[];
   extensions?: string[];
   extension_variants?: Record<string, string>;
+  extension_settings?: Record<string, Record<string, string>>;
 }
 export interface Stream {
   attempt: string;
@@ -143,7 +153,18 @@ export interface Model {
   missing?: boolean;
   capabilities?: Record<string, unknown>;
 }
+export interface ReasoningSelection {
+  mode?: string;
+  effort?: string;
+}
+export interface ReasoningCapabilities {
+  control?: string;
+  efforts?: string;
+  default?: ReasoningSelection;
+  auxiliary?: ReasoningSelection;
+}
 export interface Environment {
+  delivery_available?: boolean;
   workspace: string;
   environment: string;
   default_model: string;
@@ -156,9 +177,24 @@ export interface Environment {
   [key: string]: unknown;
 }
 export interface CapabilityCatalog {
-  skills: { id: string; enabled: boolean }[];
+  skills: {
+    id: string;
+    enabled: boolean;
+    name?: string;
+    invocation?: string;
+  }[];
   mcp_servers: { id: string; enabled: boolean }[];
-  extensions: { id: string; enabled: boolean }[];
+  extensions: {
+    id: string;
+    name?: string;
+    enabled: boolean;
+    turn_settings?: ExtensionTurnSetting[];
+  }[];
+}
+export interface ExtensionTurnSetting {
+  key: string;
+  label: string;
+  options: { value: string; label: string }[];
 }
 export interface ContextState {
   window: {

@@ -20,7 +20,7 @@ func TestExtensionLostACKModelProposalResolvesOriginalUnknown(t *testing.T) {
 	var modelCalls int
 	core.Model = modelFunc(func(context.Context, ModelRequest, func(string)) (ModelResponse, error) {
 		modelCalls++
-		return ModelResponse{ToolCalls: []ToolCall{{ID: "proposal", Name: controlPlanTool, Arguments: mustJSON(map[string]any{"kind": ControlChangeExtensionState, "arguments": ExtensionStateChange{ID: "com.example.state-test", Scope: ExtensionStateScope{SpaceID: "local", RoleID: "maya", ActorID: "owner"}, Action: "apply_proposal", ExpectedRevision: 1, SourceID: "input", Proposal: json.RawMessage(`{}`)}})}}}, nil
+		return ModelResponse{ToolCalls: []ToolCall{{ID: "proposal", Name: controlPlanTool, Arguments: mustJSON(map[string]any{"kind": ControlChangeExtensionState, "arguments": ExtensionStateChange{ID: "com.example.state-test", Scope: ExtensionStateScope{SpaceID: "local", Resource: "maya", ActorID: "owner"}, Action: "set_label", ExpectedRevision: 1, Payload: json.RawMessage(`{"label":"reviewed"}`)}})}}}, nil
 	})
 	tasks := NewTaskService(core)
 	chat := conversation(t, core)

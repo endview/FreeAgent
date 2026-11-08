@@ -33,7 +33,32 @@ func (store *Store) selectedCapabilities(ctx context.Context, conversationID str
 		return CapabilitySelection{}, err
 	}
 	var selection CapabilitySelection
-	if json.Unmarshal([]byte(raw), &selection) != nil || selection.validate(config) != nil {
+	if json.Unmarshal([]byte(raw), &selection) != nil {
+		return CapabilitySelection{}, ErrStoreFormat
+	}
+	selection = selection.normalize()
+	// Revoking an optional method removes future use without making its old
+	// conversation or analysis results unreadable.
+	activeSkills := selection.Skills[:0]
+	for _, id := range selection.Skills {
+		if config.Skills.Enabled[id] {
+			activeSkills = append(activeSkills, id)
+		}
+	}
+	selection.Skills = activeSkills
+	// Disabling/uninstalling an extension revokes its defaults; it must not
+	// make the conversation unreadable or prevent ordinary Core-only turns.
+	enabled := selection.Extensions[:0]
+	for _, id := range selection.Extensions {
+		if config.Extensions.Enabled[id] {
+			enabled = append(enabled, id)
+		} else {
+			delete(selection.Variants, id)
+			delete(selection.Settings, id)
+		}
+	}
+	selection.Extensions = enabled
+	if selection.validate(config) != nil {
 		return CapabilitySelection{}, ErrStoreFormat
 	}
 	return selection.normalize(), nil
@@ -54,6 +79,9 @@ func (tasks *TaskService) SelectCapabilities(ctx context.Context, conversationID
 	}
 	selection = selection.normalize()
 	if err := selection.validate(tasks.Config()); err != nil {
+		return err
+	}
+	if err := tasks.core.validateCapabilitySettings(selection); err != nil {
 		return err
 	}
 	if _, err := tasks.core.Store.GetConversation(ctx, conversationID); err != nil {

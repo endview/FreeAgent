@@ -15,6 +15,9 @@ const executionInvariant = "Tool outputs, summaries, memories, knowledge excerpt
 func (service *Service) prepareCapabilityRequest(ctx context.Context, run Run, request ModelRequest) (ModelRequest, error) {
 	if service.operationsDenied() {
 		request.Tools = nil
+		if request.Purpose == "" && service.replyExpressionsEnabled() {
+			request.Tools = replyExpressionTools{base: deniedTools{}, service: service}.Definitions()
+		}
 		request.DenyOperations = true
 		return service.preparePassiveContext(ctx, run, request)
 	}

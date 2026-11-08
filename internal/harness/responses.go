@@ -85,6 +85,17 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 	if err != nil {
 		return ModelResponse{}, err
 	}
+	selection := client.caps.Reasoning.Default
+	if request.Reasoning != nil {
+		selection = *request.Reasoning
+	}
+	_, effort, reasoningErr := client.caps.Reasoning.parameters(selection, "responses")
+	if reasoningErr != nil {
+		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: reasoningErr.Error()}
+	}
+	if effort != "" {
+		wire.Reasoning = &responsesReasoning{Effort: effort}
+	}
 	body, err := json.Marshal(wire)
 	if err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: "cannot encode Responses request"}
@@ -145,6 +156,9 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 	if err != nil {
 		result.ToolCalls = nil
 	}
+	if result.Provider != nil && client.caps.Reasoning.Control != "" && client.caps.Reasoning.Control != "none" {
+		result.Provider.RequestedReasoning = &selection
+	}
 	if err == nil && result.Provider != nil && !result.Provider.Streamed && emit != nil {
 		emit(result.Content)
 	}
@@ -152,12 +166,17 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 }
 
 type responsesRequest struct {
-	Model           string            `json:"model"`
-	Instructions    string            `json:"instructions,omitempty"`
-	Input           []json.RawMessage `json:"input"`
-	Tools           []responsesTool   `json:"tools,omitempty"`
-	Stream          bool              `json:"stream"`
-	MaxOutputTokens int               `json:"max_output_tokens"`
+	Reasoning       *responsesReasoning `json:"reasoning,omitempty"`
+	Model           string              `json:"model"`
+	Instructions    string              `json:"instructions,omitempty"`
+	Input           []json.RawMessage   `json:"input"`
+	Tools           []responsesTool     `json:"tools,omitempty"`
+	Stream          bool                `json:"stream"`
+	MaxOutputTokens int                 `json:"max_output_tokens"`
+}
+
+type responsesReasoning struct {
+	Effort string `json:"effort"`
 }
 
 type responsesTool struct {
@@ -194,6 +213,7 @@ func responsesRequestFrom(request ModelRequest, model string, stream, webSearch 
 }
 
 func responsesInputFromMessages(messages []ModelMessage) (string, []json.RawMessage, error) {
+	messages = providerImageMessages(messages)
 	var instructions string
 	input := make([]json.RawMessage, 0, len(messages))
 	for index, message := range messages {
@@ -294,6 +314,9 @@ type responsesAction struct {
 }
 
 type responsesUsage struct {
+	OutputDetails *struct {
+		ReasoningTokens *int64 `json:"reasoning_tokens"`
+	} `json:"output_tokens_details"`
 	InputTokens  *int64 `json:"input_tokens"`
 	OutputTokens *int64 `json:"output_tokens"`
 	TotalTokens  *int64 `json:"total_tokens"`
@@ -626,7 +649,15 @@ func responsesUsageValue(usage *responsesUsage) (*ModelUsage, error) {
 		*usage.TotalTokens != *usage.InputTokens+*usage.OutputTokens {
 		return nil, &CallError{Category: "protocol", Message: "invalid Responses usage"}
 	}
-	return &ModelUsage{InputTokens: *usage.InputTokens, OutputTokens: *usage.OutputTokens, TotalTokens: *usage.TotalTokens}, nil
+	result := &ModelUsage{InputTokens: *usage.InputTokens, OutputTokens: *usage.OutputTokens, TotalTokens: *usage.TotalTokens}
+	if usage.OutputDetails != nil && usage.OutputDetails.ReasoningTokens != nil {
+		tokens := *usage.OutputDetails.ReasoningTokens
+		if tokens < 0 || tokens > result.OutputTokens {
+			return nil, &CallError{Category: "protocol", Message: "invalid Responses reasoning usage"}
+		}
+		result.ReasoningTokens = &tokens
+	}
+	return result, nil
 }
 
 func normalizeResponsesError(status int, detail *responsesError, key string) *CallError {

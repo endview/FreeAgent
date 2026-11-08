@@ -20,7 +20,7 @@ func bridgeFixture(t *testing.T) *ChannelBridge {
 		t.Fatal(err)
 	}
 	core.Config.Channels = ChannelsConfig{Connections: []channelwire.Connection{{ID: "one", Source: "lark", ApplicationID: "app:tenant", Credential: key.ID, Enabled: true}}}
-	b, err := NewChannelBridge(tasks, "http://127.0.0.1:1", "fixture", nil)
+	b, err := newTestChannelBridge(tasks, "http://127.0.0.1:1", "fixture", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,8 +52,8 @@ func TestChannelBridgeOutboxEligibilityLateSuccessAndReceiptIdempotency(t *testi
 	}
 	time.Sleep(3 * time.Millisecond)
 	second, err := b.Outbox(ctx, "one")
-	if err != nil || len(second) != 1 {
-		t.Fatal(second, err)
+	if err != nil || len(second) != 0 {
+		t.Fatal("UNKNOWN delivery was sent again", second, err)
 	}
 	r := channelwire.Receipt{ID: op.ID, Dispatch: first[0].Dispatch, State: "sent", MessageID: "late-real-message"}
 	if err := b.Receipt(ctx, "one", r); err != nil {
@@ -62,15 +62,15 @@ func TestChannelBridgeOutboxEligibilityLateSuccessAndReceiptIdempotency(t *testi
 	if err := b.Receipt(ctx, "one", r); err != nil {
 		t.Fatal("non-idempotent receipt", err)
 	}
-	if err := b.Receipt(ctx, "one", channelwire.Receipt{ID: op.ID, Dispatch: second[0].Dispatch, State: "failed"}); err != nil {
-		t.Fatal(err)
+	if err := b.Receipt(ctx, "one", channelwire.Receipt{ID: op.ID, Dispatch: first[0].Dispatch, State: "failed"}); err == nil {
+		t.Fatal("contradictory failure replaced an observed success")
 	}
 	var raw string
 	if err := b.tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, channelOperationPrefix+"one/"+op.ID).Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
 	var saved channelwire.Operation
-	if json.Unmarshal([]byte(raw), &saved) != nil || saved.State != "sent" || saved.MessageID != "late-real-message" || len(saved.Dispatches) != 2 || saved.Dispatches[1].State != "failed" {
+	if json.Unmarshal([]byte(raw), &saved) != nil || saved.State != "sent" || saved.MessageID != "late-real-message" || len(saved.Dispatches) != 1 || saved.Dispatches[0].State != "sent" {
 		t.Fatal(raw)
 	}
 	if next, err := b.Outbox(ctx, "one"); err != nil || len(next) != 0 {
@@ -107,7 +107,7 @@ func TestChannelBridgeLocalOwnerReplyUsesSpaceWithoutImpersonation(t *testing.T)
 		t.Fatal(err)
 	}
 	core.Config.Channels = ChannelsConfig{Connections: []channelwire.Connection{{ID: "tg", Source: "telegram", ApplicationID: "1", Credential: key.ID, Enabled: true}}}
-	b, err := NewChannelBridge(tasks, "http://127.0.0.1:1", "generation", nil)
+	b, err := newTestChannelBridge(tasks, "http://127.0.0.1:1", "generation", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

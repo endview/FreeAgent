@@ -70,6 +70,14 @@ public URL, and FreeAgent does not publish anonymous attachment URLs.
 Protocol fixtures are separate from real visual understanding or real channel
 accounts, which require current credentials and authorized test recipients.
 
+Telegram sticker previews (v8.4+) reuse these attachment limits and access
+checks. Static WebP is decoded within byte/pixel bounds and converted to PNG;
+TGS/WebM use a platform thumbnail when present. The original sticker reference
+stays scoped to the original Bot/chat for sending. A thumbnail does not prove
+full animation understanding. Missing thumbnails and models without vision
+report metadata-only input. Bot tokens/download URLs never become public
+attachment URLs or model context.
+
 References checked 2026-11-03:
 
 - [OpenAI image input guide](https://developers.openai.com/api/docs/guides/images-vision): Chat `image_url` and Responses `input_image`, including Base64 data URLs.

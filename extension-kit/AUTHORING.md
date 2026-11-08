@@ -4,6 +4,11 @@ The [development guide](../docs/EXTENSION_DEVELOPMENT_GUIDE.md) provides current
 commands, protocol examples, and verified limitations. SDK tool templates and
 Core dispatch have contract regression coverage as of v8.0.1.
 
+Follow the [lightweight Core development principles](../docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md)
+for responsibility, dependency, opt-in UI/runtime and acceptance boundaries.
+Its known-deviations section distinguishes the design requirements from the
+currently implemented protocol; it does not add callable methods.
+
 ## Start small
 
 Use one extension for one clear responsibility. Prefer a context hook for
@@ -11,8 +16,10 @@ bounded prompt additions and a workflow for a user-triggered multi-step
 operation. Do not build a background service, package manager, or extension
 registry inside an extension.
 
-The extension must work with all optional capabilities disabled. FreeAgent
-remains a useful file and chat Harness when the extension is turned off.
+FreeAgent must remain a useful file and chat Harness when the extension is
+absent or turned off. An extension that needs an unavailable optional
+capability must report that limitation, rather than enable it implicitly or
+implement another execution engine.
 
 ## Required checks
 
@@ -56,9 +63,32 @@ replay and must be reported separately.
   candidate unapplied; do not use an extension-owned file as an approval bypass.
 - Treat `turn.finished` activity as a user-visible summary only; it cannot
   change the completed Turn status or prove an external side effect.
+- Optional reply expression belongs to the extension. With explicit delivery
+  declaration/registration, `turn.finished` may return `reply_parts` containing
+  exact ordered slices of the completed output. Core checks lossless identity
+  and transport bounds; it does not implement expression modes. Adjustable
+  finite string settings in `model_settings` are exposed through the existing
+  capability selector as `extension_settings`, frozen per Run. Respect these
+  explicit values rather than overriding them with automatic suggestions.
 - Treat `operation.check` as a pure, repeatable policy check. Return `ask` or
   `deny` to tighten the Harness decision, but never assume that changing the
   supplied preview or parameters will change the operation.
+- Declare `delivery: true` separately from context/state and register
+  `delivery.check` plus `provides: ["delivery"]` (alongside other implemented
+  capabilities) before offering automatic follow-ups. Use only confirmed
+  rules for the original conversation. See [the exact delivery contract](SPEC.md#scoped-replies-and-one-time-delivery).
+- Use stable per-Run source keys and freeze the entire candidate, including
+  absolute timestamps. Duplicate submission must read/reuse the original
+  receipt; changing its content under the same key is an error.
+- Keep `delivery.check` a bounded applicability check of existing state.
+  It can only report activity, read or withdraw its own candidate; no models,
+  tools, delegation, resource listing or new proposal may
+  run inside it. Its invocation expires at callback completion/cancellation.
+- Test a real subprocess against Core for allow, deny, invalid/timeout/exit
+  responses, withdrawal, expired invocation and invalidation during review.
+  Assert that review creates no model/tool/delegation attempts and that an
+  UNKNOWN receipt never causes automatic re-delivery. Mock fixtures do not
+  exercise this delivery path.
 
 ## Context blocks
 
@@ -80,3 +110,11 @@ Use atomic writes for extension-owned files where practical. Treat a stopped
 or unknown Host call as unresolved. Never assume that process termination
 rolled back an external effect. Keep data small enough that the user can
 understand and clear it from the FreeAgent extension settings page.
+
+## Stateful extensions
+
+Use [state capability v2](../docs/EXTENSION_STATE_CONTRACT_V2.md): explicit operation scopes and closed payload schemas, a single declared storage schema, and exact preview/confirmation. Character-specific fields belong to the extension payload. Do not inspect action suffixes or assume an `aw` schema in host code. Keep original operation receipts; an uncertain commit is queried, never replayed.
+
+## v8.7 补充：分析与主动执行
+
+见 [有界扩展执行](../docs/SUPPLEMENTAL_EXTENSION_EXECUTION.md)。人物/情绪/表达算法不得进入 Core；分析与主动执行分别声明能力、默认关闭。扩展通过原 model.generate 使用当前模型，不保存 Provider Key；原 Run/Attempt/outbox 保留唯一权威。未启用时不增加调度进程或定时器。AffectWeave 1.6 使用此契约，旧版宿主不做兼容分支。

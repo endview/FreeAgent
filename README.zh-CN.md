@@ -8,7 +8,11 @@ TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 [下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.3.0-dev.2)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 
-后续工作按 [v8.0.1–v8.3 实施计划](docs/FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md) 推进。
+本地开发候选已推进到 **v8.5.0-dev.1**：TG 富文本、输入状态、贴纸与表情、模型思考控制、独立可选经验总结，以及有序回复和经授权的一次性跟进。实际验证见[本批记录](docs/VALIDATION_V8_5_2026-11-08.md)，用法见[回复交付](docs/REPLY_DELIVERY.md)和[经验总结](docs/EXPERIENCE_SUMMARY.md)。上面的 GitHub 已发布版本链接继续指向原发行版；升级不会自动开启主动发送。
+
+本批按 [v8.3.1–v8.5 实施计划](docs/FREEAGENT_V8_3_1_TO_V8_5_CHANNEL_REASONING_EXPERIENCE_PLAN_2026-11-07.md) 推进。
+
+当前工作区为 **v8.6.0-dev.1 轻内核整改候选**：经验方法使用可选来源分析 Skill；扩展状态使用中性信封、明确作用域和声明 schema；Telegram 格式与平台动作由独立渠道程序提供。配套 AffectWeave 为 1.1.0-dev.1，经验 Skill 为 0.1.1，渠道协议为 3。实现与测试范围见[本次验收](docs/VALIDATION_V8_6_2026-11-08.md)，开发遵循[扩展原则](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md)。GitHub 下载链接仍指向已发布版本。
 
 [AffectWeave Go 可选包](https://github.com/endview/affectweave/releases/tag/v1.0.0-dev.1)独立发行，默认关闭；普通 Core 不因此启动人物进程或创建扩展库。
 
@@ -97,6 +101,8 @@ Debian 12 可安装专用非 root systemd 服务，使用管理命令检查 Owne
 
 ## 构建与验收
 
+开发扩展前先阅读[扩展开发原则：保持 Core 轻量](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md)，实际接入方式和命令见[开发指南](docs/EXTENSION_DEVELOPMENT_GUIDE.md)及 [Extension Kit](extension-kit/README.md)。
+
 源码构建需要 Go 1.26.5；前端修改使用 Node 24 / pnpm 安装锁定依赖，运行
 测试并重建嵌入资源。正式便携包要求干净源码、固定工具链和两次一致构建。
 
@@ -122,3 +128,7 @@ NOT_RUN。临时 CA 验证不等于公网可信证书验收。完整结果、来
 [v7.11 实施记录](docs/FREEAGENT_V7_11_EXECUTION_DIAGNOSTICS_PROGRESS.md)。
 [v7.10 发布验收 JSON](https://github.com/endview/FreeAgent/releases/download/v7.10.0-dev.1/FreeAgent-v7.10.0-dev.1-acceptance.json)
 作为对应旧提交的历史证据保留。
+
+### v8.7 development candidate
+
+Optional extensions can request explicitly authorized, bounded input analysis and scheduled generation. Both default off; character policy remains in AffectWeave. Core reuses Run/Attempt, confirmation and the channel outbox, with no personality dependency or always-on scheduler. See [execution contract](docs/SUPPLEMENTAL_EXTENSION_EXECUTION.md) and [validation](docs/VALIDATION_V8_7_2026-11-08.md).

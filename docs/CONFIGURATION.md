@@ -506,3 +506,42 @@ Connection tests remain explicit and may be run while the Provider is off.
 Owner is running, using its interactive attach capability. A backup takes the
 existing exclusive snapshot boundary and reports busy during active execution.
 Observer credentials cannot perform these mutations.
+
+## Model reasoning (v8.4+)
+
+Settings → Provider → a model's **Capabilities** separates its declared
+reasoning contract from its main-answer default and auxiliary-analysis default.
+`capabilities.reasoning.control` is `none` (no fields), `deepseek`, or `openai`;
+`efforts` is a comma-separated declaration for that concrete endpoint/model.
+Main and auxiliary selections each contain `mode` and/or `effort`.
+
+Provider default omits the parameter. Disabled explicitly requests off;
+low effort is not off. DeepSeek Chat uses `thinking.type` and optionally
+`reasoning_effort`; Responses uses `reasoning.effort` (none means off).
+OpenAI Chat/Responses use their own effort fields. Unsupported values are
+rejected before dispatch; none is allowed only when declared. Anthropic and
+other reasoning contracts are not silently mapped to these fields.
+
+GUI's per-turn picker and CLI `run --reasoning enabled --reasoning-effort high`
+or interactive `/reasoning effort high` freeze a choice in that Run. Use
+`/reasoning inherit` to restore inheritance for the next request. Persistent
+declarations/defaults use `config model --reasoning-control`,
+`--reasoning-efforts`, `--reasoning-mode`, `--reasoning-effort`,
+`--aux-reasoning-mode`, `--aux-reasoning-effort`, or the typed
+`model.set_profile` control operation. AI proposals still require confirmation.
+
+Private Chat continuation and Responses items are retained for protocol
+continuation, scoped to their producing endpoint/profile/model. Even an
+explicit empty Chat continuation retains its presence. They are excluded from
+visible replies, extension history, compaction and experience-summary inputs.
+Reported reasoning tokens are part of output usage, not added to totals a
+second time. The UI reports the **requested** choice; a provider that does not
+echo its actual effort cannot independently prove that setting.
+
+## Web 的模型与思考选择
+
+输入区的“模型：…”可切换当前任务模型；旁边的“思考：…”只提供该模型已声明的开关或等级。本轮选择不修改全局默认，切换模型后恢复继承。DeepSeek 开关和强度、GPT 类允许的等级由各模型配置决定，不能因兼容协议一律发送相同字段。
+
+如果看到“思考：未声明”，点击进入设置 → 模型与 Key → 对应模型 → 能力 → 思考控制，明确选择实际支持的协议、等级和主回答/辅助默认值，预览后批准。未声明时不会发送思考参数。官方已知模型的能力可在创建/添加时提供建议；已有配置不会被网页静默改写。
+
+完整一条/自然分段属于可选 AffectWeave，与 Provider 思考设置独立。未安装或未选中扩展时不存在这组表达策略；安装用法见 REPLY_DELIVERY.md。

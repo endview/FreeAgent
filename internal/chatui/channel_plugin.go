@@ -43,6 +43,16 @@ func (server *Server) channelPluginAPI(w http.ResponseWriter, r *http.Request) b
 		return true
 	}
 	switch {
+	case path == "capabilities" && r.Method == http.MethodPost:
+		var capabilities channelwire.Capabilities
+		if !read(&capabilities) {
+			return true
+		}
+		if err := bridge.RegisterCapabilities(id, capabilities); err != nil {
+			server.writeError(w, 409, "capabilities", "Channel capabilities or contract do not match.")
+		} else {
+			server.writeJSON(w, 200, map[string]bool{"registered": true})
+		}
 	case path == "credential" && r.Method == http.MethodGet:
 		credential, err := bridge.Credential(id)
 		if err != nil {
@@ -56,6 +66,13 @@ func (server *Server) channelPluginAPI(w http.ResponseWriter, r *http.Request) b
 			server.writeError(w, 409, "outbox", "Channel delivery is not available.")
 		} else {
 			server.writeJSON(w, 200, ops)
+		}
+	case path == "activities" && r.Method == http.MethodGet:
+		activities, err := bridge.Activities(r.Context(), id)
+		if err != nil {
+			server.writeError(w, 409, "activity", "Channel activity is not available.")
+		} else {
+			server.writeJSON(w, 200, activities)
 		}
 	case path == "inbound" && r.Method == http.MethodPost:
 		leave, admitted := server.enterClientRequest(r)

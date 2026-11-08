@@ -44,7 +44,13 @@ func affectHost(t *testing.T) (*Service, *TaskService, string) {
 	if err = os.Chmod(filepath.Join(root, name), 0700); err != nil {
 		t.Fatal(err)
 	}
-	manifest := ExtensionManifest{Protocol: extensionProtocol, ID: affectExtensionID, Name: "AffectWeave", Version: "1.0.0-dev.1", State: true, PassiveContext: true, Storage: "postgresql", ModelSettings: []string{"role_id", "context_bytes"}, Run: ExtensionRun{Command: "./" + name}, Context: ExtensionContext{Phases: []string{"turn"}, Purposes: []string{"chat"}, MaxChars: 6000, Placement: []string{"tail"}}, Events: []string{"turn.finished"}, TimeoutMS: 5000, SettingsSchema: json.RawMessage(`{"type":"object","properties":{"role_id":{"type":"string"},"context_bytes":{"type":"integer","minimum":1024,"maximum":24000}},"additionalProperties":false}`)}
+	var manifest ExtensionManifest
+	rawManifest, err := os.ReadFile(filepath.Join("testdata", "affectweave-manifest.json"))
+	if err != nil || json.Unmarshal(rawManifest, &manifest) != nil {
+		t.Fatal("invalid fixture manifest", err)
+	}
+	manifest.Run = ExtensionRun{Command: "./" + name}
+
 	if err = os.WriteFile(filepath.Join(root, "extension.json"), mustJSON(manifest), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +69,7 @@ func affectHost(t *testing.T) (*Service, *TaskService, string) {
 	if _, err = control.ApplyDirectControlChange(t.Context(), ControlInitExtensionStorage, map[string]string{"id": affectExtensionID}, "", "test-owner"); err != nil {
 		t.Fatal(err)
 	}
-	args := map[string]any{"id": affectExtensionID, "scope": map[string]string{"space_id": "local", "role_id": "maya", "actor_id": "owner"}, "action": "create_role", "expected_revision": 0, "persona": map[string]any{"id": "maya", "name": "Maya", "identity_summary": "Precise engineering partner", "boundaries": []string{"Never disclose private messages"}, "version": 1, "frozen": true}, "spaces": []string{"local"}}
+	args := map[string]any{"id": affectExtensionID, "scope": map[string]string{"space_id": "local", "resource": "maya", "actor_id": "owner"}, "action": "create_role", "expected_revision": 0, "payload": map[string]any{"persona": map[string]any{"id": "maya", "name": "Maya", "identity_summary": "Precise engineering partner", "boundaries": []string{"Never disclose private messages"}, "version": 1, "frozen": true}, "spaces": []string{"local"}}}
 	if _, err = control.ApplyDirectControlChange(t.Context(), ControlChangeExtensionState, args, "", "test-owner"); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +139,7 @@ func TestAffectWeaveActualHostContinuityConfirmationAndPairRestore(t *testing.T)
 		t.Fatal("per-conversation source ID collision")
 	}
 	control, _ := tasks.Control()
-	change := map[string]any{"id": affectExtensionID, "scope": map[string]string{"space_id": "local", "role_id": "maya", "actor_id": "owner"}, "action": "apply_proposal", "expected_revision": after.Revision, "source_id": b.Inputs[0].ID, "proposal": map[string]any{"relationship_delta": map[string]any{"trust": .05}}}
+	change := map[string]any{"id": affectExtensionID, "scope": map[string]string{"space_id": "local", "resource": "maya", "actor_id": "owner"}, "action": "apply_proposal", "expected_revision": after.Revision, "payload": map[string]any{"source_id": b.Inputs[0].ID, "proposal": map[string]any{"relationship_delta": map[string]any{"trust": .05}}}}
 	proposal, err := control.PlanControlChange(t.Context(), ControlPlanRequest{Kind: ControlChangeExtensionState, Arguments: mustJSON(change), Authorization: ControlModelProposed, ConversationID: other})
 	if err != nil {
 		t.Fatal(err)

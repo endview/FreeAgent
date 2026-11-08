@@ -32,14 +32,17 @@ const BinEnv = "FREEAGENT_POSTGRES_BIN"
 // output. The service file is an explicit initialization/maintenance input;
 // ordinary Core operations use only the separate, restricted runtime role.
 type Connection struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Database string `json:"database"`
-	CoreID   string `json:"core_id,omitempty"`
-	Bin      string `json:"bin,omitempty"`
-	Managed  bool   `json:"managed,omitempty"`
+	ExtensionID    string `json:"extension_id,omitempty"`
+	Schema         string `json:"schema,omitempty"`
+	StorageVersion string `json:"storage_version,omitempty"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+	User           string `json:"user"`
+	Password       string `json:"password"`
+	Database       string `json:"database"`
+	CoreID         string `json:"core_id,omitempty"`
+	Bin            string `json:"bin,omitempty"`
+	Managed        bool   `json:"managed,omitempty"`
 }
 
 func ID() string {

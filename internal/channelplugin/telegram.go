@@ -2,6 +2,7 @@ package channelplugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -23,6 +24,9 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 	}
 	if messageID(bot.ID) != c.Bootstrap.Connection.ApplicationID {
 		return errors.New("channel: Telegram credential belongs to a different Bot")
+	}
+	if err := c.RegisterCapabilities(parent); err != nil {
+		return err
 	}
 	position, err := loadCursor(path, c.Bootstrap)
 	if err != nil {
@@ -53,6 +57,12 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
+	activityDone := make(chan struct{})
+	go func() {
+		defer close(activityDone)
+		runTelegramActivities(ctx, c, api)
+	}()
+	defer func() { cancel(); <-activityDone }()
 	outboxDone := make(chan error, 1)
 	var transportFailure error
 	go func() {
@@ -106,6 +116,7 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 					kind = "private"
 				}
 				event := channelwire.Event{ID: strconv.FormatInt(u.ID, 10), Target: channelwire.Target{Source: "telegram", ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10)}, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: kind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo}
+				event.Sticker, event.Reaction = e.Sticker, e.Reaction
 				for {
 					err = c.Inbound(ctx, event)
 					if err == nil {
@@ -139,6 +150,30 @@ func telegramSend(ctx context.Context, api *channels.TelegramAPI, op channelwire
 	}
 	reply, _ := strconv.ParseInt(op.Reply, 10, 64)
 	switch op.Kind {
+	case "sticker":
+		if op.Sticker == nil {
+			return channelwire.Receipt{State: "failed"}
+		}
+		id, err := api.SendSticker(ctx, chat, reply, op.Sticker.FileID)
+		r := receiptForError(err)
+		r.MessageID = messageID(id)
+		return r
+	case "reaction":
+		message, err := strconv.ParseInt(op.Reply, 10, 64)
+		if err != nil {
+			return channelwire.Receipt{State: "failed"}
+		}
+		r := receiptForError(api.SetReaction(ctx, chat, message, op.Reaction))
+		r.MessageID = op.Reply
+		return r
+	case "sticker_set":
+		page, err := api.StickerSet(ctx, op.Name, op.PageOffset, op.PageSize)
+		r := receiptForError(err)
+		if err == nil {
+			r.State = "downloaded"
+			r.Data, _ = json.Marshal(page)
+		}
+		return r
 	case "text":
 		var keyboard *channels.TelegramKeyboard
 		if len(op.Buttons) != 0 {
@@ -148,8 +183,9 @@ func telegramSend(ctx context.Context, api *channels.TelegramAPI, op channelwire
 			}
 			keyboard = &channels.TelegramKeyboard{Rows: [][]channels.TelegramButton{row}}
 		}
-		id, err := api.Send(ctx, chat, reply, op.Text, keyboard)
+		id, fallback, err := api.SendFormatted(ctx, chat, reply, op.Text, op.Entities, keyboard)
 		r := receiptForError(err)
+		r.PlainTextFallback = fallback
 		r.MessageID = messageID(id)
 		return r
 	case "file":
@@ -161,7 +197,13 @@ func telegramSend(ctx context.Context, api *channels.TelegramAPI, op channelwire
 		if op.Media == nil {
 			return channelwire.Receipt{State: "failed"}
 		}
-		data, err := api.DownloadMedia(ctx, *op.Media, op.Limit)
+		var data []byte
+		var err error
+		if op.Media.PreviewFormat != "" {
+			data, err = api.DownloadStickerPreview(ctx, *op.Media, op.Limit)
+		} else {
+			data, err = api.DownloadMedia(ctx, *op.Media, op.Limit)
+		}
 		r := receiptForError(err)
 		if err == nil {
 			r.State = "downloaded"

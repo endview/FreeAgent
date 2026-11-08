@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One no-tool evaluation under a confirmed scheduled_generation grant. Identity has a scheduled trigger and no newly adopted user input.",
+  "type": "object",
+  "required": ["invocation", "identity", "variant", "rule", "source_refs", "history", "now", "deadline"],
+  "properties": {
+    "invocation": {"type": "string", "minLength": 1},
+    "identity": {
+      "type": "object",
+      "required": ["core_id", "space_id", "conversation_id", "run_id", "trigger", "adopted_inputs"],
+      "properties": {
+        "core_id": {"type": "string"}, "space_id": {"type": "string"},
+        "conversation_id": {"type": "string"}, "run_id": {"type": "string"},
+        "adopted_inputs": {"type": "array", "maxItems": 0},
+        "trigger": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "extension_id", "resource", "rule_id", "opportunity_id", "actor_id", "authorized_by"],
+          "properties": {
+            "kind": {"const": "scheduled"}, "extension_id": {"type": "string"},
+            "resource": {"type": "string"}, "rule_id": {"type": "string"},
+            "opportunity_id": {"type": "string"}, "actor_id": {"type": "string"},
+            "authorized_by": {"const": "confirmed_delivery_rule"}
+          }
+        }
+      }
+    },
+    "variant": {"type": "string"}, "rule": {"type": "object"},
+    "source_refs": {"type": "array", "maxItems": 3, "items": {"type": "string", "maxLength": 256}},
+    "history": {"type": "array", "maxItems": 16, "items": {"type": "object"}},
+    "now": {"type": "string", "format": "date-time"},
+    "deadline": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["decision", "text", "reason_code", "reason", "source_refs"],
+      "properties": {
+        "decision": {"enum": ["speak", "skip"]},
+        "text": {"type": "string", "maxLength": 600},
+        "reason_code": {"enum": ["relevant", "no_topic", "busy", "resolved", "duplicate", "uncertain"]},
+        "reason": {"type": "string", "maxLength": 1024, "description": "Also limited to 1024 UTF-8 bytes by Host."},
+        "source_refs": {"type": "array", "maxItems": 3, "items": {"type": "string"}}
+      },
+      "allOf": [{"if": {"properties": {"decision": {"const": "speak"}}}, "then": {"properties": {"text": {"minLength": 1}, "source_refs": {"minItems": 1}}}, "else": {"properties": {"text": {"const": ""}}}}]
+    }
+  }
+}

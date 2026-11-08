@@ -13,17 +13,20 @@ import (
 	"time"
 )
 
-const extensionPairFormat = "freeagent-extension-pair-v1"
+const extensionPairFormat = "freeagent-extension-pair-v2"
 
 type extensionPairManifest struct {
-	Format      string `json:"format"`
-	ID          string `json:"extension_id"`
-	Version     string `json:"extension_version"`
-	CoreID      string `json:"core_id"`
-	DumpHash    string `json:"extension_dump_sha256"`
-	SourcesHash string `json:"sources_sha256"`
-	JournalHash string `json:"control_journal_sha256"`
-	Created     string `json:"created_at"`
+	Schema         string `json:"schema"`
+	StorageVersion string `json:"storage_version"`
+	StateVersion   int    `json:"state_version"`
+	Format         string `json:"format"`
+	ID             string `json:"extension_id"`
+	Version        string `json:"extension_version"`
+	CoreID         string `json:"core_id"`
+	DumpHash       string `json:"extension_dump_sha256"`
+	SourcesHash    string `json:"sources_sha256"`
+	JournalHash    string `json:"control_journal_sha256"`
+	Created        string `json:"created_at"`
 }
 type extensionSourcePage struct {
 	CoreID  string            `json:"core_id"`
@@ -119,11 +122,12 @@ func verifyExtensionSources(ctx context.Context, tx *sql.Tx, sources []Extension
 			return ErrStoreFormat
 		}
 		input := struct {
-			ID    string    `json:"id"`
-			RunID string    `json:"run_id"`
-			Text  string    `json:"text"`
-			At    time.Time `json:"occurred_at"`
-		}{source.ID, run, truncateUTF8Bytes(m.Content, 64<<10), at}
+			ID             string    `json:"id"`
+			RunID          string    `json:"run_id"`
+			Text           string    `json:"text"`
+			At             time.Time `json:"occurred_at"`
+			FeedbackSource string    `json:"feedback_source,omitempty"`
+		}{source.ID, run, truncateUTF8Bytes(m.Content, 64<<10), at, m.FeedbackSource}
 		if contentHash(mustJSON(input)) != source.Hash {
 			return errors.New("harness: extension input content does not match original Core source")
 		}
@@ -203,7 +207,7 @@ func (tasks *TaskService) BackupExtensionPair(ctx context.Context, id, target st
 	if err != nil {
 		return err
 	}
-	cmd, err := postgres.Command(backupCtx, c, "pg_dump", "--format=custom", "--data-only", "--schema=aw", "--no-owner", "--no-privileges", "--file="+filepath.Join(stage, "extension.pgdump"))
+	cmd, err := postgres.Command(backupCtx, c, "pg_dump", "--format=custom", "--schema="+c.Schema, "--no-owner", "--no-privileges", "--no-comments", "--file="+filepath.Join(stage, "extension.pgdump"))
 	if err != nil {
 		return err
 	}
@@ -269,7 +273,7 @@ func (tasks *TaskService) BackupExtensionPair(ctx context.Context, id, target st
 	if err != nil {
 		return err
 	}
-	m := extensionPairManifest{extensionPairFormat, id, info.Version, c.CoreID, dumpHash, sourceHash, journalHash, nowText()}
+	m := extensionPairManifest{Format: extensionPairFormat, ID: id, Version: info.Version, CoreID: c.CoreID, DumpHash: dumpHash, SourcesHash: sourceHash, JournalHash: journalHash, Created: nowText(), Schema: c.Schema, StorageVersion: c.StorageVersion, StateVersion: info.StateVersion}
 	if err = writeNewFile(filepath.Join(stage, "pair.json"), mustJSON(m)); err != nil {
 		return err
 	}
@@ -286,7 +290,7 @@ func VerifyExtensionPair(ctx context.Context, path string) (extensionPairManifes
 		}
 	}
 	b, err := os.ReadFile(filepath.Join(path, "pair.json"))
-	if err != nil || len(b) > 16384 || json.Unmarshal(b, &m) != nil || m.Format != extensionPairFormat || !validExtensionID(m.ID) {
+	if err != nil || len(b) > 16384 || json.Unmarshal(b, &m) != nil || m.Format != extensionPairFormat || !validExtensionID(m.ID) || !postgres.ValidExtensionSchema(m.Schema) || m.StorageVersion == "" || m.StateVersion != extensionStateVersion {
 		return m, ErrStoreFormat
 	}
 	for name, hash := range map[string]string{"extension.pgdump": m.DumpHash, "sources.json": m.SourcesHash, "control-journal.jsonl": m.JournalHash} {

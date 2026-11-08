@@ -21,6 +21,7 @@ const (
 )
 
 type Config struct {
+	Delivery         DeliveryConfig             `json:"delivery,omitempty,omitzero"`
 	PublicWeb        PublicWebConfig            `json:"public_web"`
 	Attachments      AttachmentPolicy           `json:"attachments"`
 	Server           ServerConfig               `json:"server,omitempty"`
@@ -145,22 +146,23 @@ type ModelConfig struct {
 // These are local capability declarations, not claims of provider certification.
 // Zero context/output bounds inherit the finite Harness limits.
 type ModelCapabilities struct {
-	Vision        VisionCapabilities `json:"vision,omitempty"`
-	Protocol      string             `json:"protocol,omitempty"`
-	Streaming     string             `json:"streaming,omitempty"`
-	Tools         string             `json:"tools,omitempty"`
-	WebSearch     string             `json:"web_search,omitempty"`
-	Embeddings    string             `json:"embeddings,omitempty"`
-	ParallelTools string             `json:"parallel_tools,omitempty"`
-	ContextBytes  int                `json:"context_bytes,omitempty"`
-	ContextTokens int                `json:"context_window_tokens,omitempty"`
-	ContextSource string             `json:"context_window_source,omitempty"`
-	OutputTokens  int                `json:"output_tokens,omitempty"`
-	Strength      string             `json:"strength,omitempty"`
-	FinishReason  string             `json:"finish_reason,omitempty"`
-	Usage         string             `json:"usage,omitempty"`
-	ErrorPolicy   string             `json:"error_policy,omitempty"`
-	TokenLimit    string             `json:"token_limit,omitempty"`
+	Reasoning     ReasoningCapabilities `json:"reasoning,omitempty,omitzero"`
+	Vision        VisionCapabilities    `json:"vision,omitempty"`
+	Protocol      string                `json:"protocol,omitempty"`
+	Streaming     string                `json:"streaming,omitempty"`
+	Tools         string                `json:"tools,omitempty"`
+	WebSearch     string                `json:"web_search,omitempty"`
+	Embeddings    string                `json:"embeddings,omitempty"`
+	ParallelTools string                `json:"parallel_tools,omitempty"`
+	ContextBytes  int                   `json:"context_bytes,omitempty"`
+	ContextTokens int                   `json:"context_window_tokens,omitempty"`
+	ContextSource string                `json:"context_window_source,omitempty"`
+	OutputTokens  int                   `json:"output_tokens,omitempty"`
+	Strength      string                `json:"strength,omitempty"`
+	FinishReason  string                `json:"finish_reason,omitempty"`
+	Usage         string                `json:"usage,omitempty"`
+	ErrorPolicy   string                `json:"error_policy,omitempty"`
+	TokenLimit    string                `json:"token_limit,omitempty"`
 }
 
 // EffectiveCapabilities makes omitted declarations visible without discovering
@@ -571,6 +573,9 @@ func (config Config) validate(requireWorkspace bool) error {
 	if err := config.Attachments.validate(); err != nil {
 		return err
 	}
+	if err := config.Delivery.validate(); err != nil {
+		return err
+	}
 	if config.Version != ConfigVersion {
 		return fmt.Errorf("harness: unsupported config version %d", config.Version)
 	}
@@ -775,7 +780,7 @@ func validModelID(id string) bool {
 }
 
 func validCapabilityID(id string) bool {
-	if len(id) < 1 || len(id) > 128 {
+	if len(id) < 1 || len(id) > 128 || strings.HasPrefix(id, ".") || strings.HasSuffix(id, ".") {
 		return false
 	}
 	for _, char := range id {
@@ -894,6 +899,9 @@ func SuggestModelID(name string, config Config) string {
 func (config Config) DefaultModelConfig() ModelConfig { return config.Models[config.DefaultModel] }
 
 func (caps ModelCapabilities) validate() error {
+	if err := caps.Reasoning.validate(caps.Protocol); err != nil {
+		return err
+	}
 	if err := caps.Vision.validate(); err != nil {
 		return err
 	}
@@ -931,6 +939,9 @@ func (model ModelConfig) Validate() error {
 	}
 	switch model.Provider {
 	case "echo":
+		if caps.Reasoning.Control != "" && caps.Reasoning.Control != "none" {
+			return errors.New("harness: echo has no provider reasoning control")
+		}
 		if model.Key != "" || model.Model != "" {
 			return errors.New("harness: echo does not use key or model settings")
 		}
@@ -947,6 +958,9 @@ func (model ModelConfig) Validate() error {
 		}
 		return nil
 	case "anthropic":
+		if caps.Reasoning.Control != "" && caps.Reasoning.Control != "none" {
+			return errors.New("harness: this Anthropic adapter does not yet declare reasoning control")
+		}
 		if caps.Protocol == "local" || caps.Protocol == "responses" {
 			return errors.New("harness: anthropic requires the chat protocol")
 		}

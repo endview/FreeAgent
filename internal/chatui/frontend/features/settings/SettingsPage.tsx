@@ -16,6 +16,7 @@ import AttachmentSettings from "./AttachmentSettings";
 import DataSettings from "./DataSettings";
 import GeneralSettings from "./GeneralSettings";
 import AdvancedSettings from "./AdvancedSettings";
+import DeliverySettings from "./DeliverySettings";
 import type { ViewPreferences } from "@/lib/platform";
 const groups = [
   {
@@ -45,6 +46,7 @@ const groups = [
     title: "连接与数据",
     entries: [
       ["channels", "渠道"],
+      ["delivery", "投递授权"],
       ["public", "公网安全"],
       ["data", "数据库与备份"],
       ["attachments", "附件"],
@@ -108,6 +110,8 @@ export default function SettingsPage({
           <SpacesSettings />
         ) : section === "channels" ? (
           <ChannelSettings />
+        ) : section === "delivery" ? (
+          <DeliverySettings />
         ) : section === "public" ? (
           <PublicSettings />
         ) : section === "memory" ? (

@@ -325,7 +325,7 @@ func (client *Client) ControlOperations(ctx context.Context) ([]harness.ControlO
 
 func (client *Client) ExtensionState(ctx context.Context, id, chat, role, actor, space string) (json.RawMessage, error) {
 	var result json.RawMessage
-	err := client.request(ctx, http.MethodGet, "/api/extensions/"+url.PathEscape(id)+"/state?conversation_id="+url.QueryEscape(chat)+"&role_id="+url.QueryEscape(role)+"&actor_id="+url.QueryEscape(actor)+"&space_id="+url.QueryEscape(space), nil, &result)
+	err := client.request(ctx, http.MethodGet, "/api/extensions/"+url.PathEscape(id)+"/state?conversation_id="+url.QueryEscape(chat)+"&resource="+url.QueryEscape(role)+"&actor_id="+url.QueryEscape(actor)+"&space_id="+url.QueryEscape(space), nil, &result)
 	return result, err
 }
 func (client *Client) ExtensionBackup(ctx context.Context, id, target string) error {
@@ -337,7 +337,7 @@ func (client *Client) ExtensionBackup(ctx context.Context, id, target string) er
 }
 func (client *Client) ExtensionSync(ctx context.Context, id, chat, role, cursor string) (harness.ExtensionSyncPage, error) {
 	var result harness.ExtensionSyncPage
-	err := client.request(ctx, http.MethodPost, "/api/extensions/"+url.PathEscape(id)+"/sync", map[string]string{"conversation_id": chat, "role_id": role, "cursor": cursor}, &result)
+	err := client.request(ctx, http.MethodPost, "/api/extensions/"+url.PathEscape(id)+"/sync", map[string]string{"conversation_id": chat, "resource": role, "cursor": cursor}, &result)
 	return result, err
 }
 func (client *Client) ReconcileExtension(ctx context.Context, id string) (harness.ControlResult, error) {

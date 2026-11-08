@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { Plus, RefreshCw, Trash2, Zap } from "lucide-react";
 import { api } from "@/lib/api/client";
-import type { Model } from "@/lib/api/types";
+import type { Model, ReasoningCapabilities } from "@/lib/api/types";
+import {
+  ReasoningChoice,
+  reasoningSelection,
+  reasoningValue,
+} from "@/components/ReasoningChoice";
 import { loadEnvironment, notify, useRuntime } from "@/lib/store/runtime";
 import { clearFormDraft } from "@/lib/drafts";
 import { ControlPreview } from "@/components/ControlPreview";
@@ -595,6 +600,7 @@ function ModelOptions({
     },
   });
   const vision = caps.vision;
+  const reasoning = (caps.reasoning || {}) as ReasoningCapabilities;
   const argumentsForSave = {
     id,
     provider: model.provider,
@@ -705,6 +711,81 @@ function ModelOptions({
         />
         启用图片输入声明
       </label>
+      <fieldset className="form-grid">
+        <legend>思考控制（按具体模型声明）</legend>
+        <Field label="思考协议">
+          <Choice
+            label="思考协议"
+            value={reasoning.control || "none"}
+            options={[
+              ["none", "未声明 / 不发送参数"],
+              ["deepseek", "DeepSeek 思考协议"],
+              ["openai", "OpenAI 思考等级"],
+            ]}
+            onChange={(control) =>
+              change({
+                ...caps,
+                reasoning: control === "none" ? {} : { control },
+              })
+            }
+          />
+        </Field>
+        {reasoning.control && reasoning.control !== "none" && (
+          <>
+            <Field label="允许的等级（逗号分隔）">
+              <input
+                value={reasoning.efforts || ""}
+                placeholder={
+                  reasoning.control === "deepseek"
+                    ? "low,high,max"
+                    : "none,low,medium,high"
+                }
+                onChange={(event) =>
+                  change({
+                    ...caps,
+                    reasoning: { ...reasoning, efforts: event.target.value },
+                  })
+                }
+              />
+            </Field>
+            <ReasoningChoice
+              caps={reasoning}
+              protocol={String(caps.protocol || "chat")}
+              value={reasoningValue(reasoning.default)}
+              inherit={false}
+              label="主回答默认思考"
+              onChange={(value) =>
+                change({
+                  ...caps,
+                  reasoning: {
+                    ...reasoning,
+                    default: reasoningSelection(value),
+                  },
+                })
+              }
+            />
+            <ReasoningChoice
+              caps={reasoning}
+              protocol={String(caps.protocol || "chat")}
+              value={reasoningValue(reasoning.auxiliary)}
+              inherit={false}
+              label="压缩 / 扩展分析思考"
+              onChange={(value) =>
+                change({
+                  ...caps,
+                  reasoning: {
+                    ...reasoning,
+                    auxiliary: reasoningSelection(value),
+                  },
+                })
+              }
+            />
+            <p className="form-hint">
+              声明须匹配实际服务和模型。这里只记录请求的档位；服务端未返回时不视为已验证。
+            </p>
+          </>
+        )}
+      </fieldset>
       {vision.enabled && (
         <>
           {(

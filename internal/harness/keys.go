@@ -236,14 +236,20 @@ type KeyPreset struct {
 // DeepSeek's Responses web search is opt-in through this explicit model
 // selection; other models retain the ordinary Chat Completions defaults.
 func SuggestedModelCapabilities(key KeyProfileView, model string) ModelCapabilities {
-	if key.Protocol != KeyProtocolOpenAICompatible || !strings.EqualFold(strings.TrimSpace(model), "deepseek-v4-pro") {
+	if key.Protocol != KeyProtocolOpenAICompatible {
 		return ModelCapabilities{}
 	}
 	parsed, err := url.Parse(key.BaseURL)
 	if err != nil || !strings.EqualFold(parsed.Hostname(), "api.deepseek.com") {
 		return ModelCapabilities{}
 	}
-	return ModelCapabilities{Protocol: "responses", WebSearch: "supported"}
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "deepseek-v4-pro":
+		return ModelCapabilities{Protocol: "responses", WebSearch: "supported", Reasoning: ReasoningCapabilities{Control: "deepseek", Efforts: "low,high,max"}}
+	case "deepseek-flash":
+		return ModelCapabilities{Reasoning: ReasoningCapabilities{Control: "deepseek", Efforts: "low,high,max"}}
+	}
+	return ModelCapabilities{}
 }
 
 func KeyPresets() []KeyPreset {

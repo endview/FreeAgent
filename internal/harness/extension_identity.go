@@ -5,17 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"strings"
 )
 
 // These values come only from adopted persistent messages. Display names,
 // queued inputs and model arguments never supply an execution identity.
 type ExtensionAdoptedInput struct {
-	ID         string `json:"id"`
-	ActorID    string `json:"actor_id"`
-	Text       string `json:"text"`
-	OccurredAt string `json:"occurred_at"`
+	FeedbackSource string `json:"feedback_source,omitempty"`
+	ID             string `json:"id"`
+	ActorID        string `json:"actor_id"`
+	Text           string `json:"text"`
+	OccurredAt     string `json:"occurred_at"`
 }
 type ExtensionIdentity struct {
+	Trigger        *ExtensionTrigger       `json:"trigger,omitempty"`
 	CoreID         string                  `json:"core_id"`
 	SpaceID        string                  `json:"space_id"`
 	ConversationID string                  `json:"conversation_id"`
@@ -30,15 +34,21 @@ func extensionVariant(run Run, id string, config Config) string {
 			return v
 		}
 	}
-	if v, ok := extensionRunSettings(run, id, config)["role_id"].(string); ok {
-		return v
-	}
 	return ""
 }
 func extensionRunSettings(run Run, id string, config Config) map[string]any {
 	var snapshot runSnapshot
 	if run.ConfigJSON != "" && json.Unmarshal([]byte(run.ConfigJSON), &snapshot) == nil {
-		return snapshot.Config.Extensions.Settings[id]
+		settings := maps.Clone(snapshot.Config.Extensions.Settings[id])
+		if snapshot.Capabilities != nil && len(snapshot.Capabilities.Settings[id]) != 0 {
+			if settings == nil {
+				settings = map[string]any{}
+			}
+			for key, value := range snapshot.Capabilities.Settings[id] {
+				settings[key] = value
+			}
+		}
+		return settings
 	}
 	return config.Extensions.Settings[id]
 }
@@ -53,6 +63,19 @@ func (service *Service) extensionIdentity(ctx context.Context, run Run) (*Extens
 	id := &ExtensionIdentity{SpaceID: chat.SpaceID, ConversationID: chat.ID, RunID: run.ID, Inputs: []ExtensionAdoptedInput{}}
 	if err = service.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='core/id'`).Scan(&id.CoreID); err != nil {
 		return nil, err
+	}
+	var snapshot runSnapshot
+	if json.Unmarshal([]byte(run.ConfigJSON), &snapshot) == nil && snapshot.ExtensionTrigger != nil {
+		trigger := snapshot.ExtensionTrigger
+		if trigger.Kind != "scheduled" || !validExtensionID(trigger.Extension) || trigger.Opportunity == "" || trigger.Actor == "" {
+			return nil, ErrPermissionDenied
+		}
+		var bound string
+		if err = service.Store.db.QueryRowContext(ctx, `SELECT document->>'run_id' FROM fa.meta WHERE key=$1`, wakePrefix+trigger.Opportunity).Scan(&bound); err != nil || bound != run.ID {
+			return nil, ErrPermissionDenied
+		}
+		id.Trigger = trigger
+		return id, nil
 	}
 	rows, err := service.Store.db.QueryContext(ctx, `SELECT id,body_json,COALESCE((SELECT COALESCE(NULLIF(document->>'adopted_at',''),document->>'created_at') FROM fa.meta WHERE starts_with(key,$3) AND document->>'message_id'=m.id::text LIMIT 1),$4) FROM fa.messages m WHERE run_id=$1 AND conversation_id=$2 AND body_json->>'Role'='user' AND COALESCE(body_json->>'Deferred','false')='false' ORDER BY id LIMIT 129`, run.ID, chat.ID, inputPrefix(chat.ID), run.CreatedAt)
 	if err != nil {
@@ -80,7 +103,8 @@ func (service *Service) extensionIdentity(ctx context.Context, run Run) (*Extens
 			}
 			actor = m.Channel.PersonID
 		}
-		id.Inputs = append(id.Inputs, ExtensionAdoptedInput{ID: chat.ID + "/" + fmt.Sprint(messageID), ActorID: actor, Text: truncateUTF8Bytes(m.Content, 64<<10), OccurredAt: occurred})
+		feedbackSource := m.FeedbackSource
+		id.Inputs = append(id.Inputs, ExtensionAdoptedInput{ID: chat.ID + "/" + fmt.Sprint(messageID), ActorID: actor, Text: truncateUTF8Bytes(m.Content, 64<<10), OccurredAt: occurred, FeedbackSource: feedbackSource})
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
@@ -92,6 +116,8 @@ func (service *Service) extensionIdentity(ctx context.Context, run Run) (*Extens
 }
 
 type ExtensionRunFacts struct {
+	Variant    string             `json:"variant,omitempty"`
+	Settings   map[string]any     `json:"settings,omitempty"`
 	Identity   *ExtensionIdentity `json:"identity"`
 	Status     string             `json:"status"`
 	Output     string             `json:"output"`
@@ -129,6 +155,10 @@ func (tasks *TaskService) ExtensionRunFacts(ctx context.Context, chatID, runID s
 			return facts, ErrSnapshotIncomplete
 		}
 		v["receipt_id"] = key
+		var deliveredText string
+		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json->>'Content' FROM fa.messages WHERE request_key=$1 AND body_json->>'Public'='true'`, key).Scan(&deliveredText); err == nil {
+			v["text"] = truncateUTF8Bytes(deliveredText, 8192)
+		}
 		facts.Deliveries = append(facts.Deliveries, mustJSON(v))
 	}
 	if len(facts.Deliveries) > 128 {
@@ -147,7 +177,19 @@ type ExtensionSource struct {
 	Hash    string `json:"source_hash"`
 }
 
-func (service *Service) extensionRecentFacts(ctx context.Context, run Run, id, variant string) ([]ExtensionRunFacts, error) {
+func (service *Service) extensionRecentFacts(ctx context.Context, run Run, id, variant string, identities ...*ExtensionIdentity) ([]ExtensionRunFacts, error) {
+	explicit := map[string]bool{}
+	for _, identity := range identities {
+		if identity != nil {
+			for _, input := range identity.Inputs {
+				parts := strings.Split(input.FeedbackSource, "/")
+				if len(parts) == 4 && parts[0] == "channel" && parts[1] == "delivery" {
+					explicit[parts[2]] = true
+				}
+			}
+		}
+	}
+
 	rows, err := service.Store.db.QueryContext(ctx, `SELECT id FROM fa.runs WHERE conversation_id=$1 ORDER BY seq DESC LIMIT 32`, run.ConversationID)
 	if err != nil {
 		return nil, err
@@ -177,13 +219,15 @@ func (service *Service) extensionRecentFacts(ctx context.Context, run Run, id, v
 			continue
 		}
 		var snapshot runSnapshot
-		if json.Unmarshal([]byte(previous.ConfigJSON), &snapshot) != nil || snapshot.Capabilities == nil || !contains(snapshot.Capabilities.Extensions, id) || extensionVariant(previous, id, snapshot.Config) != variant {
+		if json.Unmarshal([]byte(previous.ConfigJSON), &snapshot) != nil || snapshot.Capabilities == nil || !contains(snapshot.Capabilities.Extensions, id) || extensionVariant(previous, id, snapshot.Config) != variant || !explicit[previous.ID] && contentHash(mustJSON(extensionRunSettings(previous, id, snapshot.Config))) != contentHash(mustJSON(extensionRunSettings(run, id, service.Config))) {
 			continue
 		}
 		facts, err := NewTaskService(service).ExtensionRunFacts(ctx, run.ConversationID, previous.ID)
 		if err != nil {
 			return nil, err
 		}
+		facts.Variant = extensionVariant(previous, id, snapshot.Config)
+		facts.Settings = extensionRunSettings(previous, id, snapshot.Config)
 		facts.Output = truncateUTF8Bytes(facts.Output, 8192)
 		if service.operationsDenied() {
 			facts.Output = ""

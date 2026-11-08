@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { api, apiText, remote } from "@/lib/api/client";
 import { loadEnvironment } from "@/lib/store/runtime";
 import { clearFormDraft } from "@/lib/drafts";
+import type { ExtensionTurnSetting } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/Choice";
 import {
@@ -42,6 +43,7 @@ interface Skill {
   files?: { path: string }[];
 }
 interface Extension {
+  turn_settings?: ExtensionTurnSetting[];
   storage_ready?: boolean;
   id: string;
   name: string;
@@ -640,6 +642,12 @@ function ExtensionEditor({
     }
   }
   const prefix = `extensions/${encodeURIComponent(item.id)}`;
+  let settings: Record<string, unknown> | null = null;
+  try {
+    settings = objectJSON(form.settings, "设置");
+  } catch {
+    // Keep an unfinished JSON draft editable; selectors resume when valid.
+  }
   return (
     <>
       <h2>{item.name || item.id}</h2>
@@ -653,6 +661,7 @@ function ExtensionEditor({
             id={item.id}
             enabled={item.enabled}
             storageReady={Boolean(item.storage_ready)}
+            settings={item.settings || {}}
             onSaved={onSaved}
           />
         </Suspense>
@@ -718,6 +727,33 @@ function ExtensionEditor({
             });
           }}
         >
+          {item.enabled &&
+            item.turn_settings?.map((field) => (
+              <Field key={field.key} label={`${field.label}（扩展默认）`}>
+                <select
+                  aria-label={`${item.name}：默认${field.label}`}
+                  disabled={!settings}
+                  value={String(settings?.[field.key] || "")}
+                  onChange={(event) => {
+                    const next = { ...settings };
+                    if (event.target.value)
+                      next[field.key] = event.target.value;
+                    else delete next[field.key];
+                    change({
+                      ...form,
+                      settings: JSON.stringify(next, null, 2),
+                    });
+                  }}
+                >
+                  <option value="">使用扩展内置默认</option>
+                  {field.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ))}
           <Field label="扩展设置（JSON）">
             <textarea
               rows={7}

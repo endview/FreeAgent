@@ -15,6 +15,9 @@ import (
 // can read or write the user's real keys.
 func TestMain(m *testing.M) {
 	for _, arg := range os.Args[1:] {
+		if arg == "--freeagent-scheduled-helper" {
+			os.Exit(runScheduledHelper())
+		}
 		if arg == "--freeagent-extension-helper" {
 			os.Exit(runExtensionHelper())
 		}

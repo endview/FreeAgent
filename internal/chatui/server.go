@@ -97,6 +97,7 @@ func newServer(ctx context.Context, tasks *harness.TaskService, origin, token, a
 	tasks.SetCommandGeneration(server.generation)
 	tasks.SetApproval(nil)
 	tasks.SetEvents(server.onEvent)
+	tasks.SetScheduledGenerationOwner(lifetime, server.DispatchChannel)
 	go server.watchDatabaseOwner()
 	return server, nil
 }
@@ -342,6 +343,14 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			models[id] = entry
 		}
 		server.writeJSON(writer, http.StatusOK, map[string]any{
+			"delivery_available": func() bool {
+				for _, connection := range config.Channels.Connections {
+					if connection.Enabled {
+						return true
+					}
+				}
+				return false
+			}(),
 			"public_entry": public, "remote_max_permission": func() harness.PermissionMode {
 				if public {
 					return config.PublicWeb.Effective().MaxPermission
@@ -641,6 +650,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		})
 	case "submit":
 		var body struct {
+			Reasoning         *harness.ReasoningSelection  `json:"reasoning,omitempty"`
 			Prompt            string                       `json:"prompt"`
 			RequestKey        string                       `json:"request_key"`
 			Permission        harness.PermissionMode       `json:"permission"`
@@ -680,7 +690,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			off.Mode = "off"
 			return server.tasks.SubmitWithOptions(ctx, chat, body.RequestKey, body.Prompt, harness.RunOptions{
 				Collaboration: &off, Permission: body.Permission, ConfirmFullAccess: body.ConfirmFullAccess,
-				Capabilities: body.Capabilities, Attachments: body.Attachments,
+				Capabilities: body.Capabilities, Attachments: body.Attachments, Reasoning: body.Reasoning,
 			})
 		})
 	case "stop":

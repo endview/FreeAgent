@@ -117,6 +117,7 @@ const (
 	ControlRemoveKey                   = "keys.remove"
 	ControlProbeKey                    = "keys.probe"
 	ControlImportSkill                 = "skills.import"
+	ControlPublishSkill                = "skills.publish"
 	ControlRemoveSkill                 = "skills.remove"
 	ControlImportExtension             = "extensions.import"
 	ControlRemoveExtension             = "extensions.remove"
@@ -169,6 +170,7 @@ type ControlOperation struct {
 }
 
 type ControlPlanRequest struct {
+	originRunID       string
 	Kind              string                     `json:"kind"`
 	Arguments         json.RawMessage            `json:"arguments"`
 	Authorization     ControlAuthorizationSource `json:"authorization_source"`
@@ -276,16 +278,17 @@ type ControlModelState struct {
 }
 
 type ControlState struct {
-	ExtensionStates         map[string]json.RawMessage `json:"extension_states,omitempty"`
-	TelegramRequests        []TelegramAccessRequest    `json:"telegram_requests,omitempty"`
-	CurrentRun              *RuntimeFacts              `json:"current_run,omitempty"`
-	Spaces                  []ControlSpaceState        `json:"spaces,omitempty"`
-	Generation              string                     `json:"generation"`
-	ResourceRevisions       map[string]uint64          `json:"resource_revisions"`
-	Config                  ControlConfigState         `json:"config"`
-	Pending                 []ControlOperation         `json:"pending,omitempty"`
-	ExternalChangePending   bool                       `json:"external_change_pending,omitempty"`
-	ExternalChangeResources []string                   `json:"external_change_resources,omitempty"`
+	ExtensionStateOperations map[string]map[string]ExtensionStateOperation `json:"extension_state_operations,omitempty"`
+	ExtensionStates          map[string]json.RawMessage                    `json:"extension_states,omitempty"`
+	TelegramRequests         []TelegramAccessRequest                       `json:"telegram_requests,omitempty"`
+	CurrentRun               *RuntimeFacts                                 `json:"current_run,omitempty"`
+	Spaces                   []ControlSpaceState                           `json:"spaces,omitempty"`
+	Generation               string                                        `json:"generation"`
+	ResourceRevisions        map[string]uint64                             `json:"resource_revisions"`
+	Config                   ControlConfigState                            `json:"config"`
+	Pending                  []ControlOperation                            `json:"pending,omitempty"`
+	ExternalChangePending    bool                                          `json:"external_change_pending,omitempty"`
+	ExternalChangeResources  []string                                      `json:"external_change_resources,omitempty"`
 }
 
 type ControlSpaceState struct {
@@ -614,6 +617,7 @@ func (tasks *TaskService) Control() (*ControlService, error) {
 
 func ControlOperationCatalog() []ControlCatalogEntry {
 	entries := []ControlCatalogEntry{
+		{Kind: ControlSetStickerSets, ResourceFamily: "telegram.sticker_sets", Risk: ControlRiskAuthority, Description: "Replace the exact space-scoped available Telegram sticker-set list (at most 32 names). Arguments: conversation_id, expected_revision, sets. Bound to the current Bot/chat and access grant; persistent confirmation is required. Removed collection references become invalid; received/explicit lookup references expire independently after 24h.", ModelProposable: true, Reversible: false, InputSchema: json.RawMessage(`{"type":"object","properties":{"conversation_id":{"type":"string"},"expected_revision":{"type":"integer","minimum":0},"sets":{"type":"array","maxItems":32,"items":{"type":"string"}}},"required":["conversation_id","expected_revision","sets"],"additionalProperties":false}`)},
 		{Kind: ControlTelegramAccess, ResourceFamily: "telegram.access", Risk: ControlRiskAuthority, Description: "Set Telegram chat admission for a verified numeric Bot/chat and people. Grants chat only. Arguments: request_code or request_id (optional pending application; server resolves its bound identity), target {source:telegram,application_id,chat_id}, kind (private/group), enabled, whole_group, members (telegram:user:ID). Administrator confirmation is always required.", ModelProposable: true},
 		{Kind: ControlSetAttachmentPolicy, ResourceFamily: "config.attachments", Risk: ControlRiskAuthority, Description: "Change bounded attachment input/export/storage limits for future uploads.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetPublicWeb, ResourceFamily: "config.public_web", Risk: ControlRiskAuthority, Description: "Configure optional Linux public HTTPS entrance, permission ceiling and bounded login security. Address/socket changes require restart. Raising the remote ceiling requires local confirmation; passwords use direct secure input.", ModelProposable: true, Reversible: true},
@@ -633,7 +637,9 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlRemoveModel, ResourceFamily: "config.models", Risk: ControlRiskDestructive, Description: "Remove a configured model profile and its future references.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetAutoPolicy, ResourceFamily: "config.auto", Risk: ControlRiskAuthority, Description: "Change bounded Auto model selection settings.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetHTTPPolicy, ResourceFamily: "config.http", Risk: ControlRiskAuthority, Description: "Change the bounded HTTP tool policy and origins.", ModelProposable: true, Reversible: true},
-		{Kind: ControlSetChannelPolicy, ResourceFamily: "config.channels", Risk: ControlRiskAuthority, Description: "Enable or disable an external channel using an existing credential profile.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetChannelPolicy, ResourceFamily: "config.channels", Risk: ControlRiskAuthority, Description: "Configure external connections using saved credentials. Telegram plain_text and disable_typing control formatting and private processing indicators; false enables each feature.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetDeliveryPolicy, ResourceFamily: "config.delivery", Risk: ControlRiskAuthority, Description: "Configure transport bounds and explicitly authorized, bounded extension follow-ups per conversation. Expression strategies belong to optional extensions. Active sending defaults off. Fields: sticker_limit 1..3; interval_ms 0..2000; enabled; rules with extension, conversation, timezone, quiet times, daily/cooldown limits, cancellation and expiry bounds.", ModelProposable: true, Reversible: true},
+		{Kind: ControlScheduleDelivery, ResourceFamily: "delivery.schedule", Risk: ControlRiskAuthority, Description: "Schedule one explicitly confirmed fixed text or known sticker to the original Telegram conversation. Arguments: run_id and candidate {key,text or sticker_ref,after,expires,timezone,reason}. Absolute times include timezone; expires at most 24h after due time. No command/model runs at delivery time.", ModelProposable: true, Reversible: false},
 		{Kind: ControlSetMemoryPolicy, ResourceFamily: "config.memory", Risk: ControlRiskAuthority, Description: "Change local memory and knowledge bounds.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetPromptPolicy, ResourceFamily: "config.prompt", Risk: ControlRiskAuthority, Description: "Change the bounded system prompt and instruction file selection for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetCollaboration, ResourceFamily: "config.collaboration", Risk: ControlRiskAuthority, Description: "Change bounded collaboration authorization and budgets.", ModelProposable: true, Reversible: true},
@@ -648,13 +654,14 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlRemoveKey, ResourceFamily: "keys.profile", Risk: ControlRiskDestructive, Description: "Remove a Key profile when no configured model still references it.", ModelProposable: false, Reversible: false},
 		{Kind: ControlProbeKey, ResourceFamily: "keys.profile", Risk: ControlRiskOrdinary, Description: "Probe one Key profile's models endpoint and record the bounded result.", ModelProposable: false, Reversible: false},
 		{Kind: ControlImportSkill, ResourceFamily: "skills.catalog", Risk: ControlRiskAuthority, Description: "Import a validated Skill directory without enabling it.", ModelProposable: false, Reversible: false},
+		{Kind: ControlPublishSkill, ResourceFamily: "skills.catalog", Risk: ControlRiskAuthority, Description: "Publish a bounded SKILL.md document only after exact confirmation. Arguments: id, document, expected_sha256 (empty only for a new Skill). No scripts are created or executed; existing enabled Skills must be disabled before replacement.", ModelProposable: true, Reversible: false},
 		{Kind: ControlRemoveSkill, ResourceFamily: "skills.catalog", Risk: ControlRiskDestructive, Description: "Remove one user Skill and clear its enabled setting.", ModelProposable: false, Reversible: false},
 		{Kind: ControlImportExtension, ResourceFamily: "extensions.catalog", Risk: ControlRiskAuthority, Description: "Import a validated Extension directory without enabling it.", ModelProposable: false, Reversible: false},
 		{Kind: ControlRemoveExtension, ResourceFamily: "extensions.catalog", Risk: ControlRiskDestructive, Description: "Remove one user Extension and its local settings.", ModelProposable: false, Reversible: false},
 		{Kind: ControlRestartExtension, ResourceFamily: "extensions.runtime", Risk: ControlRiskAuthority, Description: "Restart one Extension process through the owner runtime.", ModelProposable: false, Reversible: false},
 		{Kind: ControlClearExtensionData, ResourceFamily: "extensions.data", Risk: ControlRiskDestructive, Description: "Clear one Extension data directory.", ModelProposable: false, Reversible: false},
 		{Kind: ControlInitExtensionStorage, ResourceFamily: "extensions.storage", Risk: ControlRiskAuthority, Description: "Explicitly initialize one extension's separate PostgreSQL database and restricted role; no credentials accepted.", ModelProposable: false},
-		{Kind: ControlChangeExtensionState, ResourceFamily: "extensions.state", Risk: ControlRiskOrdinary, Description: "Propose one extension state change. Requires extension ID, scope (space_id, role_id, actor_id), action, expected_revision and declared payload. The extension returns exact before/after; persistent changes require confirmation.", ModelProposable: true},
+		{Kind: ControlChangeExtensionState, ResourceFamily: "extensions.state", Risk: ControlRiskOrdinary, Description: "Propose one extension state change. Requires extension ID, scope (space_id, resource, actor_id), declared action, expected_revision and bounded payload. The extension returns exact before/after; persistent changes require confirmation.", ModelProposable: true},
 		{Kind: ControlSetConversationModel, ResourceFamily: "conversation.model", Risk: ControlRiskOrdinary, Description: "Select a configured model for one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetSpacePermission, ResourceFamily: "spaces", Risk: ControlRiskAuthority, Description: "Set a space's operation permission; affects all of its conversations. Full requires explicit local confirmation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlCreateSpace, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Create a local space with None permission.", ModelProposable: true},
@@ -878,6 +885,32 @@ func (service *ControlService) PlanControlChange(ctx context.Context, request Co
 	}
 	if request.Authorization == ControlModelProposed && strings.TrimSpace(request.ConversationID) == "" {
 		return ControlOperation{}, errors.New("harness: model control proposals require a conversation")
+	}
+	// Platform normalization can wait for a pure channel preparation result.
+	// Never hold the control journal lock while its outbox worker is running.
+	if request.Kind == ControlSetStickerSets {
+		var args stickerSetsArguments
+		if err := decodeControlJSON(request.Arguments, &args); err != nil {
+			return ControlOperation{}, err
+		}
+		if args.ConversationID == "" {
+			args.ConversationID = request.ConversationID
+		}
+		_, target, err := NewTaskService(service.core).stickerSpace(ctx, args.ConversationID)
+		if err != nil {
+			return ControlOperation{}, err
+		}
+		if args.Sets == nil || len(args.Sets) > maxSpaceStickerSets {
+			return ControlOperation{}, ErrRequestKey
+		}
+		for i, raw := range args.Sets {
+			name, err := service.core.Store.channelBridge.Load().prepareResource(ctx, target, raw)
+			if err != nil {
+				return ControlOperation{}, err
+			}
+			args.Sets[i] = name
+		}
+		request.Arguments = mustJSON(args)
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -1655,7 +1688,10 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 		}
 	}
 	permissionReduction := spacePermissionReduction(record) || record.Operation.Kind == ControlTelegramAccess
-	providerSwitch := record.Operation.Kind == ControlSetProviderEnabled || record.Operation.Kind == ControlSetPublicWeb || len(record.After["config.public_web"]) != 0
+	// Delivery grants are checked at dispatch and can be revoked while a
+	// scheduled Run is evaluating. Requiring that Run to finish first would
+	// make its own master switch unusable during generation.
+	livePolicyChange := record.Operation.Kind == ControlSetProviderEnabled || record.Operation.Kind == ControlSetPublicWeb || record.Operation.Kind == ControlSetDeliveryPolicy || len(record.After["config.public_web"]) != 0
 	if !permissionReduction {
 		global := false
 		for _, resource := range record.Operation.ResourceIDs {
@@ -1663,7 +1699,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 				global = true
 			}
 		}
-		if global && !providerSwitch {
+		if global && !livePolicyChange {
 			allowed := ""
 			if fromRun {
 				allowed = record.Operation.ConversationID
@@ -1686,7 +1722,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 			}
 		}
 	}
-	if record.Operation.Risk != ControlRiskOrdinary && !permissionReduction && !providerSwitch {
+	if record.Operation.Risk != ControlRiskOrdinary && !permissionReduction && !livePolicyChange {
 		if err := service.gate.beginControl(); err != nil {
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "host_execution_busy"}, err
 		}
@@ -1812,6 +1848,12 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 	if err := service.validatePublicOperation(ctx, *record); err != nil {
 		return err
 	}
+	if record.Operation.Kind == ControlScheduleDelivery {
+		return service.applyScheduledDelivery(ctx, record)
+	}
+	if record.Operation.Kind == ControlPublishSkill {
+		return service.applySkillPublication(ctx, record)
+	}
 	if record.Operation.Kind == ControlChangeExtensionState {
 		return service.applyExtensionState(ctx, record)
 	}
@@ -1833,6 +1875,9 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 	}
 	if record.Operation.Kind == ControlSetMemoryPin {
 		return service.applyMemoryPin(ctx, record)
+	}
+	if record.Operation.Kind == ControlSetStickerSets {
+		return service.applyStickerSets(ctx, record)
 	}
 	if record.Operation.Kind == ControlSetMemorySelection {
 		var args struct {
@@ -1868,7 +1913,12 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 		return service.applyConversationLocked(ctx, *record)
 	}
 	candidate := cloneConfig(service.core.currentConfig())
-	if record.Operation.Kind == ControlSetProviderEnabled || record.Operation.Kind == ControlSetPublicWeb {
+	if record.Operation.Kind == ControlSetProviderEnabled || record.Operation.Kind == ControlSetPublicWeb || record.Operation.Kind == ControlSetDeliveryPolicy {
+		if record.Operation.Kind == ControlSetDeliveryPolicy {
+			service.core.Store.telegramMu.Lock()
+			defer service.core.Store.telegramMu.Unlock()
+		}
+
 		if record.Operation.Kind == ControlSetProviderEnabled {
 			if err := service.validateProvider(record.Arguments); err != nil {
 				return err
@@ -1884,6 +1934,9 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 		if record.Operation.Kind == ControlSetPublicWeb {
 			service.core.recordPublicPolicyChange(ctx)
 			return NewTaskService(service.core).stopPublicCommands(ctx)
+		}
+		if record.Operation.Kind == ControlSetDeliveryPolicy {
+			return errors.Join(NewTaskService(service.core).cancelRevokedCandidates(ctx), NewTaskService(service.core).cancelRevokedWakes(ctx))
 		}
 		return nil
 	}
@@ -2203,16 +2256,16 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 	if request.Authorization == ControlModelProposed && !entry.ModelProposable {
 		return controlRecord{}, errors.New("harness: operation is user-only")
 	}
-	if request.Authorization == ControlModelProposed && request.Kind == ControlSetExtensionPolicy {
+	if request.Kind == ControlSetExtensionPolicy {
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(request.Arguments, &fields); err != nil {
 			return controlRecord{}, errors.New("harness: invalid extension policy")
 		}
-		if fields["env_from"] != nil {
+		if request.Authorization == ControlModelProposed && fields["env_from"] != nil {
 			return controlRecord{}, errors.New("harness: extension secret mappings are user-only")
 		}
 		if fields["settings"] != nil {
-			if err := service.validateModelExtensionSettings(request.Arguments); err != nil {
+			if err := service.validateExtensionSettings(request.Arguments, request.Authorization == ControlModelProposed); err != nil {
 				return controlRecord{}, err
 			}
 		}
@@ -2223,8 +2276,16 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		record.Arguments = json.RawMessage(`{}`)
 	}
 	config := cloneConfig(service.core.currentConfig())
-	if request.Kind == ControlChangeExtensionState || request.Kind == ControlInitExtensionStorage {
-		if err := service.buildExtensionState(ctx, &record); err != nil {
+	if request.Kind == ControlScheduleDelivery {
+		if err := service.buildScheduledDelivery(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlPublishSkill {
+		if err := service.buildSkillPublication(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlChangeExtensionState || request.Kind == ControlInitExtensionStorage {
+		if err := service.buildExtensionState(ctx, &record, request.originRunID); err != nil {
 			return controlRecord{}, err
 		}
 	} else if request.Kind == ControlBranchConversation {
@@ -2245,6 +2306,10 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		}
 	} else if request.Kind == ControlSetMemoryPin {
 		if err := service.buildMemoryPin(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlSetStickerSets {
+		if err := service.buildStickerSets(ctx, &record); err != nil {
 			return controlRecord{}, err
 		}
 	} else if request.Kind == ControlSetMemorySelection {
@@ -2404,6 +2469,8 @@ func buildConfigRecord(record *controlRecord, config *Config, ctx context.Contex
 
 func configControlResource(kind string, raw json.RawMessage) (string, error) {
 	switch kind {
+	case ControlSetDeliveryPolicy:
+		return "config.delivery", nil
 	case ControlSetPublicWeb:
 		return "config.public_web", nil
 	case ControlSetAttachmentPolicy:
@@ -2548,6 +2615,13 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		return errors.New("harness: configuration is required")
 	}
 	switch kind {
+	case ControlSetDeliveryPolicy:
+		if err := decodeControlJSON(raw, &config.Delivery); err != nil {
+			return err
+		}
+		if err := config.Delivery.validate(); err != nil {
+			return err
+		}
 	case ControlSetPublicWeb:
 		wasEnabled := config.PublicWeb.Effective().Enabled
 		if err := decodeControlJSON(raw, &config.PublicWeb); err != nil {
@@ -3010,6 +3084,8 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 
 func configResourceValue(config Config, resource string) any {
 	switch resource {
+	case "config.delivery":
+		return config.Delivery
 	case "config.public_web":
 		return config.PublicWeb.Effective()
 	case "config.attachments":
@@ -3088,6 +3164,10 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 	switch resource {
 	case "config.providers":
 		if err := json.Unmarshal(raw, &config.Providers); err != nil {
+			return err
+		}
+	case "config.delivery":
+		if err := json.Unmarshal(raw, &config.Delivery); err != nil {
 			return err
 		}
 	case "config.attachments":

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Extension-to-Host params. Reads up to 12 nonexpired remembered sticker references for the current target/conversation, offset zero; no set lookup or pagination params. Not available inside delivery.check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["invocation"],
+  "properties": {"invocation": {"type": "string", "minLength": 1}},
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "offset", "items"],
+      "properties": {
+        "name": {"type": "string"},
+        "title": {"type": "string"},
+        "total": {"type": "integer", "minimum": 0, "maximum": 12, "description": "Count returned in this bounded page, not the size of an unbounded catalog."},
+        "offset": {"const": 0},
+        "items": {
+          "type": "array", "maxItems": 12,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "format", "width", "height"],
+            "properties": {
+              "id": {"type": "string"}, "set_name": {"type": "string"}, "emoji": {"type": "string"},
+              "format": {"enum": ["webp", "webm", "tgs"]},
+              "width": {"type": "integer", "minimum": 1, "maximum": 4096},
+              "height": {"type": "integer", "minimum": 1, "maximum": 4096}
+            }
+          }
+        }
+      }
+    }
+  }
+}

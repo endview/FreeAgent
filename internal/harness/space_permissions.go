@@ -262,7 +262,7 @@ func (tasks *TaskService) stopPermissionCommands(ctx context.Context, spaceID, p
 }
 
 func (service *Service) operationsDenied() bool {
-	return service != nil && service.permission != nil && service.permission.Mode == PermissionNone
+	return service != nil && (service.analysisOnly || service.permission != nil && service.permission.Mode == PermissionNone)
 }
 
 func (service *Service) spaceContext() bool {

@@ -135,6 +135,7 @@ func summaryRequest(binding ModelBinding, limits ExecutionLimits, byteLimit int,
 	for _, message := range messages {
 		body := message.ModelMessage
 		body.ProviderItems = nil
+		body.ChatContinuation = nil
 		sources = append(sources, struct {
 			ID int64
 			ModelMessage

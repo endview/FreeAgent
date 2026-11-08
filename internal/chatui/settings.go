@@ -42,6 +42,8 @@ type settingsCommandPatch struct {
 func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Request) bool {
 	path := request.URL.Path
 	switch {
+	case path == "/api/settings/delivery" && request.Method == http.MethodGet:
+		server.writeJSON(writer, 200, server.tasks.Config().Delivery)
 	case path == "/api/settings/database" && request.Method == http.MethodGet:
 		status, err := server.tasks.DatabaseStatus(request.Context())
 		if err != nil {

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/endview/freeagent/internal/channelwire"
 )
 
 func (s *channelSession) receiveFiles(ctx context.Context, e channelEvent, input *ChannelReceived) error {
@@ -112,6 +114,26 @@ func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding stri
 	conversation, err := s.tasks.core.Store.GetConversation(ctx, chat)
 	if err != nil || conversation.SpaceID != space.ID {
 		return ErrConversationSpace
+	}
+	if s.remote {
+		bridge := s.tasks.core.Store.channelBridge.Load()
+		if bridge == nil {
+			return ErrToolDisabled
+		}
+		connection, ok := bridge.connectionFor(target)
+		if !ok {
+			return ErrToolDisabled
+		}
+		op := channelwire.Operation{Kind: "file", Target: channelwire.Target(target), Reply: reply, AttachmentID: ref.ID, Name: ref.Name, ConversationID: chat}
+		if run, err := s.tasks.core.Store.GetRun(ctx, binding); err == nil && run.ConversationID == chat {
+			op.RunID = run.ID
+		}
+		ctx = context.WithValue(ctx, channelEventKey{}, "file/"+contentHash(mustJSON([]any{chat, binding, target, ref.ID, ref.SHA256})))
+		_, err := bridge.perform(ctx, connection.ID, op)
+		if isChannelQueued(err) {
+			return nil
+		}
+		return err
 	}
 	key := "channel/file-send/" + binding + "/" + contentHash(mustJSON([]any{chat, binding, target, ref.ID, ref.SHA256}))
 	s.tasks.core.Store.attachmentMu.Lock()

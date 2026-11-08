@@ -42,7 +42,8 @@ func channelTarget(space Space) (ChannelTarget, bool) {
 }
 
 type ChannelMessageSource struct {
-	Media []channelwire.MediaRef `json:"media,omitempty"`
+	ReplyTo string                 `json:"reply_to,omitempty"`
+	Media   []channelwire.MediaRef `json:"media,omitempty"`
 	ChannelTarget
 	PersonID    string `json:"person_id,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
@@ -51,6 +52,9 @@ type ChannelMessageSource struct {
 }
 
 func (source ChannelMessageSource) validate() error {
+	if source.ReplyTo != "" && !validChannelPart(source.ReplyTo) {
+		return ErrInvalidSpace
+	}
 	if len(source.Media) > 8 {
 		return ErrInvalidSpace
 	}
@@ -243,7 +247,11 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	} else {
 		received.ConversationID = chat
 	}
-	body := ModelMessage{Role: "user", Content: text, Channel: &source, Public: true}
+	feedbackSource := ""
+	if source.ReplyTo != "" {
+		_ = tx.QueryRowContext(ctx, `SELECT request_key FROM fa.messages WHERE conversation_id=$1 AND body_json->>'Role'='assistant' AND body_json->>'Public'='true' AND body_json#>>'{Channel,message_id}'=$2 AND body_json#>>'{Channel,source}'=$3 AND body_json#>>'{Channel,application_id}'=$4 AND body_json#>>'{Channel,chat_id}'=$5 AND request_key LIKE 'channel/delivery/%' ORDER BY id DESC LIMIT 1`, received.ConversationID, source.ReplyTo, source.Source, source.ApplicationID, source.ChatID).Scan(&feedbackSource)
+	}
+	body := ModelMessage{Role: "user", Content: text, Channel: &source, Public: true, FeedbackSource: feedbackSource}
 	err = tx.QueryRowContext(ctx, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3) RETURNING id`, received.ConversationID, source.requestKey(), string(mustJSON(body))).Scan(&received.MessageID)
 	if err != nil {
 		return received, err
@@ -259,12 +267,32 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 			return received, err
 		}
 	}
+	for _, rule := range tasks.Config().Delivery.Rules {
+		if rule.Generation && rule.Enabled && tasks.Config().Delivery.GenerationEnabled[rule.Extension] && source.Purpose == "request" {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, scheduledTargetInputKey(source.ChannelTarget), string(mustJSON(map[string]any{"key": source.requestKey(), "at": nowText()}))); err != nil {
+				return received, err
+			}
+			break
+		}
+	}
+	for _, rule := range tasks.Config().Delivery.Rules {
+		if rule.Generation && rule.Enabled && rule.ConversationID == received.ConversationID && tasks.Config().Delivery.GenerationEnabled[rule.Extension] {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "scheduled/input/"+received.ConversationID, string(mustJSON(map[string]any{"message_id": received.MessageID, "at": nowText()}))); err != nil {
+				return received, err
+			}
+			break
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return ChannelReceived{}, err
 	}
 	received.origin = &ChannelRunOrigin{ChannelTarget: source.ChannelTarget, InputMessageID: received.MessageID,
 		HistoryThrough: received.MessageID, RequestKey: source.requestKey(), AccessRevision: access.Revision}
 	received.source, received.text = source, text
+	if source.Purpose == "request" {
+		tasks.cancelScheduledForInput(ctx, received.ConversationID)
+		tasks.cancelWakeTarget(source.ChannelTarget)
+	}
 	return received, nil
 }
 
@@ -429,7 +457,7 @@ func (tasks *TaskService) RecordChannelDelivery(ctx context.Context, runID, deli
 	defer tx.Rollback()
 	key := "channel/delivery/" + run.ID + "/" + deliveryID
 	result, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key,
-		string(mustJSON(map[string]any{"run_id": run.ID, "state": state, "confirmed_bytes": len(text), "target": origin.ChannelTarget})))
+		string(mustJSON(map[string]any{"run_id": run.ID, "state": state, "confirmed_bytes": len(text), "target": origin.ChannelTarget, "occurred_at": nowText()})))
 	if err != nil {
 		return err
 	}

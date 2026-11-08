@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -17,6 +18,9 @@ import (
 // ChannelBridge contains the Core's authorized business sessions and delivery
 // receipts. It never opens platform connections or gives a plugin DB access.
 type ChannelBridge struct {
+	// Optional in-process transport preparation seam. Default products use
+	// the authenticated channel process; tests can supply a controlled adapter.
+	preparer                   func(context.Context, channelwire.Operation) (channelwire.Prepared, error)
 	tasks                      *TaskService
 	mu                         sync.Mutex
 	connections                map[string]*channelConnection
@@ -24,6 +28,7 @@ type ChannelBridge struct {
 	dispatch                   ChannelDispatch
 }
 type channelConnection struct {
+	capabilities channelwire.Capabilities
 	inboundMu    sync.Mutex
 	flightMu     sync.Mutex
 	currentEvent string
@@ -45,6 +50,7 @@ func NewChannelBridge(tasks *TaskService, origin, generation string, dispatch Ch
 	if err := b.Configure(); err != nil {
 		return nil, err
 	}
+	tasks.core.Store.channelBridge.Store(b)
 	return b, nil
 }
 
@@ -197,8 +203,13 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 	conn.flightMu.Lock()
 	conn.currentEvent = event.ID
 	conn.flightMu.Unlock()
-	e := channelEvent{Target: ChannelTarget(event.Target), Person: event.Person, Name: event.Name, Message: event.Message, Kind: event.Kind, Text: event.Text, Trigger: event.Trigger, Callback: event.Callback, CallbackMessage: event.CallbackMessage, Media: event.Media, ReplyTo: event.ReplyTo}
+	e := channelEvent{Target: ChannelTarget(event.Target), Person: event.Person, Name: event.Name, Message: event.Message, Kind: event.Kind, Text: event.Text, Trigger: event.Trigger, Callback: event.Callback, CallbackMessage: event.CallbackMessage, Media: event.Media, ReplyTo: event.ReplyTo, Sticker: event.Sticker}
 	ctx = context.WithValue(ctx, channelEventKey{}, id+"/"+event.ID)
+	if event.Reaction != nil && event.Reaction.Anonymous && event.Reaction.CountSnapshot {
+		// Anonymous counts have no person to admit. recordReaction checks the
+		// enabled Bot/chat grant and the known message, without creating a Run.
+		return b.recordReaction(ctx, id, event)
+	}
 	if event.Target.Source == SpaceSourceTelegram {
 		if grant, err := b.tasks.CheckTelegramAccess(ctx, ChannelTarget(event.Target), event.Person); err == nil {
 			ctx = context.WithValue(ctx, telegramFileAuthorityKey{}, telegramFileAuthority{Target: ChannelTarget(event.Target), Person: event.Person, Revision: grant.Revision})
@@ -215,6 +226,9 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 			return nil
 		}
 		return err
+	}
+	if event.Reaction != nil {
+		return b.recordReaction(ctx, id, event)
 	}
 	return b.acceptInbound(ctx, conn, id, event, e)
 }
@@ -301,9 +315,26 @@ func (b *ChannelBridge) perform(ctx context.Context, id string, op channelwire.O
 	if c == nil || op.Target.Source != c.config.Source || op.Target.ApplicationID != c.config.ApplicationID {
 		return op, ErrPermissionDenied
 	}
+	if channelwire.PurePreparation(op.Kind) && b.preparer != nil {
+		prepared, err := b.preparer(ctx, op)
+		if err != nil {
+			return op, err
+		}
+		op.Data = mustJSON(prepared)
+		if _, err := validatePrepared(op, op.Data); err != nil {
+			return op, err
+		}
+		return op, nil
+	}
 	op.Connection = id
 	if delivery, ok := ctx.Value(channelDeliveryKey{}).(channelDeliveryInfo); ok {
 		op.ClaimKey, op.RunID, op.Maintenance = delivery.Claim, delivery.Run, delivery.Maintenance
+		op.Group, op.Sequence, op.Total = delivery.Group, delivery.Sequence, delivery.Total
+		if !channelwire.PurePreparation(op.Kind) {
+			op.Entities, op.FormatVersion = delivery.Entities, delivery.Format
+		}
+		op.LogicalPart, op.PlatformPart = delivery.LogicalPart, delivery.PlatformPart
+		op.MinGapMS = delivery.MinGapMS
 		if op.ConversationID == "" {
 			op.ConversationID = delivery.Chat
 		}
@@ -316,6 +347,11 @@ func (b *ChannelBridge) perform(ctx context.Context, id string, op channelwire.O
 		return op, ErrPermissionDenied
 	}
 	op.State = "pending"
+	if op.Proactive {
+		op.State = "scheduled"
+	} else if op.Kind == "sticker" && op.RunID != "" && op.Group == "" {
+		op.State = "held"
+	}
 	op.CreatedAt = nowText()
 	correlation, _ := ctx.Value(channelEventKey{}).(string)
 	if correlation == "" {
@@ -325,11 +361,114 @@ func (b *ChannelBridge) perform(ctx context.Context, id string, op channelwire.O
 	identity.CreatedAt = ""
 	identity.State = ""
 	op.ID = contentHash(mustJSON([]any{correlation, identity}))
-	key := channelOperationPrefix + id + "/" + op.ID
-	if _, err := b.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, string(mustJSON(op))); err != nil {
+	if op.CandidateID != "" {
+		op.PayloadDigest = contentHash(mustJSON(identity))
+		op.ID = contentHash(mustJSON([]any{id, op.ConversationID, op.RunID, op.Extension, op.CandidateID}))
+	}
+	if op.Group == "" {
+		op.Group, op.Sequence, op.Total = op.ID, 1, 1
+	}
+	if len(op.Group) > 256 || hasControl(op.Group) || op.Total < 1 || op.Total > 256 || op.Sequence < 1 || op.Sequence > op.Total {
+		return op, ErrRequestKey
+	}
+	tx, err := b.tasks.core.Store.db.BeginTx(ctx, nil)
+	if err != nil {
 		return op, err
 	}
-	if op.Kind != "download" {
+	defer tx.Rollback()
+	if err := lockChannelRun(ctx, tx, op.RunID); err != nil {
+		return op, err
+	}
+	if op.Proactive {
+		var pending int
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('channel/proactive-capacity',0))`); err != nil {
+			return op, err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta WHERE key LIKE 'channel/operation/%' AND document->>'proactive'='true' AND document->>'state' IN ('scheduled','reviewing','pending')`).Scan(&pending); err != nil {
+			return op, err
+		}
+		if pending >= 64 {
+			return op, errors.New("harness: pending proactive delivery capacity reached")
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, id+"/"+op.Group); err != nil {
+		return op, err
+	}
+	prefix := channelOperationPrefix + id + "/"
+	var conflict bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key >= $1 AND key < $2 AND document->>'group'=$3 AND (document->'target'<>$4::jsonb OR (document->>'total')::int<>$5 OR (document->>'sequence')::int=$6 AND document->>'id'<>$7))`, prefix, prefix+"\uffff", op.Group, string(mustJSON(op.Target)), op.Total, op.Sequence, op.ID).Scan(&conflict); err != nil {
+		return op, err
+	}
+	if conflict {
+		return op, ErrRequestKey
+	}
+	var paused bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key=$1)`, channelGroupPauseKey(id, op.Group)).Scan(&paused); err != nil {
+		return op, err
+	}
+	if paused {
+		op.State = "paused"
+	}
+	var cancelled bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key IN ($1,$2))`, channelGroupCancelKey(id, op.Group), "channel/run-cancelled/"+op.RunID).Scan(&cancelled); err != nil {
+		return op, err
+	}
+	if cancelled {
+		op.State = "cancelled"
+	}
+	key := channelOperationPrefix + id + "/" + op.ID
+	if op.CandidateID != "" {
+		var raw string
+		if err := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, key).Scan(&raw); err == nil {
+			var saved channelwire.Operation
+			if json.Unmarshal([]byte(raw), &saved) != nil {
+				return op, ErrStoreFormat
+			}
+			if saved.PayloadDigest != op.PayloadDigest {
+				return op, ErrRequestKey
+			}
+			if err := tx.Commit(); err != nil {
+				return op, err
+			}
+			return saved, &channelQueued{operation: saved.ID}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return op, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, string(mustJSON(op))); err != nil {
+		return op, err
+	}
+	if err := associateWakeTx(ctx, tx, op); err != nil {
+		return op, err
+	}
+	if err := tx.Commit(); err != nil {
+		return op, err
+	}
+	if channelwire.PurePreparation(op.Kind) {
+		var raw string
+		if err := b.tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, key).Scan(&raw); err != nil {
+			return op, err
+		}
+		if json.Unmarshal([]byte(raw), &op) != nil {
+			return op, ErrStoreFormat
+		}
+		if op.State == "downloaded" {
+			data, err := os.ReadFile(filepath.Join(b.tasks.DataDir(), "channel-downloads", op.ID))
+			if err != nil {
+				return op, err
+			}
+			if contentHash(data) != op.DataSHA256 || int64(len(data)) != op.DataBytes {
+				return op, ErrAttachment
+			}
+			op.Data = data
+			return op, nil
+		}
+		if op.State == "failed" || op.State == "cancelled" {
+			return op, &channelwire.Error{Certain: true}
+		}
+		return op, &channelQueued{operation: op.ID}
+	}
+	if op.Kind != "download" && op.Kind != "sticker_set" {
 		return op, &channelQueued{operation: op.ID}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -378,6 +517,7 @@ func (b *ChannelBridge) BootstrapPaths() []string {
 	return paths
 }
 func (b *ChannelBridge) Close() error {
+	b.tasks.core.Store.channelBridge.CompareAndSwap(b, nil)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for id := range b.connections {

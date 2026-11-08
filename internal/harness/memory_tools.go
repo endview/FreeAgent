@@ -30,6 +30,9 @@ func (tools disabledMemoryToolRunner) Prepare(ctx context.Context, call ToolCall
 
 func (service *Service) runtimeTools(runID, attemptID string) (result ToolRunner) {
 	defer func() {
+		if service.replyExpressionsEnabled() {
+			result = replyExpressionTools{base: result, service: service, runID: runID, attemptID: attemptID}
+		}
 		if service.verificationMode {
 			result = verificationTools{base: result}
 		}

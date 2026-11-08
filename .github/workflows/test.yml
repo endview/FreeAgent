@@ -42,6 +42,7 @@ jobs:
         working-directory: internal/chatui
       - run: git diff --exit-code -- internal/chatui/dist
       - run: go mod verify
+      - run: python scripts/check-core-boundaries.py
       - name: Prepare Windows PostgreSQL
         if: runner.os == 'Windows'
         run: python scripts/prepare-postgres.py --target windows-amd64 --cache output/pg-cache --out output/postgresql

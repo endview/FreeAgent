@@ -13,14 +13,14 @@ func TestExtensionFactSyncCursorIsBoundAndDoesNotReplay(t *testing.T) {
 		}
 	}
 	before := affectState(t, tasks, chat)
-	first, err := tasks.SyncExtensionFacts(t.Context(), affectExtensionID, chat, "maya", "")
+	first, err := tasks.SyncExtensionFacts(t.Context(), affectExtensionID, chat, "", "")
 	if err != nil || first.Processed != 32 || first.Next == "" || first.Replayed {
 		t.Fatal(first, err)
 	}
 	if _, err = tasks.SyncExtensionFacts(t.Context(), affectExtensionID, chat, "another", first.Next); err == nil {
 		t.Fatal("cursor reused for a different role")
 	}
-	last, err := tasks.SyncExtensionFacts(t.Context(), affectExtensionID, chat, "maya", first.Next)
+	last, err := tasks.SyncExtensionFacts(t.Context(), affectExtensionID, chat, "", first.Next)
 	if err != nil || last.Processed != 2 || last.Next != "" || last.Replayed {
 		t.Fatal(last, err)
 	}

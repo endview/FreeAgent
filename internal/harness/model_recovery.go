@@ -31,6 +31,9 @@ func withRetryAfter(err *CallError, header http.Header) *CallError {
 }
 
 func (service *Service) canRetryModel(ctx context.Context, request ModelRequest, failure *CallError) bool {
+	if request.SupplementalKey != "" {
+		return false
+	}
 	count := 0
 	if request.Recovery != nil {
 		count = request.Recovery.Number

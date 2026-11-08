@@ -41,6 +41,15 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 	case path == "inputs":
 		server.inputsAPI(writer, request)
 		return true
+	case path == "deliveries":
+		server.deliveriesAPI(writer, request)
+		return true
+	case path == "stickers":
+		server.stickersAPI(writer, request)
+		return true
+	case path == "analyze" || path == "analyze/memory":
+		server.sourceAnalysisAPI(writer, request)
+		return true
 	case path == "branch":
 		server.branchAPI(writer, request)
 		return true

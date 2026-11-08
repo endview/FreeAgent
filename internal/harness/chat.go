@@ -25,29 +25,31 @@ type ChatView struct {
 }
 
 type ChatTurn struct {
-	MessagesEarlier bool                 `json:"messages_has_earlier,omitempty"`
-	Attachments     []AttachmentRef      `json:"attachments,omitempty"`
-	Key             string               `json:"key"`
-	State           string               `json:"state"`
-	Reason          string               `json:"reason,omitempty"`
-	ModelID         string               `json:"model_id,omitempty"`
-	Permission      *PermissionSelection `json:"permission,omitempty"`
-	RuntimeRevision string               `json:"runtime_revision,omitempty"`
-	EnabledTools    []string             `json:"enabled_tools,omitempty"`
-	RequestKey      string               `json:"request_key"`
-	Steps           int                  `json:"steps"`
-	ElapsedMS       int64                `json:"elapsed_ms"`
-	Messages        []ChatMessage        `json:"messages"`
-	ActivityEarlier bool                 `json:"activity_has_earlier,omitempty"`
-	Activity        []ChatActivity       `json:"activity"`
-	Evidence        Evidence             `json:"evidence"`
-	Sources         []MemoryUse          `json:"sources"`
-	CanContinue     bool                 `json:"can_continue"`
-	CanEnd          bool                 `json:"can_end"`
-	Ended           bool                 `json:"ended"`
-	Confirmation    *Confirmation        `json:"confirmation,omitempty"`
-	Maintenance     bool                 `json:"maintenance,omitempty"`
-	LimitSettled    bool                 `json:"limit_settled,omitempty"`
+	Trigger         *ExtensionTrigger     `json:"trigger,omitempty"`
+	Analysis        *SourceAnalysisOrigin `json:"analysis,omitempty"`
+	MessagesEarlier bool                  `json:"messages_has_earlier,omitempty"`
+	Attachments     []AttachmentRef       `json:"attachments,omitempty"`
+	Key             string                `json:"key"`
+	State           string                `json:"state"`
+	Reason          string                `json:"reason,omitempty"`
+	ModelID         string                `json:"model_id,omitempty"`
+	Permission      *PermissionSelection  `json:"permission,omitempty"`
+	RuntimeRevision string                `json:"runtime_revision,omitempty"`
+	EnabledTools    []string              `json:"enabled_tools,omitempty"`
+	RequestKey      string                `json:"request_key"`
+	Steps           int                   `json:"steps"`
+	ElapsedMS       int64                 `json:"elapsed_ms"`
+	Messages        []ChatMessage         `json:"messages"`
+	ActivityEarlier bool                  `json:"activity_has_earlier,omitempty"`
+	Activity        []ChatActivity        `json:"activity"`
+	Evidence        Evidence              `json:"evidence"`
+	Sources         []MemoryUse           `json:"sources"`
+	CanContinue     bool                  `json:"can_continue"`
+	CanEnd          bool                  `json:"can_end"`
+	Ended           bool                  `json:"ended"`
+	Confirmation    *Confirmation         `json:"confirmation,omitempty"`
+	Maintenance     bool                  `json:"maintenance,omitempty"`
+	LimitSettled    bool                  `json:"limit_settled,omitempty"`
 }
 
 type ChatMessage struct {
@@ -59,20 +61,21 @@ type ChatMessage struct {
 }
 
 type ChatActivity struct {
-	Outcome    *ToolOutcome  `json:"outcome,omitempty"`
-	DurationMS *int64        `json:"duration_ms,omitempty"`
-	StartedAt  string        `json:"started_at,omitempty"`
-	Usage      *ModelUsage   `json:"usage,omitempty"`
-	Key        string        `json:"key"`
-	Kind       string        `json:"kind"`
-	Name       string        `json:"name,omitempty"`
-	Target     string        `json:"target,omitempty"`
-	Status     string        `json:"status"`
-	IsError    bool          `json:"is_error,omitempty"`
-	Text       string        `json:"text,omitempty"`
-	Truncated  bool          `json:"truncated,omitempty"`
-	Receipts   []ToolReceipt `json:"receipts,omitempty"`
-	Failure    *CallError    `json:"failure,omitempty"`
+	RequestedReasoning *ReasoningSelection `json:"requested_reasoning,omitempty"`
+	Outcome            *ToolOutcome        `json:"outcome,omitempty"`
+	DurationMS         *int64              `json:"duration_ms,omitempty"`
+	StartedAt          string              `json:"started_at,omitempty"`
+	Usage              *ModelUsage         `json:"usage,omitempty"`
+	Key                string              `json:"key"`
+	Kind               string              `json:"kind"`
+	Name               string              `json:"name,omitempty"`
+	Target             string              `json:"target,omitempty"`
+	Status             string              `json:"status"`
+	IsError            bool                `json:"is_error,omitempty"`
+	Text               string              `json:"text,omitempty"`
+	Truncated          bool                `json:"truncated,omitempty"`
+	Receipts           []ToolReceipt       `json:"receipts,omitempty"`
+	Failure            *CallError          `json:"failure,omitempty"`
 }
 
 const chatTextBytes = 64 << 10
@@ -98,6 +101,13 @@ func (tasks *TaskService) EnvironmentID() string {
 
 func chatState(run Run, attempts []Attempt) string {
 	for _, attempt := range attempts {
+		if isSupplementalAttempt(attempt) {
+			var snap runSnapshot
+			_ = json.Unmarshal([]byte(run.ConfigJSON), &snap)
+			if snap.ExtensionTrigger == nil {
+				continue
+			}
+		}
 		if attempt.Status == "unknown" && attempt.Replacement == "" && attempt.Resolution == "" {
 			return "unknown"
 		}
@@ -216,6 +226,13 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 			}
 		}
 		if snapshot, snapshotErr := decodeRunSnapshot(run.ConfigJSON); snapshotErr == nil {
+			turn.Trigger = snapshot.ExtensionTrigger
+			if snapshot.AnalysisOnly && len(snapshot.AnalysisSource) > 0 {
+				var origin SourceAnalysisOrigin
+				if json.Unmarshal(snapshot.AnalysisSource, &origin) == nil {
+					turn.Analysis = &origin
+				}
+			}
 			turn.RuntimeRevision = snapshot.ToolGeneration
 			if snapshot.EnabledTools.File {
 				turn.EnabledTools = append(turn.EnabledTools, "file")
@@ -316,6 +333,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 					activity.Kind = request.Purpose
 				}
 				addSources(request.Memory)
+				activity.RequestedReasoning = request.Reasoning
 				if attempt.ResponseJSON != "" {
 					var response ModelResponse
 					if json.Unmarshal([]byte(attempt.ResponseJSON), &response) != nil {

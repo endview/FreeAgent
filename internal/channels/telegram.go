@@ -17,6 +17,8 @@ import (
 	"time"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/endview/freeagent/internal/channelwire"
 )
 
 const telegramBodyLimit = 1 << 20
@@ -31,6 +33,7 @@ type TelegramAPI struct {
 // description. Sending uncertainty is delivery uncertainty, not a reason to
 // repeat the model or its tool execution.
 type TelegramError struct {
+	Formatting bool
 	Status     int
 	RetryAfter time.Duration
 	Uncertain  bool
@@ -95,10 +98,11 @@ func (api *TelegramAPI) call(ctx context.Context, method string, input, result a
 		return &TelegramError{Status: response.StatusCode, Uncertain: delivery}
 	}
 	var envelope struct {
-		OK         bool            `json:"ok"`
-		Result     json.RawMessage `json:"result"`
-		ErrorCode  int             `json:"error_code"`
-		Parameters struct {
+		OK          bool            `json:"ok"`
+		Result      json.RawMessage `json:"result"`
+		ErrorCode   int             `json:"error_code"`
+		Description string          `json:"description"`
+		Parameters  struct {
 			RetryAfter int `json:"retry_after"`
 		} `json:"parameters"`
 	}
@@ -110,7 +114,9 @@ func (api *TelegramAPI) call(ctx context.Context, method string, input, result a
 		if envelope.ErrorCode != 0 {
 			status = envelope.ErrorCode
 		}
-		return &TelegramError{Status: status, RetryAfter: time.Duration(min(max(envelope.Parameters.RetryAfter, 0), 3600)) * time.Second, Uncertain: delivery && status >= 500}
+		description := strings.ToLower(envelope.Description)
+		formatting := status == 400 && (strings.Contains(description, "can't parse entities") || strings.Contains(description, "entity offset") || strings.Contains(description, "entity length"))
+		return &TelegramError{Status: status, Formatting: formatting, RetryAfter: time.Duration(min(max(envelope.Parameters.RetryAfter, 0), 3600)) * time.Second, Uncertain: delivery && status >= 500}
 	}
 	if result != nil && json.Unmarshal(envelope.Result, result) != nil {
 		return &TelegramError{Status: response.StatusCode, Uncertain: delivery}
@@ -137,6 +143,7 @@ type TelegramEntity struct {
 	Length int    `json:"length"`
 }
 type TelegramMessage struct {
+	Sticker         *TelegramSticker  `json:"sticker"`
 	Document        *TelegramDocument `json:"document"`
 	Photo           []TelegramPhoto   `json:"photo"`
 	Caption         string            `json:"caption"`
@@ -157,9 +164,11 @@ type TelegramCallback struct {
 	Data    string           `json:"data"`
 }
 type TelegramUpdate struct {
-	ID       int64             `json:"update_id"`
-	Message  *TelegramMessage  `json:"message"`
-	Callback *TelegramCallback `json:"callback_query"`
+	ReactionCount *TelegramReactionCount `json:"message_reaction_count"`
+	Reaction      *TelegramReaction      `json:"message_reaction"`
+	ID            int64                  `json:"update_id"`
+	Message       *TelegramMessage       `json:"message"`
+	Callback      *TelegramCallback      `json:"callback_query"`
 }
 type TelegramButton struct {
 	Text string `json:"text"`
@@ -198,7 +207,7 @@ func (api *TelegramAPI) Poll(ctx context.Context, offset int64, waitSeconds int)
 		Limit   int      `json:"limit"`
 		Timeout int      `json:"timeout"`
 		Allowed []string `json:"allowed_updates"`
-	}{offset, 100, waitSeconds, []string{"message", "callback_query"}}, &updates, false)
+	}{offset, 100, waitSeconds, []string{"message", "callback_query", "message_reaction", "message_reaction_count"}}, &updates, false)
 	if err == nil && len(updates) > 100 {
 		return nil, errors.New("telegram: update batch exceeds bound")
 	}
@@ -234,6 +243,26 @@ func validateKeyboard(keyboard *TelegramKeyboard) error {
 	return nil
 }
 func (api *TelegramAPI) Send(ctx context.Context, chatID, replyTo int64, text string, keyboard *TelegramKeyboard) (int64, error) {
+	return api.send(ctx, chatID, replyTo, text, nil, keyboard)
+}
+
+// SendFormatted only retries a confirmed formatting rejection, with the same
+// visible text. Unknown delivery, invalid destinations and forbidden sends
+// never trigger a second platform request.
+func (api *TelegramAPI) SendFormatted(ctx context.Context, chatID, replyTo int64, text string, entities []channelwire.TextEntity, keyboard *TelegramKeyboard) (int64, bool, error) {
+	if err := validateTelegramEntities(text, entities); err != nil {
+		return 0, false, err
+	}
+	id, err := api.send(ctx, chatID, replyTo, text, entities, keyboard)
+	var upstream *TelegramError
+	if len(entities) > 0 && errors.As(err, &upstream) && upstream.Formatting && !upstream.Uncertain {
+		id, err = api.send(ctx, chatID, replyTo, text, nil, keyboard)
+		return id, true, err
+	}
+	return id, false, err
+}
+
+func (api *TelegramAPI) send(ctx context.Context, chatID, replyTo int64, text string, entities []channelwire.TextEntity, keyboard *TelegramKeyboard) (int64, error) {
 	if chatID == 0 || !validTelegramText(text, 4096) {
 		return 0, errors.New("telegram: invalid text or target")
 	}
@@ -241,6 +270,9 @@ func (api *TelegramAPI) Send(ctx context.Context, chatID, replyTo int64, text st
 		return 0, err
 	}
 	input := map[string]any{"chat_id": chatID, "text": text, "link_preview_options": map[string]bool{"is_disabled": true}}
+	if len(entities) != 0 {
+		input["entities"] = entities
+	}
 	if replyTo > 0 {
 		input["reply_parameters"] = map[string]any{"message_id": replyTo}
 	}
@@ -255,13 +287,22 @@ func (api *TelegramAPI) Send(ctx context.Context, chatID, replyTo int64, text st
 	return result.ID, err
 }
 func (api *TelegramAPI) Edit(ctx context.Context, chatID, messageID int64, text string, keyboard *TelegramKeyboard) error {
+	return api.EditFormatted(ctx, chatID, messageID, text, nil, keyboard)
+}
+func (api *TelegramAPI) EditFormatted(ctx context.Context, chatID, messageID int64, text string, entities []channelwire.TextEntity, keyboard *TelegramKeyboard) error {
 	if chatID == 0 || messageID <= 0 || !validTelegramText(text, 4096) {
 		return errors.New("telegram: invalid edit")
 	}
 	if err := validateKeyboard(keyboard); err != nil {
 		return err
 	}
+	if err := validateTelegramEntities(text, entities); err != nil {
+		return err
+	}
 	input := map[string]any{"chat_id": chatID, "message_id": messageID, "text": text, "link_preview_options": map[string]bool{"is_disabled": true}}
+	if len(entities) > 0 {
+		input["entities"] = entities
+	}
 	if keyboard != nil {
 		input["reply_markup"] = keyboard
 	}
@@ -277,21 +318,55 @@ func (api *TelegramAPI) AnswerCallback(ctx context.Context, id, text string) err
 // SplitTelegramText is bounded by UTF-16 units so non-BMP text never exceeds
 // the platform bound. It performs no Markdown/HTML interpretation.
 func SplitTelegramText(text string) []string {
-	if text == "" {
-		return nil
-	}
 	var result []string
-	start, units := 0, 0
-	for index, r := range text {
-		n := utf16.RuneLen(r)
-		if units+n > 4000 {
-			result = append(result, text[start:index])
-			start = index
-			units = 0
-		}
-		units += n
+	for _, part := range channelwire.SplitTextParts(channelwire.TextPart{Text: text}, 4000) {
+		result = append(result, part.Text)
 	}
-	return append(result, text[start:])
+	return result
+}
+
+func (api *TelegramAPI) ChatAction(ctx context.Context, chatID int64, action string) error {
+	if chatID == 0 || action != "typing" && action != "upload_document" && action != "choose_sticker" {
+		return errors.New("telegram: invalid activity")
+	}
+	var ok bool
+	if err := api.call(ctx, "sendChatAction", map[string]any{"chat_id": chatID, "action": action}, &ok, false); err != nil {
+		return err
+	}
+	if !ok {
+		return &TelegramError{Status: 200}
+	}
+	return nil
+}
+
+func validateTelegramEntities(text string, entities []channelwire.TextEntity) error {
+	if len(entities) > 1024 {
+		return errors.New("telegram: too many text entities")
+	}
+	boundaries := map[int]bool{0: true}
+	units := 0
+	for _, r := range text {
+		units += utf16.RuneLen(r)
+		boundaries[units] = true
+	}
+	for _, entity := range entities {
+		if entity.Offset < 0 || entity.Length <= 0 || entity.Offset > units || entity.Length > units-entity.Offset || !boundaries[entity.Offset] || !boundaries[entity.Offset+entity.Length] {
+			return errors.New("telegram: invalid UTF-16 entity range")
+		}
+		switch entity.Type {
+		case "bold", "italic", "strikethrough", "code", "pre", "blockquote":
+		case "text_link":
+			if telegramSafeURL(entity.URL) == "" {
+				return errors.New("telegram: invalid link entity")
+			}
+		default:
+			return errors.New("telegram: unsupported text entity")
+		}
+		if len(entity.Language) > 64 || strings.ContainsAny(entity.Language, "\x00\r\n") {
+			return errors.New("telegram: invalid code language")
+		}
+	}
+	return nil
 }
 
 type TelegramDocument struct {
@@ -305,6 +380,8 @@ type TelegramPhoto struct {
 }
 
 type TelegramEvent struct {
+	Sticker       *channelwire.Sticker
+	Reaction      *channelwire.Reaction
 	Media         []MediaRef
 	ReplyTo       string
 	UpdateID      int64
@@ -326,6 +403,12 @@ func TelegramEventFromUpdate(update TelegramUpdate, bot TelegramUser) (TelegramE
 	if bot.ID <= 0 || !bot.IsBot || bot.Username == "" {
 		return event, false
 	}
+	if update.Reaction != nil {
+		return telegramReactionEvent(update, bot)
+	}
+	if update.ReactionCount != nil {
+		return telegramReactionCountEvent(update, bot)
+	}
 	if update.Callback != nil {
 		c := update.Callback
 		if c.Message == nil || c.Message.Date == 0 || c.Message.Chat.ID == 0 || c.From.ID <= 0 || c.From.IsBot || len(c.Data) > 64 {
@@ -341,6 +424,24 @@ func TelegramEventFromUpdate(update TelegramUpdate, bot TelegramUser) (TelegramE
 		return event, true
 	}
 	m := update.Message
+	if m != nil && m.Sticker != nil {
+		sticker, err := m.Sticker.Wire()
+		if err != nil {
+			return event, false
+		}
+		event.Sticker = &sticker
+		copy := *m
+		copy.Text = "[收到贴纸；类型=" + sticker.Format + "，emoji=" + sticker.Emoji + "，集合=" + sticker.SetName + "]"
+		if sticker.Format == "webp" {
+			event.Media = []MediaRef{{ID: sticker.FileID, Name: "sticker.png", Bytes: sticker.Bytes, Image: true, PreviewFormat: "webp"}}
+		} else if sticker.Thumbnail != nil {
+			event.Media = []MediaRef{*sticker.Thumbnail}
+			copy.Text += " [仅预览帧，不含动画过程]"
+		} else {
+			copy.Text += " [没有可用预览；只能读取元信息]"
+		}
+		m = &copy
+	}
 	if m != nil && (m.Document != nil || len(m.Photo) > 0) {
 		copy := *m
 		if copy.Text == "" {

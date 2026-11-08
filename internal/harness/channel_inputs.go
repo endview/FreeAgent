@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -47,6 +48,11 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 		active, err = scanRun(s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1 AND `+activeRunPredicate+` LIMIT 1`, input.ConversationID))
 	}
 	if err == nil {
+		var snapshot runSnapshot
+		if json.Unmarshal([]byte(active.ConfigJSON), &snapshot) == nil && snapshot.ExtensionTrigger != nil {
+			s.tasks.CancelConversation(input.ConversationID)
+			return queue(active, "queue")
+		}
 		action := "queue"
 		if active.Permission != nil && active.Permission.PersonID == e.Person {
 			action = "steer"

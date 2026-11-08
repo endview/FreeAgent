@@ -4,33 +4,72 @@
   "title": "FreeAgent Extension Manifest",
   "type": "object",
   "additionalProperties": true,
-  "required": ["protocol", "id", "version", "name", "description", "run"],
+  "required": [
+    "protocol",
+    "id",
+    "version",
+    "name",
+    "description",
+    "run"
+  ],
   "properties": {
-    "protocol": {"const": "freeagent-ext/1"},
+    "protocol": {
+      "const": "freeagent-ext/1"
+    },
     "id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+$",
       "minLength": 3,
       "maxLength": 128
     },
-    "version": {"type": "string", "minLength": 1, "maxLength": 128},
-    "name": {"type": "string", "maxLength": 256},
-    "description": {"type": "string", "maxLength": 4096},
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 4096
+    },
     "run": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["command"],
+      "required": [
+        "command"
+      ],
       "properties": {
-        "command": {"type": "string", "minLength": 1},
-        "args": {"type": "array", "maxItems": 128, "items": {"type": "string", "maxLength": 8192}},
-        "cwd": {"type": "string"}
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "maxLength": 8192
+          }
+        },
+        "cwd": {
+          "type": "string"
+        }
       }
     },
     "env": {
       "type": "array",
-      "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      }
     },
-    "settings_schema": {"type": "object", "additionalProperties": true},
+    "settings_schema": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "needs": {
       "type": "array",
       "items": {
@@ -42,15 +81,51 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "phases": {"type": "array", "items": {"enum": ["turn", "step"]}},
-        "purposes": {"type": "array", "items": {"enum": ["chat", "child", "planning", "synthesis"]}},
-        "max_chars": {"type": "integer", "minimum": 0, "maximum": 1048576},
-        "placement": {"type": "array", "items": {"enum": ["tail", "system"]}}
+        "phases": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "turn",
+              "step"
+            ]
+          }
+        },
+        "purposes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "chat",
+              "child",
+              "planning",
+              "synthesis"
+            ]
+          }
+        },
+        "max_chars": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048576
+        },
+        "placement": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "tail",
+              "system"
+            ]
+          }
+        }
       }
     },
     "events": {
       "type": "array",
-      "items": {"enum": ["turn.finished", "operation.check"]}
+      "items": {
+        "enum": [
+          "turn.finished",
+          "operation.check",
+          "delivery.check"
+        ]
+      }
     },
     "workflows": {
       "type": "array",
@@ -58,25 +133,193 @@
       "items": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["name", "description"],
+        "required": [
+          "name",
+          "description"
+        ],
         "properties": {
-          "name": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
-          "description": {"type": "string", "maxLength": 4096},
-          "input_schema": {"type": "object", "additionalProperties": true},
-          "agent_callable": {"type": "boolean"}
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "agent_callable": {
+            "type": "boolean"
+          }
         }
       }
     },
-    "tools": {"type": "boolean"},
+    "tools": {
+      "type": "boolean"
+    },
+    "delivery": {
+      "type": "boolean",
+      "description": "Explicit opt-in to exact reply_parts in turn.finished and scoped one-time delivery candidates. Expression modes and algorithms remain in the extension. Does not authorize sending; delivery.check must also be declared and registered for follow-up dispatch."
+    },
     "budget": {
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "model_calls": {"type": "integer", "minimum": 0, "maximum": 128},
-        "output_tokens": {"type": "integer", "minimum": 0, "maximum": 1048576}
+        "model_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 128
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048576
+        }
       }
     },
-    "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 60000},
-    "required": {"type": "boolean"}
-  }
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 60000
+    },
+    "required": {
+      "type": "boolean"
+    },
+    "state_version": {
+      "type": "integer",
+      "const": 2
+    },
+    "storage_schema": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,62}$"
+    },
+    "storage_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "state_operations": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "enum": [
+              "global",
+              "space",
+              "actor"
+            ]
+          },
+          "model": {
+            "type": "boolean"
+          },
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "input_schema"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "context_analysis": {
+      "type": "boolean",
+      "default": false,
+      "description": "Explicit bounded no-tool adopted-input analysis; user authorization separately required."
+    },
+    "scheduled_generation": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "contains": {
+              "const": "delivery.check"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "delivery"
+        ],
+        "properties": {
+          "delivery": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "context_analysis"
+            ],
+            "properties": {
+              "context_analysis": {
+                "const": true
+              }
+            }
+          },
+          {
+            "required": [
+              "scheduled_generation"
+            ],
+            "properties": {
+              "scheduled_generation": {
+                "const": true
+              }
+            }
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "state",
+          "state_version",
+          "passive_context",
+          "budget"
+        ],
+        "properties": {
+          "state": {
+            "const": true
+          },
+          "passive_context": {
+            "const": true
+          },
+          "budget": {
+            "required": [
+              "model_calls",
+              "output_tokens"
+            ],
+            "properties": {
+              "model_calls": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "output_tokens": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

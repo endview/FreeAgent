@@ -13,6 +13,23 @@ The [AffectWeave Go package](https://github.com/endview/affectweave/releases/tag
 is distributed separately and disabled by default.
 [简体中文](README.zh-CN.md).
 
+The **v8.5.0-dev.1 development candidate** adds Telegram native rich text,
+typing, scoped stickers/reactions, per-model reasoning controls, an optional
+experience-summary Skill, and ordered replies with explicitly authorized
+one-time follow-ups. See [current validation](docs/VALIDATION_V8_5_2026-11-08.md),
+[reply delivery](docs/REPLY_DELIVERY.md), and
+[experience summary](docs/EXPERIENCE_SUMMARY.md). The published release link
+above remains unchanged; upgrading does not enable autonomous sending.
+
+The current workspace is **v8.6.0-dev.1**, a lightweight Core boundary refactor.
+Source-analysis methods are optional Skills; extension state uses a neutral,
+scoped contract and declared storage schema; platform formatting/actions stay
+in the independent channel program. Matching versions: AffectWeave 1.1.0-dev.1,
+experience-summary Skill 0.1.1, channel wire 3. See the
+[executed checks and limitations](docs/VALIDATION_V8_6_2026-11-08.md) and
+[extension principles](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md).
+The GitHub download links above still refer to the published release.
+
 The [v8.0.1–v8.3 plan](docs/FREEAGENT_V8_0_1_TO_V8_3_DEVELOPMENT_PLAN_2026-11-06.md)
 and [actual progress](docs/FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)
 separate implemented behavior, executed checks and remaining device/live tests.
@@ -102,7 +119,8 @@ opens the same local Chat in the default browser and shows a stop prompt.
 Some Windows 10 installations need the WebView2 Runtime installed separately.
 
 Requires Go 1.26.5 to build; the executable needs no Go installation.
-Extension authors can start with the [extension development guide](docs/EXTENSION_DEVELOPMENT_GUIDE.md)
+Extension authors should start with the [lightweight Core principles](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md),
+then use the [development guide](docs/EXTENSION_DEVELOPMENT_GUIDE.md)
 and the existing [Extension Kit](extension-kit/README.md).
 The checked-in Chat assets are embedded. After editing frontend source, use
 Node 24 and pnpm to install the locked dependencies and rebuild before Go:
@@ -371,3 +389,7 @@ Read [Configuration](docs/CONFIGURATION.md), [Recovery](docs/RECOVERY.md),
 
 Licensed under AGPL-3.0-only. See [LICENSE](LICENSE) and
 [Third-party notices](THIRD_PARTY_NOTICES.md).
+
+### v8.7 development candidate
+
+Optional extensions can request explicitly authorized, bounded input analysis and scheduled generation. Both default off; character policy remains in AffectWeave. Core reuses Run/Attempt, confirmation and the channel outbox, with no personality dependency or always-on scheduler. See [execution contract](docs/SUPPLEMENTAL_EXTENSION_EXECUTION.md) and [validation](docs/VALIDATION_V8_7_2026-11-08.md).

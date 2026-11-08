@@ -6,17 +6,23 @@ export function Choice({
   label,
   options,
   disabled = false,
+  prefix = "",
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
   options: [string, string][];
   disabled?: boolean;
+  prefix?: string;
 }) {
   return (
     <Select.Root value={value} onValueChange={onChange} disabled={disabled}>
       <Select.Trigger aria-label={label} className="choice">
-        <Select.Value />
+        <Select.Value>
+          {prefix
+            ? prefix + (options.find(([id]) => id === value)?.[1] || value)
+            : undefined}
+        </Select.Value>
         <Select.Icon>
           <ChevronDown size={14} />
         </Select.Icon>

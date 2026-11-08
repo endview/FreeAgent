@@ -1,5 +1,9 @@
 {
   "config_fields": {
+    "delivery.sticker_limit": "delivery",
+    "delivery.interval_ms": "delivery",
+    "delivery.enabled": "delivery",
+    "delivery.rules": "delivery",
     "attachments.jpeg": "attachments",
     "attachments.max_batch_bytes": "attachments",
     "attachments.max_export_bytes": "attachments",
@@ -99,6 +103,12 @@
     "models.$id.capabilities.output_tokens": "providers",
     "models.$id.capabilities.parallel_tools": "providers",
     "models.$id.capabilities.protocol": "providers",
+    "models.$id.capabilities.reasoning.control": "providers",
+    "models.$id.capabilities.reasoning.efforts": "providers",
+    "models.$id.capabilities.reasoning.default.mode": "providers",
+    "models.$id.capabilities.reasoning.default.effort": "providers",
+    "models.$id.capabilities.reasoning.auxiliary.mode": "providers",
+    "models.$id.capabilities.reasoning.auxiliary.effort": "providers",
     "models.$id.capabilities.streaming": "providers",
     "models.$id.capabilities.strength": "providers",
     "models.$id.capabilities.token_limit": "providers",
@@ -152,9 +162,13 @@
     "tools.memory": "tools",
     "tools.network": "tools",
     "version": "metadata",
-    "workspace": "general"
+    "workspace": "general",
+    "delivery.generation_enabled": "delivery"
   },
   "control_operations": {
+    "delivery.set_policy": "delivery",
+    "delivery.schedule": "delivery",
+    "skills.publish": "skills",
     "attachments.delete": "attachments",
     "attachments.set_policy": "attachments",
     "auto.set_policy": "advanced",
@@ -211,6 +225,7 @@
     "space.set_multi": "spaces",
     "space.set_permission": "spaces",
     "telegram.set_access": "channels",
+    "telegram.set_sticker_sets": "conversation",
     "tools.set_enabled": "tools"
   }
 }

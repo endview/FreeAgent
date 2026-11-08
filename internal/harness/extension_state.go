@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/endview/freeagent/internal/postgres"
@@ -17,24 +16,22 @@ func extensionStoragePath(data, id string) string {
 }
 
 type ExtensionStateScope struct {
-	CoreID  string `json:"core_id"`
-	SpaceID string `json:"space_id"`
-	RoleID  string `json:"role_id"`
-	ActorID string `json:"actor_id"`
+	CoreID   string `json:"core_id"`
+	SpaceID  string `json:"space_id"`
+	Resource string `json:"resource,omitempty"`
+	ActorID  string `json:"actor_id"`
 }
 type ExtensionStateChange struct {
-	ID               string              `json:"id"`
-	Scope            ExtensionStateScope `json:"scope"`
-	Action           string              `json:"action"`
-	ExpectedRevision int64               `json:"expected_revision"`
-	Persona          json.RawMessage     `json:"persona,omitempty"`
-	Spaces           []string            `json:"spaces,omitempty"`
-	SourceID         string              `json:"source_id,omitempty"`
-	Proposal         json.RawMessage     `json:"proposal,omitempty"`
-	Decision         json.RawMessage     `json:"decision,omitempty"`
-	Outcome          json.RawMessage     `json:"outcome,omitempty"`
-	MemoryID         string              `json:"memory_id,omitempty"`
+	ID               string                `json:"id"`
+	Scope            ExtensionStateScope   `json:"scope"`
+	Action           string                `json:"action"`
+	ExpectedRevision int64                 `json:"expected_revision"`
+	Payload          json.RawMessage       `json:"payload"`
+	Contract         int                   `json:"contract,omitempty"`
+	DeclarationHash  string                `json:"declaration_hash,omitempty"`
+	Origin           *ExtensionStateOrigin `json:"origin,omitempty"`
 }
+
 type extensionStatePreview struct {
 	Revision int64           `json:"revision"`
 	Before   json.RawMessage `json:"before"`
@@ -48,7 +45,7 @@ type extensionStateResult struct {
 	Revision    int64  `json:"revision"`
 }
 
-func (service *ControlService) validateModelExtensionSettings(raw json.RawMessage) error {
+func (service *ControlService) validateExtensionSettings(raw json.RawMessage, modelOnly bool) error {
 	var args struct {
 		ID       string         `json:"id"`
 		Settings map[string]any `json:"settings"`
@@ -59,6 +56,16 @@ func (service *ControlService) validateModelExtensionSettings(raw json.RawMessag
 	definition, err := service.core.extensions.definition(args.ID)
 	if err != nil {
 		return err
+	}
+	if !modelOnly {
+		if len(definition.Manifest.SettingsSchema) == 0 {
+			return nil
+		}
+		resolved, err := resolveToolSchema(definition.Manifest.SettingsSchema)
+		if err != nil {
+			return err
+		}
+		return resolved.Validate(args.Settings)
 	}
 	var schema struct {
 		Properties map[string]struct {
@@ -119,7 +126,11 @@ func (tasks *TaskService) extensionStateRPC(ctx context.Context, id, method stri
 	if err != nil {
 		return nil, err
 	}
-	if len(raw) > 256<<10 || !json.Valid(raw) {
+	limit := 256 << 10
+	if method == "state.read" {
+		limit = 512 << 10
+	}
+	if len(raw) > limit || !json.Valid(raw) {
 		return nil, errors.New("harness: invalid extension state result")
 	}
 	return raw, nil
@@ -127,16 +138,16 @@ func (tasks *TaskService) extensionStateRPC(ctx context.Context, id, method stri
 
 // ExtensionState is an explicit read. No process is started when an extension
 // is disabled, and the host binds all identities before sending the request.
-func (tasks *TaskService) ExtensionState(ctx context.Context, id, chatID, role, actor string, spaces ...string) (json.RawMessage, error) {
+func (tasks *TaskService) ExtensionState(ctx context.Context, id, chatID, resource, actor string, spaces ...string) (json.RawMessage, error) {
 	space := ""
 	if len(spaces) > 0 {
 		space = spaces[0]
 	}
-	scope, err := tasks.extensionScope(ctx, chatID, ExtensionStateScope{RoleID: role, ActorID: actor, SpaceID: space})
+	scope, err := tasks.extensionScope(ctx, chatID, ExtensionStateScope{Resource: resource, ActorID: actor, SpaceID: space})
 	if err != nil {
 		return nil, err
 	}
-	return tasks.extensionStateRPC(ctx, id, "state.read", map[string]any{"scope": scope})
+	return tasks.extensionStateRPC(ctx, id, "state.read", map[string]any{"scope": scope, "settings": tasks.Config().Extensions.Settings[id]})
 }
 func (tasks *TaskService) extensionScope(ctx context.Context, chatID string, scope ExtensionStateScope) (ExtensionStateScope, error) {
 	if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='core/id'`).Scan(&scope.CoreID); err != nil {
@@ -160,13 +171,13 @@ func (tasks *TaskService) extensionScope(ctx context.Context, chatID string, sco
 	if scope.ActorID == "" {
 		scope.ActorID = "owner"
 	}
-	if scope.RoleID!=""&&!validCapabilityID(scope.RoleID) || scope.ActorID != "owner" && !validPersonID(scope.ActorID) {
+	if scope.Resource != "" && !validCapabilityID(scope.Resource) || scope.ActorID != "owner" && !validPersonID(scope.ActorID) {
 		return scope, ErrPermissionDenied
 	}
 	return scope, nil
 }
 
-func (service *ControlService) buildExtensionState(ctx context.Context, record *controlRecord) error {
+func (service *ControlService) buildExtensionState(ctx context.Context, record *controlRecord, originRun string) error {
 	tasks := NewTaskService(service.core)
 	if record.Operation.Kind == ControlInitExtensionStorage {
 		var args struct {
@@ -188,8 +199,8 @@ func (service *ControlService) buildExtensionState(ctx context.Context, record *
 		resource := "extensions.storage:" + args.ID
 		record.Operation.ResourceIDs = []string{resource}
 		record.Before = map[string]json.RawMessage{resource: mustJSON(false)}
-		record.After = map[string]json.RawMessage{resource: mustJSON(true)}
-		record.Operation.Preview = "Initialize a separate restricted PostgreSQL database for " + args.ID + ". Existing Core data is retained."
+		record.After = map[string]json.RawMessage{resource: mustJSON([]string{definition.Manifest.StorageSchema, definition.Manifest.StorageVersion})}
+		record.Operation.Preview = "Initialize a separate restricted PostgreSQL database for " + args.ID + ", schema " + definition.Manifest.StorageSchema + ", storage format " + definition.Manifest.StorageVersion + ". Existing Core data is retained."
 		record.Operation.RevertClass = "none"
 		return nil
 	}
@@ -200,39 +211,8 @@ func (service *ControlService) buildExtensionState(ctx context.Context, record *
 	if !validExtensionID(args.ID) || len(record.Arguments) > 64<<10 || args.Action == "" {
 		return errors.New("harness: invalid extension state change")
 	}
-	scope, err := tasks.extensionScope(ctx, record.Operation.ConversationID, args.Scope)
-	if err != nil {
+	if err := service.validateExtensionChange(ctx, record, &args, originRun); err != nil {
 		return err
-	}
-	args.Scope = scope
-	if record.Operation.Authorization == ControlModelProposed {
-		chat, err := tasks.core.Store.GetConversation(ctx, record.Operation.ConversationID)
-		if err != nil {
-			return err
-		}
-		// Models from external spaces cannot edit global role definitions or
-		// target another person, even if a crafted argument claims an identity.
-		if strings.HasSuffix(args.Action, "role") && chat.SpaceID != LocalSpaceID {
-			return ErrPermissionDenied
-		}
-		if chat.SpaceID != LocalSpaceID {
-			var runID string
-			if err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT id FROM fa.runs WHERE conversation_id=$1 AND status='running' ORDER BY created_at DESC,id DESC LIMIT 1`, chat.ID).Scan(&runID); err != nil {
-				return ErrPermissionDenied
-			}
-			run, err := tasks.core.Store.GetRun(ctx, runID)
-			if err != nil {
-				return err
-			}
-			identity, err := tasks.core.extensionIdentity(ctx, run)
-			if err != nil {
-				return err
-			}
-			actor := identity.Inputs[len(identity.Inputs)-1].ActorID
-			if args.Scope.ActorID != actor {
-				return ErrPermissionDenied
-			}
-		}
 	}
 	raw, err := tasks.extensionStateRPC(ctx, args.ID, "state.preview", args)
 	if err != nil {
@@ -258,7 +238,14 @@ func (service *ControlService) initExtensionStorage(ctx context.Context, record 
 	if json.Unmarshal(record.Arguments, &args) != nil || !validExtensionID(args.ID) {
 		return ErrPermissionDenied
 	}
-	return postgres.ProvisionExtension(ctx, service.core.Store.DataDir(), extensionStoragePath(service.core.Store.DataDir(), args.ID))
+	definition, err := service.core.extensions.definition(args.ID)
+	if err != nil {
+		return err
+	}
+	if string(record.After["extensions.storage:"+args.ID]) != string(mustJSON([]string{definition.Manifest.StorageSchema, definition.Manifest.StorageVersion})) {
+		return ErrControlStaleRevision
+	}
+	return postgres.ProvisionExtension(ctx, service.core.Store.DataDir(), extensionStoragePath(service.core.Store.DataDir(), args.ID), args.ID, definition.Manifest.StorageSchema, definition.Manifest.StorageVersion)
 }
 func (service *ControlService) applyExtensionState(ctx context.Context, record *controlRecord) error {
 	if record.ExtensionDispatched {
@@ -268,6 +255,21 @@ func (service *ControlService) applyExtensionState(ctx context.Context, record *
 	if json.Unmarshal(record.Arguments, &args) != nil {
 		return ErrControlStaleRevision
 	}
+	if err := service.validateExtensionChange(ctx, record, &args, ""); err != nil {
+		return err
+	}
+	if string(mustJSON(args)) != string(record.Arguments) {
+		return ErrControlStaleRevision
+	}
+	rawPreview, err := NewTaskService(service.core).extensionStateRPC(ctx, args.ID, "state.preview", args)
+	if err != nil {
+		return err
+	}
+	var current extensionStatePreview
+	resource := "extensions.state:" + args.ID + ":" + contentHash(mustJSON(args.Scope))
+	if json.Unmarshal(rawPreview, &current) != nil || current.Revision != args.ExpectedRevision || string(current.Before) != string(record.Before[resource]) || string(current.After) != string(record.After[resource]) {
+		return ErrControlStaleRevision
+	}
 	// Persist before sending. A crash at any later point can only query the
 	// original result, never automatically issue another state.apply.
 	record.ExtensionDispatched = true
@@ -275,6 +277,12 @@ func (service *ControlService) applyExtensionState(ctx context.Context, record *
 		return err
 	}
 	service.operations[record.Operation.ID] = *record
+	service.core.Store.telegramMu.Lock()
+	revokeErr := NewTaskService(service.core).invalidateExtensionWakes(ctx, args.ID, args.Scope.Resource)
+	service.core.Store.telegramMu.Unlock()
+	if revokeErr != nil {
+		return revokeErr
+	}
 	raw, err := NewTaskService(service.core).extensionStateRPC(ctx, args.ID, "state.apply", map[string]any{"operation_id": record.Operation.ID, "digest": record.Operation.Digest, "change": args})
 	if err != nil {
 		if workflowOutcomeUnknown(err) {
@@ -288,6 +296,7 @@ func (service *ControlService) applyExtensionState(ctx context.Context, record *
 	}
 	record.ResultData = raw
 	return nil
+
 }
 
 // ReconcileExtensionChange only reads the result of an already authorized

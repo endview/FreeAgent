@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
 import { ApprovalView } from "./ApprovalView";
 import { Button } from "./ui/button";
@@ -29,6 +29,17 @@ export function ControlPreview({
     [code, setCode] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const signature = JSON.stringify([kind, args]);
+  const currentSignature = useRef(signature),
+    previewSignature = useRef(signature);
+  currentSignature.current = signature;
+  useEffect(() => {
+    if (previewSignature.current !== signature) {
+      setOperation(null);
+      setCode("");
+      previewSignature.current = signature;
+    }
+  }, [signature]);
   useEffect(() => {
     let disposed = false;
     setCode("");
@@ -50,12 +61,15 @@ export function ControlPreview({
   async function preview() {
     setBusy(true);
     setError("");
+    const requestedSignature = currentSignature.current;
     try {
-      setOperation(
-        decodeControlOperation(
-          await api<unknown>("control/plan", { kind, arguments: args }),
-        ),
+      const next = decodeControlOperation(
+        await api<unknown>("control/plan", { kind, arguments: args }),
       );
+      if (currentSignature.current === requestedSignature) {
+        previewSignature.current = requestedSignature;
+        setOperation(next);
+      }
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -64,6 +78,11 @@ export function ControlPreview({
   }
   async function decide(approved: boolean) {
     if (!operation) return;
+    if (previewSignature.current !== currentSignature.current) {
+      setOperation(null);
+      setCode("");
+      return;
+    }
     setBusy(true);
     setError("");
     try {

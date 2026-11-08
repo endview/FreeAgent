@@ -15,16 +15,20 @@ var ErrQueuePaused = errors.New("harness: input queue is paused; inspect and res
 var ErrInputNotPending = errors.New("harness: input has already been sent or cancelled; inspect its saved state")
 
 type InputCommand struct {
-	Action      string   `json:"action"`
-	RunID       string   `json:"run_id,omitempty"`
-	RequestKey  string   `json:"request_key"`
-	Prompt      string   `json:"prompt"`
-	Attachments []string `json:"attachments,omitempty"`
+	Capabilities *CapabilitySelection `json:"capabilities,omitempty"`
+	ModelID      string               `json:"model_id,omitempty"`
+	Reasoning    *ReasoningSelection  `json:"reasoning,omitempty"`
+	Action       string               `json:"action"`
+	RunID        string               `json:"run_id,omitempty"`
+	RequestKey   string               `json:"request_key"`
+	Prompt       string               `json:"prompt"`
+	Attachments  []string             `json:"attachments,omitempty"`
 }
 
 // Only sequence, disposition and authorization bindings are stored in meta.
 // User content remains in messages; there are no placeholder Runs or jobs.
 type PendingInput struct {
+	Reasoning      *ReasoningSelection  `json:"reasoning,omitempty"`
 	AdoptedAt      string               `json:"adopted_at,omitempty"`
 	ProfileHash    string               `json:"profile_hash"`
 	Key            string               `json:"key"`
@@ -79,6 +83,14 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 	if ctx == nil || tasks == nil || tasks.core == nil || (command.Action != "steer" && command.Action != "queue") || command.RequestKey == "" || len(command.RequestKey) > 128 || strings.TrimSpace(command.Prompt) == "" || len(command.Prompt) > tasks.Config().MaxContextBytes {
 		return PendingInput{}, ErrRequestKey
 	}
+	if prior, err := tasks.core.Store.GetLatestRun(ctx, chat); err == nil {
+		var snap runSnapshot
+		if json.Unmarshal([]byte(prior.ConfigJSON), &snap) == nil && snap.ExtensionTrigger != nil && prior.Status == "running" {
+			tasks.CancelConversation(chat)
+			command.Action = "queue"
+			command.RunID = ""
+		}
+	}
 	conversation, err := tasks.core.Store.GetConversation(ctx, chat)
 	if err != nil {
 		return PendingInput{}, err
@@ -112,6 +124,12 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 	if err != nil {
 		return PendingInput{}, err
 	}
+	if command.ModelID != "" {
+		if command.Action != "queue" {
+			return PendingInput{}, errors.New("harness: guidance cannot change the running model")
+		}
+		id = command.ModelID
+	}
 	if id == "auto" && command.Action == "queue" {
 		return PendingInput{}, errors.New("harness: choose an explicit model before queueing input so its binding can be retained")
 	}
@@ -122,6 +140,14 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 	if err != nil {
 		return PendingInput{}, err
 	}
+	if command.Reasoning != nil {
+		if command.Action == "steer" {
+			return PendingInput{}, errors.New("harness: reasoning changes apply to a new task, not running-task guidance")
+		}
+		if _, _, err := binding.Config.Capabilities.Reasoning.parameters(*command.Reasoning, binding.Config.EffectiveCapabilities().Protocol); err != nil {
+			return PendingInput{}, err
+		}
+	}
 	refs, err := tasks.resolveAttachments(ctx, chat, command.Attachments)
 	if err != nil {
 		return PendingInput{}, err
@@ -130,8 +156,24 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 	if err != nil {
 		return PendingInput{}, err
 	}
+	if command.Capabilities != nil {
+		if command.Action != "queue" {
+			return PendingInput{}, errors.New("harness: capabilities apply to a new task, not running-task guidance")
+		}
+		caps = command.Capabilities.normalize()
+	}
+	if err := caps.validate(core.Config); err != nil {
+		return PendingInput{}, err
+	}
+	if err := core.validateCapabilitySettings(caps); err != nil {
+		return PendingInput{}, err
+	}
 	safety := string(mustJSON(core.Config))
 	input := PendingInput{Key: command.RequestKey, Action: command.Action, Status: "pending", ConversationID: chat, TargetRun: command.RunID, Principal: principal, CreatedAt: nowText(), Binding: binding, ConfigHash: contentHash([]byte(safety)), Permission: core.permission.Mode, Attachments: refs, Channel: options.channel, Person: options.personID, Capabilities: &caps}
+	if command.Reasoning != nil {
+		selection := *command.Reasoning
+		input.Reasoning = &selection
+	}
 	if remote, ok := PublicEntryFrom(ctx); ok {
 		input.Remote = &remote
 	}
@@ -159,7 +201,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 		if json.Unmarshal([]byte(body), &message) != nil {
 			return old, ErrStoreFormat
 		}
-		if old.Principal != principal || old.Action != command.Action || old.TargetRun != command.RunID || message.Content != command.Prompt || string(mustJSON(old.Attachments)) != string(mustJSON(refs)) {
+		if old.Principal != principal || old.Action != command.Action || old.TargetRun != command.RunID || message.Content != command.Prompt || string(mustJSON(old.Attachments)) != string(mustJSON(refs)) || string(mustJSON(old.Reasoning)) != string(mustJSON(input.Reasoning)) || command.ModelID != "" && old.Binding.ID != binding.ID || command.Capabilities != nil && string(mustJSON(old.Capabilities)) != string(mustJSON(input.Capabilities)) {
 			return old, ErrRequestKey
 		}
 		old.Prompt = message.Content
@@ -395,6 +437,9 @@ func (tasks *TaskService) SteerInput(ctx context.Context, chat, key, runID strin
 	if run.Status != "running" {
 		return input, ErrInputTargetEnded
 	}
+	if input.Reasoning != nil {
+		return input, errors.New("harness: queued reasoning choices apply to a new Run; remove the override before using guidance")
+	}
 	if input.Person != "" && (run.Permission == nil || run.Permission.PersonID != input.Person || input.Channel == nil || channelOriginFromJSON(run.ConfigJSON) == nil || channelOriginFromJSON(run.ConfigJSON).ChannelTarget != input.Channel.ChannelTarget) {
 		return PendingInput{}, ErrPermissionDenied
 	}
@@ -494,7 +539,7 @@ func (tasks *TaskService) RunQueued(ctx context.Context, chat string) (RunResult
 	}
 	off := DefaultCollaborationSettings()
 	off.Mode = "off"
-	return tasks.submitWithOptions(ctx, chat, input.Key, message.Content, RunOptions{inputKey: input.Key, ModelID: input.Binding.ID, Permission: input.Permission, ConfirmFullAccess: true, Attachments: ids, channel: input.Channel, personID: input.Person, Capabilities: input.Capabilities, Collaboration: &off})
+	return tasks.submitWithOptions(ctx, chat, input.Key, message.Content, RunOptions{inputKey: input.Key, ModelID: input.Binding.ID, Permission: input.Permission, ConfirmFullAccess: true, Attachments: ids, channel: input.Channel, personID: input.Person, Capabilities: input.Capabilities, Collaboration: &off, Reasoning: input.Reasoning})
 }
 
 func (tasks *TaskService) validateQueuedInput(ctx context.Context, chat string, input PendingInput) (*Service, error) {

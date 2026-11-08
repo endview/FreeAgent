@@ -347,6 +347,12 @@ func (inv configInvocation) modelPlan(ctx context.Context, dataDir string, curre
 		if !visited["web-search"] && suggested.WebSearch != "" {
 			model.Capabilities.WebSearch = suggested.WebSearch
 		}
+		if !visited["reasoning-control"] && model.Capabilities.Reasoning.Control == "" {
+			model.Capabilities.Reasoning.Control = suggested.Reasoning.Control
+		}
+		if !visited["reasoning-efforts"] && model.Capabilities.Reasoning.Efforts == "" {
+			model.Capabilities.Reasoning.Efforts = suggested.Reasoning.Efforts
+		}
 	}
 	return marshalControlArgs(harness.ControlSetModelProfile, map[string]any{
 		"id": inv.ModelID, "provider": model.Provider, "key": model.Key, "model": model.Model,

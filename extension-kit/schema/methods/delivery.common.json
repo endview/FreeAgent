@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "rule_id",
+        "after",
+        "expires"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Stable source key; Core enforces at most 128 UTF-8 bytes and rejects control characters."
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Enabled rule for this extension and original conversation."
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 32768,
+          "description": "At most 32 KiB UTF-8 and one rendered Telegram message; cannot contain credentials."
+        },
+        "sticker_ref": {
+          "type": "string",
+          "description": "Nonexpired Core resource reference from this target and conversation; never a raw Telegram file ID."
+        },
+        "after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Absolute RFC3339 time with offset, within the rule's max_delay_seconds; at most five seconds in the past when validated."
+        },
+        "expires": {
+          "type": "string",
+          "format": "date-time",
+          "description": "After both now and after, and at most 24 hours after after."
+        },
+        "timezone": {
+          "type": "string",
+          "description": "Optional for extension proposals: Core uses the authorized rule's timezone."
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 1024,
+          "description": "At most 1024 UTF-8 bytes; included in the frozen candidate digest."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "text"
+          ],
+          "properties": {
+            "text": {
+              "minLength": 1
+            },
+            "sticker_ref": {
+              "const": ""
+            }
+          }
+        },
+        {
+          "required": [
+            "sticker_ref"
+          ],
+          "properties": {
+            "sticker_ref": {
+              "minLength": 1
+            },
+            "text": {
+              "const": ""
+            }
+          }
+        }
+      ]
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "state",
+        "suppressed_reason",
+        "message_id",
+        "sent",
+        "after_ms",
+        "expires_ms"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "state": {
+          "type": "string"
+        },
+        "suppressed_reason": {
+          "type": "string"
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "sent": {
+          "type": "boolean",
+          "description": "True only for state sent; does not prove user receipt or satisfaction."
+        },
+        "after_ms": {
+          "type": "integer",
+          "description": "Current not-before time as Unix milliseconds, not a relative delay."
+        },
+        "expires_ms": {
+          "type": "integer",
+          "description": "Expiry as Unix milliseconds."
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reply",
+        "rule_ids",
+        "max_text_parts",
+        "max_stickers"
+      ],
+      "properties": {
+        "reply": {
+          "const": true
+        },
+        "rule_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_text_parts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "max_stickers": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "wake_rule_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resources": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "reactions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

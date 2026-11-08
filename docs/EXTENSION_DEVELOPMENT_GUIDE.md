@@ -1,8 +1,12 @@
 # FreeAgent 扩展开发指南
 
-核对日期：2026-11-07。代码基线：FreeAgent v8.3.0-dev.1 开发候选；下述命令按已实现代码说明。现行协议：`freeagent-ext/1`。
+核对日期：2026-11-08。代码基线：当前工作区开发候选；下述命令按已实现代码说明。现行协议：`freeagent-ext/1`。
 
-本指南说明现行工具、上下文、状态和持久确认接口。AffectWeave 的已实现增量见第 11 节；验收范围与外部条件不足的项目分开记录。
+本指南说明现行工具、上下文、状态、持久确认和交付接口。可选状态增量见第 11 节，扩展交付契约见第 14 节；验收范围与外部条件不足的项目分开记录。
+
+设计和修改扩展前先阅读[扩展开发原则：保持 Core 轻量](EXTENSION_DEVELOPMENT_PRINCIPLES.md)。该文档规定职责、依赖、按需启用和验收边界，并记录本次整改；本指南继续描述实际可调用接口。
+
+本轮整改见[轻内核整改实施计划](FREEAGENT_CORE_BOUNDARY_REFACTOR_PLAN_2026-11-08.md)。当前工作区已实现通用来源分析、状态契约 v2 与单 schema 绑定；最终平台与归档结果由对应验收记录单独给出。
 
 ## 1. 先选最小接入方式
 
@@ -129,7 +133,7 @@ Core 首次使用时启动进程，发送：
 {"jsonrpc":"2.0","id":"init-1","result":{"id":"com.example.context","version":"0.1.0","provides":["context"],"events":[],"workflows":[]}}
 ```
 
-`provides` 只列实际实现的 `context`、`workflow`、`tools`；事件和工作流名称也要与 manifest 对齐。`host_version` 用于诊断，当前兼容检查以协议为准；未来新增必需能力必须明确校验，不能因版本字符串更大就假定支持。
+`provides` 只列实际实现的 `context`、`workflow`、`tools`、`state`、`delivery`；后两项各需 manifest 显式声明，事件和工作流名称也要对齐。`host_version` 用于诊断，当前兼容检查以协议为准；不能因版本字符串更大就假定支持某项能力。
 
 同一宿主会复用配置签名相同且健康的进程；manifest、settings、环境映射或工作区改变可能导致下次使用重建。不得依赖进程内存实现持久连续性，也不要假定一个进程只服务一个会话。
 
@@ -142,6 +146,7 @@ Core 首次使用时启动进程，发送：
 | `context.prepare` | `invocation`、phase、purpose、可选 step、settings、data_dir 和 needs 选出的字段 | `blocks`：稳定 ID、text、placement、label、priority；不是工具执行结果 |
 | `turn.finished` | 已结算 status/output，输出最多 64 KiB；run_id、conversation_id 及所选上下文 | 可选 `activity`，只用于显示，不是交付证明 |
 | `operation.check` | 有界、脱敏的 kind/target/preview/parameters/items | `decision: allow/ask/deny` 与 reason；纯检查，不修改参数 |
+| `delivery.check` | 新 invocation、原 Run 的 identity、固定候选 id/key/rule_id/text/kind/expires_ms | 严格 `{allow: boolean}`；只复核是否仍适用，不生成或改写候选，详见第 14 节 |
 | `workflow.run` | invocation、name、对象 input、settings 与所选上下文 | 字符串 `output`、可选 activity |
 | `tools/list` | 发现请求 | tools 列表：name、description、inputSchema、readOnly |
 | `tool.call` | invocation、name、对象 arguments | 字符串 `content`、布尔 `is_error`、可选 activity |
@@ -169,6 +174,9 @@ Core 首次使用时启动进程，发送：
 | `tool.call` | name 与 arguments（也接受 args）；走现有工具与权限边界，不能递归调用其他扩展工具 |
 | `task.delegate` | 现有前台协作；每个活跃 Run 一次计划，受父/子预算约束，子任务不能再扩展递归或自行重规划 |
 | `activity.report` | 有界进度/说明；不构成文件写入、发送完成或用户已读证据 |
+| `delivery.resources` | 当前 Telegram 目标/会话已记住的非过期贴纸引用，最多 12 项 |
+| `delivery.propose` | 在已授权规则内提出一次固定文字或贴纸；受理不等于已发 |
+| `delivery.read` / `delivery.withdraw` | 查询/撤回本扩展在原会话中的候选；撤回仅限尚无派发尝试的 scheduled/reviewing/pending 项 |
 
 模型请求示例：
 
@@ -191,6 +199,8 @@ Host 每个扩展进程最多同时处理 16 个请求；这不表示小型 SDK 
 | `-32004` | 宿主能力不可用；显示缺少的前提，不静默换模型/服务 |
 | `-32005` | invocation 无效或过期；不能换一个 token 猜测重试 |
 | `-32006` | 结果未知，保留 UNKNOWN；禁止无证据重新执行副作用 |
+| `-32020` | delivery.propose 验证失败，包括同一来源 key 携带不同候选内容；不要换 key 隐式重发 |
+| `-32602` | 发给 Host 的交付字段名或候选结构无效 |
 
 ## 8. 安装、启用、配置与会话选择
 
@@ -262,26 +272,26 @@ fixture 的 `expect` 按列出的顶层字段比较 JSON，不是通用 JSONPath
 
 发布包需要固定源码/依赖、许可证、准确的最低宿主要求、运行时说明、启用/停用/更新/备份/卸载步骤。Windows 与 Debian 12 分别从新目录验证，不要求用户全局安装构建工具；不在启动时 pip/npm install。停用不等于删除数据，更新不覆盖 data。
 
-## 11. v8.3 已实现的可选状态扩展
+## 11. 可选状态扩展：state v2
 
-完整字段与状态表见 [宿主契约](AFFECTWEAVE_HOST_CONTRACT_V8_3.md)。没有新增 Go SDK；其他语言继续使用相同 NDJSON。
+通用字段与升级规则见 [状态契约 v2](EXTENSION_STATE_CONTRACT_V2.md)；人物语义见 [AffectWeave 宿主说明](AFFECTWEAVE_HOST_CONTRACT_V8_3.md)。没有新增 Go SDK；其他语言继续使用相同 NDJSON。
 
 | manifest/字段 | 已实现行为 |
 | --- | --- |
-| `state: true` | initialize 可以声明 state；宿主调用 state.read/preview/apply/result |
-| `storage: "postgresql"` | 用户显式 extensions.init_storage 后创建独立库和受限角色；宿主只交付 FREEAGENT_EXTENSION_PG_FILE，未初始化不临时降级 |
-| `passive_context: true` | 可为 None 聊天注入已授权人物片段；不能有工具/工作流/模型预算/私有历史 needs，Host 仅允许 activity.report |
+| `state: true`、`state_version: 2`、`state_operations` | initialize 必须回报同一状态修订；操作显式声明 global/space/actor、是否允许模型提出及封闭 payload schema |
+| `storage: "postgresql"`、`storage_schema`、`storage_version` | 用户显式 extensions.init_storage 后创建独立库和受限角色；宿主只交付 FREEAGENT_EXTENSION_PG_FILE，未初始化不临时降级 |
+| `passive_context: true` | 可为 None 聊天注入已授权人物片段；不能有工具/工作流/模型预算/私有历史 needs。未声明 delivery 时 Host 仅允许 activity.report；显式声明后另可用第 14 节的受限交付方法，仍无模型/工具/委派权限 |
 | `model_settings` | 列出 settings_schema 中允许 AI 提案的标量字段；未列出和 env_from 保持用户专用 |
 | `identity.adopted_inputs` | Core/空间/会话/Run，以及已采用消息“会话ID/序号”、可信参与者和时间；不包含排队未采用输入 |
-| `variant` | 现有 CapabilitySelection.extension_variants 中的本轮人物选择，冻结在原 Run |
+| `variant` | 现有 CapabilitySelection.extension_variants 中的本轮不透明资源选择；默认值由扩展解释，冻结在原 Run |
 | `facts` | 从原 Run/消息/渠道 delivery meta 有界补读；生成、部分、UNKNOWN 独立，不重发模型或工具 |
 
-`extensions.change_state` 参数包括 id、scope、action、expected_revision 和声明的具体 payload。Core 覆盖 core_id、限制会话范围，扩展负责角色授权/CAS；前端显示精确 before/after。CLI control plan/confirm 和 AI control_plan_change 使用同一控制面。任意扩展数据库 SQL 不向模型开放。
+`extensions.change_state` 参数包括 id、scope（space_id/resource/actor_id）、action、expected_revision 和声明的具体 payload。Core 覆盖 core_id、限制会话范围，扩展负责角色授权/CAS；前端显示精确 before/after。CLI control plan/confirm 和 AI control_plan_change 使用同一控制面。任意扩展数据库 SQL 不向模型开放。
 
 状态提交前 Core 持久记录派发意图；扩展事务内同时保存变更与原操作结果。回执丢失只调用 state.result 核对；同 ID 不同内容拒绝，不能确认时保留 UNKNOWN。使用 `control reconcile-extension --operation <原ID>` 核对；Run 内原 UNKNOWN 保留，后补已核实 receipt，模型与工具不重放。
 
 ```text
-freeagent ext state --id cc.endview.affectweave --role maya --space local --data-dir <data>
+freeagent ext state --id cc.endview.affectweave --resource maya --space local --data-dir <data>
 freeagent ext backup --id cc.endview.affectweave --to <new-paired-backup> --data-dir <data>
 freeagent ext verify-backup --from <paired-backup>
 freeagent ext restore --from <paired-backup> --data-dir <new-data> --package <matching-extension-folder>
@@ -323,3 +333,69 @@ python scripts/test-postgres.py --runtime output/postgresql-runtime/windows/pgsq
 ```
 
 该测试在新数据目录编译当前 Go 样例，经真实 stdio/Host/context.prepare 把标记送入模型请求，再关闭进程；没有真实 Provider 或生产数据库。Windows 和 Hytron Debian 12 的实际宿主测试均已运行通过。样例自身 race 测试通过。Go 版本与主仓库一致，不引入编译代码到 Core 或并行生产人物引擎。
+
+## 14. 当前已实现的扩展交付契约
+
+这是通用 Core 交付接口，不是人物引擎，也不证明某个人物扩展已实现主动表达策略。完整 wire 字段见 [SPEC](../extension-kit/SPEC.md#scoped-replies-and-one-time-delivery) 与 [方法 schema](../extension-kit/schema/methods/delivery.check.json)。
+
+扩展在 manifest 中声明 `"delivery":true`，自动跟进还须在 `events` 中声明 `delivery.check`；初始化返回的 `provides` 包含 `delivery`，`events` 包含相同事件。`ext check` 核对声明/注册，不执行主动投递。被动人物上下文不会自动获得这项能力。
+
+当前仅支持有真实 channel bridge 的原 Telegram Conversation/Run。`context.prepare` 和 `turn.finished` 在该作用域内会带：
+
+```json
+{"delivery":{"reply":true,"rule_ids":["follow"],"max_text_parts":3,"max_stickers":1}}
+```
+
+这是能力提示；`rule_ids` 仅列启用中的本扩展/本会话规则。没有规则时仍可在回合结束返回普通回复的具体分段。`workflow.run` 当前不携带这个对象。默认最多三段文字、一张贴纸；配置可将贴纸上限设为三。所有 Host 调用必须携带当前回调仍有效的 `invocation`。
+
+| 方法 | 发送给 Host 的其余字段 | 结果与边界 |
+| --- | --- | --- |
+| `delivery.resources` | 无 | `{total,offset:0,items}`；最多 12 个当前目标/会话已记住且未过期的贴纸引用。total 是本次返回数量；不接收 set、offset、limit |
+| `delivery.propose` | `candidate` | 固定的一次性候选，返回 Core receipt；不接受新联系人、任意目标、平台 entities 或生成范围 |
+| `delivery.read` | `id` | 查询本扩展在当前 invocation 会话中的候选；同会话的新 Run 可读取旧候选 |
+| `delivery.withdraw` | `id` | 仅 scheduled/reviewing/pending 且 attempts=0 时改为 cancelled；其他状态原样返回，不代表撤回已发送或 UNKNOWN 的内容 |
+
+**表达策略由扩展提供。** 普通 Core 不含 single/paragraphs 设置或自然段算法。扩展在 `turn.finished` 返回 `reply_parts`，例如 `{"reply_parts":["第一段。\n\n","第二段。"]}`。Host 只接受 completed 原回答的完整有序分区：每段为非空 UTF-8、最多三段、合计最多 64 KiB、拼接逐字节等于原输出。输出被回调预览截断时 delivery.reply=false。非法结果报告扩展错误并保留原回答；不是一次发送或送达证明。首次冻结前停用/卸载/更换版本恢复原回答，已冻结组保持原回执与顺序。
+
+复用既有 manifest 的 `model_settings` 与 `settings_schema`：白名单内的有限字符串选择（enum 或带 const/title 的 oneOf）可通过能力选择中的 `extension_settings` 按扩展 ID/字段名进行本轮覆盖。Host 校验字段、值和合并后的 schema，快照/队列保留明确选择；没有新配置库或插件 UI 运行时。GUI 只在扩展安装、启用并选中后显示这些普通选择器；CLI 使用 `run --capabilities <JSON>` 或交互 `/capabilities <JSON>`。持久默认值仍走 extensions.set_policy 与确认；AffectWeave 的默认方式和分段实现都在独立扩展仓库。已移除 reply.suggest 与内置模型 segment 动作。
+
+候选例子（时间须替换为当前规则允许的将来时间）：
+
+```json
+{"key":"followup-001","rule_id":"follow","text":"已确定的一次跟进内容。","after":"2026-11-09T09:00:00+08:00","expires":"2026-11-09T10:00:00+08:00","reason":"原事项的一次跟进"}
+```
+
+`key` 为 1–128 UTF-8 字节且不含控制字符；reason 最多 1024 字节。`text` 与 `sticker_ref` 必须恰有一个非空：文字最多 32 KiB 且能渲染成单条 Telegram 消息、不含凭据；贴纸引用必须在同目标/会话内未过期，并同时受规则与渠道开关允许。候选不接受任意文件 ID 或 URL。
+
+after/expires 使用带时区的绝对 RFC3339 时间。after 不能超过规则 max_delay_seconds（配置最多七天），校验时至多落后当前时间五秒；expires 必须晚于当前时间和 after，距 after 不超过 24 小时。扩展候选始终采用授权规则的 timezone，候选可选 timezone 不覆盖它。文字/贴纸、时间、理由等整个候选参与摘要；相同连接/会话/Run/扩展/key 的相同内容返回原 receipt，不同内容报 `-32020`。
+
+receipt 固定字段为 `id/state/suppressed_reason/message_id/sent/after_ms/expires_ms`。ID 是 64 位小写十六进制；两个时间为 Unix 毫秒，after_ms 是当前最早发送时刻。只有真实状态 sent 才返回 sent=true；UNKNOWN 不自动重发。Host 参数层只识别 invocation/candidate/id，未知字段名与候选未知字段报错；每个方法应按上表发送其实际使用字段。
+
+候选由 Core 保存，能超过提出它的回调寿命；invocation 在回调结束或取消时失效，扩展不可保存 token 后启动后台定时调用。新回调得到新 token。主动规则默认关闭，必须经过用户对具体扩展、会话、时区、静默、额度、冷却、期限和新输入取消条件的授权；控制入口为 `delivery.set_policy`。Full 或全局启用扩展都不等于这项授权。
+
+候选到期可复核时，Core 发送 `delivery.check`，顶层只有 `invocation`、原 Run 的 `identity`、`candidate`。候选仅含 id/key/rule_id/text/kind/expires_ms；贴纸候选 kind=sticker、text 为空，不另给 sticker_ref。不会提供普通 hook 的 settings/history/facts/variant 或新用户输入；扩展可用原 key 查自己的已存业务状态。
+
+复核只返回 `{"allow":true}` 或 `{"allow":false}`；额外字段、错误类型、缺失/false allow 均不能授权派发。超时为 manifest timeout 与五秒的较小值（manifest 默认两秒）。此 invocation **仅允许 activity.report、delivery.read、delivery.withdraw**；model.generate/embed、tool.call、task.delegate、再次 delivery.propose、delivery.resources 都在执行前返回 `-32004`。复核不能更新候选内容，也不创建新的模型/工具工作。
+
+Core 在复核前和实际派发前重验到期、渠道身份/授权版本、扩展开关、当前会话选择、完整规则摘要、新输入取消、静默、冷却和每日限额。复核返回 true 后发生撤权或新输入也不发送。缺失注册、超时、断管、拒绝会取消这次可选表达；进程中断留下的 reviewing 项有十秒租约，租约过期后取消而不重放复核。静默/冷却仅在未超候选期限时延后发送。
+
+每次 outbox poll 最多复核一个已到期的扩展候选，避免积压项的子进程超时在一次 poll 内累加；其他可复核项保持 scheduled，留待后续 poll。复核额度用尽后，本次有界扫描中的过期/取消检查仍会继续。
+
+真实子进程回归使用现有 TestMain/helper 和独立 PG：
+
+```powershell
+# 按 PostgreSQL 开发说明准备 runtime，设置 FREEAGENT_POSTGRES_RUNTIME。
+python scripts/test-postgres.py --runtime $env:FREEAGENT_POSTGRES_RUNTIME -- go test ./internal/harness -run '^TestExtensionDeliveryNDJSON' -count=1 -timeout=5m
+```
+
+测试覆盖真实提案、去重、只读/撤回、旧 invocation、allow/deny、坏响应、未注册能力/事件、进程退出/超时、复核前与复核期间失效、禁止模型/工具/委派/再提案、用户模式冲突时 accepted=false 且无 RPC 错误、每次 poll 最多一次复核且仍处理过期项，以及 UNKNOWN 不重发。它不调用真实 Provider 或 Telegram API，不访问生产数据；Linux 和人物策略验收需另行记录。
+
+## 15. 基于已选记录分析的 Skill
+
+只提供方法的 Skill 可在 front matter 中声明 `trigger: manual` 与 `invocation: selected_sources`。Core 不按包名判定业务；能力目录返回该声明。此类方法使用通用来源分析入口，不通过普通 `/Skill` 或 `skill_load` 取得完整对话。未安装、停用或未授权到空间时不提供新动作，既有结果仍可查看。
+
+GUI 在已结束轮次显示“使用 Skill 分析本轮”；CLI 使用 `freeagent analyze preview|start --skill ID --session CHAT --run RUN`，start 还需预览摘要和稳定 `--request`。TG 使用 `/analyze preview SKILL RUN` 与 `/analyze start DIGEST SKILL RUN`。API 为交互式 `GET/POST /api/attach/analyze`，请求绑定方法、来源与模型，发布继续使用原 Skill/Memory 确认。它不提供后台自动扫描或模型自行调用的嵌套 Agent。
+
+## v8.7 补充：分析与主动执行
+
+见 [有界扩展执行](SUPPLEMENTAL_EXTENSION_EXECUTION.md)。人物/情绪/表达算法不得进入 Core；分析与主动执行分别声明能力、默认关闭。扩展通过原 model.generate 使用当前模型，不保存 Provider Key；原 Run/Attempt/outbox 保留唯一权威。未启用时不增加调度进程或定时器。AffectWeave 1.6 使用此契约，旧版宿主不做兼容分支。

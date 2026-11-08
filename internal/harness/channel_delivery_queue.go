@@ -15,8 +15,13 @@ func isChannelQueued(err error) bool   { var queued *channelQueued; return error
 
 type channelDeliveryKey struct{}
 type channelDeliveryInfo struct {
-	Claim, Run, Chat string
-	Maintenance      bool
+	Claim, Run, Chat          string
+	Maintenance               bool
+	Group, Format             string
+	Sequence, Total           int
+	LogicalPart, PlatformPart int
+	MinGapMS                  int
+	Entities                  []channelwire.TextEntity
 }
 
 func (s *channelSession) callbackKey(token string) string {
@@ -30,6 +35,18 @@ func (s *channelSession) saveCallback(token string, item channelApproval) error 
 }
 
 func (b *ChannelBridge) recordDelivered(ctx context.Context, op channelwire.Operation) error {
+	if err := b.projectWakeReceipt(ctx, op); err != nil {
+		return err
+	}
+	if (op.Kind == "sticker" || op.Kind == "reaction") && op.RunID != "" {
+		text := "[Bot reaction updated: " + op.Reaction + "]"
+		if op.Kind == "sticker" && op.Sticker != nil {
+			text = "[Delivered sticker: " + op.Sticker.Emoji + "; type=" + op.Sticker.Format + "; set=" + op.Sticker.SetName + "]"
+		}
+		if err := b.tasks.RecordChannelDelivery(ctx, op.RunID, op.MessageID+"-"+op.ID, text, "sent"); err != nil {
+			return err
+		}
+	}
 	if op.ClaimKey != "" {
 		if _, err := b.tasks.core.Store.db.ExecContext(ctx, `UPDATE fa.meta SET value=(jsonb_set(jsonb_set(document,'{state}','"sent"'::jsonb,true),'{message_id}',to_jsonb($1::text),true))::text WHERE key=$2`, op.MessageID, op.ClaimKey); err != nil {
 			return err

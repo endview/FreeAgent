@@ -33,6 +33,7 @@ import type {
   Permission,
   Stream,
   Turn,
+  ReasoningCapabilities,
 } from "@/lib/api/types";
 import {
   current,
@@ -53,6 +54,10 @@ import {
 } from "@/lib/drafts";
 import { Button } from "@/components/ui/button";
 import { Choice } from "@/components/Choice";
+import {
+  ReasoningChoice,
+  reasoningSelection,
+} from "@/components/ReasoningChoice";
 import { Divider } from "@/components/Divider";
 import {
   Dialog,
@@ -62,7 +67,10 @@ import {
   DialogHeader,
 } from "@/components/ui/dialog";
 import { ContextPanel } from "./ContextPanel";
-import { Capabilities } from "./Capabilities";
+import { DeliveryPanel } from "./DeliveryPanel";
+import { SourceAnalysis } from "./SourceAnalysis";
+import { StickerPanel } from "./StickerPanel";
+import { Capabilities, ExtensionTurnChoices } from "./Capabilities";
 import { SlashCommands, type SlashEntry } from "./SlashCommands";
 import {
   commandQuery,
@@ -201,6 +209,7 @@ const TurnView = memo(function TurnView({
   }
   return (
     <section className={`turn state-${turn.state}`} data-run={turn.key}>
+ {turn.trigger && <p className="form-hint">主动对话评估 · {turn.trigger.extension_id} · {turn.reason || state}</p>}
       {turn.messages.map((message) => (
         <ChatMessage
           key={message.key}
@@ -245,6 +254,24 @@ const TurnView = memo(function TurnView({
                     </time>
                   </summary>
                   {item.target && <p>{item.target}</p>}
+                  {item.requested_reasoning && (
+                    <p>
+                      请求的思考设置：
+                      {item.requested_reasoning.effort ||
+                        item.requested_reasoning.mode ||
+                        "Provider 默认"}
+                      （服务端未回显档位）
+                    </p>
+                  )}
+                  {item.usage && (
+                    <p>
+                      输入 {item.usage.input_tokens} / 输出{" "}
+                      {item.usage.output_tokens} token；推理{" "}
+                      {item.usage.reasoning_tokens === undefined
+                        ? "未知"
+                        : item.usage.reasoning_tokens}
+                    </p>
+                  )}
                   {item.text && <pre>{item.text}</pre>}
                   {item.receipts?.map((receipt, index) => (
                     <p key={index}>
@@ -271,6 +298,9 @@ const TurnView = memo(function TurnView({
             ))}
           </ul>
         </details>
+      )}
+      {turn.state !== "generating" && turn.state !== "awaiting_approval" && (
+        <SourceAnalysis chat={chat} turn={turn} />
       )}
       {streams.map((stream) => (
         <article className="assistant-message" key={stream.attempt}>
@@ -384,16 +414,22 @@ export default function ConversationPage({
   composerMax,
   onComposerMax,
   onOpenChat,
+  onOpenModelSettings,
 }: {
   reading: number;
   onReading: (width: number) => void;
   composerMax: number;
   onComposerMax: (height: number) => void;
   onOpenChat: (id: string) => Promise<void>;
+  onOpenModelSettings?: () => void;
 }) {
   const state = useRuntime();
   const [draft, setDraft] = useState(messageDraft(state.selected));
   const [model, setModel] = useState("");
+  const [reasoning, setReasoning] = useState("inherit");
+  const [turnSettings, setTurnSettings] =
+    useState<CapabilitySelection["extension_settings"]>();
+  useEffect(() => setReasoning("inherit"), [model, state.selected]);
   const [permission, setPermission] = useState<Permission>("none");
   const [fullConfirmed, setFullConfirmed] = useState(false);
   const [mutating, setMutating] = useState(false);
@@ -409,6 +445,40 @@ export default function ConversationPage({
   const restoredScroll = useRef("");
   const [contextOpen, setContextOpen] = useState(false);
   const [capabilities, setCapabilities] = useState<CapabilitySelection>({});
+  const [capabilitySaving, setCapabilitySaving] = useState(false);
+  const capabilityRequest = useRef(false);
+  useEffect(() => {
+    const catalog = state.environment?.capabilities;
+    if (!catalog) return;
+    const enabled = new Set(
+      catalog.extensions.filter((item) => item.enabled).map((item) => item.id),
+    );
+    setCapabilities((previous) => {
+      const extensions = previous.extensions?.filter((id) => enabled.has(id));
+      if (extensions?.length === previous.extensions?.length) return previous;
+      return {
+        ...previous,
+        extensions,
+        extension_variants: Object.fromEntries(
+          Object.entries(previous.extension_variants || {}).filter(([id]) =>
+            enabled.has(id),
+          ),
+        ),
+        extension_settings: Object.fromEntries(
+          Object.entries(previous.extension_settings || {}).filter(([id]) =>
+            enabled.has(id),
+          ),
+        ),
+      };
+    });
+    setTurnSettings((previous) =>
+      previous === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(previous).filter(([id]) => enabled.has(id)),
+          ),
+    );
+  }, [state.environment?.capabilities]);
   const pendingPermission = useRef<{
     mode: Permission;
     confirmed: boolean;
@@ -428,6 +498,7 @@ export default function ConversationPage({
     setHasEarlier(null);
     setContextOpen(false);
     setCapabilities({});
+    setTurnSettings(undefined);
     setFullConfirmed(false);
     pendingPermission.current = null;
     setModel(state.snapshot?.view.model_id || "");
@@ -542,6 +613,32 @@ export default function ConversationPage({
     }
     return grouped;
   }, [state.snapshot?.streams]);
+  async function saveCapabilities(next: CapabilitySelection) {
+    if (capabilityRequest.current) return false;
+    const chat = state.selected;
+    if (!chat) {
+      setCapabilities(next);
+      return true;
+    }
+    capabilityRequest.current = true;
+    setCapabilitySaving(true);
+    setTurnSettings(undefined);
+    try {
+      const selected = await api<CapabilitySelection>(
+        `chats/${chat}/capabilities`,
+        next,
+      );
+      if (current().selected === chat) setCapabilities(selected);
+      await loadSnapshot(chat);
+      return true;
+    } catch (error) {
+      report(error);
+      return false;
+    } finally {
+      capabilityRequest.current = false;
+      setCapabilitySaving(false);
+    }
+  }
   async function chooseCommand(entry: SlashEntry) {
     if (entry.kind === "builtin") {
       setContextOpen(true);
@@ -553,15 +650,7 @@ export default function ConversationPage({
         ...capabilities,
         skills: [...new Set([...(capabilities.skills || []), entry.name])],
       };
-      setCapabilities(next);
-      if (state.selected)
-        try {
-          await api(`chats/${state.selected}/capabilities`, next);
-          await loadSnapshot();
-        } catch (error) {
-          report(error);
-          return;
-        }
+      if (!(await saveCapabilities(next))) return;
       changeDraft(`使用 Skill ${entry.name}：`);
       textarea.current?.focus();
       return;
@@ -661,8 +750,14 @@ export default function ConversationPage({
         kind: runBusy ? "queue" : "submit",
         permission,
         confirm_full_access: fullConfirmed,
-        capabilities,
+        capabilities: {
+          ...capabilities,
+          ...(turnSettings === undefined
+            ? {}
+            : { extension_settings: turnSettings }),
+        },
         model,
+        reasoning: reasoningSelection(reasoning),
       };
       savePendingSend(chat, command);
       const { kind, model: chosenModel, ...body } = command;
@@ -675,6 +770,9 @@ export default function ConversationPage({
             prompt: command.prompt,
             attachments: command.attachments,
             action: "queue",
+            reasoning: command.reasoning,
+            capabilities: command.capabilities,
+            model_id: chosenModel,
           },
         });
       else {
@@ -688,6 +786,8 @@ export default function ConversationPage({
       saveAttachmentDraft(chat, []);
       setDraft("");
       setAttachments([]);
+      setReasoning("inherit");
+      setTurnSettings(undefined);
       await refresh();
     } catch (error) {
       if (
@@ -850,6 +950,22 @@ export default function ConversationPage({
       >
         <div className="reading-frame">
           <div className="reading-column">
+            {state.snapshot?.view.conversation.space_id !== "local" &&
+              state.selected && (
+                <>
+                  <DeliveryPanel
+                    chat={state.selected}
+                    run={latest?.key || ""}
+                    revision={(latest?.key || "") + latest?.state}
+                  />
+                  {state.spaces.find(
+                    (space) =>
+                      space.id === state.snapshot?.view.conversation.space_id,
+                  )?.source === "telegram" && (
+                    <StickerPanel key={state.selected} chat={state.selected} />
+                  )}
+                </>
+              )}
             {state.snapshot?.view.background?.length ? (
               <details className="run-evidence">
                 <summary>收到的背景与渠道命令（未自动执行）</summary>
@@ -1046,6 +1162,7 @@ export default function ConversationPage({
               {modelOptions.length > 0 && (
                 <Choice
                   label="当前模型"
+                  prefix="模型："
                   value={
                     model ||
                     state.snapshot?.view.model_id ||
@@ -1067,17 +1184,47 @@ export default function ConversationPage({
                   ["full", "Full access"],
                 ]}
               />
+              <ReasoningChoice
+                caps={
+                  state.environment?.models[
+                    model ||
+                      state.snapshot?.view.model_id ||
+                      state.environment.default_model
+                  ]?.capabilities?.reasoning as
+                    | ReasoningCapabilities
+                    | undefined
+                }
+                protocol={String(
+                  state.environment?.models[
+                    model ||
+                      state.snapshot?.view.model_id ||
+                      state.environment.default_model
+                  ]?.capabilities?.protocol || "chat",
+                )}
+                value={reasoning}
+                onChange={setReasoning}
+                onConfigure={onOpenModelSettings}
+              />
+              <ExtensionTurnChoices
+                catalog={state.environment?.capabilities}
+                selection={{
+                  ...capabilities,
+                  ...(turnSettings === undefined
+                    ? {}
+                    : { extension_settings: turnSettings }),
+                }}
+                onChange={(next) =>
+                  setTurnSettings(next.extension_settings || {})
+                }
+              />
               <Capabilities
                 conversationID={state.selected}
                 catalog={state.environment?.capabilities}
                 selection={capabilities}
                 busy={runBusy}
+                saving={capabilitySaving}
                 onChange={(next) => {
-                  setCapabilities(next);
-                  if (state.selected)
-                    api(`chats/${state.selected}/capabilities`, next)
-                      .then(() => loadSnapshot())
-                      .catch(report);
+                  void saveCapabilities(next);
                 }}
               />
               <span className="composer-spacer" />

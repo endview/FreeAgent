@@ -11,6 +11,7 @@ import (
 
 	"github.com/endview/freeagent/internal/buildinfo"
 	"github.com/endview/freeagent/internal/channelplugin"
+	"github.com/endview/freeagent/internal/channelwire"
 )
 
 type bootstrapFlags []string
@@ -27,7 +28,7 @@ func main() {
 	flag.BoolVar(&version, "version", false, "show channel process version")
 	flag.Parse()
 	if version {
-		fmt.Println("FreeAgent channel", buildinfo.Version, "protocol=1")
+		fmt.Printf("FreeAgent channel %s protocol=%d\n", buildinfo.Version, channelwire.Version)
 		return
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

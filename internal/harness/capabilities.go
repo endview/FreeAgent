@@ -8,8 +8,11 @@ import (
 )
 
 type CapabilityItem struct {
-	ID      string `json:"id"`
-	Enabled bool   `json:"enabled"`
+	Invocation   string                 `json:"invocation,omitempty"`
+	ID           string                 `json:"id"`
+	Enabled      bool                   `json:"enabled"`
+	Name         string                 `json:"name,omitempty"`
+	TurnSettings []ExtensionTurnSetting `json:"turn_settings,omitempty"`
 }
 
 type CapabilityCatalog struct {
@@ -46,6 +49,16 @@ func (tasks *TaskService) CapabilityCatalog() CapabilityCatalog {
 	tasks.mu.Lock()
 	defer tasks.mu.Unlock()
 	catalog := capabilityCatalog(tasks.core.currentConfig())
+	if extensions, err := scanExtensions(tasks.core.Store.DataDir(), tasks.core.currentConfig().Workspace, tasks.core.currentConfig()); err == nil {
+		for index := range catalog.Extensions {
+			item := &catalog.Extensions[index]
+			definition, installed := extensions.Extensions[item.ID]
+			if installed && item.Enabled && extensions.Errors[item.ID] == nil {
+				item.Name = definition.Manifest.Name
+				item.TurnSettings = extensionTurnSettings(definition.Manifest)
+			}
+		}
+	}
 	registry, err := scanSkills(tasks.core.Store.DataDir(), tasks.core.currentConfig().Workspace, tasks.core.currentConfig())
 	if err != nil {
 		return catalog
@@ -59,6 +72,13 @@ func (tasks *TaskService) CapabilityCatalog() CapabilityCatalog {
 			catalog.Skills = append(catalog.Skills, CapabilityItem{ID: name, Enabled: tasks.core.currentConfig().Skills.Enabled[name]})
 		}
 	}
+	for i := range catalog.Skills {
+		item := &catalog.Skills[i]
+		if method, installed := registry.Skills[item.ID]; installed && item.Enabled {
+			item.Invocation = method.Invocation
+			item.Name = method.Description
+		}
+	}
 	sort.Slice(catalog.Skills, func(i, j int) bool { return catalog.Skills[i].ID < catalog.Skills[j].ID })
 	return catalog
 }
@@ -66,10 +86,11 @@ func (tasks *TaskService) CapabilityCatalog() CapabilityCatalog {
 // CapabilitySelection is a compact, turn-local selection. It is stored inside
 // the existing run snapshot rather than becoming another persisted object.
 type CapabilitySelection struct {
-	Skills     []string          `json:"skills,omitempty"`
-	MCPServers []string          `json:"mcp_servers,omitempty"`
-	Extensions []string          `json:"extensions,omitempty"`
-	Variants   map[string]string `json:"extension_variants,omitempty"`
+	Skills     []string                     `json:"skills,omitempty"`
+	MCPServers []string                     `json:"mcp_servers,omitempty"`
+	Extensions []string                     `json:"extensions,omitempty"`
+	Variants   map[string]string            `json:"extension_variants,omitempty"`
+	Settings   map[string]map[string]string `json:"extension_settings,omitempty"`
 }
 
 func (selection CapabilitySelection) normalize() CapabilitySelection {
@@ -77,6 +98,13 @@ func (selection CapabilitySelection) normalize() CapabilitySelection {
 	selection.MCPServers = uniqueSorted(selection.MCPServers)
 	selection.Extensions = uniqueSorted(selection.Extensions)
 	selection.Variants = maps.Clone(selection.Variants)
+	selection.Settings = maps.Clone(selection.Settings)
+	for id, settings := range selection.Settings {
+		selection.Settings[id] = maps.Clone(settings)
+		if len(settings) == 0 {
+			delete(selection.Settings, id)
+		}
+	}
 	return selection
 }
 
@@ -107,6 +135,19 @@ func (selection CapabilitySelection) validate(config Config) error {
 	for id, variant := range selection.Variants {
 		if !slices.Contains(selection.Extensions, id) || !validCapabilityID(variant) {
 			return errors.New("harness: variant requires a selected extension and a valid identifier")
+		}
+	}
+	if len(selection.Settings) > 32 {
+		return errors.New("harness: too many extension turn settings")
+	}
+	for id, settings := range selection.Settings {
+		if !slices.Contains(selection.Extensions, id) || len(settings) > 32 {
+			return errors.New("harness: turn settings require a selected extension")
+		}
+		for key, value := range settings {
+			if !validCapabilityID(key) || value == "" || len(value) > 128 {
+				return errors.New("harness: invalid extension turn setting")
+			}
 		}
 	}
 	return nil

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"github.com/endview/freeagent/internal/channels"
 	"github.com/endview/freeagent/internal/channelwire"
 	"github.com/endview/freeagent/internal/harness"
+	"github.com/endview/freeagent/internal/postgres"
 )
 
 func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
@@ -37,6 +39,19 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 			if recorded.Code == 202 {
 				w.WriteHeader(503)
 				return
+			}
+			for k, v := range recorded.Header() {
+				w.Header()[k] = v
+			}
+			w.WriteHeader(recorded.Code)
+			_, _ = w.Write(recorded.Body.Bytes())
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/channel-plugin/") {
+			recorded := httptest.NewRecorder()
+			ui.server.ServeHTTP(recorded, r)
+			if recorded.Code >= 400 {
+				t.Logf("channel endpoint %s: HTTP %d %s", r.URL.Path, recorded.Code, recorded.Body.String())
 			}
 			for k, v := range recorded.Header() {
 				w.Header()[k] = v
@@ -86,6 +101,8 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 			id := len(sent) + 10
 			mu.Unlock()
 			result = map[string]any{"message_id": id}
+		case strings.HasSuffix(r.URL.Path, "/sendChatAction"):
+			result = true
 		default:
 			t.Errorf("unexpected platform request: %s", r.URL.Path)
 			w.WriteHeader(400)
@@ -107,6 +124,17 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 	start := func() (context.CancelFunc, <-chan error) {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
+		if binary := os.Getenv("FREEAGENT_TEST_CHANNEL_BINARY"); binary != "" {
+			command := exec.CommandContext(ctx, binary, "--bootstrap-file", bootstrap, "--state-dir", state)
+			go func() {
+				err := command.Run()
+				if ctx.Err() != nil {
+					err = ctx.Err()
+				}
+				done <- err
+			}()
+			return cancel, done
+		}
 		go func() { done <- channelplugin.RunAll(ctx, []string{bootstrap}, state) }()
 		return cancel, done
 	}
@@ -131,6 +159,20 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 				return
 			}
 			time.Sleep(15 * time.Millisecond)
+		}
+		c, _ := postgres.Read(filepath.Join(ui.data, postgres.ConfigFile))
+		db, e := postgres.SQL(c, "", false)
+		if e == nil {
+			rows, e := db.QueryContext(t.Context(), `SELECT key,value FROM fa.meta WHERE key LIKE 'channel/pending-reply/%' OR key LIKE 'channel/operation/%' ORDER BY key`)
+			if e == nil {
+				for rows.Next() {
+					var key, value string
+					_ = rows.Scan(&key, &value)
+					t.Log(key, value)
+				}
+				rows.Close()
+			}
+			db.Close()
 		}
 		chats, _ := ui.tasks.Conversations(t.Context())
 		for _, chat := range chats {
@@ -200,7 +242,7 @@ func TestChannelPluginRejectsMixedCoreBeforeConnecting(t *testing.T) {
 	var paths []string
 	for n := 0; n < 2; n++ {
 		path := filepath.Join(t.TempDir(), fmt.Sprintf("core-%d.json", n))
-		b := channelwire.Bootstrap{Version: 1, CoreID: fmt.Sprint(n), Generation: "g", Origin: "http://127.0.0.1:1", Token: strings.Repeat("a", 64), Connection: channelwire.Connection{ID: "bot", Source: "telegram", ApplicationID: "1"}}
+		b := channelwire.Bootstrap{Version: channelwire.Version, CoreID: fmt.Sprint(n), Generation: "g", Origin: "http://127.0.0.1:1", Token: strings.Repeat("a", 64), Connection: channelwire.Connection{ID: "bot", Source: "telegram", ApplicationID: "1"}}
 		raw, _ := json.Marshal(b)
 		if err := os.WriteFile(path, raw, 0600); err != nil {
 			t.Fatal(err)

@@ -1,6 +1,6 @@
 # Optional channels
 
-Updated for v8.0. Platform clients run in the optional `freeagent-channel`
+Updated for v8.6. Platform clients run in the optional `freeagent-channel`
 process; Core owns admission, deduplication, permissions, context and execution.
 Default installations open no platform connection. Lark/QQ retain mock coverage;
 new live acceptance is limited to the scenarios recorded in the release report.
@@ -186,3 +186,58 @@ tools are not requeued. Pending/UNKNOWN calls and background commands prevent
 settlement; collaboration children cannot escape the parent's budget. A manual
 increase of the original Run's limit can still resume that Run without resetting
 its consumption. An interrupted send never retries model or tool execution.
+
+## Telegram expression (v8.3.1–v8.5)
+
+Telegram text is rendered from Markdown into native text/entities, with
+UTF-16/grapheme-safe fragments and frozen per-fragment receipts. Code stays
+literal. A definite formatting rejection may fall back to plain text; a
+timeout/UNKNOWN never authorizes a resend. `plain_text: true` disables native
+formatting. Private running requests refresh short-lived typing; approvals,
+stops and expired Core leases end refresh. `disable_typing: true` disables it.
+
+`reply_stickers` explicitly enables model sticker expression.
+`autonomous_reactions` explicitly permits a reaction on the current incoming
+message; both default false. None can use this scoped communication tool
+without gaining command, file or arbitrary network access. A different known
+message target always needs model confirmation. Direct user selections in the
+conversation panel use the same verified Core resources.
+
+The sticker panel reads a named pack or `https://t.me/addstickers/NAME`,
+pages 24 at a time, previews/selects stickers, edits the space's saved packs,
+and sets/removes a reaction on a verified message. Saving pack names is a
+confirmed `telegram.set_sticker_sets` change (at most 32 sets), shared only
+within that space. Received/explicit lookup references expire in 24 hours;
+saved-collection references also require the current authorization generation.
+Removal/re-addition does not revive revoked references. Bot file IDs and
+token-bearing URLs are not model-selected targets.
+
+CLI `stickers list|sets|targets|preview|send|reaction --session CHAT_ID` exposes
+the same operations. `--saved`, `--set`, `--offset`, `--resource` and
+`--message-ref` select the exact scope. Persistent editing uses generic
+`control plan --kind telegram.set_sticker_sets` followed by confirmation.
+
+Static WebP is bounded and converted to PNG. TGS/WebM retain their original
+sendable resource while vision sees only an available thumbnail. Without
+vision the model gets accurate metadata, not an invented image/animation
+description. Pack sharing sends its addstickers link, not every sticker.
+There is no installed-pack discovery or background indexing.
+
+Identified reactions replace the prior person's fact. Anonymous updates store
+absolute counts without inventing a person. Neither starts Runs or changes
+relationships; platform permissions determine which events are received.
+Custom/paid reactions may be recorded as received counts but are unsupported
+outgoing choices.
+
+See [reply delivery](REPLY_DELIVERY.md) for ordering, cancellation, UNKNOWN and
+optional one-time follow-ups, and [experience summary](EXPERIENCE_SUMMARY.md)
+for the optional `/analyze` source/draft flow. These work independently of
+AffectWeave; character expression policy remains that extension's job.
+
+## Preparation and protocol revision 3
+
+Core and `freeagent-channel` must be updated together. The authenticated connection registers a finite action/format declaration; stale generations and incompatible revisions are rejected. Telegram formatting, resource-name parsing, preview metadata and ordinary-reaction values are owned by the channel process, not the default Core.
+
+Text preparation is pure local conversion. Its result is checked against the original source hash, target/connection and finite bounds before Core freezes the whole group. A lost preparation receipt may be recomputed for that same input. Sending uses only frozen parts; its uncertain result is UNKNOWN and is not automatically resent. Cancellation during preparation prevents a late result from reviving the reply. Generated output, preparation and confirmed delivery are separate states.
+
+The default Core dependency check is `python scripts/check-core-boundaries.py`. No configured channel means no platform connection or optional adapter process. `/analyze` is a Core source-analysis command: use an installed, enabled method explicitly authorized to this space; the transport owns no extra summary workflow.

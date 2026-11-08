@@ -101,6 +101,12 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		flags.StringVar(&model.Capabilities.Usage, "usage", "", "optional, required or none; never estimates reported usage")
 		flags.StringVar(&model.Capabilities.ErrorPolicy, "error-policy", "", "manual; no automatic retries")
 		flags.StringVar(&model.Capabilities.TokenLimit, "token-limit", "", "max_tokens or max_completion_tokens")
+		flags.StringVar(&model.Capabilities.Reasoning.Control, "reasoning-control", "", "explicit verified reasoning contract: none, deepseek or openai")
+		flags.StringVar(&model.Capabilities.Reasoning.Efforts, "reasoning-efforts", "", "verified comma-separated efforts for this model")
+		flags.StringVar(&model.Capabilities.Reasoning.Default.Mode, "reasoning-mode", "", "default, enabled or disabled")
+		flags.StringVar(&model.Capabilities.Reasoning.Default.Effort, "reasoning-effort", "", "default effort for future Runs")
+		flags.StringVar(&model.Capabilities.Reasoning.Auxiliary.Mode, "aux-reasoning-mode", "", "separate choice for summaries and extension analysis")
+		flags.StringVar(&model.Capabilities.Reasoning.Auxiliary.Effort, "aux-reasoning-effort", "", "auxiliary effort; empty uses provider default")
 	}
 	if args[0] == "workspace" {
 		flags.StringVar(&workspace, "path", "", "workspace directory")

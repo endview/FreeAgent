@@ -76,6 +76,22 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
 	}
 	wire := openAIRequest{Model: client.model, Stream: client.caps.Streaming != "none"}
+	selection := client.caps.Reasoning.Default
+	if request.Reasoning != nil {
+		selection = *request.Reasoning
+	}
+	toggle, effort, reasoningErr := client.caps.Reasoning.parameters(selection, "chat")
+	if reasoningErr != nil {
+		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: reasoningErr.Error()}
+	}
+	wire.ReasoningEffort = effort
+	if toggle != nil {
+		kind := "disabled"
+		if *toggle {
+			kind = "enabled"
+		}
+		wire.Thinking = &openAIThinking{Type: kind}
+	}
 	if client.caps.TokenLimit == "max_completion_tokens" {
 		wire.MaxCompletionTokens = request.MaxOutputTokens
 	} else {
@@ -88,11 +104,19 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 		parallel := client.caps.ParallelTools != "none"
 		wire.ParallelToolCalls = &parallel
 	}
-	for _, message := range request.Messages {
-		wire.Messages = append(wire.Messages, openAIMessage{
+	for _, message := range providerImageMessages(request.Messages) {
+		next := openAIMessage{
 			Role: message.Role, Content: message.Content, Name: message.Name, Images: message.Images,
 			ToolCallID: message.ToolCallID, ToolCalls: toOpenAIToolCalls(message.ToolCalls),
-		})
+		}
+		if saved := message.ChatContinuation; saved != nil && message.Role == "assistant" && len(request.Tools) > 0 && saved.Source == chatContinuationSource(client.baseURL, client.key.ProfileID, client.model) {
+			if len(saved.Content) > 1<<20 || !utf8.ValidString(saved.Content) {
+				return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: "invalid saved reasoning continuation"}
+			}
+			content := saved.Content
+			next.ReasoningContent = &content
+		}
+		wire.Messages = append(wire.Messages, next)
 	}
 	for _, tool := range request.Tools {
 		wire.Tools = append(wire.Tools, openAITool{Type: "function", Function: openAIFunction{
@@ -160,6 +184,12 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 	}
 	if err != nil {
 		result.ToolCalls = nil
+	}
+	if result.ChatContinuation != nil {
+		result.ChatContinuation.Source = chatContinuationSource(client.baseURL, client.key.ProfileID, client.model)
+	}
+	if result.Provider != nil && client.caps.Reasoning.Control != "" && client.caps.Reasoning.Control != "none" {
+		result.Provider.RequestedReasoning = &selection
 	}
 	if err == nil && !result.Provider.Streamed && emit != nil {
 		emit(result.Content)
@@ -368,8 +398,15 @@ func decodeModelStream(reader io.Reader, key string, emit func(string)) (ModelRe
 			return &CallError{Category: "protocol", Message: "invalid model stream role"}
 		}
 		message.Content += delta.Content
+		if delta.ReasoningContent != nil {
+			if message.ReasoningContent == nil {
+				empty := ""
+				message.ReasoningContent = &empty
+			}
+			*message.ReasoningContent += *delta.ReasoningContent
+		}
 		message.Refusal += delta.Refusal
-		if len(message.Content) > 1<<20 || len(message.Refusal) > 1<<20 {
+		if len(message.Content) > 1<<20 || len(message.Refusal) > 1<<20 || message.ReasoningContent != nil && len(*message.ReasoningContent) > 1<<20 {
 			return &CallError{Category: "protocol", Message: "model stream text exceeded limits"}
 		}
 		emitSafe(delta.Content, false)
@@ -508,11 +545,25 @@ func modelUsage(usage *openAIUsage) (*ModelUsage, error) {
 		*usage.TotalTokens != *usage.PromptTokens+*usage.CompletionTokens {
 		return nil, &CallError{Category: "protocol", Message: "invalid model usage"}
 	}
-	return &ModelUsage{InputTokens: *usage.PromptTokens, OutputTokens: *usage.CompletionTokens, TotalTokens: *usage.TotalTokens}, nil
+	result := &ModelUsage{InputTokens: *usage.PromptTokens, OutputTokens: *usage.CompletionTokens, TotalTokens: *usage.TotalTokens}
+	if usage.CompletionDetails != nil && usage.CompletionDetails.ReasoningTokens != nil {
+		tokens := *usage.CompletionDetails.ReasoningTokens
+		if tokens < 0 || tokens > result.OutputTokens {
+			return nil, &CallError{Category: "protocol", Message: "invalid reasoning token usage"}
+		}
+		result.ReasoningTokens = &tokens
+	}
+	return result, nil
 }
 
 func normalizeModelOutput(message openAIMessage, finish, key string) (ModelResponse, error) {
 	result := ModelResponse{Content: redact(message.Content, key)}
+	if message.ReasoningContent != nil {
+		if len(*message.ReasoningContent) > 1<<20 {
+			return result, &CallError{Category: "protocol", Message: "reasoning continuation exceeds limit"}
+		}
+		result.ChatContinuation = &ChatContinuation{Content: redact(*message.ReasoningContent, key)}
+	}
 	if message.Refusal != "" {
 		return result, &CallError{Certain: true, Category: "refusal", Message: "model refused this request; no tool was dispatched"}
 	}
@@ -546,7 +597,12 @@ func normalizeModelOutput(message openAIMessage, finish, key string) (ModelRespo
 	if (finish == "tool_calls") != (len(result.ToolCalls) > 0) {
 		return ModelResponse{}, &CallError{Message: "model tool calls do not match finish reason"}
 	}
-	if err := validateResponse(result); err != nil {
+	if result.ChatContinuation != nil && strings.TrimSpace(result.Content) == "" && len(result.ToolCalls) == 0 {
+		return result, &CallError{Certain: true, Category: "output_limit", Message: "model returned reasoning without a visible answer"}
+	}
+	visible := result
+	visible.ChatContinuation = nil // Generate binds the continuation's source after decoding.
+	if err := validateResponse(visible); err != nil {
 		return ModelResponse{}, &CallError{Message: "model response exceeded limits or contained duplicate calls"}
 	}
 	return result, nil
@@ -609,6 +665,8 @@ func redact(text, key string) string {
 }
 
 type openAIRequest struct {
+	ReasoningEffort     string               `json:"reasoning_effort,omitempty"`
+	Thinking            *openAIThinking      `json:"thinking,omitempty"`
 	Model               string               `json:"model"`
 	Messages            []openAIMessage      `json:"messages"`
 	Tools               []openAITool         `json:"tools,omitempty"`
@@ -619,24 +677,32 @@ type openAIRequest struct {
 	StreamOptions       *openAIStreamOptions `json:"stream_options,omitempty"`
 }
 
+type openAIThinking struct {
+	Type string `json:"type"`
+}
+
 type openAIStreamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
 }
 
 type openAIUsage struct {
+	CompletionDetails *struct {
+		ReasoningTokens *int64 `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details"`
 	PromptTokens     *int64 `json:"prompt_tokens"`
 	CompletionTokens *int64 `json:"completion_tokens"`
 	TotalTokens      *int64 `json:"total_tokens"`
 }
 
 type openAIMessage struct {
-	Images     []ModelImage     `json:"-"`
-	Role       string           `json:"role,omitempty"`
-	Content    string           `json:"content,omitempty"`
-	Name       string           `json:"name,omitempty"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
-	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
-	Refusal    string           `json:"refusal,omitempty"`
+	ReasoningContent *string          `json:"reasoning_content,omitempty"`
+	Images           []ModelImage     `json:"-"`
+	Role             string           `json:"role,omitempty"`
+	Content          string           `json:"content,omitempty"`
+	Name             string           `json:"name,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
+	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
+	Refusal          string           `json:"refusal,omitempty"`
 }
 
 type openAITool struct {

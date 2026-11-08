@@ -13,6 +13,7 @@ import (
 )
 
 type skillView struct {
+	Invocation       string                  `json:"invocation,omitempty"`
 	Name             string                  `json:"name"`
 	Description      string                  `json:"description"`
 	Trigger          string                  `json:"trigger"`
@@ -29,7 +30,8 @@ type skillView struct {
 
 func makeSkillView(item harness.SkillInfo, detail bool) skillView {
 	view := skillView{
-		Name: item.Name, Description: item.Description, Trigger: item.Trigger,
+		Invocation: item.Invocation,
+		Name:       item.Name, Description: item.Description, Trigger: item.Trigger,
 		Source: item.Source, Enabled: item.Enabled, Available: item.Available,
 		Trusted: item.Trusted, WorkspaceTrusted: item.WorkspaceTrusted,
 		SHA256: item.SHA256, Bytes: item.Bytes, Files: item.Files,

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Only a completed turn.finished invocation may select already authorized target-local reply resources. A separate confirmation requirement fails closed to the ordinary text reply. No proof of delivery is returned by selection alone.",
+  "type": "object", "additionalProperties": false,
+  "required": ["invocation", "action"],
+  "properties": {
+    "invocation": {"type": "string", "minLength": 1},
+    "action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": {"enum": ["sticker", "reaction"]},
+        "resource": {"type": "string"}, "emoji": {"type": "string"}
+      }
+    }
+  }
+}

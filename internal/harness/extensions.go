@@ -75,26 +75,33 @@ func workflowOutcomeUnknown(err error) bool {
 }
 
 type ExtensionManifest struct {
-	Protocol       string              `json:"protocol"`
-	ID             string              `json:"id"`
-	Version        string              `json:"version"`
-	Name           string              `json:"name"`
-	Description    string              `json:"description"`
-	Run            ExtensionRun        `json:"run"`
-	Env            []string            `json:"env,omitempty"`
-	SettingsSchema json.RawMessage     `json:"settings_schema,omitempty"`
-	ModelSettings  []string            `json:"model_settings,omitempty"`
-	Needs          []string            `json:"needs,omitempty"`
-	Context        ExtensionContext    `json:"context,omitempty"`
-	Events         []string            `json:"events,omitempty"`
-	Workflows      []ExtensionWorkflow `json:"workflows,omitempty"`
-	Tools          bool                `json:"tools,omitempty"`
-	Budget         ExtensionBudget     `json:"budget,omitempty"`
-	TimeoutMS      int                 `json:"timeout_ms,omitempty"`
-	Required       bool                `json:"required,omitempty"`
-	State          bool                `json:"state,omitempty"`
-	PassiveContext bool                `json:"passive_context,omitempty"`
-	Storage        string              `json:"storage,omitempty"`
+	ContextAnalysis     bool                               `json:"context_analysis,omitempty"`
+	ScheduledGeneration bool                               `json:"scheduled_generation,omitempty"`
+	StateVersion        int                                `json:"state_version,omitempty"`
+	StateOperations     map[string]ExtensionStateOperation `json:"state_operations,omitempty"`
+	StorageSchema       string                             `json:"storage_schema,omitempty"`
+	StorageVersion      string                             `json:"storage_version,omitempty"`
+	Delivery            bool                               `json:"delivery,omitempty"`
+	Protocol            string                             `json:"protocol"`
+	ID                  string                             `json:"id"`
+	Version             string                             `json:"version"`
+	Name                string                             `json:"name"`
+	Description         string                             `json:"description"`
+	Run                 ExtensionRun                       `json:"run"`
+	Env                 []string                           `json:"env,omitempty"`
+	SettingsSchema      json.RawMessage                    `json:"settings_schema,omitempty"`
+	ModelSettings       []string                           `json:"model_settings,omitempty"`
+	Needs               []string                           `json:"needs,omitempty"`
+	Context             ExtensionContext                   `json:"context,omitempty"`
+	Events              []string                           `json:"events,omitempty"`
+	Workflows           []ExtensionWorkflow                `json:"workflows,omitempty"`
+	Tools               bool                               `json:"tools,omitempty"`
+	Budget              ExtensionBudget                    `json:"budget,omitempty"`
+	TimeoutMS           int                                `json:"timeout_ms,omitempty"`
+	Required            bool                               `json:"required,omitempty"`
+	State               bool                               `json:"state,omitempty"`
+	PassiveContext      bool                               `json:"passive_context,omitempty"`
+	Storage             string                             `json:"storage,omitempty"`
 }
 
 type ExtensionRun struct {
@@ -163,31 +170,35 @@ type extensionOperationCheckResult struct {
 }
 
 type extensionInitializeResult struct {
-	ID        string   `json:"id"`
-	Version   string   `json:"version"`
-	Provides  []string `json:"provides,omitempty"`
-	Events    []string `json:"events,omitempty"`
-	Workflows []string `json:"workflows,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	StateVersion int      `json:"state_version,omitempty"`
+	ID           string   `json:"id"`
+	Version      string   `json:"version"`
+	Provides     []string `json:"provides,omitempty"`
+	Events       []string `json:"events,omitempty"`
+	Workflows    []string `json:"workflows,omitempty"`
 }
 
 type extensionInput struct {
-	Invocation     string              `json:"invocation"`
-	Phase          string              `json:"phase"`
-	Purpose        string              `json:"purpose"`
-	Step           *int                `json:"step,omitempty"`
-	Message        any                 `json:"message,omitempty"`
-	History        []ModelMessage      `json:"history,omitempty"`
-	Workspace      string              `json:"workspace,omitempty"`
-	DataDir        string              `json:"data_dir,omitempty"`
-	ToolResults    any                 `json:"tool_results,omitempty"`
-	Settings       map[string]any      `json:"settings,omitempty"`
-	Output         string              `json:"output,omitempty"`
-	Status         string              `json:"status,omitempty"`
-	RunID          string              `json:"run_id,omitempty"`
-	ConversationID string              `json:"conversation_id,omitempty"`
-	Identity       *ExtensionIdentity  `json:"identity,omitempty"`
-	Facts          []ExtensionRunFacts `json:"facts,omitempty"`
-	Variant        string              `json:"variant,omitempty"`
+	Deadline       string                    `json:"deadline,omitempty"`
+	Delivery       *ExtensionDeliveryContext `json:"delivery,omitempty"`
+	Invocation     string                    `json:"invocation"`
+	Phase          string                    `json:"phase"`
+	Purpose        string                    `json:"purpose"`
+	Step           *int                      `json:"step,omitempty"`
+	Message        any                       `json:"message,omitempty"`
+	History        []ModelMessage            `json:"history,omitempty"`
+	Workspace      string                    `json:"workspace,omitempty"`
+	DataDir        string                    `json:"data_dir,omitempty"`
+	ToolResults    any                       `json:"tool_results,omitempty"`
+	Settings       map[string]any            `json:"settings,omitempty"`
+	Output         string                    `json:"output,omitempty"`
+	Status         string                    `json:"status,omitempty"`
+	RunID          string                    `json:"run_id,omitempty"`
+	ConversationID string                    `json:"conversation_id,omitempty"`
+	Identity       *ExtensionIdentity        `json:"identity,omitempty"`
+	Facts          []ExtensionRunFacts       `json:"facts,omitempty"`
+	Variant        string                    `json:"variant,omitempty"`
 }
 
 type extensionHost struct {
@@ -207,13 +218,18 @@ type extensionHost struct {
 }
 
 type extensionInvocation struct {
-	id          string
-	extensionID string
-	service     *Service
-	run         Run
-	manifest    ExtensionManifest
-	ctx         context.Context
-	cancel      context.CancelFunc
+	finished        bool
+	scheduled       bool
+	contextAnalysis bool
+	supplementalKey string
+	deliveryReview  bool
+	id              string
+	extensionID     string
+	service         *Service
+	run             Run
+	manifest        ExtensionManifest
+	ctx             context.Context
+	cancel          context.CancelFunc
 	// mu serializes task.delegate within one invocation.
 	mu    sync.Mutex
 	usage *extensionRunUsage
@@ -282,30 +298,37 @@ type ExtensionDefinitionView struct {
 // the Chat UI. It intentionally omits executable paths, arguments, and
 // environment values.
 type ExtensionInfo struct {
-	Storage          string              `json:"storage,omitempty"`
-	StorageReady     bool                `json:"storage_ready,omitempty"`
-	ModelSettings    []string            `json:"model_settings,omitempty"`
-	ID               string              `json:"id"`
-	Version          string              `json:"version"`
-	Name             string              `json:"name"`
-	Description      string              `json:"description"`
-	Source           string              `json:"source"`
-	Provides         []string            `json:"provides,omitempty"`
-	Workflows        []ExtensionWorkflow `json:"workflows,omitempty"`
-	Tools            bool                `json:"tools"`
-	SettingsSchema   json.RawMessage     `json:"settings_schema,omitempty"`
-	Context          ExtensionContext    `json:"context,omitempty"`
-	Enabled          bool                `json:"enabled"`
-	Required         bool                `json:"required"`
-	Available        bool                `json:"available"`
-	Trusted          bool                `json:"trusted"`
-	WorkspaceTrusted bool                `json:"workspace_trusted"`
-	Error            string              `json:"error,omitempty"`
-	Settings         map[string]any      `json:"settings,omitempty"`
-	EnvFrom          map[string]string   `json:"env_from,omitempty"`
-	Env              []string            `json:"env,omitempty"`
-	Budget           ExtensionBudget     `json:"budget"`
-	State            string              `json:"state"`
+	ContextAnalysis     bool                               `json:"context_analysis,omitempty"`
+	ScheduledGeneration bool                               `json:"scheduled_generation,omitempty"`
+	StorageSchema       string                             `json:"storage_schema,omitempty"`
+	StorageVersion      string                             `json:"storage_version,omitempty"`
+	StateVersion        int                                `json:"state_version,omitempty"`
+	StateOperations     map[string]ExtensionStateOperation `json:"state_operations,omitempty"`
+	Storage             string                             `json:"storage,omitempty"`
+	StorageReady        bool                               `json:"storage_ready,omitempty"`
+	ModelSettings       []string                           `json:"model_settings,omitempty"`
+	TurnSettings        []ExtensionTurnSetting             `json:"turn_settings,omitempty"`
+	ID                  string                             `json:"id"`
+	Version             string                             `json:"version"`
+	Name                string                             `json:"name"`
+	Description         string                             `json:"description"`
+	Source              string                             `json:"source"`
+	Provides            []string                           `json:"provides,omitempty"`
+	Workflows           []ExtensionWorkflow                `json:"workflows,omitempty"`
+	Tools               bool                               `json:"tools"`
+	SettingsSchema      json.RawMessage                    `json:"settings_schema,omitempty"`
+	Context             ExtensionContext                   `json:"context,omitempty"`
+	Enabled             bool                               `json:"enabled"`
+	Required            bool                               `json:"required"`
+	Available           bool                               `json:"available"`
+	Trusted             bool                               `json:"trusted"`
+	WorkspaceTrusted    bool                               `json:"workspace_trusted"`
+	Error               string                             `json:"error,omitempty"`
+	Settings            map[string]any                     `json:"settings,omitempty"`
+	EnvFrom             map[string]string                  `json:"env_from,omitempty"`
+	Env                 []string                           `json:"env,omitempty"`
+	Budget              ExtensionBudget                    `json:"budget"`
+	State               string                             `json:"state"`
 }
 
 // ExtensionCheckResult is the bounded result of validating and probing one
@@ -444,6 +467,12 @@ type extensionActivityResult struct {
 	Activity map[string]any `json:"activity,omitempty"`
 }
 
+type extensionFinishedResult struct {
+	WakeHint   *ExtensionWakeHint `json:"wake_hint,omitempty"`
+	Activity   map[string]any     `json:"activity,omitempty"`
+	ReplyParts []string           `json:"reply_parts,omitempty"`
+}
+
 type extensionWorkflowResult struct {
 	Output   string         `json:"output,omitempty"`
 	Activity map[string]any `json:"activity,omitempty"`
@@ -481,12 +510,26 @@ type extensionRuntimeTool struct {
 }
 
 func validateExtensionManifest(manifest ExtensionManifest) error {
+	if err := validateStateDeclaration(manifest); err != nil {
+		return err
+	}
+	if manifest.Storage != "" && (!postgres.ValidExtensionSchema(manifest.StorageSchema) || manifest.StorageVersion == "" || len(manifest.StorageVersion) > 64) {
+		return errors.New("extension storage requires explicit schema and format")
+	}
+	if manifest.Storage == "" && (manifest.StorageSchema != "" || manifest.StorageVersion != "") {
+		return errors.New("storage declaration without storage")
+	}
+	if manifest.ContextAnalysis || manifest.ScheduledGeneration {
+		if !manifest.State || !manifest.PassiveContext || manifest.Budget.ModelCalls < 1 || manifest.Budget.OutputTokens < 1 {
+			return errors.New("supplemental capabilities require passive state and positive model budgets")
+		}
+	}
 	if manifest.PassiveContext {
-		if !manifest.State || manifest.Tools || len(manifest.Workflows) > 0 || manifest.Budget.ModelCalls != 0 || manifest.Budget.OutputTokens != 0 {
+		if !manifest.State || manifest.Tools || len(manifest.Workflows) > 0 || (!manifest.ContextAnalysis && !manifest.ScheduledGeneration && (manifest.Budget.ModelCalls != 0 || manifest.Budget.OutputTokens != 0)) {
 			return errors.New("passive context requires state and cannot declare tools, workflows or model budgets")
 		}
 		for _, event := range manifest.Events {
-			if event != "turn.finished" {
+			if event != "turn.finished" && !(manifest.Delivery && event == "delivery.check") {
 				return errors.New("passive context cannot inspect operations")
 			}
 		}
@@ -565,7 +608,7 @@ func validateExtensionManifest(manifest ExtensionManifest) error {
 		return err
 	}
 	for _, event := range manifest.Events {
-		if event != "turn.finished" && event != "operation.check" {
+		if event != "turn.finished" && event != "operation.check" && !(manifest.Delivery && event == "delivery.check") {
 			return fmt.Errorf("unsupported extension event %q", event)
 		}
 	}
@@ -762,8 +805,8 @@ func (registry extensionRegistry) views(config Config) []ExtensionDefinitionView
 
 func extensionInfo(definition extensionDefinition, config Config, available, trusted, workspaceTrusted bool, problem error) ExtensionInfo {
 	manifest := definition.Manifest
-	info := ExtensionInfo{
-		Storage: manifest.Storage, ModelSettings: append([]string(nil), manifest.ModelSettings...),
+	info := ExtensionInfo{ContextAnalysis: manifest.ContextAnalysis, ScheduledGeneration: manifest.ScheduledGeneration,
+		StorageSchema: manifest.StorageSchema, StorageVersion: manifest.StorageVersion, StateVersion: manifest.StateVersion, StateOperations: manifest.StateOperations, Storage: manifest.Storage, ModelSettings: append([]string(nil), manifest.ModelSettings...), TurnSettings: extensionTurnSettings(manifest),
 		ID: manifest.ID, Version: manifest.Version, Name: manifest.Name,
 		Description: manifest.Description, Source: definition.Source,
 		Provides: []string{}, Workflows: append([]ExtensionWorkflow(nil), manifest.Workflows...),
@@ -879,6 +922,9 @@ func CheckExtensionProcess(ctx context.Context, directory string) (ExtensionChec
 	}
 	if manifest.State {
 		expected = append(expected, "state")
+	}
+	if manifest.Delivery {
+		expected = append(expected, "delivery")
 	}
 	slices.Sort(expected)
 	provided := append([]string(nil), result.Provides...)
@@ -1230,10 +1276,38 @@ func (host *extensionHost) configure(config Config) {
 	if host == nil {
 		return
 	}
+	host.startMu.Lock()
+	defer host.startMu.Unlock()
 	host.mu.Lock()
+	old := host.config
+	changed := func(id string) bool {
+		return old.Workspace != config.Workspace || old.Extensions.Enabled[id] != config.Extensions.Enabled[id] ||
+			contentHash(mustJSON(old.Extensions.Settings[id])) != contentHash(mustJSON(config.Extensions.Settings[id])) ||
+			contentHash(mustJSON(old.Extensions.EnvFrom[id])) != contentHash(mustJSON(config.Extensions.EnvFrom[id])) ||
+			contentHash(mustJSON(old.Extensions.TrustedWorkspaces)) != contentHash(mustJSON(config.Extensions.TrustedWorkspaces))
+	}
+	retired := []*extensionClient{}
+	for id, client := range host.clients {
+		if changed(id) {
+			retired = append(retired, client)
+			delete(host.clients, id)
+		}
+	}
+	for id, inv := range host.active {
+		if changed(inv.extensionID) {
+			inv.cancel()
+			delete(host.active, id)
+		}
+	}
 	host.config = cloneConfig(config)
 	host.workspace = config.Workspace
 	host.mu.Unlock()
+	for _, client := range retired {
+		if client.rpc != nil {
+			_ = client.rpc.Close()
+		}
+	}
+
 }
 
 func (host *extensionHost) configuration() Config {
@@ -1279,6 +1353,13 @@ func (host *extensionHost) restart(id string) error {
 	host.mu.Lock()
 	client := host.clients[id]
 	delete(host.clients, id)
+	for token, inv := range host.active {
+		if inv.extensionID == id {
+			inv.cancel()
+			delete(host.active, token)
+		}
+	}
+
 	host.mu.Unlock()
 	if client == nil || client.rpc == nil {
 		return nil
@@ -1516,10 +1597,15 @@ func (client *extensionClient) initialize(parent context.Context, host *extensio
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
 	}
+	coreID := ""
+	if connection, e := postgres.Read(filepath.Join(host.dataDir, postgres.ConfigFile)); e == nil {
+		coreID = connection.CoreID
+	}
 	raw, err := client.rpc.Call(ctx, "initialize", map[string]any{
-		"protocol": extensionProtocol, "host_version": buildinfo.Version,
+		"protocol": extensionProtocol, "host_version": buildinfo.Version, "core_id": coreID,
 		"workspace": config.Workspace, "data_dir": dataDir,
-		"settings": config.Extensions.Settings[manifest.ID],
+		"settings": config.Extensions.Settings[manifest.ID], "state_version": manifest.StateVersion,
+		"capabilities": []string{"context_analysis", "scheduled_generation"},
 	})
 	if err != nil {
 		return err
@@ -1528,9 +1614,20 @@ func (client *extensionClient) initialize(parent context.Context, host *extensio
 	if json.Unmarshal(raw, &result) != nil || result.ID != manifest.ID || result.Version != manifest.Version {
 		return errors.New("extension initialize returned an invalid identity")
 	}
+	if manifest.State && result.StateVersion != manifest.StateVersion {
+		return errors.New("extension state contract mismatch")
+	}
+	for _, cap := range []struct {
+		enabled bool
+		name    string
+	}{{manifest.ContextAnalysis, "context_analysis"}, {manifest.ScheduledGeneration, "scheduled_generation"}} {
+		if cap.enabled && !contains(result.Capabilities, cap.name) {
+			return errors.New("extension supplemental capability mismatch")
+		}
+	}
 	seen := map[string]bool{}
 	for _, provide := range result.Provides {
-		if seen[provide] || provide != "context" && provide != "workflow" && provide != "tools" && (provide != "state" || !manifest.State) {
+		if seen[provide] || provide != "context" && provide != "workflow" && provide != "tools" && (provide != "state" || !manifest.State) && (provide != "delivery" || !manifest.Delivery) {
 			return errors.New("extension initialize returned invalid capabilities")
 		}
 		seen[provide] = true
@@ -1704,7 +1801,16 @@ func (host *extensionHost) handleHostRequest(requestCtx context.Context, extensi
 	if err != nil {
 		return nil, err
 	}
-	if invocation.manifest.PassiveContext && request.Method != "activity.report" {
+	if invocation.contextAnalysis && request.Method != "model.generate" && request.Method != "activity.report" {
+		return nil, errExtensionUnavailable
+	}
+	if invocation.manifest.PassiveContext && !(invocation.contextAnalysis && request.Method == "model.generate") && request.Method != "activity.report" && !(invocation.manifest.Delivery && isExtensionDeliveryMethod(request.Method)) {
+		return nil, errExtensionUnavailable
+	}
+	host.mu.Lock()
+	deliveryReview := invocation.deliveryReview
+	host.mu.Unlock()
+	if deliveryReview && request.Method != "activity.report" && request.Method != "delivery.read" && request.Method != "delivery.withdraw" {
 		return nil, errExtensionUnavailable
 	}
 	if requestCtx == nil {
@@ -1718,6 +1824,10 @@ func (host *extensionHost) handleHostRequest(requestCtx context.Context, extensi
 	default:
 	}
 	switch request.Method {
+	case "delivery.reply":
+		return host.handleReplyAction(invocation, params)
+	case "delivery.propose", "delivery.read", "delivery.withdraw", "delivery.resources":
+		return host.handleDeliveryRequest(invocation, request.Method, params)
 	case "activity.report":
 		return host.handleActivityReport(invocation, params)
 	case "model.generate":
@@ -1829,6 +1939,24 @@ func (host *extensionHost) handleModelGenerate(invocation *extensionInvocation, 
 	if invocation.service == nil {
 		return nil, errExtensionUnavailable
 	}
+	if invocation.scheduled {
+		trigger := invocation.service.extensionTrigger
+		if trigger == nil {
+			return nil, errExtensionUnavailable
+		}
+		latest := *invocation.service
+		if latest.liveConfig != nil {
+			latest.Config = latest.liveConfig()
+		}
+		var raw []byte
+		var opportunity WakeOpportunity
+		if latest.Store.db.QueryRowContext(invocation.ctx, `SELECT value FROM fa.meta WHERE key=$1`, wakePrefix+trigger.Opportunity).Scan(&raw) != nil || json.Unmarshal(raw, &opportunity) != nil || opportunity.State != "generating" {
+			return nil, errExtensionUnavailable
+		}
+		if err := NewTaskService(&latest).wakeAuthorized(invocation.ctx, opportunity, time.Now()); err != nil {
+			return nil, errExtensionUnavailable
+		}
+	}
 	var request extensionGenerateRequest
 	raw, _ := json.Marshal(params)
 	if json.Unmarshal(raw, &request) != nil || len(request.Messages) == 0 || len(request.Messages) > 128 {
@@ -1869,16 +1997,43 @@ func (host *extensionHost) handleModelGenerate(invocation *extensionInvocation, 
 	if len(request.Tools) != 0 {
 		return nil, errExtensionUnavailable
 	}
+	if invocation.contextAnalysis {
+		if len(messages) > 4 || maxTokens > 1024 || estimateContextTokens(string(mustJSON(messages))) > 4096 {
+			return nil, errExtensionBudget
+		}
+		for _, m := range messages {
+			if m.Role != "system" && m.Role != "user" || len(m.ToolCalls) > 0 || m.ToolCallID != "" || m.Name != "" {
+				return nil, errExtensionUnavailable
+			}
+		}
+	}
+
 	modelRequest := ModelRequest{ModelID: binding.ID, ModelRevision: binding.Revision,
 		Purpose:  "ext:" + invocation.extensionID + "/model.generate",
 		Messages: messages, MaxOutputTokens: maxTokens}
+	if invocation.contextAnalysis {
+		modelRequest.DenyOperations = true
+		modelRequest.SupplementalKey = invocation.supplementalKey
+		modelRequest.Purpose = "ext:" + invocation.extensionID + "/context_analysis"
+		if invocation.scheduled {
+			modelRequest.Purpose = "ext:" + invocation.extensionID + "/wake.evaluate"
+		}
+		service.Config.ModelRetries = 0
+	}
+
 	if err := invocation.ctx.Err(); err != nil {
 		return nil, errExtensionCancel
 	}
 	// One output unit is booked with the call so an exhausted output budget
 	// stops further calls; the observed output replaces it afterwards.
 	maxCalls, maxOutput := host.modelBudget(invocation.manifest)
-	if !invocation.usage.reserve(1, 1, maxCalls, maxOutput) {
+	reserved := 1
+	if invocation.contextAnalysis {
+		maxCalls = min(maxCalls, 2)
+		maxOutput = min(maxOutput, 2048)
+		reserved = maxTokens
+	}
+	if !invocation.usage.reserve(1, reserved, maxCalls, maxOutput) {
 		return nil, errExtensionBudget
 	}
 	_, response, callErr := service.generate(invocation.ctx, invocation.run, modelRequest)
@@ -1893,10 +2048,13 @@ func (host *extensionHost) handleModelGenerate(invocation *extensionInvocation, 
 	}
 	output := response.Content
 	spent := len(output)
+	if invocation.contextAnalysis {
+		spent = reserved
+	}
 	if response.Usage != nil && response.Usage.OutputTokens > 0 {
 		spent = int(response.Usage.OutputTokens)
 	}
-	if !invocation.usage.settle(0, spent-1, maxOutput) {
+	if !invocation.usage.settle(0, spent-reserved, maxOutput) {
 		return nil, errExtensionBudget
 	}
 	result := map[string]any{"content": host.redact(output)}
@@ -2177,7 +2335,12 @@ func (host *extensionHost) prepare(ctx context.Context, id string, run Run, purp
 	if len(services) != 0 {
 		service = services[0]
 	}
-	callCtx, cancel := context.WithTimeout(ctx, extensionTimeout(manifest))
+	timeout := extensionTimeout(manifest)
+	analysis := manifest.ContextAnalysis && phase == "turn" && purpose == "chat" && analysisAuthorized(config, run, id)
+	if analysis {
+		timeout = max(timeout, analysisDeadline(config.Extensions.Settings[id])+time.Second)
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	invocationState, err := host.beginInvocation(callCtx, id, service, run, manifest)
 	if err != nil {
@@ -2186,8 +2349,11 @@ func (host *extensionHost) prepare(ctx context.Context, id string, run Run, purp
 	defer host.endInvocation(invocationState)
 	invocation := invocationState.id
 	input := extensionInput{Invocation: invocation, Phase: phase, Purpose: purpose, Step: step,
-		Settings: config.Extensions.Settings[id],
+		Settings: extensionRunSettings(run, id, config),
 		DataDir:  filepath.Join(host.dataDir, "extensions", manifest.ID, "data")}
+	if service != nil && manifest.Delivery {
+		input.Delivery = service.extensionDeliveryContext(run, id)
+	}
 	applyExtensionNeeds(&input, manifest.Needs, run, history, config.Workspace, input.DataDir)
 	if manifest.State && service != nil {
 		input.Settings = extensionRunSettings(run, id, config)
@@ -2196,9 +2362,22 @@ func (host *extensionHost) prepare(ctx context.Context, id string, run Run, purp
 			return nil, err
 		}
 		input.Variant = extensionVariant(run, id, config)
-		input.Facts, err = service.extensionRecentFacts(callCtx, run, id, input.Variant)
+		input.Facts, err = service.extensionRecentFacts(callCtx, run, id, input.Variant, input.Identity)
 		if err != nil {
 			return nil, err
+		}
+	}
+	if deadline, ok := callCtx.Deadline(); ok {
+		input.Deadline = deadline.UTC().Format(time.RFC3339Nano)
+	}
+	if manifest.ContextAnalysis {
+		if input.Settings == nil {
+			input.Settings = map[string]any{}
+		}
+		input.Settings["analysis_enabled"] = analysis
+		if analysis && input.Identity != nil && len(input.Identity.Inputs) > 0 {
+			invocationState.contextAnalysis = true
+			invocationState.supplementalKey = id + "/input/" + input.Identity.Inputs[len(input.Identity.Inputs)-1].ID
 		}
 	}
 	raw, err := client.rpc.Call(callCtx, "context.prepare", input)
@@ -2274,6 +2453,7 @@ func (host *extensionHost) finish(ctx context.Context, id string, run Run, statu
 	if err != nil {
 		return nil, err
 	}
+	invocationState.finished = true
 	defer host.endInvocation(invocationState)
 	invocation := invocationState.id
 	dataDir := filepath.Join(host.dataDir, "extensions", definition.Manifest.ID, "data")
@@ -2281,7 +2461,7 @@ func (host *extensionHost) finish(ctx context.Context, id string, run Run, statu
 		Invocation: invocation,
 		Phase:      "turn",
 		Purpose:    "chat",
-		Settings:   config.Extensions.Settings[id],
+		Settings:   extensionRunSettings(run, id, config),
 		DataDir:    dataDir,
 		RunID:      run.ID, ConversationID: run.ConversationID,
 	}
@@ -2289,10 +2469,18 @@ func (host *extensionHost) finish(ctx context.Context, id string, run Run, statu
 	// The settled outcome is the point of this event, so it does not depend
 	// on needs; needs only select the surrounding context.
 	input.Status = status
+	if service != nil && definition.Manifest.Delivery {
+		input.Delivery = service.extensionDeliveryContext(run, id)
+	}
 	if input.Status == "" {
 		input.Status = run.Status
 	}
 	input.Output = truncateUTF8Bytes(run.Output, maxExtensionFinishedOutput)
+	if input.Delivery != nil && input.Output != run.Output {
+		// A bounded outcome preview cannot authorize a partition of an answer
+		// the extension has not received in full.
+		input.Delivery.Reply = false
+	}
 	if definition.Manifest.State && service != nil {
 		input.Settings = extensionRunSettings(run, id, config)
 		input.Identity, err = service.extensionIdentity(callCtx, run)
@@ -2305,9 +2493,25 @@ func (host *extensionHost) finish(ctx context.Context, id string, run Run, statu
 	if err != nil {
 		return nil, err
 	}
-	var result extensionActivityResult
+	var result extensionFinishedResult
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, errors.New("extension turn.finished returned invalid JSON")
+	}
+	if len(result.ReplyParts) != 0 {
+		if service == nil || !contains(client.registration.Provides, "delivery") {
+			return nil, errExtensionUnavailable
+		}
+		if err := service.saveExtensionReplyParts(callCtx, run, definition.Manifest, result.ReplyParts); err != nil {
+			return nil, err
+		}
+	}
+	if result.WakeHint != nil {
+		if service == nil || !definition.Manifest.ScheduledGeneration {
+			return nil, errExtensionUnavailable
+		}
+		if err := service.acceptWakeHint(callCtx, run, id, *result.WakeHint); err != nil {
+			return nil, err
+		}
 	}
 	if len(result.Activity) == 0 {
 		return nil, nil
@@ -2553,6 +2757,13 @@ func validateExtensionActivity(activity map[string]any) error {
 }
 
 func applyExtensionNeeds(input *extensionInput, needs []string, run Run, history []ModelMessage, workspace, dataDir string) {
+	clean := make([]ModelMessage, len(history))
+	copy(clean, history)
+	for i := range clean {
+		clean[i].ChatContinuation = nil
+		clean[i].ProviderItems = nil
+	}
+	history = clean
 	input.Message, input.History, input.Workspace, input.ToolResults = nil, nil, "", nil
 	input.Output, input.Status = "", ""
 	input.DataDir = dataDir
@@ -2835,6 +3046,9 @@ func (host *extensionHost) environment(id string, manifest ExtensionManifest, co
 		connection, err := postgres.Read(path)
 		if err != nil {
 			return nil, errors.New("extension PostgreSQL storage is not initialized; initialize it explicitly in extension settings")
+		}
+		if connection.ExtensionID != id || connection.Schema != manifest.StorageSchema || connection.StorageVersion != manifest.StorageVersion {
+			return nil, errors.New("extension storage binding differs from declaration; run explicit storage preflight")
 		}
 		set("FREEAGENT_EXTENSION_PG_FILE", path)
 		host.mu.Lock()

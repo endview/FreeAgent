@@ -20,6 +20,10 @@ interface Connection {
   credential: string;
   enabled: boolean;
   listen?: string;
+  plain_text?: boolean;
+  disable_typing?: boolean;
+  reply_stickers?: boolean;
+  autonomous_reactions?: boolean;
 }
 interface Channels {
   config: { connections: Connection[] };
@@ -130,6 +134,67 @@ export default function ChannelSettings() {
               <p className="form-hint">
                 {item.source} · {item.application_id}
               </p>
+              {item.source === "telegram" && (
+                <fieldset disabled={busy}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!item.plain_text}
+                      onChange={(event) =>
+                        void perform(() =>
+                          save({ ...item, plain_text: !event.target.checked }),
+                        )
+                      }
+                    />
+                    使用 Telegram 富文本
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!item.disable_typing}
+                      onChange={(event) =>
+                        void perform(() =>
+                          save({
+                            ...item,
+                            disable_typing: !event.target.checked,
+                          }),
+                        )
+                      }
+                    />
+                    私聊处理中显示“正在输入”
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(item.reply_stickers)}
+                      onChange={(event) =>
+                        void perform(() =>
+                          save({
+                            ...item,
+                            reply_stickers: event.target.checked,
+                          }),
+                        )
+                      }
+                    />
+                    允许本轮模型从已知贴纸中选择回复（每轮最多 1 张）
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(item.autonomous_reactions)}
+                      onChange={(event) =>
+                        void perform(() =>
+                          save({
+                            ...item,
+                            autonomous_reactions: event.target.checked,
+                          }),
+                        )
+                      }
+                    />
+                    允许模型自主回应当前消息表情
+                  </label>
+                </fieldset>
+              )}
               <div className="provider-actions">
                 <Button
                   variant="outline"

@@ -106,6 +106,10 @@ func (tools *controlTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 								state.ExtensionStates = map[string]json.RawMessage{}
 							}
 							state.ExtensionStates[id] = raw
+							if state.ExtensionStateOperations == nil {
+								state.ExtensionStateOperations = map[string]map[string]ExtensionStateOperation{}
+							}
+							state.ExtensionStateOperations[id] = definition.Manifest.StateOperations
 						}
 					}
 				}
@@ -168,7 +172,7 @@ func (tools *controlTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 			return PreparedTool{}, err
 		}
 		operation, err := tools.control.PlanControlChange(ctx, ControlPlanRequest{Kind: args.Kind, Arguments: args.Arguments,
-			Authorization: ControlModelProposed, ConversationID: run.ConversationID})
+			Authorization: ControlModelProposed, ConversationID: run.ConversationID, originRunID: run.ID})
 		if err != nil {
 			return PreparedTool{}, err
 		}

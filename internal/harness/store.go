@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -33,6 +34,9 @@ const (
 )
 
 type Store struct {
+	scheduledMu      sync.Mutex
+	scheduled        *scheduledOwner
+	channelBridge    atomic.Pointer[ChannelBridge]
 	inputMu          sync.Mutex
 	cancelMu         sync.Mutex
 	requestCancels   map[string]context.CancelFunc
@@ -406,7 +410,8 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 	defer store.attachmentMu.Unlock()
 	var input struct {
 		InputAttachments []AttachmentRef
-		InputRequestID   string `json:"input_request_id"`
+		InputRequestID   string            `json:"input_request_id"`
+		ExtensionTrigger *ExtensionTrigger `json:"extension_trigger"`
 	}
 	if json.Unmarshal([]byte(configJSON), &input) != nil {
 		return Run{}, false, ErrStoreFormat
@@ -508,6 +513,17 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 		result.ID, conversationID, requestKey, prompt, result.ConfigJSON, result.CreatedAt, result.UpdatedAt); err != nil {
 		return Run{}, false, err
 	}
+	if input.ExtensionTrigger != nil {
+		trigger := input.ExtensionTrigger
+		r, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=(document||jsonb_build_object('run_id',$1::text))::text WHERE key=$2 AND document->>'state'='queued' AND COALESCE(document->>'run_id','')=''`, result.ID, wakePrefix+trigger.Opportunity)
+		if err != nil {
+			return Run{}, false, err
+		}
+		n, _ := r.RowsAffected()
+		if n != 1 {
+			return Run{}, false, ErrRequestKey
+		}
+	}
 	if err := bindAttachments(ctx, tx, conversationID, result.ID, input.InputAttachments); err != nil {
 		return Run{}, false, err
 	}
@@ -519,6 +535,8 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, maintenanceMetaPrefix+result.ID, "compaction"); err != nil {
 			return Run{}, false, err
 		}
+	} else if input.ExtensionTrigger != nil {
+		// Extension-triggered Runs have no adopted user message.
 	} else if origin := channelOriginFromJSON(configJSON); origin != nil && origin.InputMessageID > 0 {
 		var original string
 		if err := tx.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE id=$1 AND conversation_id=$2`, origin.InputMessageID, conversationID).Scan(&original); err != nil {
@@ -967,8 +985,10 @@ func (store *Store) failModel(ctx context.Context, run Run, attempt Attempt, res
 	if _, err := tx.ExecContext(ctx, `UPDATE fa.attempts SET status='finished', response_json=$1 WHERE id=$2 AND status='dispatched'`, string(raw), attempt.ID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='failed', stop_reason=$1, updated_at=$2 WHERE id=$3`, safeError(failure), nowText(), run.ID); err != nil {
-		return err
+	if !isSupplementalAttempt(attempt) {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='failed', stop_reason=$1, updated_at=$2 WHERE id=$3`, safeError(failure), nowText(), run.ID); err != nil {
+			return err
+		}
 	}
 	var outputErr error
 	if guard != nil {
@@ -1037,6 +1057,11 @@ func (store *Store) startGuardedModel(ctx context.Context, run Run, request stri
 	if err := validateRequestMemory(ctx, tx, run, modelRequest); err != nil {
 		return Attempt{}, err
 	}
+	if modelRequest.SupplementalKey != "" {
+		if err := reserveSupplementalTx(ctx, tx, run, modelRequest); err != nil {
+			return Attempt{}, err
+		}
+	}
 	if modelRequest.Purpose == "assessment" {
 		snapshot, err := decodeRunSnapshot(run.ConfigJSON)
 		if err != nil || snapshot.Auto == nil {
@@ -1096,7 +1121,7 @@ func (store *Store) saveGuardedModel(ctx context.Context, run Run, attempt Attem
 		return err
 	}
 	if request.Purpose == "" {
-		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "assistant", Content: response.Content, ToolCalls: response.ToolCalls, ProviderItems: response.ProviderItems}); err != nil {
+		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "assistant", Content: response.Content, ToolCalls: response.ToolCalls, ProviderItems: response.ProviderItems, ChatContinuation: response.ChatContinuation}); err != nil {
 			return err
 		}
 		for _, call := range response.ToolCalls {
@@ -1385,8 +1410,10 @@ func (store *Store) markUnknown(ctx context.Context, attempt Attempt, reason str
 	if _, err := tx.ExecContext(ctx, `UPDATE fa.attempts SET status='unknown', response_json=`+responseExpr+` WHERE id=$2`, body, attempt.ID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='unknown', stop_reason=$1, updated_at=$2 WHERE id=$3`, reason, nowText(), attempt.RunID); err != nil {
-		return err
+	if !isSupplementalAttempt(attempt) {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='unknown', stop_reason=$1, updated_at=$2 WHERE id=$3`, reason, nowText(), attempt.RunID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -1477,8 +1504,9 @@ func (store *Store) recover(ctx context.Context) error {
 	statements := []string{
 		`UPDATE fa.meta SET value=(jsonb_set(document,'{state}','"unknown"'::jsonb,true))::text WHERE (key LIKE 'channel/send/%' OR key LIKE 'channel/file-send/%' OR key LIKE 'channel/reply-file/%') AND (document #>> '{state}') IN ('dispatching','creating')`,
 		`UPDATE fa.attempts SET status='unknown', response_json=CASE WHEN response_json='' THEN 'process interrupted after dispatch marker' ELSE response_json END WHERE status='dispatched'`,
-		`UPDATE fa.runs SET status='unknown', stop_reason='unresolved call after restart' WHERE status NOT IN ('abandoned','unknown') AND id IN (SELECT a.run_id FROM fa.attempts a WHERE a.status='unknown' AND NOT ` + resolvedAttemptSQL + `)`,
+		`UPDATE fa.runs SET status='unknown', stop_reason='unresolved call after restart' WHERE status NOT IN ('abandoned','unknown') AND id IN (SELECT a.run_id FROM fa.attempts a WHERE a.status='unknown' AND COALESCE(a.request_doc->>'SupplementalKey','')='' AND NOT ` + resolvedAttemptSQL + `)`,
 		`UPDATE fa.runs SET status='stopped', stop_reason='process interrupted; continue explicitly' WHERE status='running'`,
+		`UPDATE fa.runs SET status='failed',stop_reason='scheduled evaluation interrupted; inspect original Attempt, no automatic re-execution' WHERE config_doc->'extension_trigger' IS NOT NULL AND status IN ('stopped','unknown')`,
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {

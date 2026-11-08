@@ -33,7 +33,7 @@ export function commandEntries({
       icon: "shrink",
     });
   for (const skill of skills) {
-    if (!skill?.enabled || !skill.available || !skill.name) continue;
+    if (!skill?.enabled || !skill.available || !skill.name || skill.invocation === "selected_sources") continue;
     entries.push({
       kind: "skill",
       name: String(skill.name),

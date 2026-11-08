@@ -2,6 +2,7 @@ import type {
   Attachment,
   CapabilitySelection,
   Permission,
+  ReasoningSelection,
 } from "./api/types.ts";
 // Secrets and settings drafts are volatile, and never enter client storage.
 const forms = new Map<string, Record<string, unknown>>();
@@ -17,6 +18,7 @@ export interface PendingSend {
   confirm_full_access: boolean;
   capabilities: CapabilitySelection;
   model: string;
+  reasoning?: ReasoningSelection;
 }
 let scope = "",
   timer: ReturnType<typeof setTimeout> | undefined;

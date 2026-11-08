@@ -403,7 +403,7 @@ func (service *ControlService) applyTelegramAccess(ctx context.Context, record *
 		return err
 	}
 	for _, chat := range chats {
-		NewTaskService(service.core).CancelConversation(chat.ID)
+		NewTaskService(service.core).cancelConversationWithReason(chat.ID, "authorization_revoked")
 	}
 	if err := NewTaskService(service.core).stopPermissionCommands(ctx, space.ID, ""); err != nil {
 		service.core.event(Event{Kind: EventTelegramAccessStopFailed, Message: safeError(err)})

@@ -8,7 +8,10 @@ require (
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/modelcontextprotocol/go-sdk v1.6.0
+	github.com/rivo/uniseg v0.4.7
+	github.com/yuin/goldmark v1.8.7
 	golang.org/x/crypto v0.58.0
+	golang.org/x/image v0.47.0
 	golang.org/x/sys v0.49.0
 )
 

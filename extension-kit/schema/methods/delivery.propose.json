@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Extension-to-Host params. Requires manifest delivery and a live scoped invocation. Not available inside delivery.check. Result uses $defs.result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["invocation", "candidate"],
+  "properties": {
+    "invocation": {"type": "string", "minLength": 1},
+    "candidate": {"$ref": "delivery.common.json#/$defs/candidate"}
+  },
+  "$defs": {"result": {"$ref": "delivery.common.json#/$defs/receipt"}}
+}

@@ -20,6 +20,8 @@ func runExtensions(ctx context.Context, args []string, stdin io.Reader, stdout, 
 		return usageErr("usage: freeagent ext <new|check|test|run|logs> [flags]")
 	}
 	switch args[0] {
+	case "storage-preflight":
+		return runExtensionStoragePreflight(ctx, args[1:], stdout, stderr)
 	case "sync":
 		return runExtensionSync(ctx, args[1:], stdout, stderr)
 	case "state":
@@ -47,7 +49,7 @@ func runExtensionState(ctx context.Context, args []string, stdout, stderr io.Wri
 	data := flags.String("data-dir", defaultDataDir(), "current Harness data directory")
 	id := flags.String("id", "", "extension ID")
 	chat := flags.String("conversation", "", "conversation scope")
-	role := flags.String("role", "", "role ID")
+	role := flags.String("resource", "", "extension resource ID")
 	actor := flags.String("actor", "owner", "verified actor ID")
 	space := flags.String("space", "", "space ID")
 	if err := parseFlags(flags, args); err != nil {

@@ -35,7 +35,7 @@ func TestTelegramAPIUsesExplicitPollingContractAndPlaintextReplies(t *testing.T)
 		case "getMe":
 			fmt.Fprint(w, `{"ok":true,"result":{"id":1,"is_bot":true,"username":"fixture_bot","can_read_all_group_messages":true}}`)
 		case "getUpdates":
-			if string(body["offset"]) != "-1" || string(body["timeout"]) != "0" || string(body["limit"]) != "100" || string(body["allowed_updates"]) != `["message","callback_query"]` {
+			if string(body["offset"]) != "-1" || string(body["timeout"]) != "0" || string(body["limit"]) != "100" || string(body["allowed_updates"]) != `["message","callback_query","message_reaction","message_reaction_count"]` {
 				t.Errorf("poll contract %s", body)
 			}
 			fmt.Fprint(w, `{"ok":true,"result":[{"update_id":7,"message":{"message_id":6,"date":1,"chat":{"id":90,"type":"private"},"from":{"id":4},"text":"hello"}}]}`)

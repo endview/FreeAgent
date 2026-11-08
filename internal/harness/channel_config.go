@@ -21,6 +21,9 @@ func (config ChannelsConfig) validate() error {
 	seen := map[string]bool{}
 	apps := map[string]bool{}
 	for _, c := range config.Connections {
+		if c.Source != SpaceSourceTelegram && (c.PlainText || c.DisableTyping || c.ReplyStickers || c.AutonomousReactions) {
+			return errors.New("harness: Telegram display options require a Telegram connection")
+		}
 		if !validCapabilityID(c.ID) || seen[c.ID] || c.Source != "telegram" && c.Source != "lark" && c.Source != "qq" || !validChannelPart(c.ApplicationID) || !validKeyID(c.Credential) {
 			return errors.New("harness: channel connection identity or credential is invalid")
 		}
