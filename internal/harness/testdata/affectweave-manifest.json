@@ -1,7 +1,7 @@
 {
   "protocol": "freeagent-ext/1",
   "id": "cc.endview.affectweave",
-  "version": "1.6.0-dev.1",
+  "version": "1.6.0-dev.2",
   "name": "AffectWeave",
   "description": "可选的人物、关系与经历连续性。持久提案必须确认，普通 Core 不依赖本扩展。",
   "run": {
