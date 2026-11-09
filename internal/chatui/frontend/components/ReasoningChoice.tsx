@@ -1,20 +1,15 @@
 import { Choice } from "./Choice";
 import type {
   ReasoningCapabilities,
-  ReasoningSelection,
+  ReasoningModelInfo,
 } from "@/lib/api/types";
-
-export function reasoningSelection(
-  value: string,
-): ReasoningSelection | undefined {
-  if (value === "inherit") return undefined;
-  if (value.startsWith("effort:")) return { effort: value.slice(7) };
-  return { mode: value };
-}
+import { reasoningOptions } from "@/lib/reasoning";
+export { reasoningSelection, reasoningValue } from "@/lib/reasoning";
 
 export function ReasoningChoice({
   caps,
   protocol,
+  info,
   value,
   onChange,
   inherit = true,
@@ -23,6 +18,7 @@ export function ReasoningChoice({
 }: {
   caps?: ReasoningCapabilities;
   protocol?: string;
+  info?: ReasoningModelInfo | null;
   value: string;
   onChange: (value: string) => void;
   inherit?: boolean;
@@ -43,23 +39,7 @@ export function ReasoningChoice({
       </button>
     ) : null;
   }
-  const efforts = (caps.efforts || "").split(",").filter(Boolean);
-  const options: [string, string][] = [
-    ...(inherit ? [["inherit", "继承模型设置"] as [string, string]] : []),
-    ["default", "Provider 默认"],
-    ...(caps.control === "deepseek" || efforts.includes("none")
-      ? [["disabled", "关闭思考"] as [string, string]]
-      : []),
-    ...(caps.control === "deepseek" && protocol !== "responses"
-      ? [["enabled", "开启思考（默认强度）"] as [string, string]]
-      : []),
-    ...efforts
-      .filter((effort) => effort !== "none")
-      .map(
-        (effort) =>
-          ["effort:" + effort, "思考 · " + effort] as [string, string],
-      ),
-  ];
+  const options = reasoningOptions(caps, protocol, info, inherit);
   return (
     <Choice
       label={label}
@@ -77,8 +57,4 @@ export function ReasoningChoice({
       onChange={onChange}
     />
   );
-}
-
-export function reasoningValue(value?: ReasoningSelection) {
-  return value?.effort ? "effort:" + value.effort : value?.mode || "default";
 }

@@ -15,8 +15,8 @@ import (
 	"unicode/utf8"
 )
 
-// ResponsesClient implements the OpenAI Responses wire format used by
-// DeepSeek. The API is stateless, so the full input history is rebuilt from
+// ResponsesClient implements the stateless Responses wire format used by the
+// explicitly selected provider. The full input history is rebuilt from
 // the existing Harness messages and saved provider output items on every call.
 type ResponsesClient struct {
 	baseURL   string
@@ -77,6 +77,8 @@ func NewResponsesClient(config ModelConfig, key ResolvedKey, httpClient *http.Cl
 func (client *ResponsesClient) BaseURL() string { return client.baseURL }
 
 func (client *ResponsesClient) Generate(ctx context.Context, request ModelRequest, emit func(string)) (ModelResponse, error) {
+	source := nativeContinuationSource("responses", client.baseURL, client.key.ProfileID, client.model)
+	request.Messages = scopedProviderMessages(request.Messages, source)
 	config := ModelConfig{Provider: "openai-compatible", Model: client.model, Capabilities: client.caps}
 	if err := validateModelRequest(config, request); err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
@@ -89,12 +91,15 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 	if request.Reasoning != nil {
 		selection = *request.Reasoning
 	}
-	_, effort, reasoningErr := client.caps.Reasoning.parameters(selection, "responses")
+	_, effort, reasoningErr := config.reasoningParameters(selection)
 	if reasoningErr != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: reasoningErr.Error()}
 	}
 	if effort != "" {
 		wire.Reasoning = &responsesReasoning{Effort: effort}
+	}
+	if client.model == "gpt-6.1-sol" {
+		wire.Include = []string{"reasoning.encrypted_content"}
 	}
 	body, err := json.Marshal(wire)
 	if err != nil {
@@ -159,6 +164,9 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 	if result.Provider != nil && client.caps.Reasoning.Control != "" && client.caps.Reasoning.Control != "none" {
 		result.Provider.RequestedReasoning = &selection
 	}
+	if len(result.ProviderItems) > 0 {
+		result.ProviderSource = source
+	}
 	if err == nil && result.Provider != nil && !result.Provider.Streamed && emit != nil {
 		emit(result.Content)
 	}
@@ -166,6 +174,7 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 }
 
 type responsesRequest struct {
+	Include         []string            `json:"include,omitempty"`
 	Reasoning       *responsesReasoning `json:"reasoning,omitempty"`
 	Model           string              `json:"model"`
 	Instructions    string              `json:"instructions,omitempty"`
@@ -278,6 +287,7 @@ func validResponsesFunctionName(name string) bool {
 }
 
 type responsesEnvelope struct {
+	Reasoning        *responsesReasoning  `json:"reasoning,omitempty"`
 	ID               string               `json:"id,omitempty"`
 	Status           string               `json:"status,omitempty"`
 	CreatedAt        int64                `json:"created_at,omitempty"`
@@ -547,6 +557,9 @@ func normalizeResponsesEnvelope(envelope responsesEnvelope, raw []byte, key stri
 	result.Usage = usage
 	meta := &ProviderResponse{Protocol: "responses", ID: redact(envelope.ID, key), Model: redact(envelope.Model, key),
 		Created: envelope.CreatedAt, Streamed: streamed, UsageStatus: "missing", ResponseStatus: status}
+	if envelope.Reasoning != nil && validReasoningEffort(envelope.Reasoning.Effort) && (key == "" || !strings.Contains(envelope.Reasoning.Effort, key)) {
+		meta.ReportedReasoningEffort = envelope.Reasoning.Effort
+	}
 	if len(calls) != 0 {
 		meta.FinishReason = "tool_calls"
 	} else if status == "incomplete" {

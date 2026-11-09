@@ -213,7 +213,7 @@ func TestResponsesFunctionCallContinuationReplaysProviderItems(t *testing.T) {
 	second, err := client.Generate(context.Background(), ModelRequest{
 		Messages: []ModelMessage{
 			{Role: "user", Content: "lookup"},
-			{Role: "assistant", ToolCalls: first.ToolCalls, ProviderItems: first.ProviderItems},
+			{Role: "assistant", ToolCalls: first.ToolCalls, ProviderItems: first.ProviderItems, ProviderSource: first.ProviderSource},
 			{Role: "tool", ToolCallID: "call-1", Content: "tool output"},
 		},
 		MaxOutputTokens: 64,

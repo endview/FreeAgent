@@ -1121,7 +1121,7 @@ func (store *Store) saveGuardedModel(ctx context.Context, run Run, attempt Attem
 		return err
 	}
 	if request.Purpose == "" {
-		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "assistant", Content: response.Content, ToolCalls: response.ToolCalls, ProviderItems: response.ProviderItems, ChatContinuation: response.ChatContinuation}); err != nil {
+		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "assistant", Content: response.Content, ToolCalls: response.ToolCalls, ProviderItems: response.ProviderItems, ProviderSource: response.ProviderSource, ChatContinuation: response.ChatContinuation}); err != nil {
 			return err
 		}
 		for _, call := range response.ToolCalls {

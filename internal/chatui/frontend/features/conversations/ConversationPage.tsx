@@ -209,7 +209,11 @@ const TurnView = memo(function TurnView({
   }
   return (
     <section className={`turn state-${turn.state}`} data-run={turn.key}>
- {turn.trigger && <p className="form-hint">主动对话评估 · {turn.trigger.extension_id} · {turn.reason || state}</p>}
+      {turn.trigger && (
+        <p className="form-hint">
+          主动对话评估 · {turn.trigger.extension_id} · {turn.reason || state}
+        </p>
+      )}
       {turn.messages.map((message) => (
         <ChatMessage
           key={message.key}
@@ -1185,6 +1189,13 @@ export default function ConversationPage({
                 ]}
               />
               <ReasoningChoice
+                info={
+                  state.environment?.models[
+                    model ||
+                      state.snapshot?.view.model_id ||
+                      state.environment.default_model
+                  ]?.reasoning_info
+                }
                 caps={
                   state.environment?.models[
                     model ||

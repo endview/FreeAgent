@@ -270,23 +270,25 @@ type ControlConfigState struct {
 }
 
 type ControlModelState struct {
-	Reasoning    ReasoningCapabilities `json:"reasoning,omitempty,omitzero"`
-	OutputTokens int                   `json:"output_tokens,omitempty"`
-	ID           string                `json:"id"`
-	Provider     string                `json:"provider"`
-	Model        string                `json:"model"`
-	Protocol     string                `json:"protocol"`
-	KeyBound     bool                  `json:"key_bound"`
+	ReasoningInfo *ReasoningModelInfo   `json:"reasoning_info,omitempty"`
+	Reasoning     ReasoningCapabilities `json:"reasoning,omitempty,omitzero"`
+	OutputTokens  int                   `json:"output_tokens,omitempty"`
+	ID            string                `json:"id"`
+	Provider      string                `json:"provider"`
+	Model         string                `json:"model"`
+	Protocol      string                `json:"protocol"`
+	KeyBound      bool                  `json:"key_bound"`
 }
 
 type modelProfileControlArguments struct {
-	ID                 string              `json:"id"`
-	Provider           string              `json:"provider,omitempty"`
-	Key                string              `json:"key,omitempty"`
-	Model              string              `json:"model,omitempty"`
-	Capabilities       *ModelCapabilities  `json:"capabilities,omitempty"`
-	MakeDefault        bool                `json:"default,omitempty"`
-	AuxiliaryReasoning *ReasoningSelection `json:"auxiliary_reasoning,omitempty"`
+	ID                 string                 `json:"id"`
+	Provider           string                 `json:"provider,omitempty"`
+	Key                string                 `json:"key,omitempty"`
+	Model              string                 `json:"model,omitempty"`
+	Capabilities       *ModelCapabilities     `json:"capabilities,omitempty"`
+	MakeDefault        bool                   `json:"default,omitempty"`
+	AuxiliaryReasoning *ReasoningSelection    `json:"auxiliary_reasoning,omitempty"`
+	Reasoning          *ReasoningCapabilities `json:"reasoning,omitempty"`
 }
 
 type ControlState struct {
@@ -644,8 +646,8 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSetCommandPolicy, ResourceFamily: "config.commands", Risk: ControlRiskAuthority, Description: "Change command execution policy for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetWorkspace, ResourceFamily: "config.workspace", Risk: ControlRiskAuthority, Description: "Change the selected workspace for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetDefaultModel, ResourceFamily: "config.models", Risk: ControlRiskOrdinary, Description: "Select the default configured model for future Runs.", ModelProposable: true, Reversible: true},
-		{Kind: ControlSetModelProfile, ResourceFamily: "config.models", Risk: ControlRiskAuthority, Description: "Add or replace a full model profile using a saved Key reference. To change ONLY compaction/extension-analysis thinking on an existing model, pass {id,auxiliary_reasoning:{mode:disabled}} (or a declared effort); omit all other fields. No Key reference is needed for this narrow change. Confirmation is required.", ModelProposable: true, Reversible: true,
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"provider":{"type":"string"},"key":{"type":"string"},"model":{"type":"string"},"capabilities":{"type":"object"},"default":{"type":"boolean"},"auxiliary_reasoning":{"type":"object","properties":{"mode":{"type":"string","enum":["default","enabled","disabled"]},"effort":{"type":"string","maxLength":32}},"additionalProperties":false}},"required":["id"],"additionalProperties":false}`)},
+		{Kind: ControlSetModelProfile, ResourceFamily: "config.models", Risk: ControlRiskAuthority, Description: "Add or replace a full model profile using a saved Key reference. For an existing model, pass ONLY {id,auxiliary_reasoning:{mode:disabled}} (or a declared effort) to change compression/extension-analysis thinking, or ONLY {id,reasoning:{control,efforts,default,auxiliary}} to replace its reasoning declaration. Read current state first; preserve the other selections. No Key is needed for these narrow changes. Unknown declared efforts are unverified; official exclusions still apply. Confirmation is required.", ModelProposable: true, Reversible: true,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"provider":{"type":"string"},"key":{"type":"string"},"model":{"type":"string"},"capabilities":{"type":"object"},"default":{"type":"boolean"},"reasoning":{"type":"object","properties":{"control":{"type":"string","enum":["none","openai","deepseek","anthropic"]},"efforts":{"type":"string","maxLength":256},"default":{"type":"object"},"auxiliary":{"type":"object"}},"additionalProperties":false},"auxiliary_reasoning":{"type":"object","properties":{"mode":{"type":"string","enum":["default","enabled","disabled"]},"effort":{"type":"string","maxLength":32}},"additionalProperties":false}},"required":["id"],"additionalProperties":false}`)},
 		{Kind: ControlSetProviderEnabled, ResourceFamily: "config.providers", Risk: ControlRiskAuthority, Description: "Enable or disable a model Provider by saved Key profile ID. No network request is made.", ModelProposable: true, Reversible: true},
 		{Kind: ControlRemoveModel, ResourceFamily: "config.models", Risk: ControlRiskDestructive, Description: "Remove a configured model profile and its future references.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetAutoPolicy, ResourceFamily: "config.auto", Risk: ControlRiskAuthority, Description: "Change bounded Auto model selection settings.", ModelProposable: true, Reversible: true},
@@ -797,7 +799,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 	models := make([]ControlModelState, 0, len(config.Models))
 	for id, model := range config.Models {
 		caps := model.EffectiveCapabilities()
-		models = append(models, ControlModelState{ID: id, Provider: model.Provider, Model: model.Model, Reasoning: model.Capabilities.Reasoning, OutputTokens: model.Capabilities.OutputTokens,
+		models = append(models, ControlModelState{ID: id, Provider: model.Provider, Model: model.Model, Reasoning: model.Capabilities.Reasoning, ReasoningInfo: OfficialReasoning(model), OutputTokens: model.Capabilities.OutputTokens,
 			Protocol: caps.Protocol, KeyBound: model.Key != ""})
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
@@ -2809,16 +2811,20 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		if err := decodeControlJSON(raw, &args); err != nil {
 			return err
 		}
-		if args.AuxiliaryReasoning != nil {
+		if args.AuxiliaryReasoning != nil || args.Reasoning != nil {
 			var fields map[string]json.RawMessage
 			if json.Unmarshal(raw, &fields) != nil || len(fields) != 2 {
-				return errors.New("harness: auxiliary_reasoning must be the only profile change")
+				return errors.New("harness: reasoning or auxiliary_reasoning must be the only profile change")
 			}
 			model, ok := config.Models[args.ID]
 			if !ok {
 				return errors.New("harness: auxiliary reasoning requires an existing model")
 			}
-			model.Capabilities.Reasoning.Auxiliary = *args.AuxiliaryReasoning
+			if args.AuxiliaryReasoning != nil {
+				model.Capabilities.Reasoning.Auxiliary = *args.AuxiliaryReasoning
+			} else {
+				model.Capabilities.Reasoning = *args.Reasoning
+			}
 			return ApplyModel(config, args.ID, model, false)
 		}
 		caps := ModelCapabilities{}

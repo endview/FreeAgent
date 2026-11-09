@@ -511,7 +511,7 @@ Observer credentials cannot perform these mutations.
 
 Settings → Provider → a model's **Capabilities** separates its declared
 reasoning contract from its main-answer default and auxiliary-analysis default.
-`capabilities.reasoning.control` is `none` (no fields), `deepseek`, or `openai`;
+`capabilities.reasoning.control` is `none` (no fields), `deepseek`, `openai`, or `anthropic`;
 `efforts` is a comma-separated declaration for that concrete endpoint/model.
 Main and auxiliary selections each contain `mode` and/or `effort`.
 
@@ -519,8 +519,27 @@ Provider default omits the parameter. Disabled explicitly requests off;
 low effort is not off. DeepSeek Chat uses `thinking.type` and optionally
 `reasoning_effort`; Responses uses `reasoning.effort` (none means off).
 OpenAI Chat/Responses use their own effort fields. Unsupported values are
-rejected before dispatch; none is allowed only when declared. Anthropic and
-other reasoning contracts are not silently mapped to these fields.
+rejected before dispatch; none is allowed only when declared and not explicitly
+excluded by official model evidence. Native Anthropic uses `thinking.type=adaptive`
+and `output_config.effort`, or an explicitly supported `disabled` toggle; summaries
+send neither sampling parameters nor forced tool choices. Provider default still
+omits these fields. Claude Sonnet 4.6 defaults to thinking off even though its
+effort default is high; Opus 5.5 cannot turn thinking off.
+
+New connection presets use GPT 6.1 Sol (Responses), Sonnet 4.6/Opus 5.5 (Messages),
+Gemini 3.8 Flash, grok 4.7 (Responses), GLM 5.3, Kimi K3.1 Pro, MiniMax M3.1 Flash,
+Muse Spark 1.3 and DeepSeek Flash. MiniMax's new preset uses `https://api.minimax.cn/v1`.
+Existing saved profiles are not renamed or switched. Suggested auxiliary settings
+apply only when explicitly adding a model: off where supported, otherwise the lowest
+verified effort. They do not raise output allowances. Dated official evidence is
+returned as `reasoning_info`, distinct from the configured declaration.
+
+The comma-separated effort declaration accepts up to eight identifiers, each up to
+32 lowercase ASCII letters/digits/underscores/hyphens. Explicitly declared values
+outside official evidence remain selectable, labelled **未经官方核对**. This is not
+arbitrary request JSON. Known exclusions, including GPT Sol none/minimal, Opus 5.5 off
+and Muse none, cannot be bypassed by declaring them. Previously saved syntactically
+valid settings remain readable for correction; new edits and dispatch enforce exclusions.
 
 GUI's per-turn picker and CLI `run --reasoning enabled --reasoning-effort high`
 or interactive `/reasoning effort high` freeze a choice in that Run. Use
@@ -546,13 +565,30 @@ enabled extension analysis; "provider default" omits parameters, rather than
 disabling thinking. A summary's UTF-8 byte cap does not enlarge the effective
 model output allowance.
 
+To replace only an existing model's reasoning declaration, use `{id, reasoning}`
+with the typed `control`, `efforts`, `default`, and `auxiliary` fields. Do not mix
+this form with full-profile or auxiliary-only fields. It preserves Key, model,
+output allowance and other capabilities, and uses the same confirmation flow.
+CLI reasoning-only edits need only the existing model ID, for example:
+
+```powershell
+freeagent config model --id my-deepseek --aux-reasoning-mode disabled
+freeagent config model --id my-claude --reasoning-effort low
+```
+
 Private Chat continuation and Responses items are retained for protocol
 continuation, scoped to their producing endpoint/profile/model. Even an
-explicit empty Chat continuation retains its presence. They are excluded from
+explicit empty Chat continuation retains its presence. Native Anthropic ordered
+thinking/signature/redacted blocks and Gemini thought signatures follow that same
+scope. Unbound legacy Responses items are not asserted to belong to a new endpoint;
+the visible message/tool record remains available. They are excluded from
 visible replies, extension history, compaction and experience-summary inputs.
 Reported reasoning tokens are part of output usage, not added to totals a
 second time. The UI reports the **requested** choice; a provider that does not
-echo its actual effort cannot independently prove that setting.
+echo its actual effort cannot independently prove that setting. When a Responses
+response actually supplies an effort, the bounded `reported_reasoning_effort` stays
+separate from `requested_reasoning` in existing Attempt JSON. A gateway echo is not
+independent evidence of native execution or token accounting.
 
 ## Web 的模型与思考选择
 

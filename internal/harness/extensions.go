@@ -2762,6 +2762,7 @@ func applyExtensionNeeds(input *extensionInput, needs []string, run Run, history
 	for i := range clean {
 		clean[i].ChatContinuation = nil
 		clean[i].ProviderItems = nil
+		clean[i].ProviderSource = ""
 	}
 	history = clean
 	input.Message, input.History, input.Workspace, input.ToolResults = nil, nil, "", nil

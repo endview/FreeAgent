@@ -208,7 +208,7 @@ func decodeRunSnapshot(raw string) (runSnapshot, error) {
 	}
 	if snapshot.Reasoning != nil {
 		model := snapshot.Bindings[len(snapshot.Bindings)-1].Config
-		if _, _, err := model.Capabilities.Reasoning.parameters(*snapshot.Reasoning, model.EffectiveCapabilities().Protocol); err != nil {
+		if _, _, err := model.reasoningParameters(*snapshot.Reasoning); err != nil {
 			return snapshot, ErrStoreFormat
 		}
 	}

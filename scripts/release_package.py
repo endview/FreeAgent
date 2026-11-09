@@ -114,6 +114,7 @@ def build(target, go, output, allow_dirty=False, postgres_runtime=None):
         'DIAGNOSIS_AND_UPDATES.md','EXTENSION_DEVELOPMENT_GUIDE.md','EXTENSION_DEVELOPMENT_PRINCIPLES.md','EXTENSION_STATE_CONTRACT_V2.md','AFFECTWEAVE_HOST_CONTRACT_V8_3.md',
         'REPLY_DELIVERY.md','EXPERIENCE_SUMMARY.md','SUPPLEMENTAL_EXTENSION_EXECUTION.md','VALIDATION_V8_7_2026-11-08.md',
         'VALIDATION_V8_7_1_2026-11-09.md',
+        'VALIDATION_V8_8_2026-11-09.md',
         'FRONTEND_ARCHITECTURE_V8_1.md','FRONTEND_DEVELOPMENT_GUIDE_V8_1.md')})
     if goos=='linux':
         files.update({'deploy/freeagent.service':'deploy/freeagent.service',

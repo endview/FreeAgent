@@ -144,7 +144,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 		if command.Action == "steer" {
 			return PendingInput{}, errors.New("harness: reasoning changes apply to a new task, not running-task guidance")
 		}
-		if _, _, err := binding.Config.Capabilities.Reasoning.parameters(*command.Reasoning, binding.Config.EffectiveCapabilities().Protocol); err != nil {
+		if _, _, err := binding.Config.reasoningParameters(*command.Reasoning); err != nil {
 			return PendingInput{}, err
 		}
 	}

@@ -8,6 +8,7 @@ import (
 )
 
 type ModelMessage struct {
+	ProviderSource   string            `json:",omitempty"`
 	FeedbackSource   string            `json:",omitempty"`
 	ChatContinuation *ChatContinuation `json:",omitempty"`
 	Deferred         bool              `json:",omitempty"`
@@ -57,6 +58,7 @@ type ExtensionUse struct {
 }
 
 type ModelResponse struct {
+	ProviderSource   string            `json:",omitempty"`
 	ChatContinuation *ChatContinuation `json:",omitempty"`
 	LatencyMS        int64             `json:",omitempty"`
 	Content          string
@@ -74,18 +76,19 @@ type ModelResponse struct {
 // Provider metadata is bounded, credential-redacted protocol data, not evidence
 // that any tool or external effect executed.
 type ProviderResponse struct {
-	RequestedReasoning *ReasoningSelection     `json:"requested_reasoning,omitempty"`
-	Protocol           string                  `json:"protocol"`
-	ID                 string                  `json:"id,omitempty"`
-	Model              string                  `json:"model,omitempty"`
-	Created            int64                   `json:"created,omitempty"`
-	SystemFingerprint  string                  `json:"system_fingerprint,omitempty"`
-	Streamed           bool                    `json:"streamed"`
-	FinishReason       string                  `json:"finish_reason,omitempty"`
-	RawFinishReason    string                  `json:"raw_finish_reason,omitempty"`
-	UsageStatus        string                  `json:"usage_status"`
-	ResponseStatus     string                  `json:"response_status,omitempty"`
-	WebSearchCalls     []ProviderWebSearchCall `json:"web_search_calls,omitempty"`
+	ReportedReasoningEffort string                  `json:"reported_reasoning_effort,omitempty"`
+	RequestedReasoning      *ReasoningSelection     `json:"requested_reasoning,omitempty"`
+	Protocol                string                  `json:"protocol"`
+	ID                      string                  `json:"id,omitempty"`
+	Model                   string                  `json:"model,omitempty"`
+	Created                 int64                   `json:"created,omitempty"`
+	SystemFingerprint       string                  `json:"system_fingerprint,omitempty"`
+	Streamed                bool                    `json:"streamed"`
+	FinishReason            string                  `json:"finish_reason,omitempty"`
+	RawFinishReason         string                  `json:"raw_finish_reason,omitempty"`
+	UsageStatus             string                  `json:"usage_status"`
+	ResponseStatus          string                  `json:"response_status,omitempty"`
+	WebSearchCalls          []ProviderWebSearchCall `json:"web_search_calls,omitempty"`
 }
 
 type ProviderWebSearchCall struct {

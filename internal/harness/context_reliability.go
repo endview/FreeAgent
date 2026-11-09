@@ -52,7 +52,7 @@ func (service *Service) compactionFingerprint() (string, error) {
 		return "", err
 	}
 	caps := binding.Config.EffectiveCapabilities()
-	toggle, effort, err := caps.Reasoning.parameters(caps.Reasoning.Auxiliary, caps.Protocol)
+	toggle, effort, err := binding.Config.reasoningParameters(caps.Reasoning.Auxiliary)
 	if err != nil {
 		return "", err
 	}

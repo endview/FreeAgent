@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -29,15 +30,15 @@ func (caps ReasoningCapabilities) efforts() []string {
 }
 
 func (caps ReasoningCapabilities) validate(protocol string) error {
-	if caps.Control != "" && caps.Control != "none" && caps.Control != "openai" && caps.Control != "deepseek" {
+	if caps.Control != "" && caps.Control != "none" && caps.Control != "openai" && caps.Control != "deepseek" && caps.Control != "anthropic" {
 		return errors.New("harness: unsupported reasoning control")
 	}
-	if len(caps.Efforts) > 128 || len(caps.efforts()) > 8 {
+	if len(caps.Efforts) > 256 || len(caps.efforts()) > 8 {
 		return errors.New("harness: too many reasoning efforts")
 	}
 	seen := map[string]bool{}
 	for _, effort := range caps.efforts() {
-		if seen[effort] || !slices.Contains([]string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}, effort) || caps.Control == "deepseek" && !slices.Contains([]string{"low", "high", "max"}, effort) {
+		if seen[effort] || !validReasoningEffort(effort) {
 			return errors.New("harness: invalid reasoning efforts")
 		}
 		seen[effort] = true
@@ -48,7 +49,7 @@ func (caps ReasoningCapabilities) validate(protocol string) error {
 		}
 		return nil
 	}
-	if protocol == "local" {
+	if protocol == "local" || caps.Control == "anthropic" && protocol == "responses" {
 		return errors.New("harness: local model does not support provider reasoning parameters")
 	}
 	if _, _, err := caps.parameters(caps.Default, protocol); err != nil {
@@ -77,7 +78,7 @@ func (caps ReasoningCapabilities) parameters(selection ReasoningSelection, proto
 		if selection.Effort != "" {
 			return nil, "", errors.New("harness: disabled reasoning cannot include an effort")
 		}
-		if caps.Control == "deepseek" {
+		if caps.Control == "deepseek" || caps.Control == "anthropic" {
 			if protocol == "responses" {
 				return nil, "none", nil
 			}
@@ -92,21 +93,41 @@ func (caps ReasoningCapabilities) parameters(selection ReasoningSelection, proto
 	if selection.Effort != "" && (!slices.Contains(caps.efforts(), selection.Effort) || selection.Effort == "none") {
 		return nil, "", errors.New("harness: reasoning effort is not supported by this model")
 	}
-	if selection.Mode == "enabled" && selection.Effort == "" && (caps.Control != "deepseek" || protocol == "responses") {
+	if selection.Mode == "enabled" && selection.Effort == "" && caps.Control != "anthropic" && (caps.Control != "deepseek" || protocol == "responses") {
 		return nil, "", errors.New("harness: enabling reasoning requires a declared effort for this protocol")
 	}
-	if caps.Control == "deepseek" && protocol != "responses" && (selection.Mode == "enabled" || selection.Effort != "") {
+	if (caps.Control == "deepseek" || caps.Control == "anthropic") && protocol != "responses" && (selection.Mode == "enabled" || selection.Effort != "") {
 		on := true
 		return &on, selection.Effort, nil
 	}
 	return nil, selection.Effort, nil
 }
 
+// A bounded identifier is a user declaration, not an assertion of official
+// support. New provider efforts do not require a FreeAgent release.
+func validReasoningEffort(value string) bool {
+	if len(value) == 0 || len(value) > 32 {
+		return false
+	}
+	for _, c := range value {
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 // ChatContinuation is protocol data scoped to the exact endpoint, credential
 // profile and model that produced it. It is not user-visible response text.
 type ChatContinuation struct {
-	Source  string `json:"source"`
-	Content string `json:"content"`
+	Source           string `json:"source"`
+	Content          string `json:"content"`
+	ReasoningOmitted bool   `json:"reasoning_omitted,omitempty"`
+	// Native Messages blocks and OpenAI-compatible thought signatures are
+	// private protocol data, cleared together with Content for summaries/hooks.
+	Blocks       []json.RawMessage          `json:"blocks,omitempty"`
+	ToolExtras   map[string]json.RawMessage `json:"tool_extras,omitempty"`
+	ExtraContent json.RawMessage            `json:"extra_content,omitempty"`
 }
 
 func chatContinuationSource(base, key, model string) string {
@@ -114,5 +135,40 @@ func chatContinuationSource(base, key, model string) string {
 }
 
 func validChatContinuation(saved *ChatContinuation) bool {
-	return saved != nil && len(saved.Source) == 64 && len(saved.Content) <= 1<<20 && utf8.ValidString(saved.Content)
+	if saved == nil || len(saved.Source) != 64 || !utf8.ValidString(saved.Content) || saved.ReasoningOmitted && saved.Content != "" || len(saved.Blocks) > 32 || len(saved.ToolExtras) > 32 {
+		return false
+	}
+	total := len(saved.Content)
+	check := func(raw json.RawMessage) bool {
+		total += len(raw)
+		return len(raw) > 0 && json.Valid(raw) && utf8.Valid(raw)
+	}
+	for _, raw := range saved.Blocks {
+		if !check(raw) {
+			return false
+		}
+	}
+	for id, raw := range saved.ToolExtras {
+		if id == "" || len(id) > 256 || !check(raw) {
+			return false
+		}
+	}
+	if len(saved.ExtraContent) > 0 && !check(saved.ExtraContent) {
+		return false
+	}
+	return total <= 1<<20
+}
+
+func nativeContinuationSource(protocol, base, key, model string) string {
+	return contentHash(mustJSON([]string{protocol + "/continuation/1", base, key, model}))
+}
+
+func scopedProviderMessages(messages []ModelMessage, source string) []ModelMessage {
+	result := slices.Clone(messages)
+	for i := range result {
+		if result[i].ProviderSource != source {
+			result[i].ProviderItems, result[i].ProviderSource = nil, ""
+		}
+	}
+	return result
 }

@@ -63,9 +63,16 @@ func NewAnthropicClient(config ModelConfig, key ResolvedKey, httpClient *http.Cl
 func (client *AnthropicClient) BaseURL() string { return client.baseURL }
 
 func (client *AnthropicClient) Generate(ctx context.Context, request ModelRequest, emit func(string)) (ModelResponse, error) {
-	config := ModelConfig{Provider: "anthropic", Capabilities: client.caps}
+	config := ModelConfig{Provider: "anthropic", Model: client.model, Capabilities: client.caps}
 	if err := validateModelRequest(config, request); err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
+	}
+	source := nativeContinuationSource("anthropic", client.baseURL, client.key.ProfileID, client.model)
+	request.Messages = append([]ModelMessage(nil), request.Messages...)
+	for i := range request.Messages {
+		if saved := request.Messages[i].ChatContinuation; saved != nil && saved.Source != source {
+			request.Messages[i].ChatContinuation = nil
+		}
 	}
 	wire, err := anthropicRequestFrom(request, client.model, client.caps)
 	if err != nil {
@@ -128,6 +135,16 @@ func (client *AnthropicClient) Generate(ctx context.Context, request ModelReques
 	if err != nil {
 		result.ToolCalls = nil
 	}
+	if result.ChatContinuation != nil {
+		result.ChatContinuation.Source = source
+	}
+	if result.Provider != nil && client.caps.Reasoning.Control == "anthropic" {
+		selection := client.caps.Reasoning.Default
+		if request.Reasoning != nil {
+			selection = *request.Reasoning
+		}
+		result.Provider.RequestedReasoning = &selection
+	}
 	if err == nil && result.Provider != nil && !result.Provider.Streamed && emit != nil {
 		emit(result.Content)
 	}
@@ -135,13 +152,15 @@ func (client *AnthropicClient) Generate(ctx context.Context, request ModelReques
 }
 
 type anthropicRequest struct {
-	Model      string               `json:"model"`
-	System     string               `json:"system,omitempty"`
-	Messages   []anthropicMessage   `json:"messages"`
-	MaxTokens  int                  `json:"max_tokens"`
-	Stream     bool                 `json:"stream"`
-	Tools      []anthropicTool      `json:"tools,omitempty"`
-	ToolChoice *anthropicToolChoice `json:"tool_choice,omitempty"`
+	Thinking     *openAIThinking      `json:"thinking,omitempty"`
+	OutputConfig *responsesReasoning  `json:"output_config,omitempty"`
+	Model        string               `json:"model"`
+	System       string               `json:"system,omitempty"`
+	Messages     []anthropicMessage   `json:"messages"`
+	MaxTokens    int                  `json:"max_tokens"`
+	Stream       bool                 `json:"stream"`
+	Tools        []anthropicTool      `json:"tools,omitempty"`
+	ToolChoice   *anthropicToolChoice `json:"tool_choice,omitempty"`
 }
 
 type anthropicMessage struct {
@@ -150,6 +169,9 @@ type anthropicMessage struct {
 }
 
 type anthropicBlock struct {
+	Thinking  string                `json:"thinking,omitempty"`
+	Signature string                `json:"signature,omitempty"`
+	Data      string                `json:"data,omitempty"`
 	Source    *anthropicImageSource `json:"source,omitempty"`
 	Type      string                `json:"type"`
 	Text      string                `json:"text,omitempty"`
@@ -158,6 +180,18 @@ type anthropicBlock struct {
 	Input     json.RawMessage       `json:"input,omitempty"`
 	ToolUseID string                `json:"tool_use_id,omitempty"`
 	Content   string                `json:"content,omitempty"`
+}
+
+func (block anthropicBlock) MarshalJSON() ([]byte, error) {
+	type plain anthropicBlock
+	var thinking *string
+	if block.Type == "thinking" {
+		thinking = &block.Thinking
+	}
+	return json.Marshal(struct {
+		plain
+		Thinking *string `json:"thinking,omitempty"`
+	}{plain(block), thinking})
 }
 
 type anthropicTool struct {
@@ -173,6 +207,24 @@ type anthropicToolChoice struct {
 
 func anthropicRequestFrom(request ModelRequest, model string, caps ModelCapabilities) (anthropicRequest, error) {
 	result := anthropicRequest{Model: model, MaxTokens: request.MaxOutputTokens, Stream: caps.Streaming != "none"}
+	selection := caps.Reasoning.Default
+	if request.Reasoning != nil {
+		selection = *request.Reasoning
+	}
+	toggle, effort, err := (ModelConfig{Provider: "anthropic", Model: model, Capabilities: caps}).reasoningParameters(selection)
+	if err != nil {
+		return result, &CallError{Certain: true, Category: "request", Message: err.Error()}
+	}
+	if toggle != nil {
+		kind := "disabled"
+		if *toggle {
+			kind = "adaptive"
+		}
+		result.Thinking = &openAIThinking{Type: kind}
+	}
+	if effort != "" {
+		result.OutputConfig = &responsesReasoning{Effort: effort}
+	}
 	var system []string
 	appendMessage := func(role string, blocks []anthropicBlock) {
 		if len(blocks) == 0 {
@@ -200,6 +252,21 @@ func anthropicRequestFrom(request ModelRequest, model string, caps ModelCapabili
 			}
 			appendMessage("user", blocks)
 		case "assistant":
+			if saved := message.ChatContinuation; saved != nil && len(saved.Blocks) > 0 {
+				if !validChatContinuation(saved) {
+					return result, &CallError{Certain: true, Category: "request", Message: "invalid Messages continuation"}
+				}
+				var blocks []anthropicBlock
+				for _, raw := range saved.Blocks {
+					var block anthropicBlock
+					if json.Unmarshal(raw, &block) != nil {
+						return result, ErrModelBoundary
+					}
+					blocks = append(blocks, block)
+				}
+				appendMessage("assistant", blocks)
+				continue
+			}
 			blocks := make([]anthropicBlock, 0, 1+len(message.ToolCalls))
 			if message.Content != "" {
 				blocks = append(blocks, anthropicBlock{Type: "text", Text: message.Content})
@@ -241,11 +308,14 @@ type anthropicEnvelope struct {
 }
 
 type anthropicResponseBlock struct {
-	Type  string          `json:"type"`
-	Text  string          `json:"text,omitempty"`
-	ID    string          `json:"id,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Input json.RawMessage `json:"input,omitempty"`
+	Thinking  string          `json:"thinking,omitempty"`
+	Signature string          `json:"signature,omitempty"`
+	Data      string          `json:"data,omitempty"`
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
 }
 
 type anthropicUsage struct {
@@ -312,6 +382,8 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 			} `json:"message"`
 			ContentBlock *anthropicResponseBlock `json:"content_block"`
 			Delta        *struct {
+				Thinking    string `json:"thinking"`
+				Signature   string `json:"signature"`
 				Type        string `json:"type"`
 				Text        string `json:"text"`
 				PartialJSON string `json:"partial_json"`
@@ -364,6 +436,21 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 					return &CallError{Category: "protocol", Message: "tool input exceeded limits"}
 				}
 			case "thinking_delta":
+				if block.block.Type != "thinking" {
+					return &CallError{Category: "protocol", Message: "thinking delta for non-thinking block"}
+				}
+				block.block.Thinking += item.Delta.Thinking
+				if len(block.block.Thinking) > 1<<20 {
+					return &CallError{Category: "protocol", Message: "thinking block exceeded limits"}
+				}
+			case "signature_delta":
+				if block.block.Type != "thinking" {
+					return &CallError{Category: "protocol", Message: "signature for non-thinking block"}
+				}
+				block.block.Signature += item.Delta.Signature
+				if len(block.block.Signature) > 1<<20 {
+					return &CallError{Category: "protocol", Message: "thinking signature exceeded limits"}
+				}
 			default:
 				return &CallError{Category: "protocol", Message: "unsupported model stream delta"}
 			}
@@ -452,7 +539,7 @@ func finalizeAnthropicOutput(blocks []anthropicResponseBlock, finish string, env
 			}
 			result.ToolCalls = append(result.ToolCalls, ToolCall{ID: redact(block.ID, key), Name: redact(block.Name, key), Arguments: input,
 				Provider: &ProviderToolItem{Index: index, Type: "function"}})
-		case "thinking":
+		case "thinking", "redacted_thinking":
 		default:
 			return ModelResponse{}, &CallError{Category: "protocol", Message: "unsupported Anthropic content block"}
 		}
@@ -480,6 +567,26 @@ func finalizeAnthropicOutput(blocks []anthropicResponseBlock, finish string, env
 		meta.UsageStatus = "reported"
 	}
 	result.Provider = meta
+	// Preserve the full ordered block sequence, including opaque signatures,
+	// without treating it as answer text or an authorization source.
+	var native []json.RawMessage
+	hasThinking := false
+	for _, block := range blocks {
+		raw := mustJSON(anthropicBlock{Type: block.Type, Text: block.Text, Thinking: block.Thinking,
+			Signature: block.Signature, Data: block.Data, ID: block.ID, Name: block.Name, Input: block.Input})
+		if key != "" && bytes.Contains(raw, []byte(key)) {
+			return ModelResponse{}, &CallError{Category: "protocol", Message: "secret-bearing Messages continuation"}
+		}
+		native = append(native, raw)
+		hasThinking = hasThinking || block.Type == "thinking" || block.Type == "redacted_thinking"
+	}
+	if hasThinking {
+		saved := &ChatContinuation{Source: strings.Repeat("0", 64), Blocks: native}
+		if !validChatContinuation(saved) {
+			return ModelResponse{}, &CallError{Category: "protocol", Message: "Messages continuation exceeded limits"}
+		}
+		result.ChatContinuation = saved // Generate binds the exact endpoint/profile/model.
+	}
 	if meta.FinishReason == "length" {
 		return result, &CallError{Certain: true, Category: "output_limit", Message: "model returned max_tokens; partial output is not a completed answer"}
 	}

@@ -83,7 +83,7 @@ func (tasks *TaskService) PreviewSourceAnalysis(ctx context.Context, chat string
 		return result, err
 	}
 	if selection.Reasoning != nil {
-		if _, _, err := binding.Config.Capabilities.Reasoning.parameters(*selection.Reasoning, binding.Config.EffectiveCapabilities().Protocol); err != nil {
+		if _, _, err := binding.Config.reasoningParameters(*selection.Reasoning); err != nil {
 			return result, err
 		}
 	}

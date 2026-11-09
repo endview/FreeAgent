@@ -79,7 +79,12 @@ export interface Confirmation {
 }
 export interface Turn {
   analysis?: { skill?: string; digest?: string };
-  trigger?: { kind:string;extension_id:string;rule_id:string;opportunity_id:string };
+  trigger?: {
+    kind: string;
+    extension_id: string;
+    rule_id: string;
+    opportunity_id: string;
+  };
   sources?: {
     title?: string;
     scope?: { kind?: string; owner?: string };
@@ -143,6 +148,7 @@ export interface ChatSnapshot {
   server_version?: string;
 }
 export interface Model {
+  reasoning_info?: ReasoningModelInfo | null;
   id?: string;
   provider?: string;
   model?: string;
@@ -162,6 +168,15 @@ export interface ReasoningCapabilities {
   efforts?: string;
   default?: ReasoningSelection;
   auxiliary?: ReasoningSelection;
+}
+export interface ReasoningModelInfo {
+  control: string;
+  efforts: string;
+  required: boolean;
+  default_mode: string;
+  default_effort?: string;
+  source: string;
+  checked_at: string;
 }
 export interface Environment {
   delivery_available?: boolean;

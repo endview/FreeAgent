@@ -320,6 +320,45 @@ func (inv configInvocation) modelPlan(ctx context.Context, dataDir string, curre
 	if inv.MakeDefault && len(visited) == 1 {
 		return marshalControlArgs(harness.ControlSetDefaultModel, map[string]string{"model_id": inv.ModelID})
 	}
+	narrow := len(visited) > 0
+	for name := range visited {
+		if !strings.HasPrefix(name, "reasoning-") && !strings.HasPrefix(name, "aux-reasoning-") {
+			narrow = false
+		}
+	}
+	if narrow {
+		model, ok := current.Models[inv.ModelID]
+		if !ok {
+			return "", nil, usageErr("config model: reasoning-only changes need an existing --id")
+		}
+		r := model.Capabilities.Reasoning
+		changes := inv.Model.Capabilities.Reasoning
+		if visited["reasoning-control"] {
+			r.Control = changes.Control
+		}
+		if visited["reasoning-efforts"] {
+			r.Efforts = changes.Efforts
+		}
+		if visited["reasoning-mode"] {
+			r.Default = changes.Default
+		}
+		if visited["reasoning-effort"] {
+			r.Default.Effort = changes.Default.Effort
+			if !visited["reasoning-mode"] {
+				r.Default.Mode = ""
+			}
+		}
+		if visited["aux-reasoning-mode"] {
+			r.Auxiliary = changes.Auxiliary
+		}
+		if visited["aux-reasoning-effort"] {
+			r.Auxiliary.Effort = changes.Auxiliary.Effort
+			if !visited["aux-reasoning-mode"] {
+				r.Auxiliary.Mode = ""
+			}
+		}
+		return marshalControlArgs(harness.ControlSetModelProfile, map[string]any{"id": inv.ModelID, "reasoning": r})
+	}
 	model := inv.Model
 	if model.Provider == "" && inv.KeyRef != "" {
 		model.Provider = "openai-compatible"
@@ -350,8 +389,11 @@ func (inv configInvocation) modelPlan(ctx context.Context, dataDir string, curre
 		if !visited["reasoning-control"] && model.Capabilities.Reasoning.Control == "" {
 			model.Capabilities.Reasoning.Control = suggested.Reasoning.Control
 		}
-		if !visited["reasoning-efforts"] && model.Capabilities.Reasoning.Efforts == "" {
+		if !visited["reasoning-efforts"] && model.Capabilities.Reasoning.Efforts == "" && model.Capabilities.Reasoning.Control == suggested.Reasoning.Control {
 			model.Capabilities.Reasoning.Efforts = suggested.Reasoning.Efforts
+		}
+		if _, exists := current.Models[inv.ModelID]; !exists && !visited["aux-reasoning-mode"] && !visited["aux-reasoning-effort"] && model.Capabilities.Reasoning.Control == suggested.Reasoning.Control {
+			model.Capabilities.Reasoning.Auxiliary = suggested.Reasoning.Auxiliary
 		}
 	}
 	return marshalControlArgs(harness.ControlSetModelProfile, map[string]any{

@@ -126,7 +126,7 @@ func TestLiveProviderResponsesWebSearch(t *testing.T) {
 			// accept them as history without FreeAgent dispatching a local tool.
 			continued, err := client.Generate(ctx, ModelRequest{Messages: []ModelMessage{
 				question,
-				{Role: "assistant", Content: searched.Content, ProviderItems: searched.ProviderItems},
+				{Role: "assistant", Content: searched.Content, ProviderItems: searched.ProviderItems, ProviderSource: searched.ProviderSource},
 				{Role: "user", Content: "Without searching again, reply exactly HARNESS_LIVE_SEARCH_CONTINUED. No other text."},
 			}, MaxOutputTokens: 4096}, nil)
 			if err != nil || continued.Provider == nil || continued.Provider.ResponseStatus != "completed" ||

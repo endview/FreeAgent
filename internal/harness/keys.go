@@ -227,43 +227,59 @@ type KeyPreset struct {
 	BaseURL      string            `json:"base_url"`
 	Protocol     string            `json:"protocol"`
 	Model        string            `json:"model"`
+	Models       []string          `json:"models,omitempty"`
 	Provider     string            `json:"provider"`
 	Capabilities ModelCapabilities `json:"capabilities"`
 }
 
 // SuggestedModelCapabilities contains only stable local knowledge about a
 // provider's named model. It does not probe the network or certify the model.
-// DeepSeek's Responses web search is opt-in through this explicit model
-// selection; other models retain the ordinary Chat Completions defaults.
+// Suggestions apply only to the exact release models at their official host
+// and key protocol. Unknown gateways and saved profiles are not inferred.
 func SuggestedModelCapabilities(key KeyProfileView, model string) ModelCapabilities {
-	if key.Protocol != KeyProtocolOpenAICompatible {
-		return ModelCapabilities{}
-	}
 	parsed, err := url.Parse(key.BaseURL)
-	if err != nil || !strings.EqualFold(parsed.Hostname(), "api.deepseek.com") {
+	if err != nil {
 		return ModelCapabilities{}
 	}
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case "deepseek-v4-pro":
+	provider := "openai-compatible"
+	if key.Protocol == KeyProtocolAnthropic {
+		provider = "anthropic"
+	} else if key.Protocol != KeyProtocolOpenAICompatible {
+		return ModelCapabilities{}
+	}
+	for _, preset := range KeyPresets() {
+		origin, _ := url.Parse(preset.BaseURL)
+		if !strings.EqualFold(parsed.Hostname(), origin.Hostname()) || key.Protocol != preset.Protocol {
+			continue
+		}
+		if model == preset.Model || slices.Contains(preset.Models, model) {
+			caps := preset.Capabilities
+			caps.Reasoning = suggestedReasoning(ModelConfig{Provider: provider, Model: model})
+			return caps
+		}
+	}
+	if strings.EqualFold(parsed.Hostname(), "api.deepseek.com") && key.Protocol == KeyProtocolOpenAICompatible && model == "deepseek-v4-pro" {
 		return ModelCapabilities{Protocol: "responses", WebSearch: "supported", Reasoning: ReasoningCapabilities{Control: "deepseek", Efforts: "low,high,max"}}
-	case "deepseek-flash":
-		return ModelCapabilities{Reasoning: ReasoningCapabilities{Control: "deepseek", Efforts: "low,high,max"}}
 	}
 	return ModelCapabilities{}
 }
 
 func KeyPresets() []KeyPreset {
-	return []KeyPreset{
-		{ID: "openai", Name: "OpenAI", BaseURL: "https://api.openai.com/v1", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "gpt-5"},
-		{ID: "anthropic", Name: "Anthropic", BaseURL: "https://api.anthropic.com", Protocol: KeyProtocolAnthropic, Provider: "anthropic", Model: "claude-sonnet-4-6"},
-		{ID: "gemini", Name: "Gemini", BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "gemini-2.5-flash"},
-		{ID: "xai", Name: "xAI", BaseURL: "https://api.x.ai/v1", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "grok-4"},
-		{ID: "glm", Name: "GLM", BaseURL: "https://open.bigmodel.cn/api/paas/v4", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "glm-4.5"},
-		{ID: "kimi", Name: "Kimi", BaseURL: "https://api.moonshot.cn/v1", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "kimi-k2.5"},
-		{ID: "minimax", Name: "MiniMax", BaseURL: "https://api.minimaxi.com/anthropic", Protocol: KeyProtocolAnthropic, Provider: "anthropic", Model: "MiniMax-M2.5"},
+	presets := []KeyPreset{
+		{ID: "openai", Name: "OpenAI", BaseURL: "https://api.openai.com/v1", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "gpt-6.1-sol", Capabilities: ModelCapabilities{Protocol: "responses"}},
+		{ID: "anthropic", Name: "Anthropic", BaseURL: "https://api.anthropic.com", Protocol: KeyProtocolAnthropic, Provider: "anthropic", Model: "claude-sonnet-4-6", Models: []string{"claude-sonnet-4-6", "claude-opus-5-5"}},
+		{ID: "gemini", Name: "Gemini", BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "gemini-3.8-flash"},
+		{ID: "xai", Name: "xAI", BaseURL: "https://api.x.ai/v1", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "grok-4.7", Capabilities: ModelCapabilities{Protocol: "responses"}},
+		{ID: "glm", Name: "GLM", BaseURL: "https://open.bigmodel.cn/api/paas/v4", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "glm-5.3"},
+		{ID: "kimi", Name: "Kimi", BaseURL: "https://api.moonshot.cn/v1", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "kimi-k3.1-pro"},
+		{ID: "minimax", Name: "MiniMax", BaseURL: "https://api.minimax.cn/v1", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "MiniMax-M3.1-Flash"},
 		{ID: "muse", Name: "Muse", BaseURL: "https://api.meta.ai/v1", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "muse-spark-1.3"},
 		{ID: "deepseek", Name: "DeepSeek", BaseURL: "https://api.deepseek.com", Protocol: KeyProtocolOpenAICompatible, Provider: "openai-compatible", Model: "deepseek-flash"},
 	}
+	for i := range presets {
+		presets[i].Capabilities.Reasoning = suggestedReasoning(ModelConfig{Provider: presets[i].Provider, Model: presets[i].Model})
+	}
+	return presets
 }
 
 var errInvalidSecret = errors.New("harness: key must be 1 to 4096 visible ASCII characters")

@@ -87,7 +87,7 @@ func TestLiveProviderReasoningToolContinuation(t *testing.T) {
 				// A trivial tool choice can carry an empty continuation. Preserve
 				// its presence exactly, and verify the real follow-up accepts it.
 				const marker = "REASONING_TOOL_CONTINUATION_OK"
-				request.Messages = append(request.Messages, ModelMessage{Role: "assistant", Content: first.Content, ToolCalls: first.ToolCalls, ChatContinuation: first.ChatContinuation, ProviderItems: first.ProviderItems}, ModelMessage{Role: "tool", ToolCallID: first.ToolCalls[0].ID, Content: marker})
+				request.Messages = append(request.Messages, ModelMessage{Role: "assistant", Content: first.Content, ToolCalls: first.ToolCalls, ChatContinuation: first.ChatContinuation, ProviderItems: first.ProviderItems, ProviderSource: first.ProviderSource}, ModelMessage{Role: "tool", ToolCallID: first.ToolCalls[0].ID, Content: marker})
 				var visible strings.Builder
 				second, err := client.Generate(ctx, request, func(delta string) { visible.WriteString(delta) })
 				if err != nil || strings.TrimSpace(second.Content) != marker || len(second.ToolCalls) != 0 || visible.String() != second.Content {

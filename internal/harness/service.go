@@ -241,7 +241,7 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 	}
 	if service.reasoning != nil {
 		model := bindings[len(bindings)-1].Config
-		if _, _, err := model.Capabilities.Reasoning.parameters(*service.reasoning, model.EffectiveCapabilities().Protocol); err != nil {
+		if _, _, err := model.reasoningParameters(*service.reasoning); err != nil {
 			return "", err
 		}
 	}
@@ -908,7 +908,7 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 		}
 	}
 	if request.Reasoning != nil {
-		if _, _, err := binding.Config.Capabilities.Reasoning.parameters(*request.Reasoning, binding.Config.EffectiveCapabilities().Protocol); err != nil {
+		if _, _, err := binding.Config.reasoningParameters(*request.Reasoning); err != nil {
 			return Attempt{}, ModelResponse{}, err
 		}
 	}
@@ -1608,6 +1608,9 @@ func (service *Service) unresolvedWarning(ctx context.Context) (string, error) {
 }
 
 func validateResponse(response ModelResponse) error {
+	if response.ProviderSource != "" && len(response.ProviderSource) != 64 {
+		return errors.New("harness: invalid provider continuation source")
+	}
 	if response.Failure != nil {
 		return errors.New("harness: failed provider output cannot be a final answer")
 	}
@@ -1625,6 +1628,9 @@ func validateResponse(response ModelResponse) error {
 	}
 	if response.Provider != nil {
 		meta := response.Provider
+		if meta.ReportedReasoningEffort != "" && !validReasoningEffort(meta.ReportedReasoningEffort) {
+			return errors.New("harness: invalid reported reasoning effort")
+		}
 		if len(meta.ID) > 256 || len(meta.Model) > 256 || len(meta.SystemFingerprint) > 256 ||
 			len(meta.RawFinishReason) > 64 || meta.Created < 0 ||
 			(meta.Protocol != "chat" && meta.Protocol != "responses") || (meta.FinishReason != "stop" && meta.FinishReason != "tool_calls" && meta.FinishReason != "output_limit" && meta.FinishReason != "content_filter") ||
@@ -1668,7 +1674,7 @@ func validateResponse(response ModelResponse) error {
 
 func validateModelRequest(config ModelConfig, request ModelRequest) error {
 	if request.Reasoning != nil {
-		if _, _, err := config.Capabilities.Reasoning.parameters(*request.Reasoning, config.EffectiveCapabilities().Protocol); err != nil {
+		if _, _, err := config.reasoningParameters(*request.Reasoning); err != nil {
 			return err
 		}
 	}
@@ -1676,6 +1682,9 @@ func validateModelRequest(config ModelConfig, request ModelRequest) error {
 		if err := validateAnthropicImages(request); err != nil {
 			return err
 		}
+	}
+	if strings.EqualFold(config.Model, "gpt-6.1-sol") && config.EffectiveCapabilities().Protocol != "responses" && len(request.Tools) != 0 {
+		return fmt.Errorf("%w: GPT 6.1 Sol tool calls require Responses", ErrModelCapability)
 	}
 	if err := validateVisionRequest(config.EffectiveCapabilities(), request); err != nil {
 		return err
@@ -1786,6 +1795,7 @@ func modelHistory(messages []Message) []ModelMessage {
 	for _, message := range messages {
 		body := message.ModelMessage
 		body.ChatContinuation, body.ProviderItems = nil, nil
+		body.ProviderSource = ""
 		result = append(result, body)
 	}
 	return result

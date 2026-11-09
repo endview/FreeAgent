@@ -12,7 +12,9 @@ TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
 本批按 [v8.3.1–v8.5 实施计划](docs/FREEAGENT_V8_3_1_TO_V8_5_CHANNEL_REASONING_EXPERIENCE_PLAN_2026-11-07.md) 推进。
 
-当前工作区为 **v8.6.0-dev.1 轻内核整改候选**：经验方法使用可选来源分析 Skill；扩展状态使用中性信封、明确作用域和声明 schema；Telegram 格式与平台动作由独立渠道程序提供。配套 AffectWeave 为 1.1.0-dev.1，经验 Skill 为 0.1.1，渠道协议为 3。实现与测试范围见[本次验收](docs/VALIDATION_V8_6_2026-11-08.md)，开发遵循[扩展原则](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md)。GitHub 下载链接仍指向已发布版本。
+当前工作区为 **v8.8.0-dev.1**：压缩成品字节与输出额度解耦，拦截空正文的无效重试，同配置失败跨轮抑制；更新在售模型预设，支持 Anthropic 自适应思考和各协议私有接续。配置、确认与 Attempt 仍复用现有核心；不增加数据库结构或人物职责。实际测试与其它厂商原生验收边界见[本次验收](docs/VALIDATION_V8_8_2026-11-09.md)。GitHub 下载链接仍指向已发布版本。
+
+v8.6 的轻内核整改保持：经验方法使用可选来源分析 Skill；扩展状态采用中性信封、明确作用域和声明 schema；Telegram 格式与平台动作由独立渠道程序提供。开发继续遵循[扩展原则](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md)。
 
 [AffectWeave Go 可选包](https://github.com/endview/affectweave/releases/tag/v1.0.0-dev.1)独立发行，默认关闭；普通 Core 不因此启动人物进程或创建扩展库。
 

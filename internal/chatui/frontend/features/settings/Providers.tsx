@@ -32,6 +32,7 @@ interface Preset {
   base_url: string;
   protocol: string;
   model: string;
+  models?: string[];
 }
 interface Keys {
   profiles: Profile[];
@@ -273,6 +274,14 @@ function ProviderEditor({
   const available = [...new Set(probe?.models || [])].filter(
     (name) => !models.some(([, model]) => model.model === name),
   );
+  const recommended = presets.find(
+    (item) =>
+      item.base_url === profile?.base_url &&
+      item.protocol === profile?.protocol,
+  );
+  const recommendations = (
+    recommended?.models || (recommended ? [recommended.model] : [])
+  ).filter((name) => !models.some(([, model]) => model.model === name));
   return (
     <div className="provider-editor">
       <form
@@ -515,6 +524,20 @@ function ProviderEditor({
             先保存 Provider，再添加可用模型。测试不会清空当前表单。
           </p>
         )}
+        {recommendations.length > 0 && (
+          <div className="inline-form">
+            {recommendations.map((name) => (
+              <Button
+                key={name}
+                variant="outline"
+                disabled={!profile || busy}
+                onClick={() => add(name)}
+              >
+                添加预设 · {name}
+              </Button>
+            ))}
+          </div>
+        )}
         <div className="inline-form">
           <Field label="手动填写模型">
             <input
@@ -721,6 +744,7 @@ function ModelOptions({
               ["none", "未声明 / 不发送参数"],
               ["deepseek", "DeepSeek 思考协议"],
               ["openai", "OpenAI 思考等级"],
+              ["anthropic", "Anthropic 自适应思考"],
             ]}
             onChange={(control) =>
               change({
@@ -732,7 +756,7 @@ function ModelOptions({
         </Field>
         {reasoning.control && reasoning.control !== "none" && (
           <>
-            <Field label="允许的等级（逗号分隔）">
+            <Field label="声明的等级（逗号分隔；新值可自行声明）">
               <input
                 value={reasoning.efforts || ""}
                 placeholder={
@@ -750,6 +774,7 @@ function ModelOptions({
             </Field>
             <ReasoningChoice
               caps={reasoning}
+              info={model.reasoning_info}
               protocol={String(caps.protocol || "chat")}
               value={reasoningValue(reasoning.default)}
               inherit={false}
@@ -766,6 +791,7 @@ function ModelOptions({
             />
             <ReasoningChoice
               caps={reasoning}
+              info={model.reasoning_info}
               protocol={String(caps.protocol || "chat")}
               value={reasoningValue(reasoning.auxiliary)}
               inherit={false}
@@ -782,6 +808,23 @@ function ModelOptions({
             />
             <p className="form-hint">
               辅助设置用于上下文压缩和已开启的扩展分析；主回答独立。服务商默认表示不发送思考参数，不代表关闭。摘要字节上限不等于模型输出额度。这里只记录请求档位，服务端未返回时不视为已验证。
+            </p>
+            <p className="form-hint">
+              {model.reasoning_info ? (
+                <>
+                  官方能力核对于 {model.reasoning_info.checked_at}；
+                  <a
+                    href={model.reasoning_info.source}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    查看来源
+                  </a>
+                  。未覆盖的声明标为“未经官方核对”，不会据此自动探测或扩大输出额度。
+                </>
+              ) : (
+                "此型号未在官方核对清单中；声明的等级均未经官方核对。"
+              )}
             </p>
           </>
         )}

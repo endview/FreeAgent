@@ -362,6 +362,14 @@ func applyModel(config *Config, id string, model ModelConfig, makeDefault bool) 
 	if !validModelID(id) {
 		return errors.New("harness: invalid model identifier")
 	}
+	// New edits must respect current official exclusions. Loading an older
+	// syntactically valid profile still leaves the UI available to repair it;
+	// dispatch checks the chosen setting again before contacting the provider.
+	for _, selection := range []ReasoningSelection{model.Capabilities.Reasoning.Default, model.Capabilities.Reasoning.Auxiliary} {
+		if _, _, err := model.reasoningParameters(selection); err != nil {
+			return err
+		}
+	}
 	if config.Models == nil {
 		config.Models = map[string]ModelConfig{}
 	}
@@ -950,6 +958,9 @@ func (model ModelConfig) Validate() error {
 		}
 		return nil
 	case "openai-compatible":
+		if caps.Reasoning.Control == "anthropic" {
+			return errors.New("harness: native Anthropic reasoning requires the Messages provider")
+		}
 		if caps.Protocol == "local" {
 			return errors.New("harness: openai-compatible requires chat or responses protocol")
 		}
@@ -958,8 +969,8 @@ func (model ModelConfig) Validate() error {
 		}
 		return nil
 	case "anthropic":
-		if caps.Reasoning.Control != "" && caps.Reasoning.Control != "none" {
-			return errors.New("harness: this Anthropic adapter does not yet declare reasoning control")
+		if caps.Reasoning.Control != "" && caps.Reasoning.Control != "none" && caps.Reasoning.Control != "anthropic" {
+			return errors.New("harness: Messages requires native Anthropic reasoning control")
 		}
 		if caps.Protocol == "local" || caps.Protocol == "responses" {
 			return errors.New("harness: anthropic requires the chat protocol")

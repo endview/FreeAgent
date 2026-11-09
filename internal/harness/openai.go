@@ -71,7 +71,7 @@ func NewOpenAICompatibleClient(config ModelConfig, key ResolvedKey, httpClient *
 func (client *OpenAICompatibleClient) BaseURL() string { return client.baseURL }
 
 func (client *OpenAICompatibleClient) Generate(ctx context.Context, request ModelRequest, emit func(string)) (ModelResponse, error) {
-	config := ModelConfig{Provider: "openai-compatible", Capabilities: client.caps}
+	config := ModelConfig{Provider: "openai-compatible", Model: client.model, Capabilities: client.caps}
 	if err := validateModelRequest(config, request); err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
 	}
@@ -80,7 +80,7 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 	if request.Reasoning != nil {
 		selection = *request.Reasoning
 	}
-	toggle, effort, reasoningErr := client.caps.Reasoning.parameters(selection, "chat")
+	toggle, effort, reasoningErr := config.reasoningParameters(selection)
 	if reasoningErr != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: reasoningErr.Error()}
 	}
@@ -109,12 +109,18 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 			Role: message.Role, Content: message.Content, Name: message.Name, Images: message.Images,
 			ToolCallID: message.ToolCallID, ToolCalls: toOpenAIToolCalls(message.ToolCalls),
 		}
-		if saved := message.ChatContinuation; saved != nil && message.Role == "assistant" && len(request.Tools) > 0 && saved.Source == chatContinuationSource(client.baseURL, client.key.ProfileID, client.model) {
-			if len(saved.Content) > 1<<20 || !utf8.ValidString(saved.Content) {
+		if saved := message.ChatContinuation; saved != nil && message.Role == "assistant" && saved.Source == chatContinuationSource(client.baseURL, client.key.ProfileID, client.model) {
+			if !validChatContinuation(saved) {
 				return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: "invalid saved reasoning continuation"}
 			}
 			content := saved.Content
-			next.ReasoningContent = &content
+			if !saved.ReasoningOmitted {
+				next.ReasoningContent = &content
+			}
+			next.ExtraContent = saved.ExtraContent
+			for i := range next.ToolCalls {
+				next.ToolCalls[i].ExtraContent = saved.ToolExtras[next.ToolCalls[i].ID]
+			}
 		}
 		wire.Messages = append(wire.Messages, next)
 	}
@@ -398,6 +404,12 @@ func decodeModelStream(reader io.Reader, key string, emit func(string)) (ModelRe
 			return &CallError{Category: "protocol", Message: "invalid model stream role"}
 		}
 		message.Content += delta.Content
+		if len(delta.ExtraContent) > 0 {
+			if len(message.ExtraContent) > 0 && !bytes.Equal(message.ExtraContent, delta.ExtraContent) {
+				return &CallError{Category: "protocol", Message: "thought signature changed during stream"}
+			}
+			message.ExtraContent = delta.ExtraContent
+		}
 		if delta.ReasoningContent != nil {
 			if message.ReasoningContent == nil {
 				empty := ""
@@ -424,6 +436,12 @@ func decodeModelStream(reader io.Reader, key string, emit func(string)) (ModelRe
 			}
 			call.Function.Name += part.Function.Name
 			call.Function.Arguments += part.Function.Arguments
+			if len(part.ExtraContent) > 0 {
+				if len(call.ExtraContent) > 0 && !bytes.Equal(call.ExtraContent, part.ExtraContent) {
+					return &CallError{Category: "protocol", Message: "tool thought signature changed during stream"}
+				}
+				call.ExtraContent = part.ExtraContent
+			}
 			if len(call.Function.Arguments) > 2*maxFileBytes || len(call.Function.Name) > 128 || len(call.ID) > 256 {
 				return &CallError{Category: "protocol", Message: "streamed tool call exceeded limits"}
 			}
@@ -593,6 +611,28 @@ func normalizeModelOutput(message openAIMessage, finish, key string) (ModelRespo
 		}
 		result.ToolCalls = append(result.ToolCalls, ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: arguments,
 			Provider: &ProviderToolItem{Index: index, Type: call.Type}})
+		if len(call.ExtraContent) > 0 {
+			if result.ChatContinuation == nil {
+				result.ChatContinuation = &ChatContinuation{ReasoningOmitted: true}
+			}
+			if result.ChatContinuation.ToolExtras == nil {
+				result.ChatContinuation.ToolExtras = map[string]json.RawMessage{}
+			}
+			result.ChatContinuation.ToolExtras[call.ID] = call.ExtraContent
+		}
+	}
+	if len(message.ExtraContent) > 0 {
+		if result.ChatContinuation == nil {
+			result.ChatContinuation = &ChatContinuation{ReasoningOmitted: true}
+		}
+		result.ChatContinuation.ExtraContent = message.ExtraContent
+	}
+	if saved := result.ChatContinuation; saved != nil {
+		saved.Source = strings.Repeat("0", 64)
+		if !validChatContinuation(saved) || key != "" && bytes.Contains(mustJSON(saved), []byte(key)) {
+			return ModelResponse{}, &CallError{Category: "protocol", Message: "invalid or secret-bearing private continuation"}
+		}
+		saved.Source = "" // Generate sets the endpoint/profile/model binding.
 	}
 	if (finish == "tool_calls") != (len(result.ToolCalls) > 0) {
 		return ModelResponse{}, &CallError{Message: "model tool calls do not match finish reason"}
@@ -695,6 +735,7 @@ type openAIUsage struct {
 }
 
 type openAIMessage struct {
+	ExtraContent     json.RawMessage  `json:"extra_content,omitempty"`
 	ReasoningContent *string          `json:"reasoning_content,omitempty"`
 	Images           []ModelImage     `json:"-"`
 	Role             string           `json:"role,omitempty"`
@@ -717,10 +758,11 @@ type openAIFunction struct {
 }
 
 type openAIToolCall struct {
-	Index    int            `json:"index,omitempty"`
-	ID       string         `json:"id,omitempty"`
-	Type     string         `json:"type,omitempty"`
-	Function openAICallFunc `json:"function"`
+	ExtraContent json.RawMessage `json:"extra_content,omitempty"`
+	Index        int             `json:"index,omitempty"`
+	ID           string          `json:"id,omitempty"`
+	Type         string          `json:"type,omitempty"`
+	Function     openAICallFunc  `json:"function"`
 }
 
 type openAICallFunc struct {

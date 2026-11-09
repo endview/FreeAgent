@@ -53,10 +53,30 @@ func TestControlAuxiliaryReasoningPreservesProfileAndRequiresConfirmation(t *tes
 	if err != nil || !result.Applied || !reflect.DeepEqual(core.Config.Models[core.Config.DefaultModel], expected) {
 		t.Fatalf("narrow change replaced other model fields: %+v %v", core.Config.Models[core.Config.DefaultModel], err)
 	}
+	declaration := expected.Capabilities.Reasoning
+	declaration.Efforts += ",ultra"
+	declaration.Default = ReasoningSelection{Effort: "ultra"}
+	op, err = control.PlanControlChange(t.Context(), ControlPlanRequest{Kind: ControlSetModelProfile,
+		Arguments:     mustJSON(map[string]any{"id": core.Config.DefaultModel, "reasoning": declaration}),
+		Authorization: ControlModelProposed, ConversationID: chat})
+	if err != nil || op.Status != ControlPending || !reflect.DeepEqual(core.Config.Models[core.Config.DefaultModel], expected) {
+		t.Fatal("reasoning declaration applied before confirmation", err)
+	}
+	code, err = control.ControlCodeForTests(t.Context(), op.ID, chat, "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = control.ConfirmControlChange(t.Context(), op.ID, controlAuth(capability, chat, "user", code))
+	expected.Capabilities.Reasoning = declaration
+	if err != nil || !result.Applied || !reflect.DeepEqual(core.Config.Models[core.Config.DefaultModel], expected) {
+		t.Fatal("reasoning-only declaration overwrote other profile fields", err)
+	}
 	for _, raw := range []string{
 		`{"id":"default","provider":"openai-compatible","auxiliary_reasoning":{"mode":"disabled"}}`,
 		`{"id":"default","capabilities":null,"auxiliary_reasoning":{"mode":"disabled"}}`,
 		`{"id":"absent","auxiliary_reasoning":{"mode":"disabled"}}`,
+		`{"id":"default","reasoning":{},"auxiliary_reasoning":{"mode":"disabled"}}`,
+		`{"id":"default","reasoning":{"control":"openai","unknown":true}}`,
 	} {
 		if err := applyConfigControl(&core.Config, ControlSetModelProfile, json.RawMessage(raw), t.Context(), core.Store.DataDir()); err == nil {
 			t.Fatal("ambiguous or absent profile was accepted", raw)

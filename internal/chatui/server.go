@@ -329,6 +329,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		for id, model := range config.Models {
 			entry := map[string]any{"provider": model.Provider, "model": model.Model, "capabilities": model.Capabilities,
 				"key": model.Key, "key_name": "", "missing": false, "provider_enabled": config.ProviderEnabled(model)}
+			entry["reasoning_info"] = harness.OfficialReasoning(model)
 			if model.Key != "" && keys != nil {
 				profile, err := keys.Find(model.Key)
 				if errors.Is(err, harness.ErrKeyNotFound) {
