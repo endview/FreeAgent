@@ -570,6 +570,11 @@ func (s *channelSession) withFeedback(event channelEvent, call func(context.Cont
 			if update.Kind == "context_compacting" {
 				progress.Do(func() { _ = s.plain(ctx, event, "正在压缩当前公开上下文，原始记录保留。") })
 			}
+			// Only this bounded business notice is public. Other failure events
+			// can contain private diagnostics and stay in the local activity view.
+			if update.Kind == EventContextCompactionFailed && update.Activity != nil && update.Activity["continued"] != nil {
+				_ = s.plain(ctx, event, update.Message)
+			}
 		})
 		result, err := call(ctx)
 		if result.Run.ID == "" || result.Duplicate {

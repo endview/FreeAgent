@@ -8,6 +8,7 @@ import (
 func TestChannelStatusDoesNotMisreportFailuresOrExposeDiagnostics(t *testing.T) {
 	for _, scenario := range []struct{ status, reason, want string }{
 		{"failed", "model returned length; partial output", "单次输出上限"},
+		{"limited", "context budget full\nmodel returned length", "上下文硬预算"},
 		{"failed", "model returned HTTP 401", "认证失败"},
 		{"failed", "model returned HTTP 402", "额度不足"},
 		{"failed", "private /home/secret/config failed sk-fixture", "执行失败"},

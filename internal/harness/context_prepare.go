@@ -3,7 +3,7 @@ package harness
 import (
 	"context"
 	"errors"
-	"fmt"
+	"time"
 )
 
 // prepareContextRequest retains the material produced by this step's hooks and
@@ -58,6 +58,12 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 	if service.Config.TaskSummaryBytes <= 0 || service.compactionFailed || run.ID == "" || usage.Occupancy < autoCompactPercent(service.Config) {
 		return prepared, usage.budgetError()
 	}
+	if reason, err := service.compactionSuppressed(ctx, run.ConversationID); err != nil || reason != "" {
+		if err != nil {
+			return prepared, err
+		}
+		return prepared, usage.budgetError()
+	}
 	// A fixed component cannot be made smaller by summarizing other history.
 	var budget *ContextBudgetError
 	if errors.As(usage.budgetError(), &budget) && budget.Code != "history_context_full" {
@@ -68,6 +74,7 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 		return prepared, err
 	}
 	var compacted ModelRequest
+	started := time.Now()
 	result, err := service.applyCompaction(ctx, run, plan, true, func(summary *ConversationSummary) error {
 		var err error
 		compacted, err = rebuild(summary)
@@ -79,17 +86,79 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 			return err
 		}
 		if err := after.budgetError(); err != nil {
-			return err
+			return &CallError{Certain: true, Category: "context", Code: "summary_no_progress", Message: "generated summary does not fit the current context; previous summary retained"}
 		}
 		if after.Bytes >= usage.Bytes && after.EstimatedTokens >= usage.EstimatedTokens {
-			return fmt.Errorf("%w: compaction made no effective progress; previous summary retained", ErrContextLimit)
+			return &CallError{Certain: true, Category: "context", Code: "summary_no_progress", Message: "compaction made no effective progress; previous summary retained"}
 		}
 		return nil
 	})
+	if err == nil && !result.Changed && result.ModelCalls > 0 {
+		err = &CallError{Certain: true, Category: "context", Code: "summary_no_progress", Message: "summary did not reduce context occupancy; previous summary retained"}
+	}
 	if err != nil {
 		service.compactionFailed = true
-		service.event(Event{Kind: EventContextCompactionFailed, ConversationID: run.ConversationID, RunID: run.ID, Message: safeError(err)})
-		return prepared, err
+		if !compactionMayFallback(err) {
+			service.event(Event{Kind: EventContextCompactionFailed, ConversationID: run.ConversationID, RunID: run.ID, Message: safeError(err)})
+			return prepared, err
+		}
+		if ctx.Err() != nil {
+			return prepared, ctx.Err()
+		}
+		if checkErr := service.checkCurrentPermission(ctx, run); checkErr != nil {
+			return prepared, checkErr
+		}
+		if checkErr := service.checkDispatchConfig(run, true); checkErr != nil {
+			return prepared, checkErr
+		}
+		current, loadErr := service.Store.GetRun(ctx, run.ID)
+		if loadErr != nil {
+			return prepared, loadErr
+		}
+		if current.Status != "running" {
+			return prepared, errors.Join(err, ErrActiveRun)
+		}
+		if _, adoptErr := service.adoptSteering(ctx, run); adoptErr != nil {
+			return prepared, adoptErr
+		}
+		summary, _, loadErr := service.Store.contextSummary(ctx, run.ConversationID, false)
+		if loadErr != nil {
+			return prepared, loadErr
+		}
+		if summary != nil && service.scopedHistory() && summary.Scope != service.publicSummaryScope() {
+			summary = nil
+		}
+		fallback, rebuildErr := rebuild(summary)
+		if rebuildErr != nil {
+			return prepared, rebuildErr
+		}
+		after, usageErr := service.requestUsage(run, fallback)
+		if usageErr != nil {
+			return prepared, usageErr
+		}
+		if recordErr := service.recordContextUsage(ctx, run, after); recordErr != nil {
+			return prepared, recordErr
+		}
+		notify, reason, recordErr := service.rememberCompactionFailure(ctx, run)
+		if recordErr != nil {
+			return prepared, recordErr
+		}
+		message := "压缩未完成，沿用原上下文继续；失败证据已保留。"
+		if reason != "" {
+			message += reason
+		}
+		budgetErr := after.budgetError()
+		if budgetErr != nil {
+			message = "压缩未完成，当前请求超过上下文硬预算；请调整辅助思考/输出额度或手动压缩。" + reason
+		}
+		if notify {
+			service.event(Event{Kind: EventContextCompactionFailed, ConversationID: run.ConversationID, RunID: run.ID, Message: message,
+				Activity: map[string]any{"model_calls": result.ModelCalls, "elapsed_ms": time.Since(started).Milliseconds(), "continued": budgetErr == nil}})
+		}
+		if budgetErr != nil {
+			return fallback, errors.Join(budgetErr, err)
+		}
+		return fallback, nil
 	}
 	if !result.Changed {
 		return prepared, usage.budgetError()

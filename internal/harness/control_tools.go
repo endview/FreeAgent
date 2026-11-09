@@ -67,10 +67,10 @@ func (tools *controlTools) controlDefinitions() []ToolDefinition {
 	catalog, _ := json.Marshal(ControlOperationCatalog())
 	return []ToolDefinition{
 		{Name: controlReadTool, Effect: EffectRead,
-			Description: "Read the bounded current FreeAgent control state. Paths, secrets, raw provider arguments and unrelated workspace contents are redacted.",
+			Description: "For FreeAgent settings requests, read this current control state FIRST, then use control_plan_change with its available typed operations. Current runtime facts take precedence over old release files and conversation summaries. Paths, secrets and unrelated workspace contents are redacted.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
 		{Name: controlPlanTool, Effect: EffectModify,
-			Description: "Prepare one typed persistent FreeAgent setting change. It creates a pending proposal only; it never confirms or applies the change. Available operations: " + string(catalog),
+			Description: "After control_read_state, prepare one typed persistent FreeAgent setting change using the current operation schema. Do not edit release files or config files to change product settings. This creates a pending proposal only; the user must confirm it. Available operations: " + string(catalog),
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"kind":{"type":"string"},"arguments":{"type":"object"}},"required":["kind","arguments"],"additionalProperties":false}`)},
 	}
 }

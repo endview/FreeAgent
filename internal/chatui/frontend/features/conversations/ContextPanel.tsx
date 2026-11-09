@@ -108,6 +108,9 @@ export function ContextPanel({
             {state.automatic ? "自动压缩已开启" : "自动压缩已关闭"} · 触发比例{" "}
             {state.window.automatic_percent}%
           </p>
+          {state.automatic_paused && (
+            <p className="inline-warning">{state.automatic_paused}</p>
+          )}
           <dl className="context-metrics">
             <div>
               <dt>模型窗口</dt>

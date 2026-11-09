@@ -14,6 +14,13 @@ test('window declaration, estimated bytes/tokens and reported usage stay separat
   const text=windowText({window:{tokens:0,byte_limit:131072,automatic_percent:80},last_request:{bytes:1000,estimated_input_tokens:350,occupancy_percent:30,newer_history_available:true,window:{output_reserve_tokens:512}},last_reported_usage:{input_tokens:222,output_tokens:9}});
   assert.match(text,/窗口未知/);assert.match(text,/估算 350/);assert.match(text,/1000 字节/);assert.match(text,/实际返回：输入 222/);assert.match(text,/已有更新消息/);
 });
+
+test('paused automatic compaction keeps its reason alongside the actual context budget',()=>{
+  const text=windowText({window:{tokens:0,byte_limit:131072,automatic_percent:80},automatic_paused:'输出额度耗尽；等待辅助配置调整'});
+  assert.match(text,/自动压缩暂停：输出额度耗尽/);
+  assert.match(text,/131072 字节/);
+  assert.match(text,/尚无 Provider 实际用量/);
+});
 test('busy input chooses steering or FIFO queue, and public transport only exposes typed input/branch routes',()=>{
   assert.equal(inputDisposition(true),'queue');assert.equal(inputDisposition(true,'steer'),'steer');assert.equal(inputDisposition(false),'send');
   assert.equal(apiPath('attach/inputs?conversation_id=c',true),'/api/remote/inputs?conversation_id=c');

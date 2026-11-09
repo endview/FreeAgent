@@ -42,17 +42,18 @@ type ContextCommand struct {
 }
 
 type ContextState struct {
-	Window        ContextWindow        `json:"window"`
-	LastRequest   *ContextUsage        `json:"last_request,omitempty"`
-	LastUsage     *ModelUsage          `json:"last_reported_usage,omitempty"`
-	Status        string               `json:"status"`
-	Revision      string               `json:"revision"`
-	Summary       *ConversationSummary `json:"summary,omitempty"`
-	Automatic     bool                 `json:"automatic"`
-	ByteLimit     int                  `json:"byte_limit"`
-	Blocked       string               `json:"blocked,omitempty"`
-	BlockingRunID string               `json:"blocking_run_id,omitempty"`
-	CanPropose    bool                 `json:"can_propose"`
+	AutomaticPaused string               `json:"automatic_paused,omitempty"`
+	Window          ContextWindow        `json:"window"`
+	LastRequest     *ContextUsage        `json:"last_request,omitempty"`
+	LastUsage       *ModelUsage          `json:"last_reported_usage,omitempty"`
+	Status          string               `json:"status"`
+	Revision        string               `json:"revision"`
+	Summary         *ConversationSummary `json:"summary,omitempty"`
+	Automatic       bool                 `json:"automatic"`
+	ByteLimit       int                  `json:"byte_limit"`
+	Blocked         string               `json:"blocked,omitempty"`
+	BlockingRunID   string               `json:"blocking_run_id,omitempty"`
+	CanPropose      bool                 `json:"can_propose"`
 }
 
 type ContextResult struct {

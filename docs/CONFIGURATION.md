@@ -530,6 +530,22 @@ declarations/defaults use `config model --reasoning-control`,
 `--aux-reasoning-mode`, `--aux-reasoning-effort`, or the typed
 `model.set_profile` control operation. AI proposals still require confirmation.
 
+An existing model's auxiliary choice can be changed without resending its Key,
+main-answer setting or other capabilities. After `control_read_state`, propose
+`model.set_profile` with only these arguments:
+
+```json
+{"id":"deepseek-flash","auxiliary_reasoning":{"mode":"disabled"}}
+```
+
+Use the configured model ID returned by the control state. This narrow form
+does not accept other profile fields and requires the usual confirmation.
+The existing CLI `control plan --kind model.set_profile --arguments <JSON>`
+uses the same operation. Auxiliary settings affect both context summaries and
+enabled extension analysis; "provider default" omits parameters, rather than
+disabling thinking. A summary's UTF-8 byte cap does not enlarge the effective
+model output allowance.
+
 Private Chat continuation and Responses items are retained for protocol
 continuation, scoped to their producing endpoint/profile/model. Even an
 explicit empty Chat continuation retains its presence. They are excluded from

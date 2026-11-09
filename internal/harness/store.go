@@ -985,7 +985,7 @@ func (store *Store) failModel(ctx context.Context, run Run, attempt Attempt, res
 	if _, err := tx.ExecContext(ctx, `UPDATE fa.attempts SET status='finished', response_json=$1 WHERE id=$2 AND status='dispatched'`, string(raw), attempt.ID); err != nil {
 		return err
 	}
-	if !isSupplementalAttempt(attempt) {
+	if !isSupplementalAttempt(attempt) && !isCompactionAttempt(attempt) {
 		if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status='failed', stop_reason=$1, updated_at=$2 WHERE id=$3`, safeError(failure), nowText(), run.ID); err != nil {
 			return err
 		}

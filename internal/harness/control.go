@@ -270,11 +270,23 @@ type ControlConfigState struct {
 }
 
 type ControlModelState struct {
-	ID       string `json:"id"`
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	Protocol string `json:"protocol"`
-	KeyBound bool   `json:"key_bound"`
+	Reasoning    ReasoningCapabilities `json:"reasoning,omitempty,omitzero"`
+	OutputTokens int                   `json:"output_tokens,omitempty"`
+	ID           string                `json:"id"`
+	Provider     string                `json:"provider"`
+	Model        string                `json:"model"`
+	Protocol     string                `json:"protocol"`
+	KeyBound     bool                  `json:"key_bound"`
+}
+
+type modelProfileControlArguments struct {
+	ID                 string              `json:"id"`
+	Provider           string              `json:"provider,omitempty"`
+	Key                string              `json:"key,omitempty"`
+	Model              string              `json:"model,omitempty"`
+	Capabilities       *ModelCapabilities  `json:"capabilities,omitempty"`
+	MakeDefault        bool                `json:"default,omitempty"`
+	AuxiliaryReasoning *ReasoningSelection `json:"auxiliary_reasoning,omitempty"`
 }
 
 type ControlState struct {
@@ -632,7 +644,8 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSetCommandPolicy, ResourceFamily: "config.commands", Risk: ControlRiskAuthority, Description: "Change command execution policy for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetWorkspace, ResourceFamily: "config.workspace", Risk: ControlRiskAuthority, Description: "Change the selected workspace for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetDefaultModel, ResourceFamily: "config.models", Risk: ControlRiskOrdinary, Description: "Select the default configured model for future Runs.", ModelProposable: true, Reversible: true},
-		{Kind: ControlSetModelProfile, ResourceFamily: "config.models", Risk: ControlRiskAuthority, Description: "Add or update a model profile using an existing Key profile reference; no secret is accepted.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetModelProfile, ResourceFamily: "config.models", Risk: ControlRiskAuthority, Description: "Add or replace a full model profile using a saved Key reference. To change ONLY compaction/extension-analysis thinking on an existing model, pass {id,auxiliary_reasoning:{mode:disabled}} (or a declared effort); omit all other fields. No Key reference is needed for this narrow change. Confirmation is required.", ModelProposable: true, Reversible: true,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"provider":{"type":"string"},"key":{"type":"string"},"model":{"type":"string"},"capabilities":{"type":"object"},"default":{"type":"boolean"},"auxiliary_reasoning":{"type":"object","properties":{"mode":{"type":"string","enum":["default","enabled","disabled"]},"effort":{"type":"string","maxLength":32}},"additionalProperties":false}},"required":["id"],"additionalProperties":false}`)},
 		{Kind: ControlSetProviderEnabled, ResourceFamily: "config.providers", Risk: ControlRiskAuthority, Description: "Enable or disable a model Provider by saved Key profile ID. No network request is made.", ModelProposable: true, Reversible: true},
 		{Kind: ControlRemoveModel, ResourceFamily: "config.models", Risk: ControlRiskDestructive, Description: "Remove a configured model profile and its future references.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetAutoPolicy, ResourceFamily: "config.auto", Risk: ControlRiskAuthority, Description: "Change bounded Auto model selection settings.", ModelProposable: true, Reversible: true},
@@ -784,7 +797,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 	models := make([]ControlModelState, 0, len(config.Models))
 	for id, model := range config.Models {
 		caps := model.EffectiveCapabilities()
-		models = append(models, ControlModelState{ID: id, Provider: model.Provider, Model: model.Model,
+		models = append(models, ControlModelState{ID: id, Provider: model.Provider, Model: model.Model, Reasoning: model.Capabilities.Reasoning, OutputTokens: model.Capabilities.OutputTokens,
 			Protocol: caps.Protocol, KeyBound: model.Key != ""})
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
@@ -2590,14 +2603,7 @@ func configControlResource(kind string, raw json.RawMessage) (string, error) {
 		}
 		return family + ":" + args.ID, nil
 	case ControlSetModelProfile:
-		var args struct {
-			ID           string            `json:"id"`
-			Provider     string            `json:"provider"`
-			Key          string            `json:"key,omitempty"`
-			Model        string            `json:"model,omitempty"`
-			Capabilities ModelCapabilities `json:"capabilities"`
-			MakeDefault  bool              `json:"default"`
-		}
+		var args modelProfileControlArguments
 		if err := decodeControlJSON(raw, &args); err != nil || !validModelID(args.ID) {
 			return "", errors.New("harness: model id is required")
 		}
@@ -2799,18 +2805,27 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		}
 		return SetDefaultModel(config, args.ModelID)
 	case ControlSetModelProfile:
-		var args struct {
-			ID           string            `json:"id"`
-			Provider     string            `json:"provider"`
-			Key          string            `json:"key,omitempty"`
-			Model        string            `json:"model,omitempty"`
-			Capabilities ModelCapabilities `json:"capabilities"`
-			MakeDefault  bool              `json:"default"`
-		}
+		var args modelProfileControlArguments
 		if err := decodeControlJSON(raw, &args); err != nil {
 			return err
 		}
-		return ApplyModel(config, args.ID, ModelConfig{Provider: args.Provider, Key: args.Key, Model: args.Model, Capabilities: args.Capabilities}, args.MakeDefault)
+		if args.AuxiliaryReasoning != nil {
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(raw, &fields) != nil || len(fields) != 2 {
+				return errors.New("harness: auxiliary_reasoning must be the only profile change")
+			}
+			model, ok := config.Models[args.ID]
+			if !ok {
+				return errors.New("harness: auxiliary reasoning requires an existing model")
+			}
+			model.Capabilities.Reasoning.Auxiliary = *args.AuxiliaryReasoning
+			return ApplyModel(config, args.ID, model, false)
+		}
+		caps := ModelCapabilities{}
+		if args.Capabilities != nil {
+			caps = *args.Capabilities
+		}
+		return ApplyModel(config, args.ID, ModelConfig{Provider: args.Provider, Key: args.Key, Model: args.Model, Capabilities: caps}, args.MakeDefault)
 	case ControlRemoveModel:
 		var args struct {
 			ID         string `json:"id"`

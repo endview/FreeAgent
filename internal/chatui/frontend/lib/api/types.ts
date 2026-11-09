@@ -219,6 +219,7 @@ export interface ContextState {
   revision: string;
   summary?: { text: string; source_count: number; revision: number };
   automatic: boolean;
+  automatic_paused?: string;
   byte_limit: number;
   blocked?: string;
   can_propose: boolean;

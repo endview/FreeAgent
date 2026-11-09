@@ -6,15 +6,24 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
-func (service *Service) generateSummary(ctx context.Context, run Run, request ModelRequest, limit int, calls *int) (string, error) {
+func (service *Service) generateSummary(ctx context.Context, run Run, request ModelRequest, limit int, calls *int, repairKey string) (string, error) {
 	for repair := 0; repair < 2; repair++ {
-		attempt, response, err := service.generate(ctx, run, request)
-		if attempt.ID != "" {
-			*calls++
+		before, err := service.Store.countModelAttempts(ctx, run.ID)
+		if err != nil {
+			return "", err
 		}
+		attempt, response, err := service.generate(ctx, run, request)
+		persist, done := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		after, countErr := service.Store.countModelAttempts(persist, run.ID)
+		done()
+		if countErr != nil {
+			return "", errors.Join(err, countErr)
+		}
+		*calls += after - before
 		if err != nil {
 			return "", err
 		}
@@ -26,6 +35,17 @@ func (service *Service) generateSummary(ctx context.Context, run Run, request Mo
 			return text, nil
 		}
 		if repair == 0 {
+			reserved, err := service.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, repairKey,
+				string(mustJSON(ModelRecovery{Root: attempt.ID, Previous: attempt.ID, Number: 1, Reason: "summary_content", Fingerprint: contentHash([]byte(attempt.RequestJSON))})))
+			if err != nil {
+				return "", err
+			}
+			if n, err := reserved.RowsAffected(); err != nil || n != 1 {
+				if err != nil {
+					return "", err
+				}
+				break
+			}
 			request.Messages[0].Content += fmt.Sprintf("\nThe preceding attempt exceeded the output limit or was empty. Regenerate from the SAME source, using short factual phrases and at most %d UTF-8 bytes. This is the only repair attempt.", limit)
 			continue
 		}
@@ -36,7 +56,7 @@ func (service *Service) generateSummary(ctx context.Context, run Run, request Mo
 // Oversized *completed* source groups are data, not executable tool messages.
 // Only the summarizer sees fragments; the model's real history remains intact.
 // The source digest advances only after every fragment has been summarized.
-func (service *Service) summarizeLargeGroup(ctx context.Context, run Run, prefix sourcePrefix, through int64, previous string, limit int, calls *int) (string, sourcePrefix, error) {
+func (service *Service) summarizeLargeGroup(ctx context.Context, run Run, prefix sourcePrefix, through int64, previous string, limit int, calls *int, repairKey string) (string, sourcePrefix, error) {
 	rows, err := service.Store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM fa.messages WHERE conversation_id=$1 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND id>$2 AND id<=$3 ORDER BY id LIMIT 1001`, run.ConversationID, prefix.Through, through)
 	if err != nil {
 		return previous, prefix, err
@@ -113,7 +133,7 @@ func (service *Service) summarizeLargeGroup(ctx context.Context, run Run, prefix
 			return previous, prefix, fmt.Errorf("%w: summary instructions and previous summary leave no source capacity", ErrContextLimit)
 		}
 		service.event(Event{Kind: EventContextCompacting, RunID: run.ID, ConversationID: run.ConversationID, Message: fmt.Sprintf("summarizing completed source fragment %d", part+1)})
-		previous, err = service.generateSummary(ctx, run, makeRequest(end), limit, calls)
+		previous, err = service.generateSummary(ctx, run, makeRequest(end), limit, calls, repairKey)
 		if err != nil {
 			return previous, prefix, err
 		}

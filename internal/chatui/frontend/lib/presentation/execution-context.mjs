@@ -20,7 +20,10 @@ export function windowText(context) {
   const reported = context.last_reported_usage
     ? `上次 Provider 实际返回：输入 ${context.last_reported_usage.input_tokens} / 输出 ${context.last_reported_usage.output_tokens} tokens`
     : "尚无 Provider 实际用量";
-  return `${declared}；本地请求上限 ${w.byte_limit} 字节；自动触发 ${w.automatic_percent}%。\n${usage}\n${reported}`;
+  const paused = context.automatic_paused
+    ? `\n自动压缩暂停：${context.automatic_paused}`
+    : "";
+  return `${declared}；本地请求上限 ${w.byte_limit} 字节；自动触发 ${w.automatic_percent}%。\n${usage}\n${reported}${paused}`;
 }
 
 export function inputDisposition(busy, action) {

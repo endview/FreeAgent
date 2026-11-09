@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -30,7 +31,16 @@ func withRetryAfter(err *CallError, header http.Header) *CallError {
 	return err
 }
 
-func (service *Service) canRetryModel(ctx context.Context, request ModelRequest, failure *CallError) bool {
+func emptyOutputLimit(response ModelResponse, failure *CallError) bool {
+	return failure != nil && failure.Certain && failure.Category == "output_limit" && strings.TrimSpace(response.Content) == ""
+}
+
+func (service *Service) canRetryModel(ctx context.Context, request ModelRequest, response ModelResponse, failure *CallError) bool {
+	// A shorter instruction does not change the reasoning/output allowance.
+	// With no completed text, repeating that allowance has no recovery value.
+	if emptyOutputLimit(response, failure) {
+		return false
+	}
 	if request.SupplementalKey != "" {
 		return false
 	}

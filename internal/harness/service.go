@@ -1032,7 +1032,7 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 		var certainty *CallError
 		if errors.As(callErr, &certainty) && certainty.Certain {
 			saveErr := service.Store.failModel(persistCtx, run, attempt, response, certainty, service.guard, outputSize)
-			if saveErr == nil && outputErr == nil && certainty.Category != "context_limit" && service.canRetryModel(ctx, request, certainty) {
+			if saveErr == nil && outputErr == nil && certainty.Category != "context_limit" && service.canRetryModel(ctx, request, response, certainty) {
 				releaseSlot()
 				return service.retryModel(ctx, run, attempt, request, response, certainty, rebuild)
 			}
@@ -1099,7 +1099,7 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 			}
 		}
 		saveErr := service.Store.markUnknown(persistCtx, attempt, "model outcome unknown", record...)
-		if saveErr == nil && outputErr == nil && service.canRetryModel(ctx, request, certainty) {
+		if saveErr == nil && outputErr == nil && service.canRetryModel(ctx, request, response, certainty) {
 			releaseSlot()
 			return service.retryModel(ctx, run, attempt, request, response, certainty, rebuild)
 		}

@@ -213,6 +213,19 @@ func (tasks *TaskService) populateContextUsage(ctx context.Context, chat string,
 	if id == "auto" {
 		id = config.DefaultModel
 	}
+	if model, ok := config.Models[id]; ok && config.requireProvider(model) == nil {
+		// Config is the locked snapshot above. Do not copy the live Service
+		// while a settings confirmation may be replacing its Config.
+		candidate := Service{Store: tasks.core.Store, Keys: tasks.core.Keys, Config: config}
+		selected, err := candidate.forSelection(id)
+		if err != nil {
+			return err
+		}
+		state.AutomaticPaused, err = selected.compactionSuppressed(ctx, chat)
+		if err != nil {
+			return err
+		}
+	}
 	if model, ok := config.Models[id]; ok {
 		limits := configLimits(config)
 		if model.Capabilities.ContextBytes > 0 {

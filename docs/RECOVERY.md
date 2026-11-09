@@ -105,9 +105,37 @@ responses remain UNKNOWN. Inspect runtime receipts, not model claims.
 `abandon --run <id>` ends the task but does not mark unknown attempts successful,
 failed-with-no-effect or safe-to-retry. Later tasks in the same workspace receive
 a warning, including across sessions. Inspect the old record and check actual
-effects before manually repeating related work. There is no automatic retry or
-generic semantic deduplication. This first slice offers abandonment and explicit
-new work, not a dedicated forced-retry/reconciliation subsystem.
+effects before manually repeating related work. Tools with unknown effects are
+not automatically replayed or semantically deduplicated. Model-only transient
+recovery retains its original Attempts and follows the configured retry policy.
+
+## Compaction failures and output allowance
+
+The saved summary's UTF-8 byte cap is separate from the effective model output
+token allowance. Raising the former does not raise the latter. With thinking
+models, output tokens may be exhausted before a visible answer exists; an empty
+truncated response is not automatically resent with the same allowance and
+thinking selection. Main answers and summaries share this recovery check.
+
+One logical compaction has at most one content repair, shared by its source
+chunks. Rate limits and transient service errors still use the existing model
+retry policy and Retry-After independently of that content repair. Every actual
+dispatch retains a separate Attempt, including failures and usage.
+
+A definite preventive-compaction failure may continue with the previous valid
+summary and original history only after rechecking current input, steering,
+permissions and the full hard budget. Empty output-limit failures pause later
+preventive compaction in that conversation under the same effective settings.
+The notice appears once; `context inspect` and the GUI retain the reason.
+Changing effective auxiliary/output settings or completing manual compaction
+successfully clears that pause. A full hard budget still stops dispatch.
+Cancellation, authority/config conflicts, storage errors and unknown summary
+commits never use this fallback, and no tool is replayed.
+
+For a model that supports disabling thinking, an auxiliary-only setting proposal
+can request off without changing the main answer. Required-thinking models need
+a legal lower effort or an explicit allowance change. These persistent changes
+use the normal confirmation flow; see [configuration](CONFIGURATION.md).
 
 `run --model` binds a new Run to the named profile without changing the Chat's
 selection or the default. `continue --model` adds a new model binding only
