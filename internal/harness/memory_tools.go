@@ -38,6 +38,11 @@ func (service *Service) runtimeTools(runID, attemptID string) (result ToolRunner
 		}
 	}()
 	if service.operationsDenied() {
+		if service.controlToolsEnabled() {
+			if control, err := service.controlService(); err == nil {
+				return &controlTools{base: deniedTools{}, service: service, control: control, runID: runID, attemptID: attemptID}
+			}
+		}
 		return deniedTools{}
 	}
 	base := service.Tools
@@ -74,7 +79,7 @@ func (service *Service) runtimeTools(runID, attemptID string) (result ToolRunner
 }
 
 func (service *Service) controlToolsEnabled() bool {
-	return service != nil && !service.operationsDenied() && service.controlToolsActive && service.guard == nil && !service.controlToolsDisabled
+	return service != nil && !service.analysisOnly && service.controlToolsActive && service.guard == nil && !service.controlToolsDisabled
 }
 
 func (policy memoryRunPolicy) enabled() bool {

@@ -69,11 +69,6 @@ export function MCPSettings() {
       <p className="settings-intro">
         MCP 服务按需运行；新配置默认不信任服务声明的只读提示。
       </p>
-      {remote && (
-        <p className="inline-warning">
-          公网只显示 MCP 状态，修改请使用本机工作台或 CLI。
-        </p>
-      )}
       <div className="providers-layout">
         <nav className="provider-list" aria-label="MCP 服务">
           {resource.value.servers.map((item) => (
@@ -88,11 +83,7 @@ export function MCPSettings() {
               </small>
             </button>
           ))}
-          <Button
-            variant="outline"
-            disabled={remote}
-            onClick={() => setSelected("")}
-          >
+          <Button variant="outline" onClick={() => setSelected("")}>
             新增 MCP
           </Button>
         </nav>
@@ -184,7 +175,7 @@ function MCPEditor({
         });
       }}
     >
-      <fieldset disabled={busy || remote}>
+      <fieldset disabled={busy}>
         <Field label="服务 ID">
           <input
             required
@@ -312,6 +303,7 @@ function MCPEditor({
               <Button
                 type="button"
                 variant="ghost"
+                disabled={remote}
                 onClick={() =>
                   void perform(async () =>
                     setLogs(
@@ -322,7 +314,7 @@ function MCPEditor({
                   )
                 }
               >
-                日志
+                {remote ? "日志请在本机查看" : "日志"}
               </Button>
               <Button
                 type="button"
@@ -393,11 +385,6 @@ export function SkillSettings() {
       <p className="settings-intro">
         全局启用后，在输入区选择本轮使用的 Skill。工作区内容需要显式信任。
       </p>
-      {remote && (
-        <p className="inline-warning">
-          公网只显示状态；导入和修改请使用本机入口。
-        </p>
-      )}
       <form
         className="inline-form"
         onSubmit={(event) => {
@@ -410,19 +397,15 @@ export function SkillSettings() {
           });
         }}
       >
-        <Field label="Skill 文件夹绝对路径">
+        <Field label="Skill 文件夹绝对路径（Core 所在机器）">
           <input
             required
             value={path}
             onChange={(event) => setPath(event.target.value)}
-            disabled={remote || busy}
+            disabled={busy}
           />
         </Field>
-        <Button
-          type="submit"
-          variant="outline"
-          disabled={remote || busy || !path.trim()}
-        >
+        <Button type="submit" variant="outline" disabled={busy || !path.trim()}>
           导入 Skill
         </Button>
       </form>
@@ -474,7 +457,7 @@ export function SkillSettings() {
               {skill.source === "workspace" && (
                 <Button
                   variant="outline"
-                  disabled={remote || busy}
+                  disabled={busy}
                   onClick={() => {
                     if (
                       window.confirm(
@@ -502,7 +485,7 @@ export function SkillSettings() {
               </details>
               <Button
                 variant="ghost"
-                disabled={remote || busy || skill.source !== "user"}
+                disabled={busy || skill.source !== "user"}
                 onClick={() => {
                   if (
                     window.confirm(
@@ -549,9 +532,6 @@ export function ExtensionSettings() {
       <p className="settings-intro">
         扩展按需启动。停用保留数据；启用扩展不会扩大工具权限。
       </p>
-      {remote && (
-        <p className="inline-warning">公网只显示状态，管理操作需要本机入口。</p>
-      )}
       <form
         className="inline-form"
         onSubmit={async (event) => {
@@ -567,19 +547,14 @@ export function ExtensionSettings() {
           }
         }}
       >
-        <Field label="扩展文件夹绝对路径">
+        <Field label="扩展文件夹绝对路径（Core 所在机器）">
           <input
-            disabled={remote}
             required
             value={path}
             onChange={(event) => setPath(event.target.value)}
           />
         </Field>
-        <Button
-          type="submit"
-          variant="outline"
-          disabled={remote || !path.trim()}
-        >
+        <Button type="submit" variant="outline" disabled={!path.trim()}>
           导入扩展
         </Button>
       </form>
@@ -666,7 +641,7 @@ function ExtensionEditor({
           />
         </Suspense>
       )}
-      <fieldset disabled={busy || remote}>
+      <fieldset disabled={busy}>
         <div className="setting-line">
           <span>全局启用</span>
           <Toggle
@@ -796,13 +771,14 @@ function ExtensionEditor({
             <Button
               type="button"
               variant="ghost"
+              disabled={remote}
               onClick={() =>
                 void perform(async () =>
                   setLogs(await apiText(prefix + "/logs")),
                 )
               }
             >
-              日志
+              {remote ? "日志请在本机查看" : "日志"}
             </Button>
           </div>
         </form>

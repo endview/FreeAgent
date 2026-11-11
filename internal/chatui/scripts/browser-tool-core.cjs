@@ -39,6 +39,7 @@ fs.mkdirSync(artifacts,{recursive:true});
   await page.getByRole('combobox',{name:'当前权限',exact:true}).click();await page.getByRole('option',{name:'每次询问',exact:true}).click();
   const file='browser-approved-'+tag+'.txt';await input.fill('WRITE '+file);await page.getByRole('button',{name:'发送消息',exact:true}).click();
   await page.getByRole('region',{name:'待确认操作',exact:true}).waitFor();
+  await page.locator('.approval-preview').filter({hasText:file}).waitFor();
   checks.exact_preview=(await page.locator('.approval-preview').innerText()).includes(file)&&!fs.existsSync(root+'/workspace/'+file);
   checks.approval_does_not_steal_focus=await input.evaluate(el=>document.activeElement!==document.querySelector('.approval-footer button:last-child'));
   await page.getByRole('button',{name:'批准并继续',exact:true}).click();await page.getByText('TOOL_RESULT_RETAINED_'+tag,{exact:true}).waitFor();

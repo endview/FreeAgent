@@ -2,8 +2,11 @@ package chatui
 
 import (
 	"context"
+	"errors"
 	"github.com/endview/freeagent/internal/harness"
+	"net/http"
 	"sort"
+	"sync"
 )
 
 type ownerExecution struct {
@@ -91,6 +94,45 @@ func (server *Server) dispatchBoundContext(parent context.Context, chat, binding
 		}
 	}()
 	return nil
+}
+
+// A 202 submit receipt means the Run and its input are durable, not merely
+// that a goroutine was scheduled. Execution remains independent of the tab.
+func (server *Server) submitWithReceipt(w http.ResponseWriter, request *http.Request, chat, key string, execute func(context.Context, func(harness.Run)) (harness.RunResult, error)) {
+	item, err := server.reserveContext(server.executionContext(w), chat, key)
+	if err != nil {
+		server.fail(w, err)
+		return
+	}
+	ready := make(chan error, 1)
+	var once sync.Once
+	receipt := func(err error) { once.Do(func() { ready <- err }) }
+	go func() {
+		defer server.release(chat, item)
+		result, err := execute(item.ctx, func(harness.Run) { receipt(nil) })
+		if result.Run.ID != "" {
+			receipt(nil)
+		} else if err != nil {
+			receipt(err)
+		} else {
+			receipt(errors.New("harness: request was not durably accepted"))
+		}
+		server.deliverResult(result)
+		if err != nil && result.Run.ID != "" {
+			code, message := userError(err)
+			server.notify(harness.EventRequestError, chat, code+": "+message)
+		}
+	}()
+	select {
+	case err := <-ready:
+		if err != nil {
+			server.fail(w, err)
+			return
+		}
+		server.writeJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
+	case <-request.Context().Done():
+		// The caller retains its request key and can inspect the accepted Run.
+	}
 }
 func (server *Server) AddChannelDelivery(deliver func(context.Context, harness.RunResult) error) {
 	server.mu.Lock()

@@ -427,9 +427,9 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 	if err := lockConversationTx(ctx, tx, conversationID); err != nil {
 		return Run{}, false, err
 	}
-	existing, err := scanRun(tx.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1 AND request_key=$2`, conversationID, requestKey))
+	existing, err := runByRequest(ctx, tx, conversationID, requestKey)
 	if err == nil {
-		if existing.Prompt != prompt || !sameInputAttachments(existing.ConfigJSON, input.InputAttachments) {
+		if existing.RequestKey != requestKey || existing.Prompt != prompt || !sameInputAttachments(existing.ConfigJSON, input.InputAttachments) {
 			return Run{}, false, ErrRequestKey
 		}
 		return existing, false, nil
@@ -581,15 +581,18 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 }
 
 func (store *Store) repeatedRun(ctx context.Context, conversationID, requestKey, prompt string) (Run, bool, error) {
-	run, err := scanRun(store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs
-		WHERE conversation_id=$1 AND request_key=$2`, conversationID, requestKey))
+	run, err := runByRequest(ctx, store.db, conversationID, requestKey)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, false, nil
 	}
 	if err != nil {
 		return Run{}, false, err
 	}
-	if run.Prompt != prompt {
+	if run.RequestKey != requestKey {
+		if prompt != limitContinuationPrompt {
+			return Run{}, false, ErrRequestKey
+		}
+	} else if run.Prompt != prompt {
 		return Run{}, false, ErrRequestKey
 	}
 	return run, true, nil
@@ -601,7 +604,8 @@ func (store *Store) GetRun(ctx context.Context, id string) (Run, error) {
 
 func (store *Store) GetLatestRun(ctx context.Context, conversationID string) (Run, error) {
 	return scanRun(store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1
-		AND NOT (status='completed' AND EXISTS(SELECT 1 FROM fa.meta WHERE key=$2||runs.id))
+		AND NOT (status IN ('completed','failed') AND EXISTS(SELECT 1 FROM fa.meta WHERE key=$2||runs.id)
+		AND NOT EXISTS(SELECT 1 FROM fa.attempts a WHERE a.run_id=runs.id AND a.status IN ('pending','dispatched','unknown') AND NOT `+resolvedAttemptSQL+`))
 		ORDER BY seq DESC LIMIT 1`, conversationID, maintenanceMetaPrefix))
 }
 
@@ -609,7 +613,14 @@ func (store *Store) GetRunByRequest(ctx context.Context, conversationID, request
 	if strings.TrimSpace(conversationID) == "" || strings.TrimSpace(requestKey) == "" {
 		return Run{}, sql.ErrNoRows
 	}
-	return scanRun(store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1 AND request_key=$2`, conversationID, requestKey))
+	return runByRequest(ctx, store.db, conversationID, requestKey)
+}
+
+func runByRequest(ctx context.Context, reader interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, chat, request string) (Run, error) {
+	return scanRun(reader.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1
+		AND (request_key=$2 OR id=(SELECT document->>'run_id' FROM fa.meta WHERE key=$3))`, chat, request, continuationReceiptKey(chat, request)))
 }
 
 func (store *Store) FinishRun(ctx context.Context, id, status, reason string) error {

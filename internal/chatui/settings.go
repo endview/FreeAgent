@@ -8,7 +8,8 @@ import (
 )
 
 type settingsPatch struct {
-	ExpectedRevision string `json:"expected_revision"`
+	ExpectedRevision  string            `json:"expected_revision"`
+	ExpectedRevisions map[string]uint64 `json:"expected_revisions,omitempty"`
 }
 
 type settingsFilePatch struct {
@@ -43,7 +44,15 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 	path := request.URL.Path
 	switch {
 	case path == "/api/settings/delivery" && request.Method == http.MethodGet:
-		server.writeJSON(writer, 200, server.tasks.Config().Delivery)
+		config, revisions, err := server.settingsSnapshot()
+		if err != nil {
+			server.fail(writer, err)
+			return true
+		}
+		server.writeJSON(writer, 200, struct {
+			harness.DeliveryConfig
+			ExpectedRevisions map[string]uint64 `json:"expected_revisions"`
+		}{config.Delivery, settingsRevision(revisions, "config.delivery")})
 	case path == "/api/settings/database" && request.Method == http.MethodGet:
 		status, err := server.tasks.DatabaseStatus(request.Context())
 		if err != nil {
@@ -54,8 +63,12 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 	case path == "/api/settings" && request.Method == http.MethodGet:
 		server.writeSettings(writer, request)
 	case path == "/api/settings/prompt" && request.Method == http.MethodGet:
-		config := server.tasks.Config()
-		server.writeJSON(writer, http.StatusOK, map[string]any{"system_prompt": config.SystemPrompt, "instructions": config.Instructions, "revision": server.tasks.RuntimePolicy().Generation})
+		config, revisions, err := server.settingsSnapshot()
+		if err != nil {
+			server.fail(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, map[string]any{"system_prompt": config.SystemPrompt, "instructions": config.Instructions, "expected_revisions": settingsRevision(revisions, "config.prompt"), "revision": server.tasks.RuntimePolicy().Generation})
 	case path == "/api/settings/permissions" && request.Method == http.MethodPatch:
 		server.patchSettingsPermissions(writer, request)
 	case path == "/api/settings/file-access" && request.Method == http.MethodPatch:
@@ -96,7 +109,7 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 		if body.AutoCompactAt != nil {
 			args["auto_compact_percent"] = *body.AutoCompactAt
 		}
-		if _, err := server.applyDirectControl(request.Context(), body.ExpectedRevision, "", harness.ControlSetRuntimeLimits, args); err != nil {
+		if _, err := server.applyDirectControl(request.Context(), body.ExpectedRevision, "", harness.ControlSetRuntimeLimits, args, body.ExpectedRevisions); err != nil {
 			server.runtimePolicyFailure(writer, err)
 			return true
 		}

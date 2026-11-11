@@ -239,8 +239,13 @@ func TestPublicAttachmentOwnershipAndAsynchronousEntryPermission(t *testing.T) {
 	}
 	select {
 	case r := <-requests:
-		if len(r.Tools) != 0 || !strings.Contains(string(mustJSONTest(r)), "user supplied text") {
+		if !r.DenyOperations || !strings.Contains(string(mustJSONTest(r)), "user supplied text") {
 			t.Fatal("entry input or None boundary changed")
+		}
+		for _, tool := range r.Tools {
+			if tool.Name != "control_read_state" && tool.Name != "control_plan_change" {
+				t.Fatal("None exposed an execution tool", tool.Name)
+			}
 		}
 	case <-time.After(time.Second):
 		t.Fatal("model request absent")

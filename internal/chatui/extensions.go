@@ -150,6 +150,17 @@ func (server *Server) extensionsAPI(writer http.ResponseWriter, request *http.Re
 			return true
 		}
 		server.writeJSON(writer, http.StatusOK, json.RawMessage(raw))
+	case "scope":
+		if request.Method != http.MethodGet {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return true
+		}
+		scope, err := server.tasks.ExtensionConversationScope(request.Context(), id, request.URL.Query().Get("conversation_id"))
+		if err != nil {
+			server.extensionFailure(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, scope)
 	case "reconcile":
 		if request.Method != http.MethodPost {
 			writer.WriteHeader(http.StatusMethodNotAllowed)

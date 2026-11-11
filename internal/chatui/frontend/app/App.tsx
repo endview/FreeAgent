@@ -36,6 +36,7 @@ import {
   loadNavigation,
   loadSnapshot,
   report,
+  notify,
   searchNavigation,
   selectConversation,
   startRuntime,
@@ -47,6 +48,7 @@ import {
   applyTheme,
   loadView,
   saveView,
+  viewCommand,
   type ViewPreferences,
 } from "@/lib/platform";
 import { clearDrafts } from "@/lib/drafts";
@@ -152,13 +154,7 @@ export default function App() {
         .catch((error) => setLoginError(error.message));
   }, []);
   useEffect(() => {
-    if (authenticated)
-      startRuntime()
-        .then(() => {
-          const chat = new URLSearchParams(location.search).get("chat");
-          if (chat) return selectConversation(chat);
-        })
-        .catch(report);
+    if (authenticated) startRuntime().catch(report);
   }, [authenticated]);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme:dark)");
@@ -547,6 +543,18 @@ export default function App() {
             onComposerMax={setComposerMax}
             onOpenChat={openChat}
             onOpenModelSettings={() => route("settings", "providers")}
+            onViewCommand={(text) => {
+              const next = viewCommand(text, {
+                theme,
+                sidebar: side,
+                reading,
+                composer: composerMax,
+              });
+              if (!next) return false;
+              setPreferences(next);
+              notify("当前窗口外观已保存，其他客户端不变。");
+              return true;
+            }}
           />
         )}
         {state.notice && (

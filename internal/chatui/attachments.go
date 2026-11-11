@@ -15,11 +15,14 @@ func (server *Server) attachmentsAPI(w http.ResponseWriter, r *http.Request) boo
 	path := r.URL.Path
 	if path == "/api/attachment-policy" {
 		if r.Method == http.MethodPut {
-			var policy harness.AttachmentPolicy
+			var policy struct {
+				harness.AttachmentPolicy
+				ExpectedRevisions map[string]uint64 `json:"expected_revisions,omitempty"`
+			}
 			if !server.readBody(w, r, &policy) {
 				return true
 			}
-			if _, err := server.applyDirectControl(r.Context(), "", "", harness.ControlSetAttachmentPolicy, policy); err != nil {
+			if _, err := server.applyDirectControl(r.Context(), "", "", harness.ControlSetAttachmentPolicy, policy.AttachmentPolicy, policy.ExpectedRevisions); err != nil {
 				server.fail(w, err)
 				return true
 			}
@@ -27,7 +30,15 @@ func (server *Server) attachmentsAPI(w http.ResponseWriter, r *http.Request) boo
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return true
 		}
-		server.writeJSON(w, http.StatusOK, server.tasks.Config().Attachments)
+		config, revisions, err := server.settingsSnapshot()
+		if err != nil {
+			server.fail(w, err)
+			return true
+		}
+		server.writeJSON(w, http.StatusOK, struct {
+			harness.AttachmentPolicy
+			ExpectedRevisions map[string]uint64 `json:"expected_revisions"`
+		}{config.Attachments, settingsRevision(revisions, "config.attachments")})
 		return true
 	}
 	if path != "/api/attachments" && !strings.HasPrefix(path, "/api/attachments/") {

@@ -60,7 +60,7 @@ func (server *Server) confirmControlProposal(ctx context.Context, chat, runID st
 // applyDirectControl is the GUI's user-direct path. The GUI gesture is the
 // user interaction; the code is rendered and consumed inside this trusted
 // surface so settings PATCH handlers cannot bypass the owner journal.
-func (server *Server) applyDirectControl(ctx context.Context, generation, conversationID, kind string, arguments any) (harness.ControlResult, error) {
+func (server *Server) applyDirectControl(ctx context.Context, generation, conversationID, kind string, arguments any, revisions ...map[string]uint64) (harness.ControlResult, error) {
 	if generation != "" && generation != server.tasks.RuntimePolicy().Generation {
 		return harness.ControlResult{}, harness.ErrGenerationConflict
 	}
@@ -72,8 +72,13 @@ func (server *Server) applyDirectControl(ctx context.Context, generation, conver
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
+	var expected map[string]uint64
+	if len(revisions) > 0 {
+		expected = revisions[0]
+	}
 	operation, err := control.PlanControlChange(ctx, harness.ControlPlanRequest{
 		Kind: kind, Arguments: raw, Authorization: harness.ControlUserDirect, ConversationID: conversationID,
+		ExpectedRevisions: expected,
 	})
 	if err != nil {
 		return harness.ControlResult{}, err
@@ -90,6 +95,7 @@ func (server *Server) applyDirectControl(ctx context.Context, generation, conver
 		Source: harness.ControlUserDirect, ConversationID: conversationID, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 		Code: confirmation.Code, Capability: capability,
 	})
+	server.notifyControlApplied(result)
 	if err != nil {
 		return result, err
 	}
@@ -106,6 +112,29 @@ func (server *Server) applyDirectControl(ctx context.Context, generation, conver
 		}
 	}
 	return result, nil
+}
+
+func (server *Server) settingsSnapshot() (harness.Config, map[string]uint64, error) {
+	control, err := server.tasks.Control()
+	if err != nil {
+		return harness.Config{}, nil, err
+	}
+	config, revisions := control.SettingsSnapshot()
+	return config, revisions, nil
+}
+
+func settingsRevision(revisions map[string]uint64, resource string) map[string]uint64 {
+	revision := revisions[resource]
+	if revision == 0 {
+		revision = 1
+	}
+	return map[string]uint64{resource: revision}
+}
+
+func (server *Server) notifyControlApplied(result harness.ControlResult) {
+	if result.Applied {
+		server.notify(harness.EventRefresh, "", "")
+	}
 }
 
 func (server *Server) applyDirectKeyControl(ctx context.Context, request harness.KeyControlRequest) (harness.ControlResult, error) {
@@ -125,10 +154,12 @@ func (server *Server) applyDirectKeyControl(ctx context.Context, request harness
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
-	return control.ConfirmControlChange(ctx, operation.ID, harness.ControlAuthorization{
+	result, err := control.ConfirmControlChange(ctx, operation.ID, harness.ControlAuthorization{
 		Source: harness.ControlUserDirect, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 		Code: confirmation.Code, Capability: capability,
 	})
+	server.notifyControlApplied(result)
+	return result, err
 }
 
 func (server *Server) applyDirectKeyProbe(ctx context.Context, ref string) (harness.ProbeResult, error) {
@@ -156,10 +187,12 @@ func (server *Server) applyDirectMCPControl(ctx context.Context, request harness
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
-	return control.ConfirmControlChange(ctx, operation.ID, harness.ControlAuthorization{
+	result, err := control.ConfirmControlChange(ctx, operation.ID, harness.ControlAuthorization{
 		Source: harness.ControlUserDirect, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 		Code: confirmation.Code, Capability: capability,
 	})
+	server.notifyControlApplied(result)
+	return result, err
 }
 
 func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Request) bool {
@@ -189,7 +222,12 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 		server.writeJSON(writer, http.StatusOK, result)
 		return true
 	case path == "/api/control/config" && request.Method == http.MethodGet:
-		server.writeJSON(writer, http.StatusOK, server.configProjection())
+		config, err := server.configProjection()
+		if err != nil {
+			server.fail(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusOK, config)
 		return true
 	case path == "/api/control/state" && request.Method == http.MethodGet:
 		state, err := control.ReadControlState(request.Context())
@@ -321,6 +359,7 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 				Source: harness.ControlUserDirect, ConversationID: body.ConversationID, Principal: harness.InteractivePrincipal(ctx, controlPrincipal),
 				Code: body.Code, Capability: capability,
 			})
+			server.notifyControlApplied(result)
 			if applyErr == nil {
 				server.reconfigureChannelsIfChanged()
 				if result.Operation.Kind == harness.ControlSetWorkspace {
@@ -398,8 +437,11 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 // configProjection is the diagnostic shape used by the CLI's config show.
 // It is narrower than Config so an attached observer cannot read prompts,
 // MCP arguments, environment values or provider secrets.
-func (server *Server) configProjection() map[string]any {
-	config := server.tasks.Config()
+func (server *Server) configProjection() (map[string]any, error) {
+	config, revisions, err := server.settingsSnapshot()
+	if err != nil {
+		return nil, err
+	}
 	enabled := make([]string, 0)
 	for name, item := range config.MCPServers {
 		if item.Enabled {
@@ -412,6 +454,7 @@ func (server *Server) configProjection() map[string]any {
 		capabilities[id] = profile.EffectiveCapabilities()
 	}
 	return map[string]any{
+		"control_revisions": revisions, "execution": config.Execution,
 		"ok": true, "config_path": filepath.Join(server.tasks.DataDir(), "config.json"),
 		"workspace": config.Workspace, "models": config.Models, "default_model": config.DefaultModel,
 		"default_selection": config.DefaultSelection, "auto": config.Auto,
@@ -430,5 +473,5 @@ func (server *Server) configProjection() map[string]any {
 			"auto_compact_percent":  config.AutoCompactAt,
 		},
 		"changed": false, "network_tested": false, "credentials_resolved": false,
-	}
+	}, nil
 }

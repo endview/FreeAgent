@@ -42,18 +42,19 @@ type ContextCommand struct {
 }
 
 type ContextState struct {
-	AutomaticPaused string               `json:"automatic_paused,omitempty"`
-	Window          ContextWindow        `json:"window"`
-	LastRequest     *ContextUsage        `json:"last_request,omitempty"`
-	LastUsage       *ModelUsage          `json:"last_reported_usage,omitempty"`
-	Status          string               `json:"status"`
-	Revision        string               `json:"revision"`
-	Summary         *ConversationSummary `json:"summary,omitempty"`
-	Automatic       bool                 `json:"automatic"`
-	ByteLimit       int                  `json:"byte_limit"`
-	Blocked         string               `json:"blocked,omitempty"`
-	BlockingRunID   string               `json:"blocking_run_id,omitempty"`
-	CanPropose      bool                 `json:"can_propose"`
+	ExpectedRevisions map[string]uint64    `json:"expected_revisions,omitempty"`
+	AutomaticPaused   string               `json:"automatic_paused,omitempty"`
+	Window            ContextWindow        `json:"window"`
+	LastRequest       *ContextUsage        `json:"last_request,omitempty"`
+	LastUsage         *ModelUsage          `json:"last_reported_usage,omitempty"`
+	Status            string               `json:"status"`
+	Revision          string               `json:"revision"`
+	Summary           *ConversationSummary `json:"summary,omitempty"`
+	Automatic         bool                 `json:"automatic"`
+	ByteLimit         int                  `json:"byte_limit"`
+	Blocked           string               `json:"blocked,omitempty"`
+	BlockingRunID     string               `json:"blocking_run_id,omitempty"`
+	CanPropose        bool                 `json:"can_propose"`
 }
 
 type ContextResult struct {
@@ -279,14 +280,21 @@ func (tasks *TaskService) contextState(ctx context.Context, chat, callerRun, cal
 		return ContextState{}, errors.New("harness: conversation workspace mismatch")
 	}
 	summary, raw, err := tasks.core.Store.contextSummary(ctx, chat, true)
-	limit := tasks.Config().TaskSummaryBytes
+	config := tasks.Config()
+	var revisions map[string]uint64
+	if control, controlErr := tasks.Control(); controlErr == nil {
+		config, revisions = control.SettingsSnapshot()
+	}
+	limit := config.TaskSummaryBytes
 	if limit == 0 {
 		limit = 4096
 	}
-	if summary != nil {
-		limit = summary.ByteLimit
+	revision := revisions["config.limits"]
+	if revision == 0 {
+		revision = 1
 	}
-	state := ContextState{Status: "none", Revision: contentHash([]byte(raw)), Summary: summary, Automatic: tasks.Config().TaskSummaryBytes > 0, ByteLimit: limit}
+	state := ContextState{Status: "none", Revision: contentHash([]byte(raw)), Summary: summary, Automatic: config.TaskSummaryBytes > 0, ByteLimit: limit,
+		ExpectedRevisions: map[string]uint64{"config.limits": revision}}
 	if errors.Is(err, ErrSummaryStale) {
 		state.Status, err = "stale", nil
 	} else if summary != nil {

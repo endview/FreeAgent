@@ -26,6 +26,7 @@ interface Connection {
   autonomous_reactions?: boolean;
 }
 interface Channels {
+  expected_revisions: Record<string, number>;
   config: { connections: Connection[] };
   connections?: { id: string; running: boolean }[];
 }
@@ -96,6 +97,7 @@ export default function ChannelSettings() {
       await resource.reload();
     } catch (error) {
       setError((error as Error).message);
+      await resource.reload().catch(() => {});
     } finally {
       setBusy(false);
     }
@@ -106,7 +108,11 @@ export default function ChannelSettings() {
       (item) => item.id !== connection.id,
     );
     if (!remove) connections.push(connection);
-    await api("channels", { connections }, "PATCH");
+    await api(
+      "channels",
+      { connections, expected_revisions: resource.value.expected_revisions },
+      "PATCH",
+    );
     setResult("渠道配置已保存；实际连接状态以运行记录为准。");
   }
   return (
@@ -379,6 +385,11 @@ export default function ChannelSettings() {
         </p>
       )}
       <Result error={error} text={result} />
+      {error && (
+        <p className="form-hint">
+          当前连接列表已重新读取；新增连接草稿保留。请核对后重新操作。
+        </p>
+      )}
     </>
   );
 }

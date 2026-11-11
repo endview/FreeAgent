@@ -1,9 +1,10 @@
+import { clearFormDraft } from "@/lib/drafts";
 import { useState } from "react";
 import { api } from "@/lib/api/client";
 import { useRuntime, loadEnvironment, notify } from "@/lib/store/runtime";
 import { ControlPreview } from "@/components/ControlPreview";
 import { Button } from "@/components/ui/button";
-import { Field, Loading, useFormDraft, useResource } from "./shared";
+import { Field, Loading, Result, useFormDraft, useResource } from "./shared";
 interface Rule {
   generation?: boolean;
   resource?: string;
@@ -32,6 +33,18 @@ interface Policy extends Record<string, unknown> {
   enabled: boolean;
   rules: Rule[];
 }
+function savedPolicy(value: Partial<Policy>): Policy {
+  // Core omits false/zero/empty fields. A snapshot replaces the draft;
+  // merging it into an edited policy would retain revoked grants.
+  return {
+    generation_enabled: {},
+    sticker_limit: 1,
+    interval_ms: 0,
+    enabled: false,
+    rules: [],
+    ...value,
+  };
+}
 export default function DeliverySettings({
   extension,
 }: { extension?: string } = {}) {
@@ -52,6 +65,7 @@ export default function DeliverySettings({
     );
   return resource.value ? (
     <Editor
+      key={JSON.stringify(resource.value.expected_revisions)}
       initial={resource.value}
       extensions={(catalog.value?.extensions || []).filter(
         (x) => x.scheduled_generation && (!extension || x.id === extension),
@@ -90,15 +104,14 @@ function Editor({
   >(
     `attach/deliveries?scheduled=true&conversation_id=${encodeURIComponent(state.selected)}`,
   );
-  const [policy, change] = useFormDraft<Policy>("delivery-policy", {
-    generation_enabled: {},
-    sticker_limit: 1,
-    interval_ms: 0,
-    enabled: false,
-    rules: [],
-    ...initial,
-  });
+  const [policy, change] = useFormDraft<Policy>(
+    "delivery-policy",
+    savedPolicy(initial),
+  );
+  const { expected_revisions, ...argumentsPolicy } = policy;
   const [selected, setSelected] = useState(0);
+  const [reloadBusy, setReloadBusy] = useState(false),
+    [reloadError, setReloadError] = useState("");
   function update(index: number, patch: Partial<Rule>) {
     change({
       ...policy,
@@ -434,9 +447,35 @@ function Editor({
       </details>
       <ControlPreview
         kind="delivery.set_policy"
-        arguments={policy}
-        onSaved={onSaved}
+        arguments={argumentsPolicy}
+        expectedRevisions={expected_revisions as Record<string, number>}
+        onSaved={async () => {
+          clearFormDraft("delivery-policy");
+          await onSaved();
+        }}
       />
+      <Button
+        variant="ghost"
+        disabled={reloadBusy}
+        onClick={async () => {
+          if (!window.confirm("放弃投递授权草稿，读取当前已保存的配置？"))
+            return;
+          setReloadBusy(true);
+          setReloadError("");
+          try {
+            const latest = await api<Partial<Policy>>("settings/delivery");
+            change(savedPolicy(latest));
+            setSelected(0);
+          } catch (error) {
+            setReloadError((error as Error).message);
+          } finally {
+            setReloadBusy(false);
+          }
+        }}
+      >
+        读取最新投递授权
+      </Button>
+      <Result error={reloadError} />
     </>
   );
 }

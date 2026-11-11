@@ -148,6 +148,7 @@ export interface ChatSnapshot {
   server_version?: string;
 }
 export interface Model {
+  expected_revisions?: Record<string, number>;
   reasoning_info?: ReasoningModelInfo | null;
   id?: string;
   provider?: string;
@@ -212,6 +213,7 @@ export interface ExtensionTurnSetting {
   options: { value: string; label: string }[];
 }
 export interface ContextState {
+  expected_revisions?: Record<string, number>;
   window: {
     model_id: string;
     tokens: number;
@@ -232,7 +234,12 @@ export interface ContextState {
   last_reported_usage?: { input_tokens: number; output_tokens: number };
   status: string;
   revision: string;
-  summary?: { text: string; source_count: number; revision: number };
+  summary?: {
+    text: string;
+    source_count: number;
+    revision: number;
+    byte_limit?: number;
+  };
   automatic: boolean;
   automatic_paused?: string;
   byte_limit: number;

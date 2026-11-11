@@ -820,6 +820,9 @@ func (tasks *TaskService) Cancel() bool {
 }
 
 type RunOptions struct {
+	// Accepted runs only after the existing Run/message transaction commits.
+	// Transports use this receipt before discarding the user's input draft.
+	Accepted            func(Run) `json:"-"`
 	analysisBindingHash string
 	analysisSource      json.RawMessage
 	analysisOnly        bool
@@ -857,7 +860,7 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 				return RunResult{Run: prior, Answer: prior.Output, Duplicate: true}, nil
 			}
 		}
-		if prior, err := tasks.core.Store.GetLatestRun(ctx, conversationID); err == nil && prior.LimitSettled {
+		if prior, err := tasks.core.Store.GetLatestRun(ctx, conversationID); err == nil && prior.Status == "limited" {
 			options.continuationKey = requestKey
 			return tasks.ContinueWithOptions(ctx, prior.ID, options)
 		}
@@ -879,6 +882,7 @@ func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID,
 		conversationID = chat.ID
 	}
 	return tasks.execute(ctx, conversationID, func(ctx context.Context, core *Service) (RunResult, error) {
+		core.onAccepted = options.Accepted
 		if options.Reasoning != nil {
 			// The selection is per Run, including tool-less analysis.
 			selection := *options.Reasoning
@@ -1209,8 +1213,39 @@ func (tasks *TaskService) ContinueWithOptions(ctx context.Context, runID string,
 		} else if controlled == runID {
 			return tasks.continueComposition(ctx, core, run, options.Review)
 		}
+		if run.Status == "limited" && !run.LimitSettled {
+			// An explicit upgrade already changes the frozen model binding and
+			// must retain this Run's consumption. A changed configuration or
+			// explicit per-turn choice needs a successor instead of ignoring it.
+			changedOptions, err := continuationOptionsChanged(run, options)
+			if err != nil {
+				return RunResult{}, err
+			}
+			if _, frozenErr := core.forRun(run); changedOptions || errors.Is(frozenErr, ErrConfigChanged) {
+				settled, err := core.Store.settleLimited(ctx, run, true)
+				if err != nil {
+					return RunResult{}, err
+				}
+				run.LimitSettled = settled
+				if changedOptions && !settled {
+					return RunResult{}, ErrActiveRun
+				}
+			}
+		}
 		if run.LimitSettled {
 			return tasks.startLimitSuccessor(ctx, core, run, options)
+		}
+		if options.continuationKey != "" {
+			created, err := core.Store.recordContinuationReceipt(ctx, run, options.continuationKey)
+			if err != nil {
+				return RunResult{}, err
+			}
+			if options.Accepted != nil {
+				options.Accepted(run)
+			}
+			if !created {
+				return RunResult{Run: run, Answer: run.Output, Duplicate: true}, nil
+			}
 		}
 		return core.Continue(ctx, runID)
 	})
@@ -1440,6 +1475,14 @@ func (tasks *TaskService) Inspect(ctx context.Context, runID string) (Run, []Att
 	}
 	evidence, err := tasks.core.Store.Evidence(ctx, runID)
 	return run, attempts, evidence, err
+}
+
+// RunState reads an action target without loading its potentially large history.
+func (tasks *TaskService) RunState(ctx context.Context, runID string) (Run, error) {
+	if tasks == nil || tasks.core == nil || tasks.core.Store == nil {
+		return Run{}, errors.New("harness: task service is not configured")
+	}
+	return tasks.core.Store.GetRun(ctx, runID)
 }
 
 func (tasks *TaskService) Abandon(ctx context.Context, runID string) error {

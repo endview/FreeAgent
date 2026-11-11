@@ -168,8 +168,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 	if err := core.validateCapabilitySettings(caps); err != nil {
 		return PendingInput{}, err
 	}
-	safety := string(mustJSON(core.Config))
-	input := PendingInput{Key: command.RequestKey, Action: command.Action, Status: "pending", ConversationID: chat, TargetRun: command.RunID, Principal: principal, CreatedAt: nowText(), Binding: binding, ConfigHash: contentHash([]byte(safety)), Permission: core.permission.Mode, Attachments: refs, Channel: options.channel, Person: options.personID, Capabilities: &caps}
+	input := PendingInput{Key: command.RequestKey, Action: command.Action, Status: "pending", ConversationID: chat, TargetRun: command.RunID, Principal: principal, CreatedAt: nowText(), Binding: binding, ConfigHash: queuedConfigHash(core.Config), Permission: core.permission.Mode, Attachments: refs, Channel: options.channel, Person: options.personID, Capabilities: &caps}
 	if command.Reasoning != nil {
 		selection := *command.Reasoning
 		input.Reasoning = &selection
@@ -376,7 +375,7 @@ func (tasks *TaskService) CancelInput(ctx context.Context, chat, key string) (Pe
 	if i.Principal != InteractivePrincipal(ctx, "local") && InteractivePrincipal(ctx, "local") != "local" {
 		return i, ErrPermissionDenied
 	}
-	if i.Status == "pending" {
+	if i.Status == "pending" || i.Status == "target_ended" {
 		i.Status = "cancelled"
 		if err := saveInput(ctx, tx, i); err != nil {
 			return i, err
@@ -389,6 +388,12 @@ func (tasks *TaskService) CancelInput(ctx context.Context, chat, key string) (Pe
 // Its message, request key and authorization remain the same. Consumption,
 // cancellation and this operation compete in the same transaction boundary.
 func (tasks *TaskService) SteerInput(ctx context.Context, chat, key, runID string) (PendingInput, error) {
+	return tasks.SteerInputWithOptions(ctx, chat, key, runID, false)
+}
+
+// Discarding new-task options is an explicit user choice. Guidance never
+// changes the running model, capabilities or reasoning configuration.
+func (tasks *TaskService) SteerInputWithOptions(ctx context.Context, chat, key, runID string, discardOptions bool) (PendingInput, error) {
 	if ctx == nil || tasks == nil || tasks.core == nil || chat == "" || key == "" || runID == "" {
 		return PendingInput{}, ErrRequestKey
 	}
@@ -437,8 +442,8 @@ func (tasks *TaskService) SteerInput(ctx context.Context, chat, key, runID strin
 	if run.Status != "running" {
 		return input, ErrInputTargetEnded
 	}
-	if input.Reasoning != nil {
-		return input, errors.New("harness: queued reasoning choices apply to a new Run; remove the override before using guidance")
+	if input.Reasoning != nil && !discardOptions {
+		return input, errors.New("harness: queued reasoning and capability choices apply to a new Run; explicitly discard them before using guidance")
 	}
 	if input.Person != "" && (run.Permission == nil || run.Permission.PersonID != input.Person || input.Channel == nil || channelOriginFromJSON(run.ConfigJSON) == nil || channelOriginFromJSON(run.ConfigJSON).ChannelTarget != input.Channel.ChannelTarget) {
 		return PendingInput{}, ErrPermissionDenied
@@ -451,6 +456,10 @@ func (tasks *TaskService) SteerInput(ctx context.Context, chat, key, runID strin
 		}
 	}
 	input.Action, input.TargetRun = "steer", run.ID
+	if discardOptions {
+		input.Reasoning = nil
+		input.Capabilities = nil
+	}
 	if err := saveInput(ctx, tx, input); err != nil {
 		return input, err
 	}
@@ -547,7 +556,11 @@ func (tasks *TaskService) validateQueuedInput(ctx context.Context, chat string, 
 	core := tasks.core.runCopy()
 	core.Config = config
 	binding, err := core.newBinding(config, input.Binding.ID)
-	if err != nil || contentHash(mustJSON(config)) != input.ConfigHash || string(mustJSON(binding)) != string(mustJSON(input.Binding)) {
+	hash := queuedConfigHash(config)
+	if !strings.HasPrefix(input.ConfigHash, "queue/v2:") {
+		hash = contentHash(mustJSON(config)) // Retain old saved bindings for explicit review.
+	}
+	if err != nil || hash != input.ConfigHash || string(mustJSON(binding)) != string(mustJSON(input.Binding)) {
 		return nil, errors.Join(ErrConfigChanged, err)
 	}
 	if err := core.resolvePermission(ctx, chat, "", false); err != nil {
@@ -566,6 +579,12 @@ func (tasks *TaskService) validateQueuedInput(ctx context.Context, chat string, 
 		return nil, errors.Join(ErrPermissionRevoked, err)
 	}
 	return &core, nil
+}
+
+func queuedConfigHash(config Config) string {
+	// Listening on another port after restart does not change accepted work.
+	config.Server = ServerConfig{}
+	return "queue/v2:" + contentHash(mustJSON(config))
 }
 
 func pendingSteer(ctx context.Context, tx *sql.Tx, run string) (bool, error) {

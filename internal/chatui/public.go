@@ -101,6 +101,9 @@ func publicRoute(path, method string) (string, bool) {
 	}
 	if strings.HasPrefix(path, "/api/remote/") {
 		name := strings.TrimPrefix(path, "/api/remote/")
+		if name == "memory" && method == "POST" {
+			return "/api/attach/memory", true
+		}
 		if (name == "context" || name == "inputs" || name == "branch" || name == "deliveries" || name == "stickers" || name == "analyze" || name == "analyze/memory") && (method == "GET" || method == "POST") || name == "commands" && (method == "GET" || method == "POST") || name == "cancel" && method == "POST" {
 			return "/api/attach/" + name, true
 		}
@@ -116,7 +119,8 @@ func publicRoute(path, method string) (string, bool) {
 		"/api/settings/delivery": "GET",
 		"/api/server":            "GET PUT", "/api/providers": "PUT", "/api/attachment-policy": "GET PUT", "/api/attachments": "GET POST", "/api/attachments/reply": "POST", "/api/attachments/delete": "POST",
 		"/api/keys": "GET POST", "/api/keys/test": "POST", "/api/models/enable": "POST", "/api/models/enable-batch": "POST", "/api/models/default": "POST", "/api/models/vision": "POST", "/api/models/context": "POST",
-		"/api/channels": "GET PATCH", "/api/mcp": "GET", "/api/skills": "GET", "/api/extensions": "GET", "/api/commands/catalog": "GET",
+		"/api/channels": "GET PATCH", "/api/mcp": "GET POST", "/api/skills": "GET POST", "/api/extensions": "GET POST", "/api/commands/catalog": "GET",
+		"/api/mcp/import": "POST", "/api/mcp/restart": "POST", "/api/skills/trust": "POST", "/api/extensions/trust": "POST", "/api/control/reconcile-extension": "POST",
 		"/api/channels/telegram/access": "GET POST",
 		"/api/control/catalog":          "GET", "/api/control/config": "GET", "/api/control/state": "GET", "/api/control/operations": "GET", "/api/control/plan": "POST", "/api/control/confirmation": "GET", "/api/control/confirm": "POST", "/api/control/reject": "POST", "/api/control/revert-plan": "POST",
 	}
@@ -124,6 +128,29 @@ func publicRoute(path, method string) (string, bool) {
 		return path, strings.Contains(" "+methods+" ", " "+method+" ")
 	}
 	parts := strings.Split(strings.TrimPrefix(path, "/api/"), "/")
+	if len(parts) == 3 && parts[1] != "" {
+		switch parts[0] {
+		case "extensions":
+			switch parts[2] {
+			case "state", "scope", "view":
+				return path, method == "GET"
+			case "storage-init", "reconcile", "update", "restart", "delete", "clear-data", "sync", "backup":
+				return path, method == "POST"
+			}
+		case "skills":
+			switch parts[2] {
+			case "view":
+				return path, method == "GET"
+			case "update", "delete":
+				return path, method == "POST"
+			}
+		case "mcp":
+			switch parts[2] {
+			case "update", "delete", "test", "restart":
+				return path, method == "POST"
+			}
+		}
+	}
 	if len(parts) == 2 && parts[0] == "chats" && method == "GET" {
 		return path, true
 	}
@@ -166,7 +193,8 @@ func (p *PublicServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	publicHeaders(w, p.host)
 	c := p.local.tasks.Config().PublicWeb.Effective()
 	ip, err := netip.ParseAddr(r.Header.Get("X-FreeAgent-Client-IP"))
-	if !publicweb.TrustedProxy(r.Context()) || !c.Enabled || c.Origin != p.origin || r.Host != p.host || r.Header.Get("X-FreeAgent-Proxy-Proto") != "https" || err != nil || r.Header.Get("Origin") != "" && r.Header.Get("Origin") != p.origin || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+	documentNavigation := (r.Method == "GET" || r.Method == "HEAD") && !strings.HasPrefix(r.URL.Path, "/api/") && r.Header.Get("Sec-Fetch-Mode") == "navigate" && r.Header.Get("Sec-Fetch-Dest") == "document"
+	if !publicweb.TrustedProxy(r.Context()) || !c.Enabled || c.Origin != p.origin || r.Host != p.host || r.Header.Get("X-FreeAgent-Proxy-Proto") != "https" || err != nil || r.Header.Get("Origin") != "" && r.Header.Get("Origin") != p.origin || r.Header.Get("Sec-Fetch-Site") == "cross-site" && !documentNavigation {
 		p.denied(w, 403)
 		return
 	}
@@ -367,7 +395,10 @@ func (server *Server) publicSettingsAPI(w http.ResponseWriter, r *http.Request) 
 	}
 	if r.URL.Path == "/api/public-settings" {
 		if r.Method == "PUT" {
-			var c harness.PublicWebConfig
+			var c struct {
+				harness.PublicWebConfig
+				ExpectedRevisions map[string]uint64 `json:"expected_revisions,omitempty"`
+			}
 			if !server.readBody(w, r, &c) {
 				return true
 			}
@@ -375,7 +406,7 @@ func (server *Server) publicSettingsAPI(w http.ResponseWriter, r *http.Request) 
 				server.writeError(w, 400, "public_policy_invalid", err.Error())
 				return true
 			}
-			if _, err := server.applyDirectControl(r.Context(), "", "", harness.ControlSetPublicWeb, c); err != nil {
+			if _, err := server.applyDirectControl(r.Context(), "", "", harness.ControlSetPublicWeb, c.PublicWebConfig, c.ExpectedRevisions); err != nil {
 				server.fail(w, err)
 				return true
 			}
@@ -386,12 +417,17 @@ func (server *Server) publicSettingsAPI(w http.ResponseWriter, r *http.Request) 
 		server.mu.Lock()
 		p := server.public
 		server.mu.Unlock()
-		config := server.tasks.Config().PublicWeb.Effective()
+		snapshot, revisions, err := server.settingsSnapshot()
+		if err != nil {
+			server.fail(w, err)
+			return true
+		}
+		config := snapshot.PublicWeb.Effective()
 		server.mu.Lock()
 		active := p != nil && p.socket != nil && p.socket.Active()
 		server.mu.Unlock()
 		restart := config.Enabled && (!active || p == nil || config.Origin != p.started.Origin || config.Socket != p.started.Socket || config.SocketGroup != p.started.SocketGroup)
-		server.writeJSON(w, 200, map[string]any{"config": config, "credential_ready": publicweb.CredentialReady(server.tasks.DataDir()), "listener_active": active, "restart_required": restart})
+		server.writeJSON(w, 200, map[string]any{"config": config, "expected_revisions": settingsRevision(revisions, "config.public_web"), "credential_ready": publicweb.CredentialReady(server.tasks.DataDir()), "listener_active": active, "restart_required": restart})
 		return true
 	}
 	if r.URL.Path == "/api/public-password" && r.Method == "POST" {

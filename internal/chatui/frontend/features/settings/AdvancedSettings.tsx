@@ -1,8 +1,18 @@
+import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api/client";
+import { Button } from "@/components/ui/button";
 import { ControlPreview } from "@/components/ControlPreview";
 import { Choice } from "@/components/Choice";
 import { loadEnvironment, notify } from "@/lib/store/runtime";
 import { clearFormDraft } from "@/lib/drafts";
-import { Field, Loading, lines, useFormDraft, useResource } from "./shared";
+import {
+  Field,
+  Loading,
+  Result,
+  lines,
+  useFormDraft,
+  useResource,
+} from "./shared";
 
 type Data = Record<string, unknown>;
 type FieldSpec = {
@@ -237,19 +247,25 @@ function set(data: Data, path: string, value: unknown): Data {
 }
 export default function AdvancedSettings() {
   const resource = useResource<Data>("control/config"),
-    permissions = useResource<{
-      execution: {
-        network: unknown;
-        network_policy?: Data;
-        sandbox_mode?: string;
-      };
-    }>("permissions"),
     prompt = useResource<{
       system_prompt: string;
       instructions: string[] | null;
       revision: string;
+      expected_revisions: Record<string, number>;
     }>("settings/prompt");
   if (!resource.value) return <Loading error={resource.error} />;
+  const revisions = resource.value.control_revisions as Record<string, number>;
+  const revision = (name: string) => ({ [name]: revisions?.[name] || 1 });
+  const permissions = {
+    value: {
+      execution: resource.value.execution as {
+        sandbox_mode?: string;
+        network_policy?: Data;
+      },
+    },
+    reload: resource.reload,
+  };
+
   return (
     <>
       <p className="settings-intro">
@@ -257,7 +273,8 @@ export default function AdvancedSettings() {
       </p>
       {policies.map((policy) => (
         <PolicyEditor
-          key={policy.id}
+          key={policy.id + ":" + (revisions?.["config." + policy.source] || 1)}
+          expectedRevisions={revision("config." + policy.source)}
           policy={policy}
           initial={
             policy.id === "routing"
@@ -294,6 +311,8 @@ export default function AdvancedSettings() {
               },
             ],
           }}
+          key={"sandbox:" + (revisions?.["config.execution.set_sandbox"] || 1)}
+          expectedRevisions={revision("config.execution.set_sandbox")}
           initial={{ mode: permissions.value.execution.sandbox_mode }}
           onSaved={async () => {
             await permissions.reload();
@@ -321,6 +340,8 @@ export default function AdvancedSettings() {
               },
             ],
           }}
+          key={"network:" + (revisions?.["config.execution.set_network"] || 1)}
+          expectedRevisions={revision("config.execution.set_network")}
           initial={permissions.value.execution.network_policy}
           onSaved={async () => {
             await permissions.reload();
@@ -345,6 +366,8 @@ export default function AdvancedSettings() {
               },
             ],
           }}
+          key={"prompt:" + JSON.stringify(prompt.value.expected_revisions)}
+          expectedRevisions={prompt.value.expected_revisions}
           initial={{
             system_prompt: prompt.value.system_prompt,
             instructions: prompt.value.instructions || [],
@@ -363,13 +386,89 @@ function PolicyEditor({
   policy,
   initial,
   onSaved,
+  expectedRevisions,
 }: {
+  expectedRevisions: Record<string, number>;
   policy: Policy;
   initial: Data;
   onSaved: () => Promise<void>;
 }) {
   const draftID = "advanced:" + policy.id;
-  const [value, change] = useFormDraft<Data>(draftID, initial);
+  const [value, change] = useFormDraft<Data>(draftID, {
+    ...initial,
+    _expected_revisions: expectedRevisions,
+  });
+  const { _expected_revisions, ...argumentsValue } = value;
+  const latestValue = useRef(value);
+  const reloadController = useRef<AbortController | null>(null);
+  latestValue.current = value;
+  useEffect(() => () => reloadController.current?.abort(), []);
+  const [reloading, setReloading] = useState(false),
+    [reloadError, setReloadError] = useState("");
+  async function reload() {
+    if (!window.confirm("放弃此项草稿并读取已保存的配置？")) return;
+    const requestedValue = latestValue.current;
+    const controller = new AbortController();
+    reloadController.current?.abort();
+    reloadController.current = controller;
+    setReloading(true);
+    setReloadError("");
+    try {
+      // Read first. A failed fetch must not discard the only copy of the draft.
+      let next: Data;
+      if (policy.id === "prompt") {
+        const data = await api<Data>(
+          "settings/prompt",
+          undefined,
+          undefined,
+          controller.signal,
+        );
+        next = {
+          system_prompt: data.system_prompt,
+          instructions: data.instructions || [],
+          _expected_revisions: data.expected_revisions,
+        };
+      } else {
+        const data = await api<Data>(
+            "control/config",
+            undefined,
+            undefined,
+            controller.signal,
+          ),
+          execution = data.execution as Data;
+        const resource =
+          policy.id === "sandbox" || policy.id === "network"
+            ? "config.execution.set_" + policy.id
+            : "config." + policy.source;
+        const revisions = data.control_revisions as Record<string, number>;
+        const fields =
+          policy.id === "sandbox"
+            ? { mode: execution.sandbox_mode }
+            : policy.id === "network"
+              ? (execution.network_policy as Data)
+              : policy.id === "routing"
+                ? {
+                    ...(data.auto as Data),
+                    default_selection: data.default_selection,
+                  }
+                : (data[policy.source] as Data);
+        next = {
+          ...fields,
+          _expected_revisions: { [resource]: revisions?.[resource] || 1 },
+        };
+      }
+      if (controller.signal.aborted) return;
+      if (latestValue.current !== requestedValue) {
+        setReloadError("读取期间草稿已修改，已保留新输入；请核对后重新读取。");
+        return;
+      }
+      change(next);
+    } catch (error) {
+      if (!controller.signal.aborted) setReloadError((error as Error).message);
+    } finally {
+      setReloading(false);
+    }
+  }
   const fields = policy.fields;
   return (
     <details className="settings-section">
@@ -438,14 +537,24 @@ function PolicyEditor({
           );
         })}
       </div>
+      <Button
+        variant="ghost"
+        disabled={reloading}
+        onClick={() => void reload()}
+      >
+        重新读取此项
+      </Button>
+      <Result error={reloadError} />
       <ControlPreview
         kind={policy.kind}
+        disabled={reloading}
+        expectedRevisions={_expected_revisions as Record<string, number>}
         arguments={
           policy.id === "limits"
             ? Object.fromEntries(
                 fields.map((field) => [field.key, value[field.key]]),
               )
-            : value
+            : argumentsValue
         }
         onSaved={async () => {
           clearFormDraft(draftID);

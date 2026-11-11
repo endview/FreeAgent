@@ -14,6 +14,7 @@ export function ControlPreview({
   label = "预览并保存",
   initialOperation = null,
   onRejected,
+  expectedRevisions,
 }: {
   kind: string;
   arguments: Record<string, unknown>;
@@ -22,6 +23,7 @@ export function ControlPreview({
   label?: string;
   initialOperation?: Operation | null;
   onRejected?: () => void;
+  expectedRevisions?: Record<string, number>;
 }) {
   const [operation, setOperation] = useState<Operation | null>(
       initialOperation,
@@ -29,7 +31,9 @@ export function ControlPreview({
     [code, setCode] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const signature = JSON.stringify([kind, args]);
+  const [confirmationRetry, setConfirmationRetry] = useState(0),
+    [confirmationLoading, setConfirmationLoading] = useState(false);
+  const signature = JSON.stringify([kind, args, expectedRevisions]);
   const currentSignature = useRef(signature),
     previewSignature = useRef(signature);
   currentSignature.current = signature;
@@ -43,7 +47,9 @@ export function ControlPreview({
   useEffect(() => {
     let disposed = false;
     setCode("");
-    if (operation)
+    setConfirmationLoading(Boolean(operation));
+    if (operation) {
+      setError("");
       api<{ code: string; operation_id: string }>(
         `control/confirmation?operation_id=${encodeURIComponent(operation.operation_id)}&conversation_id=${encodeURIComponent(operation.conversation_id || "")}`,
       )
@@ -53,18 +59,26 @@ export function ControlPreview({
         })
         .catch((error) => {
           if (!disposed) setError(error.message);
+        })
+        .finally(() => {
+          if (!disposed) setConfirmationLoading(false);
         });
+    }
     return () => {
       disposed = true;
     };
-  }, [operation?.operation_id]);
+  }, [operation?.operation_id, confirmationRetry]);
   async function preview() {
     setBusy(true);
     setError("");
     const requestedSignature = currentSignature.current;
     try {
       const next = decodeControlOperation(
-        await api<unknown>("control/plan", { kind, arguments: args }),
+        await api<unknown>("control/plan", {
+          kind,
+          arguments: args,
+          expected_revisions: expectedRevisions,
+        }),
       );
       if (currentSignature.current === requestedSignature) {
         previewSignature.current = requestedSignature;
@@ -85,15 +99,32 @@ export function ControlPreview({
     }
     setBusy(true);
     setError("");
+    const decidedSignature = currentSignature.current;
     try {
-      await api(approved ? "control/confirm" : "control/reject", {
-        operation_id: operation.operation_id,
-        conversation_id: operation.conversation_id || "",
-        ...(approved ? { code } : {}),
-      });
+      try {
+        await api(approved ? "control/confirm" : "control/reject", {
+          operation_id: operation.operation_id,
+          conversation_id: operation.conversation_id || "",
+          ...(approved ? { code } : {}),
+        });
+      } catch (failure) {
+        // A missing response is not proof that the setting was not saved.
+        // Read the existing operation receipt; never replay the mutation.
+        const operations = await api<Operation[]>("control/operations").catch(
+          () => [],
+        );
+        const receipt = operations.find(
+          (item) =>
+            item.operation_id === operation.operation_id &&
+            item.digest === operation.digest,
+        );
+        if (receipt?.status !== (approved ? "applied" : "rejected"))
+          throw failure;
+      }
       setOperation(null);
-      if (approved) await onSaved();
-      else onRejected?.();
+      if (approved && decidedSignature === currentSignature.current)
+        await onSaved();
+      else if (!approved) onRejected?.();
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -121,13 +152,25 @@ export function ControlPreview({
   return (
     <div className="control-preview">
       {operation ? (
-        <ApprovalView
-          preview={confirmation}
-          busy={busy}
-          error={error}
-          ready={Boolean(code)}
-          onDecide={(approved) => void decide(approved)}
-        />
+        <>
+          <ApprovalView
+            preview={confirmation}
+            busy={busy}
+            error={error}
+            ready={Boolean(code)}
+            onDecide={(approved) => void decide(approved)}
+          />
+          {!code && error && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || confirmationLoading}
+              onClick={() => setConfirmationRetry((value) => value + 1)}
+            >
+              重新读取确认状态
+            </Button>
+          )}
+        </>
       ) : (
         <>
           <Button type="button" disabled={disabled || busy} onClick={preview}>

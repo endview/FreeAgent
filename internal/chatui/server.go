@@ -323,12 +323,17 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	if path == "/api/environment" && request.Method == http.MethodGet {
-		config := server.tasks.Config()
+		config, revisions, err := server.settingsSnapshot()
+		if err != nil {
+			server.fail(writer, err)
+			return
+		}
 		models := map[string]any{}
 		keys := server.tasks.Keys()
 		for id, model := range config.Models {
 			entry := map[string]any{"provider": model.Provider, "model": model.Model, "capabilities": model.Capabilities,
-				"key": model.Key, "key_name": "", "missing": false, "provider_enabled": config.ProviderEnabled(model)}
+				"expected_revisions": settingsRevision(revisions, "config.model:"+id),
+				"key":                model.Key, "key_name": "", "missing": false, "provider_enabled": config.ProviderEnabled(model)}
 			entry["reasoning_info"] = harness.OfficialReasoning(model)
 			if model.Key != "" && keys != nil {
 				profile, err := keys.Find(model.Key)
@@ -344,6 +349,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			models[id] = entry
 		}
 		server.writeJSON(writer, http.StatusOK, map[string]any{
+			"control_revisions": revisions,
 			"delivery_available": func() bool {
 				for _, connection := range config.Channels.Connections {
 					if connection.Enabled {
@@ -684,12 +690,13 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 				}
 			}
 		}
-		server.startBound(writer, chat, body.RequestKey, func(ctx context.Context) (harness.RunResult, error) {
+		server.submitWithReceipt(writer, request, chat, body.RequestKey, func(ctx context.Context, accepted func(harness.Run)) (harness.RunResult, error) {
 			// This first Chat caller is explicitly single-Agent. Optional compositions
 			// remain in the CLI, not silently enabled by a hidden preference.
 			off := harness.DefaultCollaborationSettings()
 			off.Mode = "off"
 			return server.tasks.SubmitWithOptions(ctx, chat, body.RequestKey, body.Prompt, harness.RunOptions{
+				Accepted:      accepted,
 				Collaboration: &off, Permission: body.Permission, ConfirmFullAccess: body.ConfirmFullAccess,
 				Capabilities: body.Capabilities, Attachments: body.Attachments, Reasoning: body.Reasoning,
 			})
@@ -698,7 +705,16 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		active := server.cancelConversation(chat, "")
 		server.writeJSON(writer, http.StatusOK, map[string]bool{"requested": active})
 	case "continue", "preview", "confirm", "end":
-		run, err := server.tasks.Latest(request.Context(), chat)
+		var run harness.Run
+		var err error
+		if target := request.URL.Query().Get("run_id"); target != "" {
+			run, err = server.tasks.RunState(request.Context(), target)
+			if err == nil && run.ConversationID != chat {
+				err = harness.ErrPermissionDenied
+			}
+		} else {
+			run, err = server.tasks.Latest(request.Context(), chat)
+		}
 		if err != nil {
 			server.fail(writer, err)
 			return
@@ -987,7 +1003,13 @@ func userError(err error) (string, string) {
 	case errors.Is(err, harness.ErrFullAccessConfirmation):
 		return "permission_confirmation", "启用 Full access 需要明确确认。"
 	case errors.Is(err, harness.ErrConfigChanged):
-		return "config", "任务配置已变化，需要先处理原任务。"
+		return "config", "执行配置已变化。请核对后使用新配置继续；排队消息可退回输入框重新提交，已有执行记录保留。"
+	case errors.Is(err, harness.ErrInvalidSpace):
+		return "space_input", "空间名称需要 1 至 80 个字符，不能包含换行或控制字符。请修改后重试，草稿已保留。"
+	case errors.Is(err, harness.ErrAttachmentLimit):
+		return "attachment_limit", "附件数量或大小超过当前限制。请减少附件后重试，文字和附件草稿已保留。"
+	case errors.Is(err, harness.ErrAttachment):
+		return "attachment", "附件已失效或不属于当前会话，请移除或重新上传；文字草稿已保留。"
 	case errors.Is(err, harness.ErrSnapshotIncomplete):
 		return "snapshot_incomplete", "运行快照缺少当前版本所需的权限信息，未套用当前配置。"
 	case errors.Is(err, harness.ErrContextLimit):

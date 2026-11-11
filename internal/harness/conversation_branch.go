@@ -61,6 +61,10 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 		return result, ErrRequestKey
 	}
 	config := tasks.Config()
+	selection, err := tasks.SelectedCapabilities(ctx, chat)
+	if err != nil {
+		return result, err
+	}
 	if command.Prompt != nil && len(*command.Prompt) > config.MaxContextBytes {
 		return result, ErrContextLimit
 	}
@@ -197,6 +201,11 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "chat/model/"+result.Conversation.ID, source.ModelID); err != nil {
 			return result, err
 		}
+	}
+	// A branch retains explicit exclusions instead of silently re-enabling
+	// every globally installed optional capability.
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, capabilityMetaPrefix+result.Conversation.ID, string(mustJSON(selection.normalize()))); err != nil {
+		return result, err
 	}
 	var root *os.Root
 	var published []string

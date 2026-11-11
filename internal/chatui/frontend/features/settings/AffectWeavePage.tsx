@@ -1,9 +1,10 @@
 import { useState } from "react";
 import DeliverySettings from "./DeliverySettings";
-import { api, remote } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
+import { useRuntime } from "@/lib/store/runtime";
 import { Button } from "@/components/ui/button";
 import { ControlPreview } from "@/components/ControlPreview";
-import { Field, Result, useFormDraft, useResource } from "./shared";
+import { Field, Loading, Result, useFormDraft, useResource } from "./shared";
 
 type Persona = {
   id: string;
@@ -57,25 +58,48 @@ type Read = {
   memories?: { id: string; summary: string; evidence_level: string }[];
   facts?: { id: string; kind: string; body: unknown }[];
 };
-export default function AffectWeavePage({
-  id,
-  enabled,
-  storageReady,
-  settings,
-  onSaved,
-}: {
+type PageProps = {
   id: string;
   enabled: boolean;
   storageReady: boolean;
   settings: Record<string, unknown>;
   onSaved: () => Promise<void>;
-}) {
+};
+type Scope = { space_id: string; actor_id: string; resource?: string };
+export default function AffectWeavePage(props: PageProps) {
+  const { selected } = useRuntime();
+  const scope = useResource<Scope>(
+    `extensions/${encodeURIComponent(props.id)}/scope?conversation_id=${encodeURIComponent(selected)}`,
+  );
+  return scope.value ? (
+    <AffectWeaveEditor
+      key={props.id + ":" + selected}
+      {...props}
+      chat={selected}
+      initialScope={scope.value}
+    />
+  ) : (
+    <Loading error={scope.error} />
+  );
+}
+function AffectWeaveEditor({
+  id,
+  enabled,
+  storageReady,
+  settings,
+  onSaved,
+  chat,
+  initialScope,
+}: PageProps & { chat: string; initialScope: Scope }) {
   const [evidence, setEvidence] = useState<string[]>([]);
-  const [scopeDraft, setScopeDraft] = useFormDraft("affectweave:scope", {
-    space: "local",
-    roleID: "",
-    actor: "owner",
-  });
+  const [scopeDraft, setScopeDraft] = useFormDraft(
+    "affectweave:scope:" + chat,
+    {
+      space: initialScope.space_id,
+      roleID: initialScope.resource || "",
+      actor: initialScope.actor_id,
+    },
+  );
   const { space, roleID, actor } = scopeDraft;
   const setSpace = (value: string) =>
     setScopeDraft({ ...scopeDraft, space: value });
@@ -86,14 +110,14 @@ export default function AffectWeavePage({
   const [error, setError] = useState(""),
     [result, setResult] = useState(""),
     [busy, setBusy] = useState(false);
-  const [form, setForm] = useFormDraft("affectweave:character", {
+  const [form, setForm] = useFormDraft("affectweave:character:" + chat, {
     id: "",
     name: "",
     identity: "",
     boundaries: "",
     preferences: "",
     voice: "",
-    spaces: "local",
+    spaces: initialScope.space_id,
     values: "{}",
     traits: "{}",
     parameters: "null",
@@ -108,7 +132,7 @@ export default function AffectWeavePage({
   const [preferences, setPreferences] = useFormDraft(
     "affectweave:preferences",
     {
-      contextBytes: "6000",
+      contextBytes: String(settings.context_bytes ?? 6000),
       backup: "",
       analysis: Boolean(settings.analysis_enabled),
       analysisDeadline: String(settings.analysis_deadline_ms || 8000),
@@ -208,9 +232,14 @@ export default function AffectWeavePage({
     <section className="settings-section" aria-label="AffectWeave 人物管理">
       <h3>人物、关系与经历</h3>
       <p className="form-hint">
+        {chat
+          ? "默认使用当前对话的空间、参与者和人物选择。"
+          : "当前未选择对话，正在管理本机默认空间；TG 人物请先打开对应会话。"}
+      </p>
+      <p className="form-hint">
         按空间与参与者隔离。启用后只登记运行事实与固定规则；模型提出的长期改动须在下方预览确认。生成、实际发送与用户反馈分别记录。
       </p>
-      <fieldset disabled={busy || remote}>
+      <fieldset disabled={busy}>
         <Button
           variant="outline"
           disabled={storageReady}
@@ -795,7 +824,7 @@ export default function AffectWeavePage({
           />
         </Field>
         <Button
-          disabled={busy || remote || !enabled || !preferences.backup}
+          disabled={busy || !enabled || !preferences.backup}
           variant="outline"
           onClick={() =>
             void perform(async () => {

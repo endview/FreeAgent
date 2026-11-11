@@ -66,9 +66,9 @@ def main():
                 if process.poll() is not None or time.monotonic() > deadline:
                     raise RuntimeError('Isolated Core did not become ready; see ' + str(root / 'owner.log'))
                 time.sleep(0.1)
-            groups=['core', 'provider', 'tool-core', 'settings', 'continuity', 'bridge', 'browsers']
+            groups=['core', 'provider', 'tool-core', 'settings', 'interaction', 'continuity', 'bridge', 'browsers']
             names=['performance'] if args.benchmark else args.only.split(',') if args.only else groups
-            if any(name not in [*groups,'performance','affectweave','analysis'] for name in names):
+            if any(name not in [*groups,'performance','affectweave','analysis','recheck'] for name in names):
                 raise ValueError('Unknown browser test group')
             for name in names:
                 result = subprocess.run(['node', str(repo / f'internal/chatui/scripts/browser-{name}.cjs')],

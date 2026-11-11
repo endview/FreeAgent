@@ -116,6 +116,15 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 		if !server.readBody(writer, request, &command) {
 			return true
 		}
+		if _, remote := publicRequestFrom(request.Context()); remote {
+			// Public Memory editing uses the same owner service, but this
+			// route never exposes CLI filesystem import/export or identity reuse.
+			allowed := map[string]bool{"list": true, "read": true, "save": true, "update": true, "enable": true, "disable": true, "delete": true, "pin": true, "unpin": true}
+			if !allowed[command.Command] || command.File != "" || command.ReuseSession != "" || command.ConversationID == "" || command.ScopeKind != "private" {
+				server.writeError(writer, 403, "memory_scope", "公网 Memory 管理需要明确的会话与私有范围；文件导入导出请使用本机入口。")
+				return true
+			}
+		}
 		result, err := harness.ExecuteMemoryCommand(request.Context(), server.tasks, command)
 		if err != nil {
 			server.fail(writer, err)

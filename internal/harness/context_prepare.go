@@ -139,7 +139,7 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 		if recordErr := service.recordContextUsage(ctx, run, after); recordErr != nil {
 			return prepared, recordErr
 		}
-		notify, reason, recordErr := service.rememberCompactionFailure(ctx, run)
+		notify, reason, recordErr := service.rememberCompactionFailure(ctx, run, err)
 		if recordErr != nil {
 			return prepared, recordErr
 		}
@@ -149,7 +149,7 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 		}
 		budgetErr := after.budgetError()
 		if budgetErr != nil {
-			message = "压缩未完成，当前请求超过上下文硬预算；请调整辅助思考/输出额度或手动压缩。" + reason
+			message = "压缩未完成，当前请求超过上下文硬预算。请打开上下文面板，核对摘要上限、模型窗口和占用来源；保存后手动压缩，再继续。" + reason
 		}
 		if notify {
 			service.event(Event{Kind: EventContextCompactionFailed, ConversationID: run.ConversationID, RunID: run.ID, Message: message,

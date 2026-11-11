@@ -22,8 +22,8 @@ func TestPublicCeilingClampsNewRunAndCannotWidenDuringLocalContinuation(t *testi
 	calls := 0
 	tasks, chat, work := publicCoreFixture(t, modelFunc(func(_ context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
 		calls++
-		if len(request.Tools) != 0 {
-			t.Error("None remote ceiling advertised tools")
+		if !controlOnlyDefinitions(request.Tools) || !request.DenyOperations {
+			t.Error("None remote ceiling advertised execution tools")
 		}
 		return ModelResponse{Content: "done"}, nil
 	}))

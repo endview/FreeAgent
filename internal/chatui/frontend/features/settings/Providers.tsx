@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, RefreshCw, Trash2, Zap } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { Model, ReasoningCapabilities } from "@/lib/api/types";
@@ -7,7 +7,12 @@ import {
   reasoningSelection,
   reasoningValue,
 } from "@/components/ReasoningChoice";
-import { loadEnvironment, notify, useRuntime } from "@/lib/store/runtime";
+import {
+  current,
+  loadEnvironment,
+  notify,
+  useRuntime,
+} from "@/lib/store/runtime";
 import { clearFormDraft } from "@/lib/drafts";
 import { ControlPreview } from "@/components/ControlPreview";
 import { Button } from "@/components/ui/button";
@@ -581,6 +586,28 @@ function ProviderEditor({
   );
 }
 
+function modelCapabilityDraft(id: string, model: Model) {
+  const initial = model.capabilities || {};
+  const vision = (initial.vision || {}) as Record<string, unknown>;
+  return {
+    ...initial,
+    _dirty: false,
+    _expected_revisions: model.expected_revisions || {
+      ["config.model:" + id]: 1,
+    },
+    vision: {
+      enabled: false,
+      png: true,
+      jpeg: true,
+      max_image_encoded_bytes: 8 * 1024 ** 2,
+      max_side: 4096,
+      max_images: 8,
+      max_request_bytes: 32 * 1024 ** 2,
+      ...(vision.enabled ? vision : {}),
+    },
+  };
+}
+
 function ModelOptions({
   id,
   model,
@@ -591,13 +618,12 @@ function ModelOptions({
   onChange: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const [tokens, setTokens] = useState(
-    Number(model.capabilities?.context_window_tokens) || 0,
-  );
+    [error] = useState("");
   const initial = model.capabilities || {};
-  const [caps, change] = useFormDraft<
+  const fresh = modelCapabilityDraft(id, model);
+  const baseline = useRef(JSON.stringify([initial, model.expected_revisions]));
+  const dirty = useRef(false);
+  const [caps, replaceCaps] = useFormDraft<
     Record<string, unknown> & {
       vision: {
         enabled: boolean;
@@ -609,27 +635,28 @@ function ModelOptions({
         max_request_bytes: number;
       };
     }
-  >("model-caps:" + id, {
-    ...initial,
-    vision: {
-      enabled: false,
-      png: true,
-      jpeg: true,
-      max_image_encoded_bytes: 8 * 1024 ** 2,
-      max_side: 4096,
-      max_images: 8,
-      max_request_bytes: 32 * 1024 ** 2,
-      ...((initial.vision as Record<string, unknown>) || {}),
-    },
-  });
+  >("model-caps:" + id, fresh);
+  function change(next: typeof caps) {
+    dirty.current = true;
+    replaceCaps({ ...next, _dirty: true });
+  }
+  useEffect(() => {
+    const next = JSON.stringify([initial, model.expected_revisions]);
+    if (next !== baseline.current && !dirty.current && !caps._dirty) {
+      replaceCaps(fresh);
+    }
+    baseline.current = next;
+  }, [model]);
+  const { _expected_revisions, _dirty, ...capabilities } = caps;
+  void _dirty;
+  const conflict =
+    JSON.stringify(_expected_revisions) !==
+    JSON.stringify(model.expected_revisions || { ["config.model:" + id]: 1 });
   const vision = caps.vision;
   const reasoning = (caps.reasoning || {}) as ReasoningCapabilities;
   const argumentsForSave = {
     id,
-    provider: model.provider,
-    key: model.key || "",
-    model: model.model || "",
-    capabilities: { ...caps, vision: vision.enabled ? vision : {} },
+    capabilities: { ...capabilities, vision: vision.enabled ? vision : {} },
   };
   return (
     <details
@@ -643,29 +670,34 @@ function ModelOptions({
           type="number"
           min={0}
           step={1}
-          value={tokens}
-          onChange={(event) => setTokens(Number(event.target.value))}
+          value={Number(caps.context_window_tokens) || 0}
+          onChange={(event) =>
+            change({
+              ...caps,
+              context_window_tokens: Number(event.target.value),
+            })
+          }
         />
       </Field>
-      <Button
-        variant="outline"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          setError("");
-          try {
-            await api("models/context", { id, tokens });
-            await onChange();
-            notify("模型窗口已保存");
-          } catch (error) {
-            setError(error instanceof Error ? error.message : "保存失败");
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        保存窗口
-      </Button>
+      <p className="form-hint">
+        窗口、输出额度和思考设置使用下面同一个保存按钮；保存后影响新请求。
+      </p>
+      {conflict && (
+        <p className="inline-warning">
+          模型配置已在其他位置更新。草稿仍保留，请核对后重新载入当前配置。
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (!window.confirm("放弃此表单草稿并读取已保存的模型配置？"))
+                return;
+              replaceCaps(fresh);
+              dirty.current = false;
+            }}
+          >
+            重新载入
+          </Button>
+        </p>
+      )}
       <p className="form-hint">
         下面是显式能力声明，不代表真实 Provider 已验收。
       </p>
@@ -883,13 +915,18 @@ function ModelOptions({
       )}
       <ControlPreview
         kind="model.set_profile"
+        disabled={conflict}
+        expectedRevisions={_expected_revisions as Record<string, number>}
         arguments={argumentsForSave}
         onSaved={async () => {
-          clearFormDraft("model-caps:" + id);
           await onChange();
-          notify("模型能力声明已保存");
+          const saved = current().environment?.models[id];
+          if (saved) replaceCaps(modelCapabilityDraft(id, saved));
+          dirty.current = false;
+          clearFormDraft("model-caps:" + id);
+          notify("模型配置已保存");
         }}
-        label="预览能力声明"
+        label="预览并保存模型配置"
       />
       <Result error={error} />
     </details>

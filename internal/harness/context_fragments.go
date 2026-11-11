@@ -46,7 +46,7 @@ func (service *Service) generateSummary(ctx context.Context, run Run, request Mo
 				}
 				break
 			}
-			request.Messages[0].Content += fmt.Sprintf("\nThe preceding attempt exceeded the output limit or was empty. Regenerate from the SAME source, using short factual phrases and at most %d UTF-8 bytes. This is the only repair attempt.", limit)
+			request.Messages[0].Content += fmt.Sprintf("\nThe preceding summary was %d UTF-8 bytes (empty is invalid); the storage ceiling is %d bytes, NOT tokens or characters. Regenerate from the SAME source using concise factual phrases, targeting at most %d UTF-8 bytes to leave a safety margin. Chinese characters usually take 3 bytes. Retain essential constraints and unfinished work; omit repeated background and prose. This is the only content repair attempt.", len(text), limit, max(1, limit*3/4))
 			continue
 		}
 	}

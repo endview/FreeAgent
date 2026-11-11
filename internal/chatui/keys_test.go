@@ -260,7 +260,7 @@ func TestKeysEnvProfileUpdateLimited(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, body := range map[string]map[string]string{
-		"source": {"name": "env", "base_url": provider.URL, "source": "env"},
+		"source": {"name": "env", "base_url": provider.URL, "source": "saved"},
 		"key":    {"name": "env", "base_url": provider.URL, "key": "not-allowed"},
 	} {
 		t.Run(name, func(t *testing.T) {

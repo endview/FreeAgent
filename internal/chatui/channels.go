@@ -48,6 +48,23 @@ func (server *Server) channelStatus(source string) any {
 	}
 	return map[string]any{"connections": []any{}, "config": server.tasks.Config().Channels, "enabled": false, "running": false}
 }
+func (server *Server) channelSettings(source string) (any, error) {
+	raw, err := json.Marshal(server.channelStatus(source))
+	if err != nil {
+		return nil, err
+	}
+	var status map[string]any
+	if err := json.Unmarshal(raw, &status); err != nil {
+		return nil, err
+	}
+	config, revisions, err := server.settingsSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	status["config"] = config.Channels
+	status["expected_revisions"] = settingsRevision(revisions, "config.channels")
+	return status, nil
+}
 func (server *Server) reconfigureChannels() {
 	if err := server.ConfigureChannelBridge(); err != nil {
 		server.notify(harness.EventChannelError, "", "渠道进程配置未生效，请检查账号与凭据。")
@@ -75,7 +92,11 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	if r.Method == http.MethodGet {
-		status := server.channelStatus(source)
+		status, err := server.channelSettings(source)
+		if err != nil {
+			server.fail(w, err)
+			return true
+		}
 		if !server.isInteractiveAttachRequest(r) {
 			// An observer can inspect connection state, never redeem a local
 			// pairing capability on a different transport.
@@ -93,10 +114,13 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	if r.Method == http.MethodPatch {
-		config := server.tasks.Config().Channels
+		var body struct {
+			harness.ChannelsConfig
+			ExpectedRevisions map[string]uint64 `json:"expected_revisions,omitempty"`
+		}
 		var err error
 		if source == "" {
-			if !server.readBody(w, r, &config) {
+			if !server.readBody(w, r, &body) {
 				return true
 			}
 		} else {
@@ -104,12 +128,17 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 
-		_, err = server.applyDirectControl(r.Context(), "", "", harness.ControlSetChannelPolicy, config)
+		_, err = server.applyDirectControl(r.Context(), "", "", harness.ControlSetChannelPolicy, body.ChannelsConfig, body.ExpectedRevisions)
 		if err != nil {
 			server.fail(w, err)
 			return true
 		}
-		server.writeJSON(w, 200, server.channelStatus(source))
+		status, err := server.channelSettings(source)
+		if err != nil {
+			server.fail(w, err)
+			return true
+		}
+		server.writeJSON(w, 200, status)
 		return true
 	}
 	if r.Method == http.MethodPost && source != "" {

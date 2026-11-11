@@ -11,18 +11,25 @@ import (
 )
 
 type keyRequest struct {
-	Protocol string `json:"protocol"`
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	BaseURL  string `json:"base_url"`
-	Note     string `json:"note"`
-	Source   string `json:"source"`
-	Key      string `json:"key"`
+	Protocol string  `json:"protocol"`
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	BaseURL  string  `json:"base_url"`
+	Note     *string `json:"note"`
+	Source   string  `json:"source"`
+	Key      string  `json:"key"`
 }
 
 type keyDeleteRequest struct {
 	DisableModels bool   `json:"disable_models"`
 	NewDefault    string `json:"new_default"`
+}
+
+func keyNote(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 type modelEnableRequest struct {
@@ -254,7 +261,7 @@ func (server *Server) addKey(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	input := harness.KeyInput{
-		Name: body.Name, BaseURL: body.BaseURL, Protocol: body.Protocol, Note: body.Note,
+		Name: body.Name, BaseURL: body.BaseURL, Protocol: body.Protocol, Note: keyNote(body.Note),
 		Source: body.Source, Secret: []byte(body.Key),
 	}
 	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Input: input}); err != nil {
@@ -284,7 +291,7 @@ func (server *Server) updateKey(writer http.ResponseWriter, request *http.Reques
 		server.keyFailure(writer, err, http.StatusNotFound)
 		return
 	}
-	if current.Source == harness.KeySourceEnv && (body.Source != "" || body.Key != "") {
+	if current.Source == harness.KeySourceEnv && ((body.Source != "" && body.Source != harness.KeySourceEnv) || body.Key != "") {
 		server.writeError(writer, http.StatusBadRequest, "input", "环境变量来源只能修改名称、地址和备注。")
 		return
 	}
@@ -296,12 +303,12 @@ func (server *Server) updateKey(writer http.ResponseWriter, request *http.Reques
 			}
 		}
 	}
-	if body.Source == harness.KeySourceEnv {
+	if body.Source == harness.KeySourceEnv && current.Source != harness.KeySourceEnv {
 		server.writeError(writer, http.StatusBadRequest, "input", "环境变量来源只能由 CLI 创建。")
 		return
 	}
 	input := harness.KeyInput{
-		Name: body.Name, BaseURL: body.BaseURL, Protocol: body.Protocol, Note: body.Note,
+		Name: body.Name, BaseURL: body.BaseURL, Protocol: body.Protocol, Note: keyNote(body.Note),
 		Source: body.Source, Secret: []byte(body.Key),
 	}
 	if input.Name == "" {
@@ -310,17 +317,17 @@ func (server *Server) updateKey(writer http.ResponseWriter, request *http.Reques
 	if input.BaseURL == "" {
 		input.BaseURL = current.BaseURL
 	}
-	if input.Note == "" {
+	if body.Note == nil {
 		input.Note = current.Note
 	}
 	if input.Protocol == "" {
 		input.Protocol = current.Protocol
 	}
-	if body.Source == "" {
+	if body.Source == "" || current.Source == harness.KeySourceEnv {
 		input.Source = current.Source
 		input.EnvName = current.EnvName
 	}
-	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Ref: current.ID, Input: input}); err != nil {
+	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Ref: current.ID, Input: input, ClearNote: body.Note != nil && *body.Note == ""}); err != nil {
 		server.keyFailure(writer, err, http.StatusBadRequest)
 		return
 	}
@@ -363,7 +370,7 @@ func (server *Server) testKey(writer http.ResponseWriter, request *http.Request)
 	} else {
 		secret := body.Key
 		source := body.Source
-		if source == harness.KeySourceEnv {
+		if source == harness.KeySourceEnv && body.ID == "" {
 			server.writeError(writer, http.StatusBadRequest, "input", "界面测试不支持环境变量来源。")
 			return
 		}
@@ -402,7 +409,7 @@ func (server *Server) testKey(writer http.ResponseWriter, request *http.Request)
 					source = harness.KeySourceSaved
 				}
 			}
-			if source != harness.KeySourceSaved && source != harness.KeySourceNone {
+			if source != harness.KeySourceSaved && source != harness.KeySourceNone && !(source == harness.KeySourceEnv && ref != "" && resolved.BaseURL != "") {
 				server.writeError(writer, http.StatusBadRequest, "input", "测试来源无效。")
 				return
 			}

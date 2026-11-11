@@ -18,8 +18,10 @@ export default function SpacesSettings() {
       await api("spaces", { kind, arguments: args, confirmed: true });
       await loadNavigation();
       await loadSnapshot();
+      return true;
     } catch (error) {
       setError((error as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -33,13 +35,15 @@ export default function SpacesSettings() {
         className="inline-form"
         onSubmit={(event) => {
           event.preventDefault();
-          void change("space.create", { title }).then(() => setTitle(""));
+          void change("space.create", { title }).then((saved) => {
+            if (saved) setTitle("");
+          });
         }}
       >
         <Field label="新空间名称">
           <input
             required
-            maxLength={120}
+            maxLength={80}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
@@ -70,7 +74,7 @@ function SpaceEditor({
   space: Space;
   chat: string;
   busy: boolean;
-  onChange: (kind: string, args: Record<string, unknown>) => Promise<void>;
+  onChange: (kind: string, args: Record<string, unknown>) => Promise<boolean>;
 }) {
   const [title, setTitle] = useState(space.title),
     [mode, setMode] = useState<string>(space.permission || "none");

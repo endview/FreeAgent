@@ -50,6 +50,9 @@ import {
   saveMessageDraft,
   pendingSend,
   savePendingSend,
+  consumeSentDraft,
+  branchRequestKey,
+  clearBranchRequest,
   type PendingSend,
 } from "@/lib/drafts";
 import { Button } from "@/components/ui/button";
@@ -82,6 +85,9 @@ import { ChatMessage } from "@/features/messages/ChatMessage";
 import { Message } from "@/features/messages/Message";
 
 interface PendingInput {
+  capabilities?: CapabilitySelection;
+  attachments?: Attachment[];
+  reasoning?: ReasoningCapabilities["default"];
   key: string;
   action: string;
   status: string;
@@ -125,9 +131,14 @@ function ApprovalCard({
     setPreview(turn.confirmation || null);
     setError("");
     setCode("");
-    api<Confirmation>(`chats/${chat}/preview`, {})
+    api<Confirmation>(
+      `chats/${chat}/preview?run_id=${encodeURIComponent(turn.key)}`,
+      {},
+    )
       .then(async (value) => {
         if (disposed) return;
+        if (value.run_id !== turn.key)
+          throw new Error("审批目标已变化，请刷新当前任务。");
         setPreview(value);
         if (value.control_operation_id) {
           const confirmation = await api<{
@@ -155,11 +166,14 @@ function ApprovalCard({
     setBusy(true);
     setError("");
     try {
-      await api(`chats/${chat}/confirm`, {
-        confirmation: preview,
-        approved,
-        ...(code ? { code } : {}),
-      });
+      await api(
+        `chats/${chat}/confirm?run_id=${encodeURIComponent(turn.key)}`,
+        {
+          confirmation: preview,
+          approved,
+          ...(code ? { code } : {}),
+        },
+      );
       onDone();
     } catch (error) {
       setError(
@@ -186,12 +200,14 @@ const TurnView = memo(function TurnView({
   onRefresh,
   streams,
   onRestart,
+  onContext,
 }: {
   turn: Turn;
   chat: string;
   onRefresh: () => void;
   streams: Stream[];
   onRestart: (message: string, mode: string) => void;
+  onContext: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -199,7 +215,10 @@ const TurnView = memo(function TurnView({
   async function action(name: string, body: unknown = {}) {
     setBusy(true);
     try {
-      await api(`chats/${chat}/${name}`, body);
+      await api(
+        `chats/${chat}/${name}?run_id=${encodeURIComponent(turn.key)}`,
+        body,
+      );
       onRefresh();
     } catch (error) {
       report(error);
@@ -358,6 +377,11 @@ const TurnView = memo(function TurnView({
               <p>结果还不能确认。原执行记录已保留，不自动重放副作用。</p>
             )}
             <div className="run-actions">
+              {turn.state === "limited" && (
+                <Button variant="outline" onClick={onContext}>
+                  调整上下文与压缩
+                </Button>
+              )}
               {turn.can_continue && (
                 <Button
                   variant="outline"
@@ -419,6 +443,7 @@ export default function ConversationPage({
   onComposerMax,
   onOpenChat,
   onOpenModelSettings,
+  onViewCommand,
 }: {
   reading: number;
   onReading: (width: number) => void;
@@ -426,10 +451,13 @@ export default function ConversationPage({
   onComposerMax: (height: number) => void;
   onOpenChat: (id: string) => Promise<void>;
   onOpenModelSettings?: () => void;
+  onViewCommand?: (text: string) => boolean;
 }) {
   const state = useRuntime();
   const [draft, setDraft] = useState(messageDraft(state.selected));
+  const earlyDraft = useRef<{ chat: string; text: string } | null>(null);
   const [model, setModel] = useState("");
+  const [modelDirty, setModelDirty] = useState(false);
   const [reasoning, setReasoning] = useState("inherit");
   const [turnSettings, setTurnSettings] =
     useState<CapabilitySelection["extension_settings"]>();
@@ -495,26 +523,40 @@ export default function ConversationPage({
     state.snapshot?.busy || latest?.state === "generating",
   );
   useEffect(() => {
-    setDraft(messageDraft(state.selected));
-    setAttachments(attachmentDraft(state.selected));
     setEarlier([]);
     setEarlierCursor("");
     setHasEarlier(null);
+    setInputs({ entries: [], paused: false });
     setContextOpen(false);
     setCapabilities({});
     setTurnSettings(undefined);
     setFullConfirmed(false);
     pendingPermission.current = null;
     setModel(state.snapshot?.view.model_id || "");
+    setModelDirty(false);
   }, [state.selected]);
+  useEffect(() => {
+    // On reload the URL already selects a chat before its scoped drafts have
+    // loaded. Restore once storage is ready, while preserving startup typing.
+    if (state.environment && earlyDraft.current) {
+      saveMessageDraft(earlyDraft.current.chat, earlyDraft.current.text);
+      earlyDraft.current = null;
+    }
+    setDraft(messageDraft(state.selected));
+    setAttachments(attachmentDraft(state.selected));
+  }, [state.selected, state.environment?.environment]);
   useEffect(() => {
     if (state.snapshot) {
       setPermission(state.snapshot.view.permission.mode);
-      if (!model) setModel(state.snapshot.view.model_id);
+      if (!modelDirty) setModel(state.snapshot.view.model_id);
     }
-  }, [state.snapshot?.view.permission.mode, state.snapshot?.view.model_id]);
+  }, [
+    state.snapshot?.view.permission.mode,
+    state.snapshot?.view.model_id,
+    modelDirty,
+  ]);
   useEffect(() => {
-    if (state.snapshot && !Object.keys(capabilities).length)
+    if (state.snapshot && !capabilityRequest.current)
       setCapabilities(state.snapshot.view.capabilities || {});
   }, [state.snapshot?.view.capabilities]);
   useEffect(() => {
@@ -552,10 +594,14 @@ export default function ConversationPage({
     } else if (following) element.scrollTop = element.scrollHeight;
   }, [state.selected, state.snapshot, following]);
   function changeDraft(value: string) {
+    if (!state.environment)
+      earlyDraft.current = { chat: state.selected, text: value };
     setDraft(value);
     saveMessageDraft(state.selected, value);
   }
   async function ensureChat(prompt: string): Promise<string> {
+    if (!state.ready || (state.selected && !state.snapshot))
+      throw new Error("正在读取目标会话和权限，请稍后发送；输入已保留。");
     if (state.selected) return state.selected;
     const selection = pendingPermission.current;
     const chat = await api<Conversation>("chats", {
@@ -696,7 +742,22 @@ export default function ConversationPage({
   }
   async function send() {
     const prompt = draft.trim();
-    if (!prompt || mutating) return;
+    if (
+      !prompt ||
+      mutating ||
+      !state.ready ||
+      (state.selected && !state.snapshot)
+    )
+      return;
+    try {
+      if (onViewCommand?.(prompt)) {
+        changeDraft("");
+        return;
+      }
+    } catch (error) {
+      report(error);
+      return;
+    }
     if (prompt === "/compact" || prompt === "/context") {
       setContextOpen(true);
       changeDraft("");
@@ -733,10 +794,10 @@ export default function ConversationPage({
             )
           ).entries.some((item) => item.key === existing.request_key);
         if (found) {
-          savePendingSend(chat, null);
-          if (existing.prompt === prompt) {
-            saveMessageDraft(chat, "");
-            setDraft("");
+          consumeSentDraft(chat, existing);
+          if (current().selected === chat) {
+            setDraft(messageDraft(chat));
+            setAttachments(attachmentDraft(chat));
           }
           await refresh();
           notify("已核对上一条消息，原请求已经接收");
@@ -760,44 +821,23 @@ export default function ConversationPage({
             ? {}
             : { extension_settings: turnSettings }),
         },
-        model,
+        model: modelDirty ? model : "",
         reasoning: reasoningSelection(reasoning),
       };
       savePendingSend(chat, command);
-      const { kind, model: chosenModel, ...body } = command;
-      if (kind === "queue")
-        await api("attach/inputs", {
-          conversation_id: chat,
-          operation: "accept",
-          command: {
-            request_key: command.request_key,
-            prompt: command.prompt,
-            attachments: command.attachments,
-            action: "queue",
-            reasoning: command.reasoning,
-            capabilities: command.capabilities,
-            model_id: chosenModel,
-          },
-        });
-      else {
-        if (chosenModel && chosenModel !== current().snapshot?.view.model_id)
-          await api(`chats/${chat}/model`, { model: chosenModel });
-        await api(`chats/${chat}/submit`, body);
-      }
-      savePendingSend(chat, null);
-      saveMessageDraft(previousChat, "");
-      saveMessageDraft(chat, "");
-      saveAttachmentDraft(chat, []);
-      setDraft("");
-      setAttachments([]);
-      setReasoning("inherit");
-      setTurnSettings(undefined);
+      await submitCommand(chat, command);
+      if (
+        previousChat !== chat &&
+        messageDraft(previousChat).trim() === command.prompt
+      )
+        saveMessageDraft(previousChat, "");
       await refresh();
     } catch (error) {
       if (
         error instanceof APIError &&
         error.status >= 400 &&
-        error.status < 500
+        error.status < 500 &&
+        error.code !== "attention"
       )
         savePendingSend(chat, null);
       report(error);
@@ -805,9 +845,85 @@ export default function ConversationPage({
       setMutating(false);
     }
   }
+  async function submitCommand(chat: string, command: PendingSend) {
+    savePendingSend(chat, command);
+    const { kind, model: chosenModel, ...body } = command;
+    if (kind === "queue") {
+      if (
+        chosenModel === "auto" ||
+        (!chosenModel && current().snapshot?.view.model_id === "auto")
+      )
+        throw new APIError(
+          "排队消息需要选择一个具体模型，请先切换模型后再发送。",
+          400,
+          "queue_model",
+        );
+      await api("attach/inputs", {
+        conversation_id: chat,
+        operation: "accept",
+        command: {
+          request_key: command.request_key,
+          prompt: command.prompt,
+          attachments: command.attachments,
+          action: "queue",
+          reasoning: command.reasoning,
+          capabilities: command.capabilities,
+          model_id: chosenModel,
+        },
+      });
+    } else {
+      if (chosenModel) await api(`chats/${chat}/model`, { model: chosenModel });
+      await api(`chats/${chat}/submit`, body);
+    }
+    consumeSentDraft(chat, command);
+    if (current().selected === chat) {
+      setDraft(messageDraft(chat));
+      setAttachments(attachmentDraft(chat));
+      setModelDirty(false);
+      if (!messageDraft(chat)) {
+        setReasoning("inherit");
+        setTurnSettings(undefined);
+      }
+    }
+  }
   async function addFiles(files: FileList | null) {
     if (!files || mutating) return;
     const selectedFiles = Array.from(files);
+    const policy = state.environment?.attachments as
+      | {
+          max_files?: number;
+          max_batch_bytes?: number;
+          max_input_bytes?: number;
+        }
+      | undefined;
+    const existingFiles = attachmentDraft(state.selected);
+    if (
+      existingFiles.length + selectedFiles.length >
+      (policy?.max_files || 8)
+    ) {
+      report(
+        new Error(
+          `每条消息最多选择 ${policy?.max_files || 8} 个附件，请减少文件后重试。`,
+        ),
+      );
+      return;
+    }
+    const bytes =
+      existingFiles.reduce((sum, file) => sum + file.bytes, 0) +
+      selectedFiles.reduce((sum, file) => sum + file.size, 0);
+    if (
+      (policy?.max_batch_bytes && bytes > policy.max_batch_bytes) ||
+      selectedFiles.some(
+        (file) => policy?.max_input_bytes && file.size > policy.max_input_bytes,
+      )
+    ) {
+      report(
+        new Error(
+          "所选附件超过单文件或总大小限制，请减少附件；当前输入已保留。",
+        ),
+      );
+      return;
+    }
     setMutating(true);
     try {
       const chat = await ensureChat(draft || "附件对话");
@@ -824,16 +940,67 @@ export default function ConversationPage({
     }
   }
   async function inputAction(operation: string, key?: string) {
+    const chat = state.selected;
+    if (!chat) return;
+    const input = inputs.entries.find((item) => item.key === key);
+    if (
+      operation === "steer" &&
+      (input?.reasoning || input?.capabilities) &&
+      !window.confirm(
+        "转为引导只发送文字和附件，放弃这条排队消息的思考和能力选择；当前任务的模型和配置保持不变。继续？",
+      )
+    )
+      return;
     try {
       await api("attach/inputs", {
-        conversation_id: state.selected,
+        conversation_id: chat,
         operation,
         key,
         run_id: latest?.key || "",
+        discard_options: operation === "steer",
       });
-      setInputs(
-        await api<Inputs>(`attach/inputs?conversation_id=${state.selected}`),
-      );
+      const next = await api<Inputs>(`attach/inputs?conversation_id=${chat}`);
+      if (current().selected === chat) setInputs(next);
+    } catch (error) {
+      report(error);
+    }
+  }
+  async function restoreInput(input: PendingInput) {
+    const chat = state.selected;
+    if (
+      !chat ||
+      !window.confirm(
+        "把这条待发消息退回输入框，并按当前配置重新提交？已有文字和附件会保留。",
+      )
+    )
+      return;
+    try {
+      const result = await api<PendingInput>("attach/inputs", {
+        conversation_id: chat,
+        operation: "cancel",
+        key: input.key,
+      });
+      if (result.status !== "cancelled")
+        throw new Error("这条消息已被任务接收，请查看记录，不能重复发送。");
+      const text = [messageDraft(chat), input.prompt || ""]
+        .filter(Boolean)
+        .join("\n\n");
+      saveMessageDraft(chat, text);
+      saveAttachmentDraft(chat, [
+        ...new Map(
+          [...attachmentDraft(chat), ...(input.attachments || [])].map(
+            (ref) => [ref.id, ref],
+          ),
+        ).values(),
+      ]);
+      const next = await api<Inputs>(`attach/inputs?conversation_id=${chat}`);
+      if (current().selected === chat) {
+        setInputs(next);
+        setDraft(text);
+        setAttachments(attachmentDraft(chat));
+        setReasoning("inherit");
+      }
+      notify("消息已退回输入框，发送前可核对当前模型与权限。");
     } catch (error) {
       report(error);
     }
@@ -895,7 +1062,14 @@ export default function ConversationPage({
         mode === "rerun" ? raw : "",
       );
       if (prompt === null) return;
+      setMutating(true);
+      let branchID = "";
       try {
+        const sourceChat = snapshot.view.conversation.id;
+        const branchKey = branchRequestKey(
+          sourceChat,
+          JSON.stringify([messageID, mode, prompt]),
+        );
         const result = await api<{
           conversation: Conversation;
           prompt?: string;
@@ -903,12 +1077,14 @@ export default function ConversationPage({
         }>("attach/branch", {
           conversation_id: snapshot.view.conversation.id,
           command: {
-            request_key: crypto.randomUUID(),
+            request_key: branchKey,
             message_id: Number(messageID),
             mode,
             prompt,
           },
         });
+        branchID = result.conversation.id;
+        clearBranchRequest(sourceChat);
         await loadNavigation();
         await onOpenChat(result.conversation.id);
         saveMessageDraft(result.conversation.id, result.prompt || "");
@@ -916,15 +1092,33 @@ export default function ConversationPage({
         saveAttachmentDraft(result.conversation.id, result.attachments || []);
         setAttachments(result.attachments || []);
         if (result.prompt?.trim()) {
-          await api(`chats/${result.conversation.id}/submit`, {
+          const selected = current().snapshot?.view;
+          const command: PendingSend = {
             request_key: crypto.randomUUID(),
             prompt: result.prompt,
             attachments: (result.attachments || []).map((ref) => ref.id),
-          });
+            kind: "submit",
+            model: "",
+            permission: selected?.permission.mode || "none",
+            confirm_full_access: false,
+            capabilities: selected?.capabilities || {},
+          };
+          await submitCommand(result.conversation.id, command);
           await loadSnapshot(result.conversation.id);
         }
       } catch (error) {
+        if (
+          error instanceof APIError &&
+          error.status >= 400 &&
+          error.status < 500 &&
+          error.code !== "attention"
+        ) {
+          if (branchID) savePendingSend(branchID, null);
+          else clearBranchRequest(snapshot.view.conversation.id);
+        }
         report(error);
+      } finally {
+        setMutating(false);
       }
     },
     [onOpenChat, earlier],
@@ -1014,6 +1208,7 @@ export default function ConversationPage({
                 streams={byRun.get(turn.key) || emptyStreams}
                 onRefresh={onRefresh}
                 onRestart={restart}
+                onContext={() => setContextOpen(true)}
               />
             ))}
           </div>
@@ -1058,11 +1253,17 @@ export default function ConversationPage({
                   <div key={item.key}>
                     <Clock3 size={14} />
                     <span>{item.prompt || item.action}</span>
+                    {item.status === "target_ended" && (
+                      <span>目标任务已结束，尚未执行</span>
+                    )}
                     {item.action === "queue" && latest && (
                       <button onClick={() => inputAction("steer", item.key)}>
                         转为引导
                       </button>
                     )}
+                    <button onClick={() => void restoreInput(item)}>
+                      退回输入框
+                    </button>
                     <button
                       aria-label="删除排队消息"
                       onClick={() => inputAction("cancel", item.key)}
@@ -1174,7 +1375,10 @@ export default function ConversationPage({
                     modelOptions[0][0]
                   }
                   options={modelOptions}
-                  onChange={setModel}
+                  onChange={(value) => {
+                    setModel(value);
+                    setModelDirty(true);
+                  }}
                 />
               )}
               <Choice
@@ -1244,7 +1448,12 @@ export default function ConversationPage({
                   <button
                     aria-label="加入队列"
                     className="send-button"
-                    disabled={!draft.trim() || mutating}
+                    disabled={
+                      !draft.trim() ||
+                      mutating ||
+                      !state.ready ||
+                      (Boolean(state.selected) && !state.snapshot)
+                    }
                     onClick={send}
                   >
                     <ArrowUp size={18} />
@@ -1265,7 +1474,13 @@ export default function ConversationPage({
                 <button
                   aria-label="发送消息"
                   className="send-button"
-                  disabled={!draft.trim() || mutating || !modelOptions.length}
+                  disabled={
+                    !draft.trim() ||
+                    mutating ||
+                    !modelOptions.length ||
+                    !state.ready ||
+                    (Boolean(state.selected) && !state.snapshot)
+                  }
                   onClick={send}
                 >
                   {mutating ? (
@@ -1278,6 +1493,12 @@ export default function ConversationPage({
             </div>
           </div>
           <div className="composer-meta">
+            {attachments.length > 0 && !draft.trim() && (
+              <span>请补充你希望如何处理附件。</span>
+            )}
+            {(!state.ready || (state.selected && !state.snapshot)) && (
+              <span>正在读取目标会话；输入会保留。</span>
+            )}
             <span>
               <button
                 disabled={!state.selected}

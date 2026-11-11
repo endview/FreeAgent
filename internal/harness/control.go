@@ -182,6 +182,7 @@ type ControlPlanRequest struct {
 // this boundary, held in owner memory until apply, and never copied into a
 // controlRecord or journal line.
 type KeyControlRequest struct {
+	ClearNote     bool
 	Namespace     string
 	Ref           string
 	Input         KeyInput
@@ -261,6 +262,7 @@ type ControlConfigState struct {
 	Workspace      string                `json:"workspace"`
 	Auto           AutoConfig            `json:"auto"`
 	HTTPEnabled    bool                  `json:"http_enabled"`
+	HTTP           HTTPConfig            `json:"http"`
 	Memory         MemoryConfig          `json:"memory"`
 	Collaboration  CollaborationSettings `json:"collaboration"`
 	Limits         map[string]int        `json:"limits"`
@@ -270,6 +272,8 @@ type ControlConfigState struct {
 }
 
 type ControlModelState struct {
+	Key           string                `json:"key,omitempty"`
+	Capabilities  ModelCapabilities     `json:"capabilities"`
 	ReasoningInfo *ReasoningModelInfo   `json:"reasoning_info,omitempty"`
 	Reasoning     ReasoningCapabilities `json:"reasoning,omitempty,omitzero"`
 	OutputTokens  int                   `json:"output_tokens,omitempty"`
@@ -342,6 +346,7 @@ type controlConfirmationState struct {
 }
 
 type controlRecord struct {
+	pendingMCP          *MCPServerConfig
 	Operation           ControlOperation           `json:"operation"`
 	Arguments           json.RawMessage            `json:"arguments"`
 	Before              map[string]json.RawMessage `json:"before,omitempty"`
@@ -646,7 +651,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSetCommandPolicy, ResourceFamily: "config.commands", Risk: ControlRiskAuthority, Description: "Change command execution policy for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetWorkspace, ResourceFamily: "config.workspace", Risk: ControlRiskAuthority, Description: "Change the selected workspace for future Runs.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetDefaultModel, ResourceFamily: "config.models", Risk: ControlRiskOrdinary, Description: "Select the default configured model for future Runs.", ModelProposable: true, Reversible: true},
-		{Kind: ControlSetModelProfile, ResourceFamily: "config.models", Risk: ControlRiskAuthority, Description: "Add or replace a full model profile using a saved Key reference. For an existing model, pass ONLY {id,auxiliary_reasoning:{mode:disabled}} (or a declared effort) to change compression/extension-analysis thinking, or ONLY {id,reasoning:{control,efforts,default,auxiliary}} to replace its reasoning declaration. Read current state first; preserve the other selections. No Key is needed for these narrow changes. Unknown declared efforts are unverified; official exclusions still apply. Confirmation is required.", ModelProposable: true, Reversible: true,
+		{Kind: ControlSetModelProfile, ResourceFamily: "config.models", Risk: ControlRiskAuthority, Description: "Add or replace a full model profile using a saved Key reference. For an existing model, pass ONLY {id,auxiliary_reasoning:{mode:disabled}} (or a declared effort) to change compression/extension-analysis thinking, or ONLY {id,reasoning:{control,efforts,default,auxiliary}} to replace its reasoning declaration. Read current state first; preserve the other selections. For an existing model, ONLY {id,capabilities:{context_window_tokens,output_tokens,...}} patches the supplied top-level capability fields and preserves omitted settings; a supplied vision or reasoning object replaces that declaration ({} clears it). No Key is needed for these narrow changes. Unknown declared efforts are unverified; official exclusions still apply. Confirmation is required.", ModelProposable: true, Reversible: true,
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"},"provider":{"type":"string"},"key":{"type":"string"},"model":{"type":"string"},"capabilities":{"type":"object"},"default":{"type":"boolean"},"reasoning":{"type":"object","properties":{"control":{"type":"string","enum":["none","openai","deepseek","anthropic"]},"efforts":{"type":"string","maxLength":256},"default":{"type":"object"},"auxiliary":{"type":"object"}},"additionalProperties":false},"auxiliary_reasoning":{"type":"object","properties":{"mode":{"type":"string","enum":["default","enabled","disabled"]},"effort":{"type":"string","maxLength":32}},"additionalProperties":false}},"required":["id"],"additionalProperties":false}`)},
 		{Kind: ControlSetProviderEnabled, ResourceFamily: "config.providers", Risk: ControlRiskAuthority, Description: "Enable or disable a model Provider by saved Key profile ID. No network request is made.", ModelProposable: true, Reversible: true},
 		{Kind: ControlRemoveModel, ResourceFamily: "config.models", Risk: ControlRiskDestructive, Description: "Remove a configured model profile and its future references.", ModelProposable: true, Reversible: true},
@@ -662,20 +667,20 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSetSkillPolicy, ResourceFamily: "config.skills", Risk: ControlRiskAuthority, Description: "Enable or trust a named Skill without changing its content.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetExtensionPolicy, ResourceFamily: "config.extensions", Risk: ControlRiskAuthority, Description: "Enable, require or trust a named Extension without accepting secrets.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetMCPPolicy, ResourceFamily: "config.mcp", Risk: ControlRiskAuthority, Description: "Enable or change safe metadata for an existing MCP server.", ModelProposable: true, Reversible: true},
-		{Kind: ControlSetMCPProfile, ResourceFamily: "config.mcp", Risk: ControlRiskAuthority, Description: "Add or update an MCP server profile through the owner without journaling its payload.", ModelProposable: false, Reversible: false},
-		{Kind: ControlRemoveMCP, ResourceFamily: "config.mcp", Risk: ControlRiskDestructive, Description: "Remove an MCP server profile and its future runtime binding.", ModelProposable: false, Reversible: false},
-		{Kind: ControlRestartMCP, ResourceFamily: "config.mcp", Risk: ControlRiskAuthority, Description: "Restart the MCP runtime after an explicit user action.", ModelProposable: false, Reversible: false},
-		{Kind: ControlSetKeyProfile, ResourceFamily: "keys.profile", Risk: ControlRiskAuthority, Description: "Create or update a Key profile without exposing its secret to the model or journal.", ModelProposable: false, Reversible: false},
-		{Kind: ControlRemoveKey, ResourceFamily: "keys.profile", Risk: ControlRiskDestructive, Description: "Remove a Key profile when no configured model still references it.", ModelProposable: false, Reversible: false},
-		{Kind: ControlProbeKey, ResourceFamily: "keys.profile", Risk: ControlRiskOrdinary, Description: "Probe one Key profile's models endpoint and record the bounded result.", ModelProposable: false, Reversible: false},
-		{Kind: ControlImportSkill, ResourceFamily: "skills.catalog", Risk: ControlRiskAuthority, Description: "Import a validated Skill directory without enabling it.", ModelProposable: false, Reversible: false},
+		{Kind: ControlSetMCPProfile, ResourceFamily: "config.mcp", Risk: ControlRiskAuthority, Description: "Add or update an MCP profile without literal env secrets; use envFrom references. Exact user confirmation is required; a lost in-memory payload requires local re-entry.", ModelProposable: true, Reversible: false},
+		{Kind: ControlRemoveMCP, ResourceFamily: "config.mcp", Risk: ControlRiskDestructive, Description: "Remove an MCP server profile and its future runtime binding.", ModelProposable: true, Reversible: false},
+		{Kind: ControlRestartMCP, ResourceFamily: "config.mcp", Risk: ControlRiskAuthority, Description: "Restart the MCP runtime after an explicit user action.", ModelProposable: true, Reversible: false},
+		{Kind: ControlSetKeyProfile, ResourceFamily: "keys.profile", Risk: ControlRiskAuthority, Description: "Create or update a Key profile without exposing its secret to the model or journal.", ModelProposable: true, Reversible: false},
+		{Kind: ControlRemoveKey, ResourceFamily: "keys.profile", Risk: ControlRiskDestructive, Description: "Remove a Key profile when no configured model still references it.", ModelProposable: true, Reversible: false},
+		{Kind: ControlProbeKey, ResourceFamily: "keys.profile", Risk: ControlRiskOrdinary, Description: "Probe one Key profile's models endpoint and record the bounded result.", ModelProposable: true, Reversible: false},
+		{Kind: ControlImportSkill, ResourceFamily: "skills.catalog", Risk: ControlRiskAuthority, Description: "Import a validated Skill directory without enabling it.", ModelProposable: true, Reversible: false},
 		{Kind: ControlPublishSkill, ResourceFamily: "skills.catalog", Risk: ControlRiskAuthority, Description: "Publish a bounded SKILL.md document only after exact confirmation. Arguments: id, document, expected_sha256 (empty only for a new Skill). No scripts are created or executed; existing enabled Skills must be disabled before replacement.", ModelProposable: true, Reversible: false},
-		{Kind: ControlRemoveSkill, ResourceFamily: "skills.catalog", Risk: ControlRiskDestructive, Description: "Remove one user Skill and clear its enabled setting.", ModelProposable: false, Reversible: false},
-		{Kind: ControlImportExtension, ResourceFamily: "extensions.catalog", Risk: ControlRiskAuthority, Description: "Import a validated Extension directory without enabling it.", ModelProposable: false, Reversible: false},
-		{Kind: ControlRemoveExtension, ResourceFamily: "extensions.catalog", Risk: ControlRiskDestructive, Description: "Remove one user Extension and its local settings.", ModelProposable: false, Reversible: false},
-		{Kind: ControlRestartExtension, ResourceFamily: "extensions.runtime", Risk: ControlRiskAuthority, Description: "Restart one Extension process through the owner runtime.", ModelProposable: false, Reversible: false},
-		{Kind: ControlClearExtensionData, ResourceFamily: "extensions.data", Risk: ControlRiskDestructive, Description: "Clear one Extension data directory.", ModelProposable: false, Reversible: false},
-		{Kind: ControlInitExtensionStorage, ResourceFamily: "extensions.storage", Risk: ControlRiskAuthority, Description: "Explicitly initialize one extension's separate PostgreSQL database and restricted role; no credentials accepted.", ModelProposable: false},
+		{Kind: ControlRemoveSkill, ResourceFamily: "skills.catalog", Risk: ControlRiskDestructive, Description: "Remove one user Skill and clear its enabled setting.", ModelProposable: true, Reversible: false},
+		{Kind: ControlImportExtension, ResourceFamily: "extensions.catalog", Risk: ControlRiskAuthority, Description: "Import a validated Extension directory without enabling it.", ModelProposable: true, Reversible: false},
+		{Kind: ControlRemoveExtension, ResourceFamily: "extensions.catalog", Risk: ControlRiskDestructive, Description: "Remove one user Extension and its local settings.", ModelProposable: true, Reversible: false},
+		{Kind: ControlRestartExtension, ResourceFamily: "extensions.runtime", Risk: ControlRiskAuthority, Description: "Restart one Extension process through the owner runtime.", ModelProposable: true, Reversible: false},
+		{Kind: ControlClearExtensionData, ResourceFamily: "extensions.data", Risk: ControlRiskDestructive, Description: "Clear one Extension data directory.", ModelProposable: true, Reversible: false},
+		{Kind: ControlInitExtensionStorage, ResourceFamily: "extensions.storage", Risk: ControlRiskAuthority, Description: "Explicitly initialize one extension's separate PostgreSQL database and restricted role; no credentials accepted.", ModelProposable: true},
 		{Kind: ControlChangeExtensionState, ResourceFamily: "extensions.state", Risk: ControlRiskOrdinary, Description: "Propose one extension state change. Requires extension ID, scope (space_id, resource, actor_id), declared action, expected_revision and bounded payload. The extension returns exact before/after; persistent changes require confirmation.", ModelProposable: true},
 		{Kind: ControlSetConversationModel, ResourceFamily: "conversation.model", Risk: ControlRiskOrdinary, Description: "Select a configured model for one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetSpacePermission, ResourceFamily: "spaces", Risk: ControlRiskAuthority, Description: "Set a space's operation permission; affects all of its conversations. Full requires explicit local confirmation.", ModelProposable: true, Reversible: true},
@@ -695,6 +700,12 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSetMemorySelection, ResourceFamily: "conversation.memory", Risk: ControlRiskAuthority, Description: "Select bounded memory and knowledge inputs for one conversation's future Runs.", ModelProposable: true, Reversible: true},
 	}
 	for i := range entries {
+		if len(entries[i].InputSchema) == 0 || entries[i].Kind == ControlSetModelProfile {
+			entries[i].InputSchema = controlInputSchemas[entries[i].Kind]
+		}
+		if entries[i].Kind == ControlSetKeyProfile {
+			entries[i].Description = "Update only name/note of an existing saved Key by id. Creating a Key, changing its endpoint or entering secrets requires the dedicated Provider form."
+		}
 		if entries[i].Kind == ControlSetRuntimeLimits {
 			entries[i].Description += " task_summary_bytes: 0 disables automatic compaction; 1..16384 enables it and bounds the summary bytes. Existing summaries are retained."
 			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"extension_max_context_chars":{"type":"integer","minimum":0,"maximum":1048576},"extension_max_model_calls_per_turn":{"type":"integer","minimum":0,"maximum":128},"model_retries":{"type":"integer","minimum":0,"maximum":6},"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
@@ -758,6 +769,15 @@ func (service *ControlService) bindAttempt(operationID, attemptID string) error 
 	return service.appendLocked("bound", record)
 }
 
+// SettingsSnapshot binds editable values and their journal revisions under the
+// same lock. A UI must submit these revisions, not revisions read at save time.
+func (service *ControlService) SettingsSnapshot() (Config, map[string]uint64) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	revisions := cloneRevisions(service.revisions)
+	return cloneConfig(service.core.currentConfig()), revisions
+}
+
 func (service *ControlService) ReadControlState(ctx context.Context) (ControlState, error) {
 	if service == nil || service.core == nil {
 		return ControlState{}, errors.New("harness: control service is not configured")
@@ -799,7 +819,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 	models := make([]ControlModelState, 0, len(config.Models))
 	for id, model := range config.Models {
 		caps := model.EffectiveCapabilities()
-		models = append(models, ControlModelState{ID: id, Provider: model.Provider, Model: model.Model, Reasoning: model.Capabilities.Reasoning, ReasoningInfo: OfficialReasoning(model), OutputTokens: model.Capabilities.OutputTokens,
+		models = append(models, ControlModelState{Key: model.Key, Capabilities: caps, ID: id, Provider: model.Provider, Model: model.Model, Reasoning: model.Capabilities.Reasoning, ReasoningInfo: OfficialReasoning(model), OutputTokens: model.Capabilities.OutputTokens,
 			Protocol: caps.Protocol, KeyBound: model.Key != ""})
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
@@ -812,10 +832,11 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 		Config: ControlConfigState{Channels: config.Channels, PermissionMode: string(settings.PermissionMode), SandboxMode: string(settings.SandboxMode),
 			FileScope: string(settings.FileScope), NetworkMode: string(settings.NetworkPolicy.Mode),
 			EnabledTools: effectiveBuiltinToolSettings(config), CommandReady: commands.Status == "ready", Commands: commands,
-			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled,
+			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled, HTTP: config.HTTP,
 			Memory: config.Memory, Collaboration: redactCollaborationSettings(config.Collaboration), Limits: map[string]int{
 				"extension_max_context_chars": config.Extensions.MaxContextChars, "extension_max_model_calls_per_turn": config.Extensions.MaxModelCallsPerTurn,
 				"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
+				"model_retries":     config.ModelRetries,
 				"max_output_tokens": config.MaxOutputTokens, "max_tool_result_bytes": config.MaxToolResult,
 				"auto_compact_percent": autoCompactPercent(config), "task_summary_bytes": config.TaskSummaryBytes}, EnabledSkills: enabledMapKeys(config.Skills.Enabled), EnabledExts: enabledMapKeys(config.Extensions.Enabled), EnabledMCP: enabledMCPNames(config.MCPServers)}}
 	service.baselineMu.Lock()
@@ -951,9 +972,14 @@ func (service *ControlService) PlanControlChange(ctx context.Context, request Co
 	} else if record.Operation.RevertClass == "" {
 		record.Operation.RevertClass = "exact_snapshot"
 	}
+	if record.pendingMCP != nil {
+		service.mcpProfiles[record.Operation.ID] = cloneMCPServerConfig(*record.pendingMCP)
+		record.pendingMCP = nil
+	}
 	service.operations[record.Operation.ID] = record
 	if err := service.appendLocked("planned", record); err != nil {
 		delete(service.operations, record.Operation.ID)
+		service.clearMCPProfileLocked(record.Operation.ID)
 		return ControlOperation{}, err
 	}
 	return cloneControlOperation(record.Operation), nil
@@ -1022,6 +1048,12 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 			Preview: fmt.Sprintf("Remove Key profile %s%s.", redactID(current.ID), map[bool]string{true: " and its referencing models", false: ""}[request.DisableModels]), RevertClass: "none"}
 		record := controlRecord{Operation: operation, Arguments: args,
 			Before: map[string]json.RawMessage{resource: mustJSON(views)}, After: map[string]json.RawMessage{resource: mustJSON(removeKeyView(views, current.ID))}}
+		if request.Namespace == "" {
+			if err := service.bindKeyRemovalModels(&record, current.ID, request.DisableModels, request.NewDefault); err != nil {
+				return ControlOperation{}, err
+			}
+			record.Operation.Preview += fmt.Sprintf(" Models referencing this credential: %v.", users)
+		}
 		return service.persistKeyPlanLocked(record, nil)
 	}
 
@@ -1033,7 +1065,7 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 		if input.BaseURL == "" {
 			input.BaseURL = current.BaseURL
 		}
-		if input.Note == "" {
+		if input.Note == "" && !request.ClearNote {
 			input.Note = current.Note
 		}
 		if input.Protocol == "" {
@@ -1361,7 +1393,8 @@ func mcpControlValue(id string, config MCPServerConfig, exists bool) any {
 		return nil
 	}
 	return map[string]any{"id": id, "enabled": config.Enabled, "command": config.Command,
-		"cwd": config.Cwd, "arg_count": len(config.Args), "env_names": sortedStringKeys(config.Env),
+		"profile_hash": contentHash(mustJSON(config)),
+		"cwd":          config.Cwd, "arg_count": len(config.Args), "env_names": sortedStringKeys(config.Env),
 		"env_from": sortedStringKeys(config.EnvFrom), "hidden_tools": config.HiddenTools,
 		"trust_read_only_hint": config.TrustReadOnlyHint}
 }
@@ -1981,6 +2014,9 @@ func (service *ControlService) applyMCPRecordLocked(ctx context.Context, record 
 		if !ok {
 			return ErrControlMCPReentryRequired
 		}
+		if candidate.MCPServers == nil {
+			candidate.MCPServers = map[string]MCPServerConfig{}
+		}
 		candidate.MCPServers[args.ID] = cloneMCPServerConfig(profile)
 	}
 	if err := candidate.Validate(); err != nil {
@@ -2081,6 +2117,11 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 	}
 	if args.Remove || record.Operation.Kind == ControlRemoveKey {
 		config := service.core.currentConfig()
+		if args.Namespace == "" && !bytes.Equal(record.Before["config.models"], mustJSON(configResourceValue(config, "config.models"))) {
+			// Older pending removals without an impact snapshot must be previewed
+			// again. Never extend an approved deletion to newly referencing models.
+			return ErrControlStaleRevision
+		}
 		users := keyModelUsers(config, args.ID)
 		if args.Namespace == "channels" {
 			users = nil
@@ -2291,7 +2332,11 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		record.Arguments = json.RawMessage(`{}`)
 	}
 	config := cloneConfig(service.core.currentConfig())
-	if request.Kind == ControlScheduleDelivery {
+	if isSafeProfileControl(request.Kind) {
+		if err := service.buildSafeProfileControl(ctx, &record); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlScheduleDelivery {
 		if err := service.buildScheduledDelivery(ctx, &record); err != nil {
 			return controlRecord{}, err
 		}
@@ -2475,6 +2520,20 @@ func buildConfigRecord(record *controlRecord, config *Config, ctx context.Contex
 	record.Operation.ResourceIDs = []string{resource}
 	record.Before = map[string]json.RawMessage{resource: mustJSON(configResourceValue(before, resource))}
 	record.After = map[string]json.RawMessage{resource: mustJSON(configResourceValue(*config, resource))}
+	if record.Operation.Kind == ControlSetModelProfile || record.Operation.Kind == ControlRemoveModel {
+		var args struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(record.Arguments, &args); err != nil {
+			return err
+		}
+		profileResource := "config.model:" + args.ID
+		if profileResource != resource {
+			record.Operation.ResourceIDs = append(record.Operation.ResourceIDs, profileResource)
+			record.Before[profileResource] = mustJSON(configResourceValue(before, profileResource))
+			record.After[profileResource] = mustJSON(configResourceValue(*config, profileResource))
+		}
+	}
 	record.Operation.Preview = fmt.Sprintf("Change %s for future Runs from %s to %s.", record.Operation.Kind, redactJSON(record.Before[resource]), redactJSON(record.After[resource]))
 	if record.Operation.Kind == ControlSetPublicWeb {
 		record.Operation.Preview = publicPolicyPreview(before.PublicWeb, config.PublicWeb)
@@ -2810,6 +2869,30 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		var args modelProfileControlArguments
 		if err := decodeControlJSON(raw, &args); err != nil {
 			return err
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(raw, &fields) == nil && len(fields) == 2 && args.Capabilities != nil {
+			model, ok := config.Models[args.ID]
+			if !ok {
+				return errors.New("harness: a capabilities patch requires an existing model")
+			}
+			// Merge capability fields, but replace explicitly supplied compound
+			// declarations. In particular {} must really disable vision/thinking,
+			// not retain the previous enabled flag or effort through Go's merge.
+			var supplied map[string]json.RawMessage
+			if err := json.Unmarshal(fields["capabilities"], &supplied); err != nil {
+				return err
+			}
+			if _, ok := supplied["vision"]; ok {
+				model.Capabilities.Vision = VisionCapabilities{}
+			}
+			if _, ok := supplied["reasoning"]; ok {
+				model.Capabilities.Reasoning = ReasoningCapabilities{}
+			}
+			if err := decodeControlJSON(fields["capabilities"], &model.Capabilities); err != nil {
+				return err
+			}
+			return ApplyModel(config, args.ID, model, false)
 		}
 		if args.AuxiliaryReasoning != nil || args.Reasoning != nil {
 			var fields map[string]json.RawMessage

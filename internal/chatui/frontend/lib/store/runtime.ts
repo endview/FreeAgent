@@ -12,6 +12,7 @@ import { decodeSnapshot, decodeEvent } from "@/lib/api/decode";
 import { policyFor } from "@/lib/events/policy";
 
 export interface RuntimeState {
+  ready: boolean;
   environment: Environment | null;
   chats: Conversation[];
   spaces: Space[];
@@ -30,10 +31,14 @@ export interface RuntimeState {
   navLoading: boolean;
 }
 const initial: RuntimeState = {
+  ready: false,
   environment: null,
   chats: [],
   spaces: [],
-  selected: "",
+  selected:
+    typeof location === "undefined"
+      ? ""
+      : new URLSearchParams(location.search).get("chat") || "",
   snapshot: null,
   connected: false,
   error: "",
@@ -252,6 +257,14 @@ function flush() {
       continue;
     }
     if (event.generation && event.generation !== generation) {
+      environmentDirty = true;
+      navigationDirty = true;
+      // Settings can be open without a selected chat. There is no chat
+      // snapshot in that case to establish the authenticated Owner epoch.
+      if (!state.selected) {
+        generation = event.generation;
+        lastSeq = 0;
+      }
       refresh = true;
       continue;
     }
@@ -403,6 +416,11 @@ export function startRuntime(): Promise<void> {
     if (session !== epoch) return;
     await loadNavigation();
     if (session !== epoch) return;
+    const chat =
+      state.selected || new URLSearchParams(location.search).get("chat") || "";
+    if (chat) await selectConversation(chat);
+    if (session !== epoch) return;
+    update({ ready: true });
     void openEvents(session);
   })().catch((error) => {
     if (session === epoch) {
@@ -438,7 +456,10 @@ export function resetRuntime() {
   generation = "";
   lastSeq = 0;
   serverVersion = "";
-  state = initial;
+  state = {
+    ...initial,
+    selected: new URLSearchParams(location.search).get("chat") || "",
+  };
   update({});
 }
 window.addEventListener("online", () => {

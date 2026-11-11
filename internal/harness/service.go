@@ -75,6 +75,7 @@ type Service struct {
 	bindings          []ModelBinding
 	runLimits         *ExecutionLimits
 	selection         string
+	onAccepted        func(Run)
 	autoPolicy        *autoRunPolicy
 	routing           []RoutingDecision
 	callOverride      *ModelBinding
@@ -296,6 +297,9 @@ func (service *Service) snapshotConfig(config Config) (string, error) {
 // definitions would make a valid turn fail its own dispatch-config check.
 func (service *Service) snapshotToolDefinitions() []ToolDefinition {
 	if service.operationsDenied() {
+		if service.controlToolsEnabled() {
+			return (&controlTools{service: service}).controlDefinitions()
+		}
 		return nil
 	}
 	base := service.Tools
@@ -489,6 +493,9 @@ func (service *Service) Run(ctx context.Context, conversationID, requestKey, pro
 	run, created, err := service.Store.CreateRun(ctx, conversationID, requestKey, prompt, snapshot)
 	if err != nil {
 		return RunResult{}, err
+	}
+	if service.onAccepted != nil {
+		service.onAccepted(run)
 	}
 	if !created {
 		evidence, err := service.Store.Evidence(ctx, run.ID)
@@ -879,8 +886,8 @@ func (service *Service) embed(ctx context.Context, run Run, purpose string, inpu
 func (service *Service) generate(ctx context.Context, run Run, request ModelRequest) (Attempt, ModelResponse, error) {
 	if service.operationsDenied() {
 		request.Tools, request.Extensions = nil, nil
-		if request.Purpose == "" && service.replyExpressionsEnabled() {
-			request.Tools = replyExpressionTools{base: deniedTools{}, service: service}.Definitions()
+		if request.Purpose == "" {
+			request.Tools = service.passiveDefinitions()
 		}
 		request.DenyOperations = true
 	}
@@ -1166,7 +1173,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	if err := json.Unmarshal([]byte(attempt.RequestJSON), &call); err != nil {
 		return errors.New("harness: corrupt pending tool call")
 	}
-	if service.operationsDenied() && (!service.replyExpressionsEnabled() || call.Name != "reply_expression") {
+	if service.operationsDenied() && !service.passiveToolAllowed(call.Name) {
 		return ErrPermissionDenied
 	}
 	prepared, err := service.runtimeTools(run.ID, attempt.ID).Prepare(ctx, call)
@@ -1529,7 +1536,7 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 	if service.scopedHistory() {
 		visible := make([]Message, 0, len(history))
 		for _, item := range history {
-			if (!service.operationsDenied() || service.replyExpressionsEnabled()) && item.RunID == run.ID {
+			if (!service.operationsDenied() || service.replyExpressionsEnabled() || service.controlToolsEnabled()) && item.RunID == run.ID {
 				visible = append(visible, item)
 			} else if item.RunID == run.ID {
 				visible = append(visible, publicMessages([]Message{item})...)
@@ -1690,16 +1697,16 @@ func validateModelRequest(config ModelConfig, request ModelRequest) error {
 		return err
 	}
 	if request.DenyOperations {
-		if len(request.Extensions) != 0 || len(request.Tools) > 0 && (request.Purpose != "" || !replyOnlyDefinitions(request.Tools)) {
+		if len(request.Extensions) != 0 || len(request.Tools) > 0 && (request.Purpose != "" || !controlOnlyDefinitions(request.Tools)) {
 			return ErrModelCapability
 		}
 		replyCalls := map[string]bool{}
 		for _, message := range request.Messages {
-			if len(message.ProviderItems) != 0 || len(message.ToolCalls) > 0 && !replyOnlyDefinitions(request.Tools) {
+			if len(message.ProviderItems) != 0 || len(message.ToolCalls) > 0 && !controlOnlyDefinitions(request.Tools) {
 				return ErrModelCapability
 			}
 			for _, call := range message.ToolCalls {
-				if call.Name != "reply_expression" {
+				if call.Name != "reply_expression" && !isControlToolName(call.Name) {
 					return ErrModelCapability
 				}
 				replyCalls[call.ID] = true

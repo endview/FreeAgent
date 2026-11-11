@@ -44,6 +44,7 @@ interface Config extends Record<string, unknown> {
   security: Security;
 }
 interface PublicInfo {
+  expected_revisions: Record<string, number>;
   config: Config;
   credential_ready: boolean;
   listener_active: boolean;
@@ -77,10 +78,10 @@ export default function PublicSettings() {
   );
 }
 function Editor({ initial }: { initial: PublicInfo }) {
-  const [form, change] = useFormDraft<Config>(
-    "public-settings",
-    initial.config,
-  );
+  const [form, change] = useFormDraft<Config>("public-settings", {
+    ...initial.config,
+    expected_revisions: initial.expected_revisions,
+  });
   const [info, setInfo] = useState(initial),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -146,7 +147,10 @@ function Editor({ initial }: { initial: PublicInfo }) {
               "PUT",
             );
             setInfo(next);
-            change(next.config);
+            change({
+              ...next.config,
+              expected_revisions: next.expected_revisions,
+            });
             clearFormDraft("public-settings");
             setResult(
               next.restart_required
@@ -295,6 +299,29 @@ function Editor({ initial }: { initial: PublicInfo }) {
         </fieldset>
       </form>
       <Result error={error} text={result} />
+      {error && (
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={() => {
+            if (!window.confirm("放弃公网设置草稿，读取服务器当前值？")) return;
+            void perform(async () => {
+              const next = await api<PublicInfo>("public-settings");
+              setInfo(next);
+              change({
+                ...next.config,
+                expected_revisions: next.expected_revisions,
+              });
+              setAllowlist((next.config.security.allowlist || []).join("\n"));
+              setDenylist((next.config.security.denylist || []).join("\n"));
+              clearFormDraft("public-settings");
+              setResult("已读取最新公网设置，请重新核对后保存。");
+            });
+          }}
+        >
+          读取最新公网设置
+        </Button>
+      )}
       <form
         className="settings-section"
         onSubmit={(event) => {

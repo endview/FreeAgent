@@ -46,6 +46,13 @@ func (store *Store) selectedCapabilities(ctx context.Context, conversationID str
 		}
 	}
 	selection.Skills = activeSkills
+	activeMCP := selection.MCPServers[:0]
+	for _, id := range selection.MCPServers {
+		if server, ok := config.MCPServers[id]; ok && server.Enabled {
+			activeMCP = append(activeMCP, id)
+		}
+	}
+	selection.MCPServers = activeMCP
 	// Disabling/uninstalling an extension revokes its defaults; it must not
 	// make the conversation unreadable or prevent ordinary Core-only turns.
 	enabled := selection.Extensions[:0]

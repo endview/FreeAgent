@@ -81,7 +81,7 @@ func (service *Service) compactionSuppressed(ctx context.Context, chat string) (
 	return saved.Reason, nil
 }
 
-func (service *Service) rememberCompactionFailure(ctx context.Context, run Run) (bool, string, error) {
+func (service *Service) rememberCompactionFailure(ctx context.Context, run Run, causes ...error) (bool, string, error) {
 	var id, raw string
 	err := service.Store.db.QueryRowContext(ctx, `SELECT id,response_json FROM fa.attempts WHERE run_id=$1 AND kind='model' AND request_doc->>'Purpose'='compaction' ORDER BY seq DESC LIMIT 1`, run.ID).Scan(&id, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -94,11 +94,18 @@ func (service *Service) rememberCompactionFailure(ctx context.Context, run Run) 
 	if json.Unmarshal([]byte(raw), &response) != nil {
 		return false, "", ErrStoreFormat
 	}
-	if !emptyOutputLimit(response, response.Failure) {
+	oversized := false
+	if len(causes) > 0 {
+		var failure *CallError
+		oversized = errors.As(causes[0], &failure) && failure.Certain && failure.Code == "summary_limit"
+	}
+	if !oversized && !emptyOutputLimit(response, response.Failure) {
 		return true, "", nil
 	}
 	reason := "输出额度耗尽，未产生完整摘要；思考用量未知。已暂停同配置的预防性压缩。"
-	if response.Usage != nil && response.Usage.ReasoningTokens != nil && *response.Usage.ReasoningTokens > 0 {
+	if oversized {
+		reason = "摘要在一次修复后仍不符合保存字节上限。已暂停同配置的预防性压缩；请在上下文面板保存更大的摘要上限，再手动压缩。"
+	} else if response.Usage != nil && response.Usage.ReasoningTokens != nil && *response.Usage.ReasoningTokens > 0 {
 		reason = "思考消耗了输出额度，未产生完整摘要。已暂停同配置的预防性压缩。"
 	}
 	binding, err := service.binding()
@@ -106,7 +113,9 @@ func (service *Service) rememberCompactionFailure(ctx context.Context, run Run) 
 		return false, "", err
 	}
 	caps := binding.Config.Capabilities.Reasoning
-	if _, _, err := caps.parameters(ReasoningSelection{Mode: "disabled"}, binding.Config.EffectiveCapabilities().Protocol); err == nil && caps.Control != "" && caps.Control != "none" {
+	if oversized {
+		// A byte-size content failure is not a thinking failure.
+	} else if _, _, err := caps.parameters(ReasoningSelection{Mode: "disabled"}, binding.Config.EffectiveCapabilities().Protocol); err == nil && caps.Control != "" && caps.Control != "none" {
 		reason += "可回复“把压缩思考关掉”，再确认设置提案；也可从 GUI/CLI 调整辅助思考或输出额度。"
 	} else {
 		reason += "请从 GUI/CLI 调低辅助思考强度或调整输出额度。"

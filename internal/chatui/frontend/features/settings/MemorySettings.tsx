@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { api, remote } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { useRuntime } from "@/lib/store/runtime";
 import { clearFormDraft } from "@/lib/drafts";
 import { Button } from "@/components/ui/button";
 import { Choice } from "@/components/Choice";
-import { Field, Loading, Result, useFormDraft, useResource } from "./shared";
+import { Field, Result, useFormDraft } from "./shared";
 
 interface Memory {
   id: string;
@@ -23,31 +23,7 @@ export default function MemorySettings() {
         先打开一个对话，以确定 Memory 的归属和固定范围。
       </p>
     );
-  return remote ? (
-    <MemorySelection chat={state.selected} />
-  ) : (
-    <MemoryEditor key={state.selected} chat={state.selected} />
-  );
-}
-function MemorySelection({ chat }: { chat: string }) {
-  const resource = useResource<{ entries: unknown[]; pins: unknown[] }>(
-    `chats/${encodeURIComponent(chat)}/memory`,
-  );
-  return (
-    <>
-      <p className="settings-intro">
-        当前对话选择的 Memory 与固定内容。公网管理不开放本机 attach
-        接口；持久修改可通过对话提案确认或本机设置完成。
-      </p>
-      {resource.value ? (
-        <pre className="settings-output">
-          {JSON.stringify(resource.value, null, 2)}
-        </pre>
-      ) : (
-        <Loading error={resource.error} />
-      )}
-    </>
-  );
+  return <MemoryEditor key={state.selected} chat={state.selected} />;
 }
 function MemoryEditor({ chat }: { chat: string }) {
   const [entries, setEntries] = useState<Memory[] | null>(null),
@@ -55,9 +31,26 @@ function MemoryEditor({ chat }: { chat: string }) {
     [error, setError] = useState(""),
     [pinScope, setPinScope] = useState("conversation");
   const [form, change] = useFormDraft("memory:" + chat, {
+    request_key: crypto.randomUUID(),
+    pending: false,
+    id: "",
+    revision: 0,
     title: "",
     body: "",
   });
+  async function readEntry(item: Memory) {
+    const full = await api<Memory>("attach/memory", {
+      command: "read",
+      conversation_id: chat,
+      scope_kind: "private",
+      entries: [item.id],
+    });
+    setEntries(
+      (current) =>
+        current?.map((entry) => (entry.id === full.id ? full : entry)) || null,
+    );
+    return full;
+  }
   async function read() {
     setEntries(
       await api<Memory[]>("attach/memory", {
@@ -100,11 +93,35 @@ function MemoryEditor({ chat }: { chat: string }) {
             版本 {item.revision} · {item.state}
             {item.pinned ? ` · 固定到 ${item.pinned.scope}` : ""}
           </p>
-          <details>
+          <details
+            onToggle={(event) => {
+              if (event.currentTarget.open && item.body === undefined)
+                void readEntry(item).catch((error) => setError(error.message));
+            }}
+          >
             <summary>查看内容</summary>
             <pre className="settings-output">{item.body}</pre>
           </details>
           <div className="provider-actions">
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() =>
+                void perform(async () => {
+                  const full = await readEntry(item);
+                  change({
+                    request_key: crypto.randomUUID(),
+                    pending: false,
+                    id: full.id,
+                    revision: full.revision,
+                    title: full.title,
+                    body: full.body,
+                  });
+                })
+              }
+            >
+              编辑
+            </Button>
             {[
               [
                 item.pinned ? "unpin" : "pin",
@@ -171,28 +188,52 @@ function MemoryEditor({ chat }: { chat: string }) {
           )
             return;
           void perform(async () => {
+            change({ ...form, pending: true });
             await api("attach/memory", {
-              command: "save",
+              command: form.id ? "update" : "save",
+              ...(form.id
+                ? {
+                    entries: [form.id],
+                    expected_revision: form.revision,
+                    title_provided: true,
+                  }
+                : {}),
               conversation_id: chat,
               scope_kind: "private",
               kind: "background",
               title: form.title,
               body: form.body,
               yes: true,
-              request_key: crypto.randomUUID(),
+              request_key: form.request_key,
             });
-            change({ title: "", body: "" });
+            change({
+              request_key: crypto.randomUUID(),
+              pending: false,
+              id: "",
+              revision: 0,
+              title: "",
+              body: "",
+            });
             clearFormDraft("memory:" + chat);
           });
         }}
       >
-        <h2>保存 Memory</h2>
+        {form.pending && (
+          <p className="form-hint">
+            上次保存结果尚未核对。可直接重试原内容；如果要修改内容，请先读取
+            Memory 列表核对是否已保存。
+          </p>
+        )}
+        <h2>
+          {form.id ? `编辑 Memory（版本 ${form.revision}）` : "保存 Memory"}
+        </h2>
         <fieldset disabled={busy}>
           <Field label="Memory 标题">
             <input
               required
               maxLength={256}
               value={form.title}
+              readOnly={form.pending}
               onChange={(event) =>
                 change({ ...form, title: event.target.value })
               }
@@ -204,12 +245,34 @@ function MemoryEditor({ chat }: { chat: string }) {
               rows={6}
               maxLength={65536}
               value={form.body}
+              readOnly={form.pending}
               onChange={(event) =>
                 change({ ...form, body: event.target.value })
               }
             />
           </Field>
           <Button type="submit">确认保存 Memory</Button>
+          {form.pending && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "请先核对 Memory 列表；上次保存可能已经生效。解锁并修改后将作为一次新操作，继续？",
+                  )
+                )
+                  return;
+                change({
+                  ...form,
+                  pending: false,
+                  request_key: crypto.randomUUID(),
+                });
+              }}
+            >
+              已核对，重新编辑
+            </Button>
+          )}
         </fieldset>
       </form>
       <Result error={error} />

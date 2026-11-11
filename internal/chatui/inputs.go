@@ -22,11 +22,12 @@ func (server *Server) inputsAPI(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	var body struct {
-		Chat      string               `json:"conversation_id"`
-		Operation string               `json:"operation"`
-		Command   harness.InputCommand `json:"command"`
-		Key       string               `json:"key"`
-		RunID     string               `json:"run_id"`
+		Chat           string               `json:"conversation_id"`
+		Operation      string               `json:"operation"`
+		Command        harness.InputCommand `json:"command"`
+		Key            string               `json:"key"`
+		RunID          string               `json:"run_id"`
+		DiscardOptions bool                 `json:"discard_options"`
 	}
 	if !server.readBody(writer, request, &body) {
 		return
@@ -44,7 +45,7 @@ func (server *Server) inputsAPI(writer http.ResponseWriter, request *http.Reques
 			server.advanceQueue(body.Chat)
 		}
 	case "steer":
-		item, err := server.tasks.SteerInput(request.Context(), body.Chat, body.Key, body.RunID)
+		item, err := server.tasks.SteerInputWithOptions(request.Context(), body.Chat, body.Key, body.RunID, body.DiscardOptions)
 		if err != nil {
 			server.fail(writer, err)
 		} else {

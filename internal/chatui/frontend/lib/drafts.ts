@@ -9,6 +9,7 @@ const forms = new Map<string, Record<string, unknown>>();
 const messages = new Map<string, string>();
 const requests = new Map<string, PendingSend>();
 const attachments = new Map<string, Attachment[]>();
+const branches = new Map<string, { signature: string; request_key: string }>();
 export interface PendingSend {
   request_key: string;
   prompt: string;
@@ -30,6 +31,7 @@ function persist() {
     messages: [...messages].slice(-100),
     requests: [...requests].slice(-100),
     attachments: [...attachments].slice(-100),
+    branches: [...branches].slice(-100),
   });
   try {
     storage.setItem(storageKey(), text);
@@ -52,6 +54,7 @@ export function configureDrafts(
   messages.clear();
   requests.clear();
   attachments.clear();
+  branches.clear();
   scope = environment;
   try {
     storage =
@@ -60,6 +63,15 @@ export function configureDrafts(
     const raw = storage?.getItem(storageKey());
     if (!raw || raw.length > 4 * 1048576) return;
     const parsed = JSON.parse(raw);
+    for (const pair of (parsed.branches || []).slice(-100)) {
+      if (
+        Array.isArray(pair) &&
+        typeof pair[0] === "string" &&
+        typeof pair[1]?.signature === "string" &&
+        typeof pair[1]?.request_key === "string"
+      )
+        branches.set(pair[0], pair[1]);
+    }
     for (const pair of (parsed.messages || []).slice(-100))
       if (
         Array.isArray(pair) &&
@@ -135,12 +147,38 @@ export function savePendingSend(chat: string, value: PendingSend | null) {
   else requests.delete(chat);
   persist();
 }
+export function branchRequestKey(chat: string, signature: string) {
+  const previous = branches.get(chat);
+  if (previous && previous.signature !== signature)
+    throw new Error("上一条分支创建结果尚未核对，请先用原消息和原文重试。");
+  if (previous) return previous.request_key;
+  const request_key = crypto.randomUUID();
+  branches.set(chat, { signature, request_key });
+  persist();
+  return request_key;
+}
+export function clearBranchRequest(chat: string) {
+  branches.delete(chat);
+  persist();
+}
+// Consume only the submitted text and attachments. New edits made while the
+// request was in flight, including edits in a different chat, remain intact.
+export function consumeSentDraft(chat: string, request: PendingSend) {
+  if (messageDraft(chat).trim() === request.prompt) saveMessageDraft(chat, "");
+  const submitted = new Set(request.attachments);
+  saveAttachmentDraft(
+    chat,
+    attachmentDraft(chat).filter((ref) => !submitted.has(ref.id)),
+  );
+  savePendingSend(chat, null);
+}
 export function clearDrafts() {
   clearTimeout(timer);
   forms.clear();
   messages.clear();
   requests.clear();
   attachments.clear();
+  branches.clear();
   try {
     storage?.removeItem(storageKey());
   } catch {}

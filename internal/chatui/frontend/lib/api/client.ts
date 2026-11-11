@@ -30,6 +30,7 @@ export function apiPath(path: string): string {
       "stickers",
       "analyze",
       "analyze/memory",
+      "memory",
     ].includes(path.slice(7).split("?")[0])
   )
     throw new APIError("此操作需要本机管理入口。", 403, "local_only");

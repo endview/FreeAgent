@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -12,6 +13,38 @@ const activeRunPredicate = `(status IN ('running','waiting_confirmation','stoppe
 const activeRunIndex = `CREATE UNIQUE INDEX one_active_run ON runs(conversation_id) WHERE ` + activeRunPredicate
 const limitContinuationPrompt = "Continue only the unfinished work from the preceding limited request. Use the saved conversation and confirmed results. Do not repeat completed tools or replay UNKNOWN operations. Report what remains unfinished."
 
+func continuationReceiptKey(chat, request string) string {
+	return "run/continue/" + chat + "/" + contentHash([]byte(request))
+}
+
+// A continuation can keep the same Run (and its accounting), so its new input
+// key needs a receipt pointing to that Run. This is only an alias in the existing
+// journal, not a second execution record. Persist before any further dispatch.
+func (store *Store) recordContinuationReceipt(ctx context.Context, run Run, request string) (bool, error) {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	if err := lockConversationTx(ctx, tx, run.ConversationID); err != nil {
+		return false, err
+	}
+	prior, err := runByRequest(ctx, tx, run.ConversationID, request)
+	if err == nil {
+		if prior.ID != run.ID || prior.RequestKey == request {
+			return false, ErrRequestKey
+		}
+		return false, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, continuationReceiptKey(run.ConversationID, request), string(mustJSON(map[string]string{"run_id": run.ID}))); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
 func isExplicitContinuation(prompt string) bool {
 	switch strings.TrimSpace(prompt) {
 	case "继续", "/continue", "continue", "Continue":
@@ -20,11 +53,51 @@ func isExplicitContinuation(prompt string) bool {
 	return false
 }
 
-func (store *Store) settleLimited(ctx context.Context, run Run) (bool, error) {
+// Frozen Runs cannot silently discard a new per-turn choice. A limited task
+// with a determinate boundary can continue in a successor under that choice.
+func continuationOptionsChanged(run Run, options RunOptions) (bool, error) {
+	snapshot, err := decodeRunSnapshot(run.ConfigJSON)
+	if err != nil {
+		return false, err
+	}
+	if options.Permission != "" {
+		if err := options.Permission.Validate(); err != nil {
+			return false, err
+		}
+		if snapshot.Permission == nil {
+			return false, ErrSnapshotIncomplete
+		}
+		if lowerPermission(snapshot.Permission.Mode, options.Permission) != snapshot.Permission.Mode {
+			return true, nil
+		}
+	}
+	if options.ModelID != "" && options.ModelID != run.ModelID || len(options.Attachments) != 0 {
+		return true, nil
+	}
+	if options.Reasoning != nil && (snapshot.Reasoning == nil || *options.Reasoning != *snapshot.Reasoning) {
+		return true, nil
+	}
+	if options.Capabilities != nil {
+		previous := CapabilitySelection{}
+		if snapshot.Capabilities != nil {
+			previous = snapshot.Capabilities.normalize()
+		}
+		if !bytes.Equal(mustJSON(previous), mustJSON(options.Capabilities.normalize())) {
+			return true, nil
+		}
+	}
+	if options.Memory != nil && (snapshot.Memory == nil || !bytes.Equal(mustJSON(snapshot.Memory.Selection), mustJSON(options.Memory))) {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (store *Store) settleLimited(ctx context.Context, run Run, recoverContext ...bool) (bool, error) {
 	if run.Status != "limited" || run.LimitSettled {
 		return run.LimitSettled, nil
 	}
-	if !strings.Contains(run.StopReason, ErrStepLimit.Error()) && !strings.Contains(run.StopReason, ErrTimeLimit.Error()) && !strings.Contains(run.StopReason, "output") {
+	contextRecovery := len(recoverContext) > 0 && recoverContext[0] && (strings.Contains(run.StopReason, "context") || strings.Contains(run.StopReason, "summary"))
+	if !strings.Contains(run.StopReason, ErrStepLimit.Error()) && !strings.Contains(run.StopReason, ErrTimeLimit.Error()) && !strings.Contains(run.StopReason, "output") && !contextRecovery {
 		return false, nil
 	}
 	if parent, err := store.controlledParent(ctx, run.ID); err != nil || parent != "" {
@@ -60,6 +133,11 @@ func (store *Store) settleLimited(ctx context.Context, run Run) (bool, error) {
 }
 
 func (tasks *TaskService) startLimitSuccessor(ctx context.Context, core *Service, run Run, options RunOptions) (RunResult, error) {
+	core.onAccepted = options.Accepted
+	if options.Reasoning != nil {
+		selection := *options.Reasoning
+		core.reasoning = &selection
+	}
 	if !run.LimitSettled {
 		return RunResult{}, ErrActiveRun
 	}
@@ -135,6 +213,9 @@ func (tasks *TaskService) startLimitSuccessor(ctx context.Context, core *Service
 		}
 	}
 	core.capabilities = &capabilities
+	if err := core.selectMemory(ctx, run.ConversationID, options.Memory); err != nil {
+		return RunResult{}, err
+	}
 	if options.channel != nil {
 		if err := core.bindChannel(ctx, run.ConversationID, options.channel); err != nil {
 			return RunResult{}, err

@@ -182,7 +182,7 @@ func TestCompactionIntegrityRefreshAndClear(t *testing.T) {
 	}
 }
 
-func TestManualCompactionRestoresLimitedRunAndRetainsBudget(t *testing.T) {
+func TestManualCompactionPreservesLimitedRunAndCreatesMaintenance(t *testing.T) {
 	service, tasks, chat, _ := summaryFixture(t)
 	service.Config.HistoryPageSize = 3
 	service.Config.MaxOutputTokens = 128
@@ -202,7 +202,7 @@ func TestManualCompactionRestoresLimitedRunAndRetainsBudget(t *testing.T) {
 	before := result.Run
 	compact, err := tasks.ManageContext(t.Context(), chat, ContextCommand{Action: "compact", SummaryBytes: 1024})
 	current, _ := service.Store.GetRun(t.Context(), before.ID)
-	if err != nil || !compact.Changed || compact.RunID != before.ID || current.Status != "limited" || current.Steps != before.Steps+compact.ModelCalls || current.ElapsedMS < before.ElapsedMS {
+	if err != nil || !compact.Changed || compact.RunID == before.ID || current.Status != "limited" || !current.LimitSettled || current.ConfigJSON != before.ConfigJSON || current.Steps != before.Steps || current.ElapsedMS != before.ElapsedMS {
 		t.Fatalf("limited compaction: %+v run=%+v %v", compact, current, err)
 	}
 	if resumed, err := tasks.Continue(t.Context(), before.ID); err != nil || resumed.Run.Status != "completed" {

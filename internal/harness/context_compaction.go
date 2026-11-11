@@ -417,7 +417,14 @@ func (tasks *TaskService) manageContext(ctx context.Context, chat string, comman
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return RunResult{}, err
 		}
-		reuse := err == nil && (latest.Status == "stopped" || latest.Status == "limited")
+		if err == nil && latest.Status == "limited" && !latest.LimitSettled {
+			settled, settleErr := core.Store.settleLimited(ctx, latest, true)
+			if settleErr != nil {
+				return RunResult{}, settleErr
+			}
+			latest.LimitSettled = settled
+		}
+		reuse := err == nil && (latest.Status == "stopped" || (latest.Status == "limited" && !latest.LimitSettled))
 		run := Run{ConversationID: chat}
 		if reuse {
 			run = latest
@@ -442,6 +449,9 @@ func (tasks *TaskService) manageContext(ctx context.Context, chat string, comman
 		}
 		if !reuse {
 			if err := core.resolvePermission(ctx, chat, "", false); err != nil {
+				return RunResult{}, err
+			}
+			if err := core.bindChannel(ctx, chat, nil); err != nil {
 				return RunResult{}, err
 			}
 		}

@@ -74,7 +74,7 @@ func TestAttachmentsNoneInputIdempotencyAndBackup(t *testing.T) {
 		t.Fatal(selected)
 	}
 	result, err := tasks.SubmitWithOptions(ctx, chat, "input", "read this", RunOptions{Attachments: []string{ref.ID}})
-	if err != nil || result.Run.Status != "completed" || len(requests) != 1 || len(requests[0].Tools) != 0 {
+	if err != nil || result.Run.Status != "completed" || len(requests) != 1 || !controlOnlyDefinitions(requests[0].Tools) || !requests[0].DenyOperations {
 		t.Fatalf("%+v %v", result, err)
 	}
 	if !strings.Contains(string(mustJSON(requests[0])), "attachment fact") {

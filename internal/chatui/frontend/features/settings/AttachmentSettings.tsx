@@ -114,6 +114,28 @@ function Editor({ initial }: { initial: Policy }) {
         </fieldset>
       </form>
       <Result error={error} text={result} />
+      {error && (
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={async () => {
+            if (!window.confirm("放弃附件策略草稿，读取服务器当前值？")) return;
+            setBusy(true);
+            try {
+              change(await api<Policy>("attachment-policy"));
+              clearFormDraft("attachment-policy");
+              setError("");
+              setResult("已读取最新附件策略，请重新核对后保存。");
+            } catch (error) {
+              setError((error as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          读取最新附件策略
+        </Button>
+      )}
       <section className="settings-section">
         <h2>当前对话的附件</h2>
         <Button

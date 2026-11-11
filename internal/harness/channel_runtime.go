@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/endview/freeagent/internal/channelwire"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -663,7 +664,16 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 	}
 	if run.Status == "waiting_confirmation" {
 		confirmation, err := s.tasks.Preview(ctx, run.ID)
-		if err != nil || confirmation.ControlOperationID != "" || run.Permission == nil || run.Permission.PersonID == "" {
+		if err == nil && confirmation.ControlOperationID != "" {
+			text = "设置变更等待你确认，尚未应用：\n" + confirmation.Preview
+			web := s.tasks.Config().PublicWeb.Effective()
+			if web.Enabled && web.Origin != "" {
+				text += "\n登录 Web 后，在此会话的确认卡批准或拒绝：\n" + strings.TrimRight(web.Origin, "/") + "/?chat=" + url.QueryEscape(run.ConversationID) + "&run=" + url.QueryEscape(run.ID)
+			} else {
+				text += "\n请在 GUI 或 CLI 打开此会话的设置确认卡。"
+			}
+			revision += "/" + confirmation.Digest
+		} else if err != nil || run.Permission == nil || run.Permission.PersonID == "" {
 			text = "操作等待本机确认，请打开 GUI 或 CLI 查看。"
 		} else if !s.buttons {
 			text = "操作等待本机 GUI 或 CLI 确认；此渠道不支持审批按钮。"

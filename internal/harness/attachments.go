@@ -27,6 +27,7 @@ import (
 )
 
 var ErrAttachment = errors.New("harness: attachment unavailable or unauthorized")
+var ErrAttachmentLimit = errors.New("harness: input attachment limit exceeded")
 
 const attachmentPrefix = "attachment/"
 
@@ -537,7 +538,7 @@ func (tasks *TaskService) resolveAttachments(ctx context.Context, chat string, i
 	}
 	p := tasks.core.attachmentPolicy()
 	if len(ids) > p.MaxFiles {
-		return nil, errors.New("harness: too many input attachments")
+		return nil, fmt.Errorf("%w: at most %d files", ErrAttachmentLimit, p.MaxFiles)
 	}
 	conversation, err := tasks.attachmentConversation(ctx, chat)
 	if err != nil {
@@ -554,7 +555,7 @@ func (tasks *TaskService) resolveAttachments(ctx context.Context, chat string, i
 		seen[id] = true
 		total += r.Ref.Bytes
 		if total > p.MaxBatchBytes || r.Ref.Bytes > p.MaxInputBytes {
-			return nil, errors.New("harness: input attachments exceed the batch limit")
+			return nil, fmt.Errorf("%w: reduce file size or batch size", ErrAttachmentLimit)
 		}
 		if _, err := readAttachmentBlob(tasks.DataDir(), r.Ref); err != nil {
 			return nil, err

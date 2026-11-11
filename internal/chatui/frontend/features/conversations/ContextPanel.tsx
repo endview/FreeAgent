@@ -42,6 +42,36 @@ export function ContextPanel({
     };
   }, [chat]);
   const allowed = contextActions(state, busy);
+  async function saveDefault() {
+    if (!state) return;
+    setBusy(true);
+    setError("");
+    setResult("");
+    try {
+      const limit = summaryByteLimit(bytes);
+      await api(
+        "settings/context",
+        {
+          task_summary_bytes: limit,
+          expected_revisions: state.expected_revisions,
+        },
+        "PATCH",
+      );
+      const saved = await api<ContextState>(
+        `attach/context?conversation_id=${encodeURIComponent(chat)}`,
+      );
+      setState(saved);
+      setBytes(saved.byte_limit);
+      setResult(
+        `Core 默认摘要上限已保存为 ${saved.byte_limit.toLocaleString()} 字节，自动压缩已开启；已有摘要保留，可手动重新压缩后继续受限任务。`,
+      );
+      onDone();
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function action(action: string) {
     if (!state) return;
     if (
@@ -108,6 +138,24 @@ export function ContextPanel({
             {state.automatic ? "自动压缩已开启" : "自动压缩已关闭"} · 触发比例{" "}
             {state.window.automatic_percent}%
           </p>
+          <p className="form-hint">
+            当前 Core 默认摘要上限：{state.byte_limit.toLocaleString()} UTF-8
+            字节（不是 token）。
+            {state.summary?.byte_limit
+              ? `已有摘要生成上限：${state.summary.byte_limit.toLocaleString()} 字节。`
+              : ""}
+            <a
+              href={`?view=settings&section=context&chat=${encodeURIComponent(chat)}`}
+            >
+              自动压缩与请求预算设置
+            </a>
+            {" · "}
+            <a
+              href={`?view=settings&section=providers&chat=${encodeURIComponent(chat)}`}
+            >
+              模型窗口与辅助思考
+            </a>
+          </p>
           {state.automatic_paused && (
             <p className="inline-warning">{state.automatic_paused}</p>
           )}
@@ -153,7 +201,10 @@ export function ContextPanel({
               </ul>
             </details>
           )}
-          <Field label="摘要上限（字节）">
+          <Field
+            label="摘要目标（UTF-8 字节）"
+            hint="手动压缩仅使用本次目标；保存默认设置影响此 Core 的后续请求，并开启自动压缩。"
+          >
             <input
               type="number"
               min={1}
@@ -164,6 +215,13 @@ export function ContextPanel({
               onChange={(event) => setBytes(Number(event.target.value))}
             />
           </Field>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => void saveDefault()}
+          >
+            保存默认设置
+          </Button>
           {state.summary && (
             <details>
               <summary>查看当前摘要</summary>
@@ -181,7 +239,7 @@ export function ContextPanel({
       <Result error={error} text={result} />
       <div className="provider-actions">
         <Button disabled={!allowed.compact} onClick={() => action("compact")}>
-          手动压缩
+          仅本次手动压缩
         </Button>
         <Button
           variant="outline"

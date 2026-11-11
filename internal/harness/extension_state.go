@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -149,6 +150,45 @@ func (tasks *TaskService) ExtensionState(ctx context.Context, id, chatID, resour
 	}
 	return tasks.extensionStateRPC(ctx, id, "state.read", map[string]any{"scope": scope, "settings": tasks.Config().Extensions.Settings[id]})
 }
+
+// ExtensionConversationScope resolves UI defaults from persisted conversation
+// selection and adopted input identity, without starting an extension process.
+func (tasks *TaskService) ExtensionConversationScope(ctx context.Context, id, chat string) (ExtensionStateScope, error) {
+	if !validExtensionID(id) {
+		return ExtensionStateScope{}, ErrPermissionDenied
+	}
+	scope, err := tasks.extensionScope(ctx, chat, ExtensionStateScope{})
+	if err != nil || chat == "" {
+		return scope, err
+	}
+	selection, err := tasks.SelectedCapabilities(ctx, chat)
+	if err != nil {
+		return scope, err
+	}
+	scope.Resource = selection.Variants[id]
+	// A failed maintenance Run has no adopted input. Resolve the most recent
+	// actual user message instead so compaction cannot hide the character page.
+	var raw []byte
+	err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE conversation_id=$1 AND body_json->>'Role'='user' AND COALESCE(body_json->>'Deferred','false')='false' AND (body_json->'Channel' IS NULL OR body_json->'Channel'='null'::jsonb OR body_json #>> '{Channel,purpose}'='request') ORDER BY id DESC LIMIT 1`, chat).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return scope, nil
+	}
+	if err != nil {
+		return scope, err
+	}
+	var message ModelMessage
+	if json.Unmarshal(raw, &message) != nil {
+		return scope, ErrStoreFormat
+	}
+	if message.Channel != nil {
+		if !validPersonID(message.Channel.PersonID) {
+			return scope, ErrPermissionDenied
+		}
+		scope.ActorID = message.Channel.PersonID
+	}
+	return scope, nil
+}
+
 func (tasks *TaskService) extensionScope(ctx context.Context, chatID string, scope ExtensionStateScope) (ExtensionStateScope, error) {
 	if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='core/id'`).Scan(&scope.CoreID); err != nil {
 		return scope, err

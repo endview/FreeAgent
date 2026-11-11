@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Choice } from "@/components/Choice";
+import { ControlPreview } from "@/components/ControlPreview";
 import { defaultView, type ViewPreferences } from "@/lib/platform";
 import {
   loadEnvironment,
   loadNavigation,
   useRuntime,
+  selectConversation,
+  current,
+  notify,
 } from "@/lib/store/runtime";
-import { Field, Result } from "./shared";
+import { clearFormDraft } from "@/lib/drafts";
+import { Field, Result, useFormDraft } from "./shared";
 export default function GeneralSettings({
   value,
   onChange,
@@ -17,10 +22,52 @@ export default function GeneralSettings({
 }) {
   const state = useRuntime();
   const [error, setError] = useState("");
+  const workspaceDirty = useRef(false);
+  const [workspace, setWorkspace] = useFormDraft("workspace", {
+    path: state.environment?.workspace || "",
+    expected_revisions: {
+      "config.workspace":
+        (
+          state.environment?.control_revisions as
+            | Record<string, number>
+            | undefined
+        )?.["config.workspace"] || 1,
+    },
+  });
+  function savedWorkspace() {
+    const environment = current().environment;
+    return {
+      path: environment?.workspace || "",
+      expected_revisions: {
+        "config.workspace":
+          (
+            environment?.control_revisions as Record<string, number> | undefined
+          )?.["config.workspace"] || 1,
+      },
+    };
+  }
+  useEffect(() => {
+    if (!workspaceDirty.current && !workspace.path && state.environment)
+      setWorkspace(savedWorkspace());
+  }, [state.environment]);
+  async function workspaceSaved() {
+    await selectConversation("");
+    const url = new URL(location.href);
+    url.searchParams.delete("chat");
+    url.searchParams.delete("run");
+    history.replaceState(null, "", url);
+    await loadEnvironment();
+    await loadNavigation();
+    setWorkspace(savedWorkspace());
+    workspaceDirty.current = false;
+    clearFormDraft("workspace");
+    notify("工作区已切换，后续新任务使用当前路径。");
+  }
   return (
     <>
       <p className="settings-intro">
-        这些外观偏好只作用于当前设备的客户端，不改变任务权限，也不向其他窗口广播。
+        外观修改自动保存，只作用于当前客户端。也可在此窗口的对话框输入 /view
+        theme dark、/view reading 960 或 /view reset，不会发送给模型或其他窗口。
       </p>
       <Field label="主题">
         <Choice
@@ -74,8 +121,7 @@ export default function GeneralSettings({
               try {
                 const value = await window.faChangeWorkspace!();
                 if (value.changed) {
-                  await loadEnvironment();
-                  await loadNavigation();
+                  await workspaceSaved();
                 }
               } catch (error) {
                 setError((error as Error).message);
@@ -85,9 +131,45 @@ export default function GeneralSettings({
             选择工作区
           </Button>
         ) : (
-          <p className="form-hint">
-            可通过对话提出工作区变更并确认，或使用本机 CLI 的 control 命令修改。
-          </p>
+          <>
+            <Field
+              label="工作区绝对路径（Core 所在机器）"
+              hint="输入已存在的文件夹。预览确认后生效；若有执行或未决操作，先完成或结束它。"
+            >
+              <input
+                value={workspace.path}
+                onChange={(event) => {
+                  workspaceDirty.current = true;
+                  setWorkspace({ ...workspace, path: event.target.value });
+                }}
+              />
+            </Field>
+            <ControlPreview
+              kind="config.set_workspace"
+              arguments={{ workspace: workspace.path }}
+              expectedRevisions={workspace.expected_revisions}
+              onSaved={workspaceSaved}
+            />
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                if (
+                  !window.confirm("放弃工作区路径草稿，读取当前 Core 工作区？")
+                )
+                  return;
+                try {
+                  await loadEnvironment();
+                  setWorkspace(savedWorkspace());
+                  workspaceDirty.current = false;
+                  clearFormDraft("workspace");
+                } catch (error) {
+                  setError((error as Error).message);
+                }
+              }}
+            >
+              读取当前工作区
+            </Button>
+          </>
         )}
       </section>
       <Result error={error} />
