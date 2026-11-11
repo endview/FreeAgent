@@ -2,6 +2,8 @@
 
 日期：2026-11-11。对应 [30 项核查记录](FREEAGENT_V8_8_INTERACTION_SETTINGS_AUDIT_2026-11-09.md)。
 
+最新发布状态：本文件所列修复已推送 GitHub，并于 2026-11-11 更新到 Hytron。部署详情见文末；下文各轮“未部署/未推送”为当轮完成时的历史状态。
+
 本文前半记录首轮修复；文末“第二轮复查”记录后续新发现的问题与独立验证结果，不能用首轮测试替代这些新改动的测试。
 
 本次修复在现有 Core、控制操作日志、Run/Attempt、输入队列和客户端草稿机制上完成；没有引入新的配置平台、审批系统、数据库结构或常驻扩展。
@@ -167,3 +169,22 @@ python scripts/test-frontend.py --engine output/interaction-recheck-20261111/fre
 本轮证据：`output/interaction-followup-options-before.log`、`interaction-followup-options-after.log`、`interaction-followup-race.jsonl`、`interaction-followup-js.log`、`interaction-followup-compile.log`；浏览器最终记录为 `output/interaction-followup-browser-verified/core-wq0yix_g/browser/`。
 
 便携包：`bin/portable/interaction-fixes-20261111-verified/FreeAgent-v8.8.0-dev.1-windows-amd64-portable.zip`。归档中的程序与上述最终浏览器测试一致；包含前两轮及本轮全部产品代码修复。归档不包含用户数据库或凭据。
+
+## GitHub 同步与 Hytron 部署（2026-11-11）
+
+按用户指定顺序，先推送 `endview/FreeAgent` 的 `main`，再从干净提交 [cd6f1a8](https://github.com/endview/FreeAgent/commit/cd6f1a82275f56c5dd6a5423b7187fd5d07ef647) 构建并部署 Linux 便携程序。版本号沿用 `v8.8.0-dev.1`，实际程序构建提交已更新。
+
+Linux 更新前，在 Debian 12 的独立非 root 用户、unit、端口及数据目录完成：
+
+- Core 边界检查通过。
+- 定向 `-race`：Harness 22 个顶层/含子测试 37 项，ChatUI 3 个顶层/含子测试 6 项通过。
+- 完整 ChatUI：98 个顶层/含子测试 131 项通过。
+- Linux 便携包 16 个检查通过，包括首次启动、CLI/Web 接续及防重、实际 Linux 命令沙箱、显式 Full 命令、后台命令停止、重启保留记录、UNKNOWN 与备份恢复。真实 Provider/真人渠道用例为 NOT_RUN。
+
+生产更新前检查无运行中任务、后台命令或未完成投递，完成 Core 在线备份并验证、独立 AffectWeave 备份，以及停机后的 PG 一致副本。新程序预检首次因临时发布目录缺少服务用户的遍历权限而被拒，生产未停止；修正公开程序目录权限后预检通过，私有备份/日志/凭据仍受限。平滑交接使用 `cancel_active=false`，随后原子切换程序路径。
+
+部署后：Core/渠道 active、NRestarts=0，TG connected，doctor 正常；公网 HTTPS 200、CSP 正常，3 个 JS/CSS 入口资源与本次构建逐字节一致。原 5 会话、68 Run、323 消息、204 Attempt 的逐条摘要核对不变；配置、Key、公网登录、渠道授权、Core 身份、代理 socket 目录及 AffectWeave 1.6.0-dev.2 人物业务数据均保留。没有向生产私聊发送测试消息或运行真实模型验收，不把连接健康当作真人收发验收。
+
+旧程序与配套备份保留，回退前仍须保全更新后的新数据；具体私有维护路径记在本机 VPS 运维文档。没有修改 NPM 或其他 VPS 应用。本次未创建 GitHub 标签或 Release；GitHub Actions 全套在部署核验时仍运行中，不计为通过。
+
+本机部署证据：`output/interaction-deploy-20261111/`，含隔离 Linux 测试逐项记录、便携验收、备份准备、切换回执和最终健康结果。用户刷新公网页面即可获取新前端。
