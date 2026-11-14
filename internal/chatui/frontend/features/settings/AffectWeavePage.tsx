@@ -194,10 +194,22 @@ function AffectWeaveEditor({
     }
   }
   async function reload() {
-    await resource.reload();
     await onSaved();
     if (chat) await conversation.reload();
     await loadSnapshot();
+    try {
+      await resource.reload();
+    } catch {
+      // Settings can restart an optional process. This is a read-only refresh,
+      // never a repeat of the confirmed mutation.
+      await resource.reload();
+    }
+  }
+  async function settingArguments(changes: Record<string, unknown>) {
+    const latest = await api<{ settings?: Record<string, unknown> }>(
+      `${prefix}/view`,
+    );
+    return { id, settings: { ...latest.settings, ...changes } };
   }
   function loadRole(r: Role) {
     setRoleID(r.id);
@@ -524,13 +536,20 @@ function AffectWeaveEditor({
             arguments={{
               id,
               settings: {
-                ...settings,
                 analysis_enabled: preferences.analysis,
                 analysis_deadline_ms: Number(preferences.analysisDeadline),
                 expression_enabled: preferences.expression,
                 fixed_followup_enabled: preferences.followup,
               },
             }}
+            prepareArguments={() =>
+              settingArguments({
+                analysis_enabled: preferences.analysis,
+                analysis_deadline_ms: Number(preferences.analysisDeadline),
+                expression_enabled: preferences.expression,
+                fixed_followup_enabled: preferences.followup,
+              })
+            }
             onSaved={reload}
             label="预览分析开关修改"
           />
@@ -544,11 +563,16 @@ function AffectWeaveEditor({
             arguments={{
               id,
               settings: {
-                ...settings,
                 role_id: roleID,
                 context_bytes: Number(preferences.contextBytes),
               },
             }}
+            prepareArguments={() =>
+              settingArguments({
+                role_id: roleID,
+                context_bytes: Number(preferences.contextBytes),
+              })
+            }
             onSaved={reload}
             label="预览设为默认人物与片段预算"
           />

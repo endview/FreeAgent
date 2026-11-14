@@ -16,6 +16,7 @@ export function ControlPreview({
   initialOperation = null,
   onRejected,
   expectedRevisions,
+  prepareArguments,
 }: {
   kind: string;
   arguments: Record<string, unknown>;
@@ -25,6 +26,7 @@ export function ControlPreview({
   initialOperation?: Operation | null;
   onRejected?: () => void;
   expectedRevisions?: Record<string, number>;
+  prepareArguments?: () => Promise<Record<string, unknown>>;
 }) {
   const [operation, setOperation] = useState<Operation | null>(
       initialOperation,
@@ -74,10 +76,12 @@ export function ControlPreview({
     setError("");
     const requestedSignature = currentSignature.current;
     try {
+      const preparedArgs = prepareArguments ? await prepareArguments() : args;
+      if (currentSignature.current !== requestedSignature) return;
       const next = decodeControlOperation(
         await api<unknown>("control/plan", {
           kind,
-          arguments: args,
+          arguments: preparedArgs,
           expected_revisions: expectedRevisions,
         }),
       );
