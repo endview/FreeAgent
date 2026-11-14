@@ -311,7 +311,7 @@ function AffectWeaveEditor({
               ? "尚无请求记录"
               : lastUse
                 ? `已附加 ${lastUse.label || "人物上下文"} · ${lastUse.bytes.toLocaleString()} 字节`
-                : "未附加人物上下文"}
+                : "未记录人物上下文（旧请求可能缺少记录）"}
           </dd>
         </div>
       </dl>
