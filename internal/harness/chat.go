@@ -62,6 +62,7 @@ type ChatMessage struct {
 }
 
 type ChatActivity struct {
+	Extensions         []ExtensionUse      `json:"extensions,omitempty"`
 	RequestedReasoning *ReasoningSelection `json:"requested_reasoning,omitempty"`
 	Outcome            *ToolOutcome        `json:"outcome,omitempty"`
 	DurationMS         *int64              `json:"duration_ms,omitempty"`
@@ -335,6 +336,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 				}
 				addSources(request.Memory)
 				activity.RequestedReasoning = request.Reasoning
+				activity.Extensions = request.Extensions
 				if attempt.ResponseJSON != "" {
 					var response ModelResponse
 					if json.Unmarshal([]byte(attempt.ResponseJSON), &response) != nil {

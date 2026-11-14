@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { installPlatform } from "@/lib/platform";
 import "@/styles/tokens.css";
+import "@/styles/workbench.css";
 import { DesktopMenu } from "@/components/DesktopMenu";
 installPlatform();
 window.addEventListener("vite:preloadError", (event) => {

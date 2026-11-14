@@ -296,6 +296,13 @@ const TurnView = memo(function TurnView({
                         : item.usage.reasoning_tokens}
                     </p>
                   )}
+                  {item.extensions?.map((use, index) => (
+                    <p key={index}>
+                      已附加上下文：{use.label || use.name} ·{" "}
+                      {use.bytes.toLocaleString()} 字节
+                      {use.version ? ` · ${use.version}` : ""}
+                    </p>
+                  ))}
                   {item.text && <pre>{item.text}</pre>}
                   {item.receipts?.map((receipt, index) => (
                     <p key={index}>

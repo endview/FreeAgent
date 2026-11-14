@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DeliverySettings from "./DeliverySettings";
 import { api } from "@/lib/api/client";
-import { useRuntime } from "@/lib/store/runtime";
+import { loadSnapshot, useRuntime } from "@/lib/store/runtime";
+import { characterSelection } from "@/lib/presentation/capabilities.mjs";
+import type { ChatSnapshot } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { ControlPreview } from "@/components/ControlPreview";
 import { Field, Loading, Result, useFormDraft, useResource } from "./shared";
@@ -91,6 +93,11 @@ function AffectWeaveEditor({
   chat,
   initialScope,
 }: PageProps & { chat: string; initialScope: Scope }) {
+  const runtime = useRuntime();
+  const conversation = useResource<ChatSnapshot>(
+    `chats/${encodeURIComponent(chat)}`,
+    Boolean(chat),
+  );
   const [evidence, setEvidence] = useState<string[]>([]);
   const [scopeDraft, setScopeDraft] = useFormDraft(
     "affectweave:scope:" + chat,
@@ -148,6 +155,26 @@ function AffectWeaveEditor({
   );
   const roles = resource.value?.roles || [];
   const selected = roles.find((r) => r.id === roleID);
+  const currentConversation =
+    runtime.snapshot?.view.conversation.id === chat
+      ? runtime.snapshot
+      : conversation.value;
+  const savedSelection = currentConversation?.view.capabilities;
+  const defaultRole =
+    typeof settings.role_id === "string" ? settings.role_id : "";
+  const effective = characterSelection(
+    roles.map((r) => ({ id: r.id, label: r.persona.name })),
+    savedSelection?.extension_variants?.[id],
+    defaultRole,
+  );
+  const selectedInChat = Boolean(savedSelection?.extensions?.includes(id));
+  const latestModel = currentConversation?.view.turns
+    .flatMap((turn) => turn.activity)
+    .filter((activity) => activity.kind === "model")
+    .at(-1);
+  const lastUse = latestModel?.extensions?.find(
+    (use) => use.source === "extension" && use.name === id,
+  );
   const state = resource.value?.state;
   const scope = {
     space_id: space,
@@ -169,6 +196,8 @@ function AffectWeaveEditor({
   async function reload() {
     await resource.reload();
     await onSaved();
+    if (chat) await conversation.reload();
+    await loadSnapshot();
   }
   function loadRole(r: Role) {
     setRoleID(r.id);
@@ -189,6 +218,9 @@ function AffectWeaveEditor({
       interactionStrength: String(r.persona.interactions?.strength ?? 1),
     });
   }
+  useEffect(() => {
+    if (selected && !form.id) loadRole(selected);
+  }, [selected?.id]);
   const lines = (text: string) =>
     text
       .split(/\r?\n/)
@@ -230,15 +262,67 @@ function AffectWeaveEditor({
   }
   return (
     <section className="settings-section" aria-label="AffectWeave 人物管理">
-      <h3>人物、关系与经历</h3>
+      <h3>人物与使用状态</h3>
       <p className="form-hint">
         {chat
           ? "默认使用当前对话的空间、参与者和人物选择。"
           : "当前未选择对话，正在管理本机默认空间；TG 人物请先打开对应会话。"}
       </p>
       <p className="form-hint">
-        按空间与参与者隔离。启用后只登记运行事实与固定规则；模型提出的长期改动须在下方预览确认。生成、实际发送与用户反馈分别记录。
+        配置用于后续消息；最近请求记录反映实际附加的内容。
       </p>
+      <dl className="extension-overview" aria-label="AffectWeave 已保存状态">
+        <div>
+          <dt>当前对话</dt>
+          <dd>
+            {runtime.chats.find((c) => c.id === chat)?.title ||
+              (chat ? "已选对话" : "未选择对话")}
+          </dd>
+        </div>
+        <div>
+          <dt>下条消息的人物</dt>
+          <dd>
+            {!enabled
+              ? "扩展未启用"
+              : !chat
+                ? "先打开一个对话"
+                : !conversation.value
+                  ? "正在读取…"
+                  : !selectedInChat
+                    ? "此对话未选择扩展"
+                    : effective.ready
+                      ? effective.label
+                      : "待选择人物，不会注入"}
+          </dd>
+        </div>
+        <div>
+          <dt>扩展默认人物</dt>
+          <dd>
+            {defaultRole
+              ? roles.find((r) => r.id === defaultRole)?.persona.name ||
+                "默认人物不在当前空间"
+              : "未设置，新会话需选择人物"}
+          </dd>
+        </div>
+        <div>
+          <dt>最近一次模型请求</dt>
+          <dd>
+            {!latestModel
+              ? "尚无请求记录"
+              : lastUse
+                ? `已附加 ${lastUse.label || "人物上下文"} · ${lastUse.bytes.toLocaleString()} 字节`
+                : "未附加人物上下文"}
+          </dd>
+        </div>
+      </dl>
+      {chat &&
+        enabled &&
+        conversation.value &&
+        (!selectedInChat || !effective.ready) && (
+          <p className="inline-warning">
+            全局启用还不足以应用人物。请选择下方人物，再点击“预览用于当前对话”。
+          </p>
+        )}
       <fieldset disabled={busy}>
         <Button
           variant="outline"
@@ -254,21 +338,46 @@ function AffectWeaveEditor({
             ? "独立 PostgreSQL 存储已就绪"
             : "初始化独立 PostgreSQL 存储"}
         </Button>
-        <div className="setting-grid">
-          <Field label="空间 ID">
-            <input value={space} onChange={(e) => setSpace(e.target.value)} />
-          </Field>
-          <Field label="参与者 ID">
-            <input value={actor} onChange={(e) => setActor(e.target.value)} />
-          </Field>
-        </div>
-        <Field label="人物">
+        <details className="scope-advanced">
+          <summary>高级：空间与参与者</summary>
+          <p className="form-hint">
+            默认跟随当前对话。修改这里用于查看其他授权范围，不会切换对话人物。
+          </p>
+          <div className="setting-grid">
+            <Field label="空间 ID">
+              <input value={space} onChange={(e) => setSpace(e.target.value)} />
+            </Field>
+            <Field label="参与者 ID">
+              <input value={actor} onChange={(e) => setActor(e.target.value)} />
+            </Field>
+          </div>
+        </details>
+        <Field
+          label="人物"
+          hint="此处用于查看或编辑人物；应用到对话需点击下方按钮。"
+        >
           <select
             value={roleID}
             onChange={(e) => {
               const r = roles.find((r) => r.id === e.target.value);
               if (r) loadRole(r);
-              else setRoleID("");
+              else {
+                setRoleID("");
+                setForm({
+                  id: "",
+                  name: "",
+                  identity: "",
+                  boundaries: "",
+                  preferences: "",
+                  voice: "",
+                  spaces: space,
+                  values: "{}",
+                  traits: "{}",
+                  parameters: "null",
+                  interactions: false,
+                  interactionStrength: "1",
+                });
+              }
             }}
           >
             <option value="">新建人物</option>
@@ -279,12 +388,43 @@ function AffectWeaveEditor({
             ))}
           </select>
         </Field>
+        {chat && selected && (
+          <ControlPreview
+            kind="conversation.set_capabilities"
+            disabled={
+              !enabled ||
+              !savedSelection ||
+              space !== initialScope.space_id ||
+              !selected.spaces.includes(initialScope.space_id)
+            }
+            arguments={{
+              conversation_id: chat,
+              capabilities: {
+                ...savedSelection,
+                extensions: [
+                  ...new Set([...(savedSelection?.extensions || []), id]),
+                ],
+                extension_variants: {
+                  ...savedSelection?.extension_variants,
+                  [id]: roleID,
+                },
+              },
+            }}
+            onSaved={reload}
+            label={
+              selectedInChat &&
+              savedSelection?.extension_variants?.[id] === roleID
+                ? "预览当前对话的人物选择"
+                : "预览用于当前对话"
+            }
+          />
+        )}
         <Button
           variant="ghost"
           disabled={!enabled}
           onClick={() =>
             void perform(async () => {
-              await resource.reload();
+              await reload();
             })
           }
         >
@@ -310,98 +450,109 @@ function AffectWeaveEditor({
         >
           {syncCursor ? "继续补读原记录" : "补读原始生成与交付记录"}
         </Button>
-        <Field label="人物片段最大 UTF-8 字节数">
-          <input
-            type="number"
-            min={1024}
-            max={24000}
-            value={preferences.contextBytes}
-            onChange={(e) =>
-              setPreferences({ ...preferences, contextBytes: e.target.value })
-            }
+        <details className="settings-disclosure">
+          <summary>
+            默认人物与自动分析{" "}
+            <span>
+              {settings.analysis_enabled ? "分析已开启" : "分析未开启"}
+            </span>
+          </summary>
+          <p className="form-hint">
+            下面是编辑草稿，预览并确认后才保存。默认人物用于未单独选人的对话，仍受人物授权空间约束。
+          </p>
+          <Field label="人物片段最大 UTF-8 字节数">
+            <input
+              type="number"
+              min={1024}
+              max={24000}
+              value={preferences.contextBytes}
+              onChange={(e) =>
+                setPreferences({ ...preferences, contextBytes: e.target.value })
+              }
+            />
+          </Field>
+          <label className="check-line">
+            <input
+              type="checkbox"
+              checked={preferences.analysis}
+              disabled={!enabled}
+              onChange={(e) =>
+                setPreferences({ ...preferences, analysis: e.target.checked })
+              }
+            />
+            自动输入分析
+          </label>
+          <p className="form-hint">
+            默认关闭。开启后每条输入最多增加一次模型请求；临时情绪不会自动保存为长期状态。
+          </p>
+          <Field label="单次分析期限（毫秒）">
+            <input
+              type="number"
+              min={2000}
+              max={30000}
+              value={preferences.analysisDeadline}
+              onChange={(e) =>
+                setPreferences({
+                  ...preferences,
+                  analysisDeadline: e.target.value,
+                })
+              }
+            />
+          </Field>
+          <label className="check-line">
+            <input
+              type="checkbox"
+              checked={preferences.expression}
+              onChange={(e) =>
+                setPreferences({ ...preferences, expression: e.target.checked })
+              }
+            />
+            允许人物从已授权资源建议贴纸和表情（需要自动分析）
+          </label>
+          <label className="check-line">
+            <input
+              type="checkbox"
+              checked={preferences.followup}
+              onChange={(e) =>
+                setPreferences({ ...preferences, followup: e.target.checked })
+              }
+            />
+            允许提出明确事项的跟进候选（仍需单独的目标规则授权）
+          </label>
+          <ControlPreview
+            kind="extensions.set_policy"
+            arguments={{
+              id,
+              settings: {
+                ...settings,
+                analysis_enabled: preferences.analysis,
+                analysis_deadline_ms: Number(preferences.analysisDeadline),
+                expression_enabled: preferences.expression,
+                fixed_followup_enabled: preferences.followup,
+              },
+            }}
+            onSaved={reload}
+            label="预览分析开关修改"
           />
-        </Field>
-        <label className="check-line">
-          <input
-            type="checkbox"
-            checked={preferences.analysis}
-            disabled={!enabled}
-            onChange={(e) =>
-              setPreferences({ ...preferences, analysis: e.target.checked })
+          <ControlPreview
+            kind="extensions.set_policy"
+            disabled={
+              !enabled ||
+              !roleID ||
+              !Number.isInteger(Number(preferences.contextBytes))
             }
+            arguments={{
+              id,
+              settings: {
+                ...settings,
+                role_id: roleID,
+                context_bytes: Number(preferences.contextBytes),
+              },
+            }}
+            onSaved={reload}
+            label="预览设为默认人物与片段预算"
           />
-          自动输入分析
-        </label>
-        <p className="form-hint">
-          默认关闭。开启后每条输入最多增加一次模型请求；临时情绪不会自动保存为长期状态。
-        </p>
-        <Field label="单次分析期限（毫秒）">
-          <input
-            type="number"
-            min={2000}
-            max={30000}
-            value={preferences.analysisDeadline}
-            onChange={(e) =>
-              setPreferences({
-                ...preferences,
-                analysisDeadline: e.target.value,
-              })
-            }
-          />
-        </Field>
-        <label className="check-line">
-          <input
-            type="checkbox"
-            checked={preferences.expression}
-            onChange={(e) =>
-              setPreferences({ ...preferences, expression: e.target.checked })
-            }
-          />
-          允许人物从已授权资源建议贴纸和表情（需要自动分析）
-        </label>
-        <label className="check-line">
-          <input
-            type="checkbox"
-            checked={preferences.followup}
-            onChange={(e) =>
-              setPreferences({ ...preferences, followup: e.target.checked })
-            }
-          />
-          允许提出明确事项的跟进候选（仍需单独的目标规则授权）
-        </label>
-        <ControlPreview
-          kind="extensions.set_policy"
-          arguments={{
-            id,
-            settings: {
-              ...settings,
-              analysis_enabled: preferences.analysis,
-              analysis_deadline_ms: Number(preferences.analysisDeadline),
-              expression_enabled: preferences.expression,
-              fixed_followup_enabled: preferences.followup,
-            },
-          }}
-          onSaved={onSaved}
-          label="预览分析开关修改"
-        />
-        <ControlPreview
-          kind="extensions.set_policy"
-          disabled={
-            !enabled ||
-            !roleID ||
-            !Number.isInteger(Number(preferences.contextBytes))
-          }
-          arguments={{
-            id,
-            settings: {
-              ...settings,
-              role_id: roleID,
-              context_bytes: Number(preferences.contextBytes),
-            },
-          }}
-          onSaved={onSaved}
-          label="预览设为默认人物与片段预算"
-        />
+        </details>
         <details open={!selected}>
           <summary>人物定义与授权范围</summary>
           <Field label="人物标识">
@@ -503,7 +654,10 @@ function AffectWeaveEditor({
           />
         </details>
         {state && (
-          <>
+          <details className="settings-disclosure">
+            <summary>
+              当前状态与经历 <span>版本 {state.revision}</span>
+            </summary>
             <h4>当前状态 · 版本 {state.revision}</h4>
             <pre className="settings-output">
               {JSON.stringify(
@@ -676,7 +830,7 @@ function AffectWeaveEditor({
                 )}
               </pre>
             </details>
-          </>
+          </details>
         )}
         {selected && (
           <details className="settings-section">
@@ -788,20 +942,24 @@ function AffectWeaveEditor({
           </details>
         )}
         {selected && (
-          <ControlPreview
-            kind="extensions.change_state"
-            arguments={{
-              id,
-              scope,
-              action: "delete_role",
-              expected_revision: selected.revision,
-            }}
-            onSaved={async () => {
-              setRoleID("");
-              await reload();
-            }}
-            label="预览删除人物及其所有空间状态"
-          />
+          <details className="settings-disclosure danger-section">
+            <summary>删除人物</summary>
+            <p>删除人物及其所有空间状态前，请先备份。</p>
+            <ControlPreview
+              kind="extensions.change_state"
+              arguments={{
+                id,
+                scope,
+                action: "delete_role",
+                expected_revision: selected.revision,
+              }}
+              onSaved={async () => {
+                setRoleID("");
+                await reload();
+              }}
+              label="预览删除人物及其所有空间状态"
+            />
+          </details>
         )}
       </fieldset>
       {enabled && (

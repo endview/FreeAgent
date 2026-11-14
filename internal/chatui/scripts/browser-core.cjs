@@ -17,7 +17,7 @@ fs.mkdirSync(artifacts,{recursive:true});
   await page.getByText('Echo: '+prompt,{exact:true}).waitFor({timeout:15000});
   checks.echo_round_trip=true;checks.message_count=await page.getByText('Echo: '+prompt,{exact:true}).count()===1;
   await page.getByRole('button',{name:'设置',exact:true}).click();
-  await page.getByRole('button',{name:prompt,exact:true}).click();
+  await page.getByRole('button',{name:'返回对话',exact:true}).click();
   checks.one_global_stream=eventRequests===1;
   await page.reload();await page.getByText('Echo: '+prompt,{exact:true}).waitFor({timeout:15000});
   checks.refresh_keeps_local_authorization=true;

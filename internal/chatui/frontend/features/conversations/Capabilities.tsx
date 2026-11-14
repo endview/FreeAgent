@@ -3,6 +3,7 @@ import { WandSparkles } from "lucide-react";
 import type { CapabilityCatalog, CapabilitySelection } from "@/lib/api/types";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
+import { characterSelection } from "@/lib/presentation/capabilities.mjs";
 
 const labels = { skills: "Skill", mcp_servers: "MCP", extensions: "扩展" };
 export function Capabilities({
@@ -24,18 +25,29 @@ export function Capabilities({
     <Popover.Root>
       <Popover.Trigger aria-label="本轮能力" className="capabilities-button">
         <WandSparkles size={15} />
+        <span>
+          能力
+          {(selection.skills?.length || 0) +
+          (selection.mcp_servers?.length || 0) +
+          (selection.extensions?.length || 0)
+            ? ` · ${(selection.skills?.length || 0) + (selection.mcp_servers?.length || 0) + (selection.extensions?.length || 0)}`
+            : ""}
+        </span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
           className="capability-popover"
           sideOffset={10}
+          collisionPadding={12}
           align="end"
         >
-          <h2>本轮能力</h2>
+          <h2>对话能力</h2>
           <p>
             {busy
               ? "当前执行保持原快照；选择用于后续任务。"
-              : "选择本轮允许使用的能力。"}
+              : conversationID
+                ? "勾选后自动保存到此对话，后续消息沿用。"
+                : "选择本次新对话允许使用的能力。"}
           </p>
           {(Object.keys(labels) as (keyof typeof labels)[]).map((group) => (
             <section key={group}>
@@ -66,7 +78,7 @@ export function Capabilities({
                       }}
                     />
                     <span>
-                      {item.id}
+                      {("name" in item && item.name) || item.id}
                       {!item.enabled ? "（全局未启用）" : ""}
                     </span>
                   </label>
@@ -150,21 +162,44 @@ function VariantPicker({
 }) {
   const [choices, setChoices] = useState<{ id: string; label: string }[]>([]),
     [error, setError] = useState("");
+  const [defaultID, setDefaultID] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const id = "cc.endview.affectweave";
   useEffect(() => {
     const controller = new AbortController();
-    api<{ choices: { id: string; label: string }[] }>(
-      `extensions/${id}/state?conversation_id=${encodeURIComponent(conversationID)}`,
-      undefined,
-      undefined,
-      controller.signal,
-    )
-      .then((r) => setChoices(r.choices || []))
+    setLoaded(false);
+    setError("");
+    Promise.all([
+      api<{ choices: { id: string; label: string }[] }>(
+        `extensions/${id}/state?conversation_id=${encodeURIComponent(conversationID)}`,
+        undefined,
+        undefined,
+        controller.signal,
+      ),
+      api<{ settings?: { role_id?: string } }>(
+        `extensions/${id}/view`,
+        undefined,
+        undefined,
+        controller.signal,
+      ),
+    ])
+      .then(([r, config]) => {
+        if (!controller.signal.aborted) {
+          setChoices(r.choices || []);
+          setDefaultID(config.settings?.role_id || "");
+          setLoaded(true);
+        }
+      })
       .catch((e) => {
         if (!controller.signal.aborted) setError(e.message);
       });
     return () => controller.abort();
   }, [conversationID]);
+  const effective = characterSelection(
+    choices,
+    selection.extension_variants?.[id],
+    defaultID,
+  );
   return (
     <section>
       <h3>AffectWeave 人物</h3>
@@ -180,7 +215,13 @@ function VariantPicker({
             onChange({ ...selection, extension_variants: variants });
           }}
         >
-          <option value="">使用扩展默认人物</option>
+          <option value="">
+            {!loaded
+              ? "正在读取默认人物…"
+              : defaultID
+                ? `使用扩展默认：${choices.find((c) => c.id === defaultID)?.label || "此空间不可用"}`
+                : "未设置默认人物（不会注入）"}
+          </option>
           {choices.map((c) => (
             <option key={c.id} value={c.id}>
               {c.label}
@@ -188,6 +229,13 @@ function VariantPicker({
           ))}
         </select>
       </label>
+      {loaded && (
+        <p className={effective.ready ? "form-hint" : "inline-warning"}>
+          {effective.ready
+            ? `后续消息使用「${effective.label}」。人物选择自动保存在此对话。`
+            : "扩展已选中，但当前没有可用人物。请在上方选择，或在扩展设置中配置默认人物。"}
+        </p>
+      )}
       {error && <p className="inline-error">{error}</p>}
     </section>
   );

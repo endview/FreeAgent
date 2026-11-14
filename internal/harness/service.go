@@ -891,6 +891,9 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 		request.Tools, request.Extensions = nil, nil
 		if request.Purpose == "" {
 			request.Tools = service.passiveDefinitions()
+			// These uses describe already prepared passive context, not Host
+			// permissions. Keep its provenance in the persisted request.
+			request.Extensions = append([]ExtensionUse(nil), service.extensionUses...)
 		}
 		request.DenyOperations = true
 	}
@@ -1705,7 +1708,7 @@ func validateModelRequest(config ModelConfig, request ModelRequest) error {
 		return err
 	}
 	if request.DenyOperations {
-		if len(request.Extensions) != 0 || len(request.Tools) > 0 && (request.Purpose != "" || !controlOnlyDefinitions(request.Tools)) {
+		if request.Purpose != "" && len(request.Extensions) != 0 || len(request.Tools) > 0 && (request.Purpose != "" || !controlOnlyDefinitions(request.Tools)) {
 			return ErrModelCapability
 		}
 		replyCalls := map[string]bool{}

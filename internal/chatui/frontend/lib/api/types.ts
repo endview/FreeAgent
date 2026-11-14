@@ -43,6 +43,14 @@ export interface ToolReceipt {
   detail?: string;
 }
 export interface Activity {
+  extensions?: {
+    source: string;
+    name: string;
+    label?: string;
+    version?: string;
+    bytes: number;
+    chars?: number;
+  }[];
   requested_reasoning?: ReasoningSelection;
   usage?: {
     input_tokens: number;

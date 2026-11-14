@@ -80,6 +80,8 @@ export default function RuntimeSettings({ section }: { section: string }) {
 function Editor({ initial, section }: { initial: Settings; section: string }) {
   const draftID = `settings:${section}`;
   const [value, change] = useFormDraft<Settings>(draftID, initial);
+  const [saved, setSaved] = useState(initial);
+  const dirty = JSON.stringify(value) !== JSON.stringify(saved);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [result, setResult] = useState("");
@@ -187,6 +189,7 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
         "PATCH",
       );
       change(next);
+      setSaved(next);
       clearFormDraft(draftID);
       await loadEnvironment();
       setResult("设置已保存。新任务使用新配置，已有任务保留自己的执行快照。");
@@ -718,7 +721,10 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
           </>
         )}
         <Result error={error} text={result} />
-        <div className="provider-actions">
+        <div className="provider-actions settings-savebar">
+          <span>
+            {busy ? "正在保存…" : dirty ? "有未保存的修改" : "与已保存设置一致"}
+          </span>
           <Button type="submit">{busy ? "正在保存…" : "保存设置"}</Button>
           {error && (
             <Button
@@ -729,6 +735,7 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
                 try {
                   const next = await api<Settings>("settings");
                   change(next);
+                  setSaved(next);
                   clearFormDraft(draftID);
                   setRoots((next.file_access.allowed_roots || []).join("\n"));
                   setBlocked(

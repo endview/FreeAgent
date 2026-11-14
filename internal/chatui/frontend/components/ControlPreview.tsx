@@ -6,6 +6,7 @@ import type { Confirmation } from "@/lib/api/types";
 
 import type { ControlOperation as Operation } from "@/lib/api/types";
 import { decodeControlOperation } from "@/lib/api/decode";
+import { notify } from "@/lib/store/runtime";
 export function ControlPreview({
   kind,
   arguments: args,
@@ -122,6 +123,7 @@ export function ControlPreview({
           throw failure;
       }
       setOperation(null);
+      notify(approved ? "变更已保存并确认。" : "已拒绝，设置未更改。");
       if (approved && decidedSignature === currentSignature.current)
         await onSaved();
       else if (!approved) onRejected?.();

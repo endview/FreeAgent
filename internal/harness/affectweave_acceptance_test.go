@@ -265,6 +265,9 @@ func TestAffectWeavePassiveContextInNoneDoesNotGrantTools(t *testing.T) {
 		if len(r.Tools) != 0 || !r.DenyOperations {
 			t.Error("passive state granted tools")
 		}
+		if len(r.Extensions) != 1 || r.Extensions[0].Name != affectExtensionID || r.Extensions[0].Bytes == 0 {
+			t.Error("passive context lost actual use provenance")
+		}
 		found := false
 		for _, m := range r.Messages {
 			if strings.Contains(m.Content, "Precise engineering partner") {
@@ -279,5 +282,9 @@ func TestAffectWeavePassiveContextInNoneDoesNotGrantTools(t *testing.T) {
 	result, err := tasks.Submit(t.Context(), conversation(t, core), "none-character", "Hello")
 	if err != nil || result.Run.Status != "completed" || calls != 1 {
 		t.Fatal(result, err, calls)
+	}
+	view, err := tasks.Chat(t.Context(), result.Run.ConversationID, "")
+	if err != nil || len(view.Turns) != 1 || len(view.Turns[0].Activity[0].Extensions) != 1 {
+		t.Fatal("passive context use is not visible after persistence", err)
 	}
 }

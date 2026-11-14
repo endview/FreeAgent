@@ -21,12 +21,15 @@ one-time follow-ups. See [current validation](docs/VALIDATION_V8_5_2026-11-08.md
 [experience summary](docs/EXPERIENCE_SUMMARY.md). The published release link
 above remains unchanged; upgrading does not enable autonomous sending.
 
-The current workspace is **v8.8.0-dev.2**. Conversation records, summaries and
+The current workspace is **v8.8.0-dev.3**. Conversation records, summaries and
 history reads share one authorized projection. Channel receipts no longer
 duplicate model replies; large tool results have bounded previews with exact
 history readback. Model windows, HTTP bytes and summary targets are separate,
 and automatic scheduling is independent of the automatic/manual target.
 Existing provider presets, reasoning controls and confirmation rules remain.
+The workbench now distinguishes saved capability configuration from actual
+request use and adapts settings, drawers and dialogs to different viewport
+ratios; see [Web interaction changes](docs/WEB_INTERACTION_CLARITY_2026-11-15.md).
 See [context management](docs/CONTEXT_MANAGEMENT.md) and
 [record sources](docs/CONTEXT_RECORD_SOURCES.md). Earlier native-provider
 acceptance boundaries remain in the [v8.8 record](docs/VALIDATION_V8_8_2026-11-09.md).

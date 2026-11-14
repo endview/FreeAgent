@@ -373,7 +373,7 @@ export default function App() {
     );
   return (
     <div
-      className="app"
+      className={`app ${view === "settings" ? "app-settings" : ""}`}
       style={
         {
           "--sidebar-width": side + "px",
@@ -412,6 +412,14 @@ export default function App() {
       <main className="workspace">
         <header className="workspace-header">
           <div className="breadcrumb">
+            {view === "settings" && (
+              <button
+                className="settings-return"
+                onClick={() => openChat(state.selected).catch(report)}
+              >
+                返回对话
+              </button>
+            )}
             <button
               ref={menuButton}
               className="mobile-menu"
@@ -471,7 +479,7 @@ export default function App() {
                 <Pencil size={16} />
               </button>
             )}
-            {selected && (
+            {selected && view === "chat" && (
               <button
                 aria-label={selected.pinned ? "取消置顶" : "置顶对话"}
                 onClick={() =>

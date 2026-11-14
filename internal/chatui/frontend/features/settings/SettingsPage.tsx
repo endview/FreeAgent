@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Search } from "lucide-react";
 import Providers from "./Providers";
 import RuntimeSettings from "./RuntimeSettings";
 import {
@@ -18,6 +18,20 @@ import GeneralSettings from "./GeneralSettings";
 import AdvancedSettings from "./AdvancedSettings";
 import DeliverySettings from "./DeliverySettings";
 import type { ViewPreferences } from "@/lib/platform";
+const scopes: Record<string, [string, string]> = {
+  general: ["当前客户端", "外观与布局即时保存，仅影响当前客户端。"],
+  spaces: ["所选空间", "管理空间和会话。授权与当前选中的空间分别保存。"],
+  memory: ["按条目范围", "每条内容有自己的可见范围；固定与会话选择分别生效。"],
+  extensions: [
+    "扩展与会话",
+    "全局启用决定扩展是否可用；当前对话选择决定是否参与回答。",
+  ],
+  sessions: ["当前 Owner", "查看正在运行的后台命令；停止操作会影响对应进程。"],
+  channels: ["所选渠道", "连接、准入和空间权限分别设置。"],
+  delivery: ["所选目标", "只向明确授权的目标投递，主动规则单独开启。"],
+  data: ["当前数据目录", "状态来自当前 Core，备份与恢复各自单独执行。"],
+  diagnosis: ["当前 Core", "检查当前运行环境与连接状态。"],
+};
 const groups = [
   {
     title: "工作台",
@@ -67,6 +81,23 @@ export default function SettingsPage({
   onPreferences: (value: ViewPreferences) => void;
 }) {
   const [detail, setDetail] = useState(false);
+  const [query, setQuery] = useState("");
+  const content = useRef<HTMLElement>(null);
+  useEffect(() => {
+    content.current?.scrollTo({ top: 0 });
+  }, [section]);
+  const [scope, scopeHint] = scopes[section] || [
+    "Core 默认设置",
+    "保存后用于后续任务；正在执行的任务保留已采用的配置。",
+  ];
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      entries: group.entries.filter(([, name]) =>
+        name.toLowerCase().includes(query.trim().toLowerCase()),
+      ),
+    }))
+    .filter((group) => group.entries.length);
   const title =
     groups
       .flatMap((item) => item.entries)
@@ -75,13 +106,23 @@ export default function SettingsPage({
     <div className={`settings-layout ${detail ? "mobile-detail-active" : ""}`}>
       <nav className="settings-nav" aria-label="设置分类">
         <h1>设置</h1>
-        {groups.map((group) => (
+        <label className="settings-search">
+          <Search size={15} aria-hidden="true" />
+          <input
+            aria-label="查找设置"
+            placeholder="查找设置…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        {visibleGroups.map((group) => (
           <section key={group.title}>
             <h2>{group.title}</h2>
             {group.entries.map(([id, name]) => (
               <button
                 key={id}
                 className={section === id ? "selected" : ""}
+                aria-current={section === id ? "page" : undefined}
                 onClick={() => {
                   onSection(id);
                   setDetail(true);
@@ -92,16 +133,18 @@ export default function SettingsPage({
             ))}
           </section>
         ))}
+        {!visibleGroups.length && <p className="form-hint">没有匹配的设置。</p>}
       </nav>
-      <section className="settings-detail">
+      <section className="settings-detail" ref={content} aria-label={title}>
         <button className="settings-back" onClick={() => setDetail(false)}>
-          <ChevronRight size={14} />
+          <ArrowLeft size={14} aria-hidden="true" />
           返回设置列表
         </button>
         <div className="settings-heading">
           <h1>{title}</h1>
-          <span className="scope-label">全局设置</span>
+          <span className="scope-label">{scope}</span>
         </div>
+        <p className="settings-scope-hint">{scopeHint}</p>
         {section === "advanced" ? (
           <AdvancedSettings />
         ) : section === "general" ? (

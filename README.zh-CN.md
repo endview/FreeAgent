@@ -12,7 +12,7 @@ TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
 本批按 [v8.3.1–v8.5 实施计划](docs/FREEAGENT_V8_3_1_TO_V8_5_CHANNEL_REASONING_EXPERIENCE_PLAN_2026-11-07.md) 推进。
 
-当前工作区为 **v8.8.0-dev.2**：对话、摘要和历史回读共用授权投影，渠道回执不再重复注入回答；大工具结果采用可回读的有界预览。模型窗口、HTTP 字节和摘要目标分别管理，自动压缩开关与自动/手动目标独立。已有 Provider、思考设置和确认规则继续复用，Core 不增加扩展业务职责。见[上下文管理](docs/CONTEXT_MANAGEMENT.md)和[记录来源](docs/CONTEXT_RECORD_SOURCES.md)；此前的原生 Provider 验收边界保留在[v8.8 记录](docs/VALIDATION_V8_8_2026-11-09.md)。GitHub 下载链接仍指向已发布版本。
+当前工作区为 **v8.8.0-dev.3**：对话、摘要和历史回读共用授权投影，渠道回执不再重复注入回答；大工具结果采用可回读的有界预览。模型窗口、HTTP 字节和摘要目标分别管理，自动压缩开关与自动/手动目标独立。已有 Provider、思考设置和确认规则继续复用，Core 不增加扩展业务职责。本版同时整理设置布局、人物状态与保存反馈，见[Web 交互修正](docs/WEB_INTERACTION_CLARITY_2026-11-15.md)。见[上下文管理](docs/CONTEXT_MANAGEMENT.md)和[记录来源](docs/CONTEXT_RECORD_SOURCES.md)；此前的原生 Provider 验收边界保留在[v8.8 记录](docs/VALIDATION_V8_8_2026-11-09.md)。GitHub 下载链接仍指向已发布版本。
 
 v8.6 的轻内核整改保持：经验方法使用可选来源分析 Skill；扩展状态采用中性信封、明确作用域和声明 schema；Telegram 格式与平台动作由独立渠道程序提供。开发继续遵循[扩展原则](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md)。
 

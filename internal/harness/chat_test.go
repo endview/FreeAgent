@@ -30,6 +30,40 @@ func TestChatStateFixtures(t *testing.T) {
 	}
 }
 
+func TestChatReportsActualExtensionContextPerAttempt(t *testing.T) {
+	service, _, _ := testHarness(t, EchoModel{})
+	tasks := NewTaskService(service)
+	chat := conversation(t, service)
+	snapshot, err := service.snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, _, err := service.Store.CreateRun(t.Context(), chat, "context-use", "fixture input", snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ExtensionUse{{Source: "extension", Name: "com.example.context", Label: "Synthetic context", Version: "1", Bytes: 256}}
+	attempt, err := service.Store.startModel(t.Context(), run, string(mustJSON(ModelRequest{Messages: []ModelMessage{{Role: "user", Content: "fixture input"}}, Extensions: want})), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Store.saveModel(t.Context(), run, attempt, ModelResponse{Content: "finished"}); err != nil {
+		t.Fatal(err)
+	}
+	view, err := tasks.Chat(t.Context(), chat, "")
+	if err != nil || len(view.Turns) != 1 || len(view.Turns[0].Activity) != 1 || !reflect.DeepEqual(view.Turns[0].Activity[0].Extensions, want) {
+		t.Fatal("actual request context unavailable", err)
+	}
+	// A later ordinary request must not inherit an earlier attachment badge.
+	if _, err = tasks.Submit(t.Context(), chat, "plain-context-use", "next input"); err != nil {
+		t.Fatal(err)
+	}
+	view, err = tasks.Chat(t.Context(), chat, "")
+	if err != nil || len(view.Turns) != 2 || len(view.Turns[1].Activity[0].Extensions) != 0 {
+		t.Fatal("stale extension use leaked into a later turn", err)
+	}
+}
+
 func TestChatProjectionBoundedPresentationExactRawAndScope(t *testing.T) {
 	answer := strings.Repeat("中文公式", 20000)
 	service, _, _ := testHarness(t, modelFunc(func(context.Context, ModelRequest, func(string)) (ModelResponse, error) {

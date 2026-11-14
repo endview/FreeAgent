@@ -1,7 +1,8 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api, apiText, remote } from "@/lib/api/client";
 import { loadEnvironment } from "@/lib/store/runtime";
 import { clearFormDraft } from "@/lib/drafts";
+import { extensionStatus } from "@/lib/presentation/capabilities.mjs";
 import type { ExtensionTurnSetting } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/Choice";
@@ -43,6 +44,8 @@ interface Skill {
   files?: { path: string }[];
 }
 interface Extension {
+  storage?: string;
+  error?: string;
   turn_settings?: ExtensionTurnSetting[];
   storage_ready?: boolean;
   id: string;
@@ -532,32 +535,38 @@ export function ExtensionSettings() {
       <p className="settings-intro">
         扩展按需启动。停用保留数据；启用扩展不会扩大工具权限。
       </p>
-      <form
-        className="inline-form"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setError("");
-          try {
-            const item = await api<Extension>("extensions", { path });
-            await reload();
-            setSelected(item.id);
-            setPath("");
-          } catch (error) {
-            setError((error as Error).message);
-          }
-        }}
+      <details
+        className="extension-import"
+        open={resource.value.extensions.length === 0}
       >
-        <Field label="扩展文件夹绝对路径（Core 所在机器）">
-          <input
-            required
-            value={path}
-            onChange={(event) => setPath(event.target.value)}
-          />
-        </Field>
-        <Button type="submit" variant="outline" disabled={!path.trim()}>
-          导入扩展
-        </Button>
-      </form>
+        <summary>导入新的扩展</summary>
+        <form
+          className="inline-form"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setError("");
+            try {
+              const item = await api<Extension>("extensions", { path });
+              await reload();
+              setSelected(item.id);
+              setPath("");
+            } catch (error) {
+              setError((error as Error).message);
+            }
+          }}
+        >
+          <Field label="扩展文件夹绝对路径（Core 所在机器）">
+            <input
+              required
+              value={path}
+              onChange={(event) => setPath(event.target.value)}
+            />
+          </Field>
+          <Button type="submit" variant="outline" disabled={!path.trim()}>
+            导入扩展
+          </Button>
+        </form>
+      </details>
       <Result error={error} />
       <div className="providers-layout">
         <nav className="provider-list" aria-label="扩展列表">
@@ -568,7 +577,7 @@ export function ExtensionSettings() {
               onClick={() => setSelected(item.id)}
             >
               <strong>{item.name || item.id}</strong>
-              <small>{item.state || "已关闭"}</small>
+              <small>{extensionStatus(item).label}</small>
             </button>
           ))}
         </nav>
@@ -598,7 +607,26 @@ function ExtensionEditor({
   const [form, change] = useFormDraft(draftID, {
     settings: JSON.stringify(item.settings || {}, null, 2),
     envFrom: JSON.stringify(item.env_from || {}, null, 2),
+    settingsBase: JSON.stringify(item.settings || {}, null, 2),
+    envBase: JSON.stringify(item.env_from || {}, null, 2),
   });
+  const status = extensionStatus(item);
+  const settingsJSON = JSON.stringify(item.settings || {}, null, 2);
+  const envJSON = JSON.stringify(item.env_from || {}, null, 2);
+  const dirty =
+    form.settings !== form.settingsBase || form.envFrom !== form.envBase;
+  useEffect(() => {
+    if (
+      !dirty &&
+      (settingsJSON !== form.settingsBase || envJSON !== form.envBase)
+    )
+      change({
+        settings: settingsJSON,
+        envFrom: envJSON,
+        settingsBase: settingsJSON,
+        envBase: envJSON,
+      });
+  }, [settingsJSON, envJSON]);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [result, setResult] = useState(""),
@@ -628,8 +656,31 @@ function ExtensionEditor({
       <h2>{item.name || item.id}</h2>
       <p>{item.description}</p>
       <p className="form-hint">
-        {item.state} · {item.version} · {item.source}
+        {item.version} · {item.source === "user" ? "已安装扩展" : "工作区扩展"}
       </p>
+      <div className={`capability-status capability-status-${status.tone}`}>
+        <strong>{status.label}</strong>
+        <p>{status.detail}</p>
+      </div>
+      <fieldset disabled={busy}>
+        <div className="setting-line">
+          <div>
+            <span>全局启用</span>
+            <small className="form-hint">
+              开关立即保存；不会自动开启分析或主动发送。
+            </small>
+          </div>
+          <Toggle
+            label="启用扩展"
+            checked={item.enabled}
+            onChange={(enabled) =>
+              void perform(async () => {
+                await api(prefix + "/update", { enabled });
+              })
+            }
+          />
+        </div>
+      </fieldset>
       {item.id === "cc.endview.affectweave" && (
         <Suspense fallback={<Loading />}>
           <AffectWeavePage
@@ -641,183 +692,242 @@ function ExtensionEditor({
           />
         </Suspense>
       )}
-      <fieldset disabled={busy}>
-        <div className="setting-line">
-          <span>全局启用</span>
-          <Toggle
-            label="启用扩展"
-            checked={item.enabled}
-            onChange={(enabled) =>
-              void perform(async () => {
-                await api(prefix + "/update", { enabled });
-              })
-            }
-          />
-        </div>
-        <label className="check-line">
-          <input
-            type="checkbox"
-            checked={item.required}
-            onChange={(event) =>
-              void perform(async () => {
-                await api(prefix + "/update", {
-                  required: event.target.checked,
-                });
-              })
-            }
-          />
-          扩展失败时阻止本轮
-        </label>
-        {item.source === "workspace" && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (
-                window.confirm(
-                  item.workspace_trusted
-                    ? "取消信任当前工作区扩展？"
-                    : "信任此工作区扩展？启用后会运行其中的程序。",
-                )
-              )
+      <details
+        className="settings-section extension-advanced"
+        open={item.id !== "cc.endview.affectweave"}
+      >
+        <summary>扩展运行与高级配置</summary>
+        <p className="form-hint">
+          程序、原始配置与故障处理。人物设置在上方单独保存。
+        </p>
+        <fieldset disabled={busy}>
+          <label className="check-line">
+            <input
+              type="checkbox"
+              checked={item.required}
+              onChange={(event) =>
                 void perform(async () => {
-                  await api("extensions/trust", {
-                    trusted: !item.workspace_trusted,
+                  await api(prefix + "/update", {
+                    required: event.target.checked,
                   });
-                });
-            }}
-          >
-            {item.workspace_trusted ? "取消信任工作区" : "信任工作区"}
-          </Button>
-        )}
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void perform(async () => {
-              await api(prefix + "/update", {
-                settings: objectJSON(form.settings, "设置"),
-                env_from: objectJSON(form.envFrom, "环境变量映射"),
-              });
-              clearFormDraft(draftID);
-              setResult("扩展配置已保存。");
-            });
-          }}
-        >
-          {item.enabled &&
-            item.turn_settings?.map((field) => (
-              <Field key={field.key} label={`${field.label}（扩展默认）`}>
-                <select
-                  aria-label={`${item.name}：默认${field.label}`}
-                  disabled={!settings}
-                  value={String(settings?.[field.key] || "")}
-                  onChange={(event) => {
-                    const next = { ...settings };
-                    if (event.target.value)
-                      next[field.key] = event.target.value;
-                    else delete next[field.key];
-                    change({
-                      ...form,
-                      settings: JSON.stringify(next, null, 2),
-                    });
-                  }}
-                >
-                  <option value="">使用扩展内置默认</option>
-                  {field.options.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            ))}
-          <Field label="扩展设置（JSON）">
-            <textarea
-              rows={7}
-              disabled={!item.available}
-              value={form.settings}
-              onChange={(event) =>
-                change({ ...form, settings: event.target.value })
-              }
-            />
-          </Field>
-          <Field
-            label="环境变量映射（JSON）"
-            hint="只引用已有变量名，不直接填写秘密。"
-          >
-            <textarea
-              rows={4}
-              disabled={!item.available}
-              value={form.envFrom}
-              onChange={(event) =>
-                change({ ...form, envFrom: event.target.value })
-              }
-            />
-          </Field>
-          <div className="provider-actions">
-            <Button type="submit" disabled={!item.available}>
-              保存扩展配置
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                void perform(async () => {
-                  await api(prefix + "/restart", {});
-                  setResult("扩展已重启。");
                 })
               }
+            />
+            扩展失败时阻止本轮
+          </label>
+          {item.source === "workspace" && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    item.workspace_trusted
+                      ? "取消信任当前工作区扩展？"
+                      : "信任此工作区扩展？启用后会运行其中的程序。",
+                  )
+                )
+                  void perform(async () => {
+                    await api("extensions/trust", {
+                      trusted: !item.workspace_trusted,
+                    });
+                  });
+              }}
             >
-              重启
+              {item.workspace_trusted ? "取消信任工作区" : "信任工作区"}
+            </Button>
+          )}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void perform(async () => {
+                const latest = (
+                  await api<{ extensions: Extension[] }>("extensions")
+                ).extensions.find((entry) => entry.id === item.id);
+                if (
+                  !latest ||
+                  JSON.stringify(latest.settings || {}, null, 2) !==
+                    form.settingsBase ||
+                  JSON.stringify(latest.env_from || {}, null, 2) !==
+                    form.envBase
+                )
+                  throw new Error(
+                    "扩展配置已在其他入口修改。请先读取最新配置，再合并此处草稿。",
+                  );
+                const saved = await api<Extension>(prefix + "/update", {
+                  settings: objectJSON(form.settings, "设置"),
+                  env_from: objectJSON(form.envFrom, "环境变量映射"),
+                });
+                const nextSettings = JSON.stringify(
+                    saved.settings || {},
+                    null,
+                    2,
+                  ),
+                  nextEnv = JSON.stringify(saved.env_from || {}, null, 2);
+                change({
+                  settings: nextSettings,
+                  envFrom: nextEnv,
+                  settingsBase: nextSettings,
+                  envBase: nextEnv,
+                });
+                clearFormDraft(draftID);
+                setResult("扩展配置已保存。");
+              });
+            }}
+          >
+            {item.enabled &&
+              item.turn_settings?.map((field) => (
+                <Field key={field.key} label={`${field.label}（扩展默认）`}>
+                  <select
+                    aria-label={`${item.name}：默认${field.label}`}
+                    disabled={!settings}
+                    value={String(settings?.[field.key] || "")}
+                    onChange={(event) => {
+                      const next = { ...settings };
+                      if (event.target.value)
+                        next[field.key] = event.target.value;
+                      else delete next[field.key];
+                      change({
+                        ...form,
+                        settings: JSON.stringify(next, null, 2),
+                      });
+                    }}
+                  >
+                    <option value="">使用扩展内置默认</option>
+                    {field.options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ))}
+            <Field label="扩展设置（JSON）">
+              <textarea
+                rows={7}
+                disabled={!item.available}
+                value={form.settings}
+                onChange={(event) =>
+                  change({ ...form, settings: event.target.value })
+                }
+              />
+            </Field>
+            <Field
+              label="环境变量映射（JSON）"
+              hint="只引用已有变量名，不直接填写秘密。"
+            >
+              <textarea
+                rows={4}
+                disabled={!item.available}
+                value={form.envFrom}
+                onChange={(event) =>
+                  change({ ...form, envFrom: event.target.value })
+                }
+              />
+            </Field>
+            <div className="provider-actions">
+              <span className="form-hint">
+                {dirty ? "有未保存的修改" : "与已保存配置一致"}
+              </span>
+              <Button type="submit" disabled={!item.available}>
+                保存扩展配置
+              </Button>
+              {dirty && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    if (
+                      window.confirm("放弃这份高级配置草稿，读取已保存的值？")
+                    ) {
+                      void perform(async () => {
+                        const latest = await api<Extension>(prefix + "/view");
+                        const savedSettings = JSON.stringify(
+                            latest.settings || {},
+                            null,
+                            2,
+                          ),
+                          savedEnv = JSON.stringify(
+                            latest.env_from || {},
+                            null,
+                            2,
+                          );
+                        change({
+                          settings: savedSettings,
+                          envFrom: savedEnv,
+                          settingsBase: savedSettings,
+                          envBase: savedEnv,
+                        });
+                        clearFormDraft(draftID);
+                      });
+                    }
+                  }}
+                >
+                  读取已保存配置
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  void perform(async () => {
+                    await api(prefix + "/restart", {});
+                    setResult("扩展已重启。");
+                  })
+                }
+              >
+                重启
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={remote}
+                onClick={() =>
+                  void perform(async () =>
+                    setLogs(await apiText(prefix + "/logs")),
+                  )
+                }
+              >
+                {remote ? "日志请在本机查看" : "日志"}
+              </Button>
+            </div>
+          </form>
+          <div className="settings-section">
+            <Button
+              variant="ghost"
+              disabled={item.source !== "user" || item.enabled || item.required}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "移除此已停用的用户扩展？扩展持久数据保留；工作区扩展请在原目录管理。",
+                  )
+                )
+                  void perform(async () => {
+                    await api(prefix + "/delete", {});
+                    setResult("扩展已移除，持久数据保留。");
+                  });
+              }}
+            >
+              移除扩展
             </Button>
             <Button
-              type="button"
               variant="ghost"
-              disabled={remote}
-              onClick={() =>
-                void perform(async () =>
-                  setLogs(await apiText(prefix + "/logs")),
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "清空此扩展的全部持久数据？此操作不可撤销，请先备份。",
+                  )
                 )
-              }
+                  void perform(async () => {
+                    await api(prefix + "/clear-data", {});
+                    setResult("扩展数据已清空。");
+                  });
+              }}
             >
-              {remote ? "日志请在本机查看" : "日志"}
+              清空扩展数据
             </Button>
           </div>
-        </form>
-        <div className="settings-section">
-          <Button
-            variant="ghost"
-            disabled={item.source !== "user" || item.enabled || item.required}
-            onClick={() => {
-              if (
-                window.confirm(
-                  "移除此已停用的用户扩展？扩展持久数据保留；工作区扩展请在原目录管理。",
-                )
-              )
-                void perform(async () => {
-                  await api(prefix + "/delete", {});
-                  setResult("扩展已移除，持久数据保留。");
-                });
-            }}
-          >
-            移除扩展
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              if (
-                window.confirm(
-                  "清空此扩展的全部持久数据？此操作不可撤销，请先备份。",
-                )
-              )
-                void perform(async () => {
-                  await api(prefix + "/clear-data", {});
-                  setResult("扩展数据已清空。");
-                });
-            }}
-          >
-            清空扩展数据
-          </Button>
-        </div>
-      </fieldset>
+        </fieldset>
+      </details>
       <Result error={error} text={result} />
       {logs && <pre className="settings-output">{logs}</pre>}
     </>
