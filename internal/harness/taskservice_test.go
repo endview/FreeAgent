@@ -350,8 +350,8 @@ func TestDurableCompactionKeepsGroupsSourcesAndOriginalRecords(t *testing.T) {
 				if !strings.HasPrefix(request.Messages[0].Content, executionInvariant) {
 					t.Fatal("compaction dropped execution constraints")
 				}
-				if !strings.Contains(message.Content, "Covered through message") || !strings.Contains(message.Content, "SHA-256") {
-					t.Fatal("recap lost provenance")
+				if !strings.Contains(message.Content, "Covered through message") || !strings.Contains(message.Content, "context_manage") || strings.Contains(message.Content, "SHA-256") {
+					t.Fatal("recap must expose readable source references, not internal integrity digests")
 				}
 			}
 			for _, call := range message.ToolCalls {

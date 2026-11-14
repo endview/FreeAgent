@@ -57,7 +57,7 @@ func (s *channelSession) receiveFiles(ctx context.Context, e channelEvent, input
 	}
 	defer tx.Rollback()
 	var raw string
-	if err := tx.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE id=$1 AND conversation_id=$2 AND run_id IS NULL`, input.MessageID, input.ConversationID).Scan(&raw); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT body_json FROM `+conversationRecords+` WHERE id=$1 AND conversation_id=$2 AND run_id IS NULL`, input.MessageID, input.ConversationID).Scan(&raw); err != nil {
 		return err
 	}
 	var body ModelMessage
@@ -211,7 +211,7 @@ func (s *channelSession) sendFileReceipt(ctx context.Context, chat, binding stri
 			return errors.Join(sendErr, saveErr, err)
 		}
 		body := ModelMessage{Role: "assistant", Content: "[Delivered file: " + ref.Name + "]", Public: true, Attachments: []AttachmentRef{ref}, Channel: &ChannelMessageSource{ChannelTarget: target, MessageID: message, Purpose: "delivery"}}
-		if _, err := tx.ExecContext(persist, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3) ON CONFLICT(request_key) WHERE request_key!='' DO NOTHING`, chat, key, string(mustJSON(body))); err != nil {
+		if err := saveChannelReceipt(persist, tx, key, chat, "", "sent", &body); err != nil {
 			return errors.Join(sendErr, saveErr, err)
 		}
 		saveErr = errors.Join(saveErr, tx.Commit())
@@ -228,7 +228,7 @@ func (s *channelSession) saveReplyFile(ctx context.Context, e channelEvent, chat
 	}
 	// Only actual public reply text may be exported from a channel, including
 	// None. A private Run output is never substituted for a delivered message.
-	query := `SELECT body_json FROM fa.messages WHERE conversation_id=$1 AND (body_json #>> '{Role}')='assistant' AND ((body_json #>> '{Public}')::boolean)=true AND coalesce((body_json #>> '{Channel,purpose}'),'')!='command'`
+	query := `SELECT body_json FROM ` + conversationRecords + ` WHERE conversation_id=$1 AND (body_json #>> '{Role}')='assistant' AND ((body_json #>> '{Public}')::boolean)=true AND coalesce((body_json #>> '{Channel,purpose}'),'')!='command'`
 	args := []any{chat}
 	if e.ReplyTo != "" {
 		query += ` AND (body_json #>> '{Channel,message_id}')=$2`

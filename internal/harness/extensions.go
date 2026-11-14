@@ -2355,6 +2355,9 @@ func (host *extensionHost) prepare(ctx context.Context, id string, run Run, purp
 		input.Delivery = service.extensionDeliveryContext(run, id)
 	}
 	applyExtensionNeeds(&input, manifest.Needs, run, history, config.Workspace, input.DataDir)
+	if service != nil && input.Message != nil && service.extensionInputText != "" {
+		input.Message = map[string]any{"role": "user", "content": service.extensionInputText}
+	}
 	if manifest.State && service != nil {
 		input.Settings = extensionRunSettings(run, id, config)
 		input.Identity, err = service.extensionIdentity(callCtx, run)
@@ -2763,6 +2766,8 @@ func applyExtensionNeeds(input *extensionInput, needs []string, run Run, history
 		clean[i].ChatContinuation = nil
 		clean[i].ProviderItems = nil
 		clean[i].ProviderSource = ""
+		clean[i].ContextSource, clean[i].Readback, clean[i].ToolEvidence = nil, nil, nil
+		clean[i].Kind = ""
 	}
 	history = clean
 	input.Message, input.History, input.Workspace, input.ToolResults = nil, nil, "", nil

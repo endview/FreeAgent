@@ -68,6 +68,9 @@ func (service *Service) prepareCapabilityRequest(ctx context.Context, run Run, r
 }
 
 func (service *Service) prepareExtensionTurn(ctx context.Context, run Run, request ModelRequest) error {
+	if err := service.refreshExtensionInputCache(ctx, run); err != nil {
+		return err
+	}
 	if service.extensionPrepared {
 		return nil
 	}
@@ -231,7 +234,7 @@ func insertExtensionBlocks(messages []ModelMessage, blocks []ExtensionBlock) []M
 	}
 	var systemBlocks, tailBlocks []ModelMessage
 	for _, block := range blocks {
-		message := ModelMessage{Role: "user", Content: block.Text}
+		message := ModelMessage{Role: "user", Content: block.Text, ContextSource: &ContextSource{Part: "extensions"}}
 		if block.Label != "" {
 			message.Content = block.Label + ":\n" + message.Content
 		}
@@ -280,7 +283,7 @@ func appendStepExtensionBlocks(messages []ModelMessage, blocks []ExtensionBlock)
 		if block.Placement != "tail" {
 			continue
 		}
-		message := ModelMessage{Role: "user", Content: block.Text}
+		message := ModelMessage{Role: "user", Content: block.Text, ContextSource: &ContextSource{Part: "extensions"}}
 		if block.Label != "" {
 			message.Content = block.Label + ":\n" + message.Content
 		}

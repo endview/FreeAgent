@@ -21,40 +21,42 @@ const (
 )
 
 type Config struct {
-	Delivery         DeliveryConfig             `json:"delivery,omitempty,omitzero"`
-	PublicWeb        PublicWebConfig            `json:"public_web"`
-	Attachments      AttachmentPolicy           `json:"attachments"`
-	Server           ServerConfig               `json:"server,omitempty"`
-	Providers        map[string]bool            `json:"providers,omitempty"`
-	Channels         ChannelsConfig             `json:"channels,omitempty,omitzero"`
-	Version          int                        `json:"version"`
-	Models           map[string]ModelConfig     `json:"models"`
-	DefaultModel     string                     `json:"default_model"`
-	DefaultSelection string                     `json:"default_selection,omitempty"`
-	Auto             AutoConfig                 `json:"auto"`
-	Workspace        string                     `json:"workspace"`
-	HistoryPageSize  int                        `json:"history_page_size"`
-	MaxContextBytes  int                        `json:"max_context_bytes"`
-	MaxOutputTokens  int                        `json:"max_output_tokens"`
-	ModelRetries     int                        `json:"model_retries"`
-	MaxToolResult    int                        `json:"max_tool_result_bytes"`
-	TaskSummaryBytes int                        `json:"task_summary_bytes,omitempty"`
-	AutoCompactAt    int                        `json:"auto_compact_percent,omitempty"`
-	SystemPrompt     string                     `json:"system_prompt,omitempty"`
-	Instructions     []string                   `json:"instructions,omitempty"`
-	MCPServers       map[string]MCPServerConfig `json:"mcpServers,omitempty"`
-	Skills           SkillsConfig               `json:"skills,omitempty"`
-	Extensions       ExtensionsConfig           `json:"extensions,omitempty"`
-	Tools            BuiltinToolSettings        `json:"tools,omitempty"`
-	Commands         CommandConfig              `json:"commands"`
-	Execution        ExecutionSettings          `json:"execution,omitempty"`
-	ToolGeneration   string                     `json:"tool_generation,omitempty"`
-	ComputerFiles    bool                       `json:"computer_files,omitempty"`
-	ComputerRoots    []string                   `json:"computer_roots,omitempty"`
-	HTTP             HTTPConfig                 `json:"http"`
-	Collaboration    CollaborationSettings      `json:"collaboration"`
-	Memory           MemoryConfig               `json:"memory"`
-	instructionText  string
+	Delivery            DeliveryConfig             `json:"delivery,omitempty,omitzero"`
+	PublicWeb           PublicWebConfig            `json:"public_web"`
+	Attachments         AttachmentPolicy           `json:"attachments"`
+	Server              ServerConfig               `json:"server,omitempty"`
+	Providers           map[string]bool            `json:"providers,omitempty"`
+	Channels            ChannelsConfig             `json:"channels,omitempty,omitzero"`
+	Version             int                        `json:"version"`
+	Models              map[string]ModelConfig     `json:"models"`
+	DefaultModel        string                     `json:"default_model"`
+	DefaultSelection    string                     `json:"default_selection,omitempty"`
+	Auto                AutoConfig                 `json:"auto"`
+	Workspace           string                     `json:"workspace"`
+	HistoryPageSize     int                        `json:"history_page_size"`
+	MaxContextBytes     int                        `json:"max_context_bytes"`
+	MaxOutputTokens     int                        `json:"max_output_tokens"`
+	ModelRetries        int                        `json:"model_retries"`
+	MaxToolResult       int                        `json:"max_tool_result_bytes"`
+	TaskSummaryBytes    int                        `json:"task_summary_bytes,omitempty"`
+	AutomaticCompaction *bool                      `json:"automatic_compaction,omitempty"`
+	SummaryTargetMode   string                     `json:"summary_target_mode,omitempty"`
+	AutoCompactAt       int                        `json:"auto_compact_percent,omitempty"`
+	SystemPrompt        string                     `json:"system_prompt,omitempty"`
+	Instructions        []string                   `json:"instructions,omitempty"`
+	MCPServers          map[string]MCPServerConfig `json:"mcpServers,omitempty"`
+	Skills              SkillsConfig               `json:"skills,omitempty"`
+	Extensions          ExtensionsConfig           `json:"extensions,omitempty"`
+	Tools               BuiltinToolSettings        `json:"tools,omitempty"`
+	Commands            CommandConfig              `json:"commands"`
+	Execution           ExecutionSettings          `json:"execution,omitempty"`
+	ToolGeneration      string                     `json:"tool_generation,omitempty"`
+	ComputerFiles       bool                       `json:"computer_files,omitempty"`
+	ComputerRoots       []string                   `json:"computer_roots,omitempty"`
+	HTTP                HTTPConfig                 `json:"http"`
+	Collaboration       CollaborationSettings      `json:"collaboration"`
+	Memory              MemoryConfig               `json:"memory"`
+	instructionText     string
 }
 
 type ServerConfig struct {
@@ -207,28 +209,29 @@ func (model ModelConfig) EffectiveCapabilities() ModelCapabilities {
 
 func DefaultConfig(workspace string) Config {
 	return Config{
-		Version:          ConfigVersion,
-		Attachments:      DefaultAttachmentPolicy(),
-		PublicWeb:        DefaultPublicWebConfig(),
-		Models:           map[string]ModelConfig{},
-		Auto:             AutoConfig{MaxCandidates: 8, MaxAssessments: 1, MaxUpgrades: 1},
-		Collaboration:    DefaultCollaborationSettings(),
-		Memory:           defaultMemoryConfig(),
-		Workspace:        workspace,
-		HistoryPageSize:  40,
-		TaskSummaryBytes: 4096,
-		AutoCompactAt:    80,
-		MaxContextBytes:  128 << 10,
-		MaxOutputTokens:  4096,
-		ModelRetries:     2,
-		MaxToolResult:    64 << 10,
-		Commands:         CommandConfig{TimeoutSecs: 120, MaxOutput: 32768, Rules: defaultCommandRules(), Services: DefaultServicePolicy()},
-		Tools:            defaultBuiltinToolSettings(),
-		Execution:        defaultExecutionSettings(workspace),
-		ToolGeneration:   "1",
-		HTTP:             HTTPConfig{TimeoutSecs: 20, MaxOutput: 32768},
-		Extensions:       ExtensionsConfig{MaxContextChars: 16384, MaxModelCallsPerTurn: 10},
-		SystemPrompt:     "You are a concise local file assistant. Use tools when needed. Never claim a file was changed unless the tool result confirms it.",
+		Version:           ConfigVersion,
+		Attachments:       DefaultAttachmentPolicy(),
+		PublicWeb:         DefaultPublicWebConfig(),
+		Models:            map[string]ModelConfig{},
+		Auto:              AutoConfig{MaxCandidates: 8, MaxAssessments: 1, MaxUpgrades: 1},
+		Collaboration:     DefaultCollaborationSettings(),
+		Memory:            defaultMemoryConfig(),
+		Workspace:         workspace,
+		HistoryPageSize:   40,
+		TaskSummaryBytes:  4096,
+		SummaryTargetMode: "auto",
+		AutoCompactAt:     80,
+		MaxContextBytes:   128 << 10,
+		MaxOutputTokens:   4096,
+		ModelRetries:      2,
+		MaxToolResult:     64 << 10,
+		Commands:          CommandConfig{TimeoutSecs: 120, MaxOutput: 32768, Rules: defaultCommandRules(), Services: DefaultServicePolicy()},
+		Tools:             defaultBuiltinToolSettings(),
+		Execution:         defaultExecutionSettings(workspace),
+		ToolGeneration:    "1",
+		HTTP:              HTTPConfig{TimeoutSecs: 20, MaxOutput: 32768},
+		Extensions:        ExtensionsConfig{MaxContextChars: 16384, MaxModelCallsPerTurn: 10},
+		SystemPrompt:      "You are a concise local file assistant. Use tools when needed. Never claim a file was changed unless the tool result confirms it.",
 	}
 }
 
@@ -614,6 +617,12 @@ func (config Config) validate(requireWorkspace bool) error {
 	}
 	if config.TaskSummaryBytes < 0 || config.TaskSummaryBytes > 16384 {
 		return errors.New("harness: task_summary_bytes must be between 0 and 16384")
+	}
+	if config.SummaryTargetMode != "" && config.SummaryTargetMode != "auto" && config.SummaryTargetMode != "manual" {
+		return errors.New("harness: summary_target_mode must be auto or manual")
+	}
+	if config.SummaryTargetMode == "manual" && config.TaskSummaryBytes < 1 {
+		return errors.New("harness: manual summary target requires task_summary_bytes in 1..16384; automatic_compaction controls scheduling separately")
 	}
 	if config.AutoCompactAt != 0 && (config.AutoCompactAt < 50 || config.AutoCompactAt > 95) {
 		return errors.New("harness: auto_compact_percent must be between 50 and 95")

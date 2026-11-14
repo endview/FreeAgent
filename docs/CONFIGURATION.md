@@ -1,7 +1,8 @@
 # Configuration
 
-`init` writes `config.json`, `state.sqlite`, `instructions/` and `backups/` in a
-new empty data directory, with no models. `owner.lock` protects the sole
+`init` prepares `config.json` and the current PostgreSQL Store in a new empty
+data directory, with no models. PostgreSQL is bundled with portable packages;
+see [storage and connection details](POSTGRESQL.md). `owner.lock` protects the sole
 writer. It never probes old installations. Configuration version and store
 format are current-only; unsupported formats are rejected without migration.
 Key profiles are stored outside the data directory in `keys.json`; see
@@ -39,7 +40,9 @@ The initial config is the complete editable example. Important fields:
 | `auto_compact_percent` | 80 | Trigger at 50–95% of available input budget; output reserve is already deducted |
 | `models.<id>.capabilities.context_window_tokens` | 0 / unknown | Declared total model token window, with separate output/safety reserve |
 | `models.<id>.capabilities.context_window_source` | manual when declared | `manual` or `preset`, never inferred from a model list name |
-| `task_summary_bytes` | 4096 for new installs | 1–16384 enables automatic durable compaction. Existing missing/0 stays off; disabling retains saved summaries and manual operations |
+| `automatic_compaction` | absent | Explicit automatic-compaction switch; absent preserves legacy behavior (`task_summary_bytes > 0`). Manual operations remain available when off |
+| `summary_target_mode` | `auto` for new installs | `auto` uses a bounded token soft target and separate storage protection; `manual` applies `task_summary_bytes` as a hard byte limit. Missing mode retains the old manual policy |
+| `task_summary_bytes` | 4096 | Manual UTF-8 summary hard limit, 1–16384; old missing/0 keeps automatic scheduling off. Existing values are never inferred to be auto from their number |
 | `collaboration.mode` | `off` | `off`, `ask` or `auto`; optional foreground collaboration |
 | `collaboration.limits` | finite | Parent cumulative children/calls/output/concurrency/active seconds |
 | `collaboration.child_limits` | finite | Per-expert steps, active seconds and output bounds |
@@ -53,7 +56,7 @@ The initial config is the complete editable example. Important fields:
 | `memory.max_document_bytes` | 65536 | Explicit save/import body bound, 1024-65536 bytes |
 
 Local request bytes, declared model token windows, estimated input tokens and
-Provider-reported usage are separate quantities. See [context and continuous execution](CONTEXT_AND_CONTINUOUS_EXECUTION.md). Original history is never deleted by
+Provider-reported usage are separate quantities. See [context management](CONTEXT_MANAGEMENT.md). Original history is never deleted by
 trimming. Instructions are at most 16 simple filenames, each bounded UTF-8 text
 of at most 32 KiB. They cannot enable tools or grant permissions.
 

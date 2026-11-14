@@ -235,7 +235,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 	if count >= 20 {
 		return input, errors.New("harness: at most 20 pending inputs per conversation; input was not accepted")
 	}
-	message := ModelMessage{Role: "user", Content: command.Prompt, Attachments: refs, Deferred: true, Public: options.channel != nil}
+	message := ModelMessage{Kind: messageUser, Role: "user", Content: command.Prompt, Attachments: refs, Deferred: true, Public: options.channel != nil}
 	if options.channel != nil {
 		input.MessageID = options.channel.InputMessageID
 		var raw string
@@ -256,6 +256,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 			message.Channel = &source
 		}
 		message.Deferred = true
+		message.Kind = messageUser
 		message.Attachments = refs
 		if _, err := tx.ExecContext(ctx, `UPDATE fa.messages SET body_json=$1 WHERE id=$2 AND conversation_id=$3`, string(mustJSON(message)), input.MessageID, chat); err != nil {
 			return input, err

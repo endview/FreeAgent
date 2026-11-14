@@ -61,6 +61,7 @@ interface Settings extends Record<string, unknown> {
   };
   context: {
     automatic: boolean;
+    summary_target_mode: string;
     task_summary_bytes: number;
     auto_compact_percent: number;
     max_output_tokens: number;
@@ -170,9 +171,10 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
       } else if (section === "context") {
         path = "context";
         body = {
-          task_summary_bytes: value.context.automatic
-            ? value.context.task_summary_bytes || 4096
-            : 0,
+          automatic_compaction: value.context.automatic,
+          summary_target_mode:
+            value.context.summary_target_mode === "auto" ? "auto" : "manual",
+          task_summary_bytes: value.context.task_summary_bytes || 4096,
           auto_compact_percent: value.context.auto_compact_percent,
           max_output_tokens: value.context.max_output_tokens,
           max_context_bytes: value.context.max_context_bytes,
@@ -637,6 +639,29 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
               />
               自动压缩上下文
             </label>
+            <Field
+              label="摘要目标"
+              hint="自动按有效模型窗口计算软目标，并保留独立存储保护。关闭自动压缩只关闭自动调度，手动压缩仍可用。"
+            >
+              <Choice
+                label="摘要目标"
+                value={
+                  context.summary_target_mode === "auto" ? "auto" : "manual"
+                }
+                options={[
+                  ["auto", "自动目标"],
+                  [
+                    "manual",
+                    context.summary_target_mode === "legacy_manual"
+                      ? "手动上限（保留旧配置）"
+                      : "手动上限",
+                  ],
+                ]}
+                onChange={(mode) =>
+                  field("context", { ...context, summary_target_mode: mode })
+                }
+              />
+            </Field>
             <div className="form-grid">
               {(
                 [
@@ -653,6 +678,10 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
                     max={max}
                     step={1}
                     required
+                    disabled={
+                      id === "task_summary_bytes" &&
+                      context.summary_target_mode === "auto"
+                    }
                     value={
                       id === "task_summary_bytes" && !context[id]
                         ? 4096

@@ -80,26 +80,16 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 	source := nativeContinuationSource("responses", client.baseURL, client.key.ProfileID, client.model)
 	request.Messages = scopedProviderMessages(request.Messages, source)
 	config := ModelConfig{Provider: "openai-compatible", Model: client.model, Capabilities: client.caps}
-	if err := validateModelRequest(config, request); err != nil {
-		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
-	}
-	wire, err := responsesRequestFrom(request, client.model, client.caps.Streaming != "none", client.webSearch)
-	if err != nil {
-		return ModelResponse{}, err
-	}
 	selection := client.caps.Reasoning.Default
 	if request.Reasoning != nil {
 		selection = *request.Reasoning
 	}
-	_, effort, reasoningErr := config.reasoningParameters(selection)
-	if reasoningErr != nil {
-		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: reasoningErr.Error()}
+	if err := validateModelRequest(config, request); err != nil {
+		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
 	}
-	if effort != "" {
-		wire.Reasoning = &responsesReasoning{Effort: effort}
-	}
-	if client.model == "gpt-6.1-sol" {
-		wire.Include = []string{"reasoning.encrypted_content"}
+	wire, err := responsesRequestForCaps(request, client.model, client.caps, client.webSearch)
+	if err != nil {
+		return ModelResponse{}, err
 	}
 	body, err := json.Marshal(wire)
 	if err != nil {
@@ -193,6 +183,29 @@ type responsesTool struct {
 	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
+}
+
+func responsesRequestForCaps(request ModelRequest, model string, caps ModelCapabilities, webSearch bool) (responsesRequest, error) {
+	config := ModelConfig{Provider: "openai-compatible", Model: model, Capabilities: caps}
+	wire, err := responsesRequestFrom(request, model, caps.Streaming != "none", webSearch)
+	if err != nil {
+		return responsesRequest{}, err
+	}
+	selection := caps.Reasoning.Default
+	if request.Reasoning != nil {
+		selection = *request.Reasoning
+	}
+	_, effort, reasoningErr := config.reasoningParameters(selection)
+	if reasoningErr != nil {
+		return responsesRequest{}, &CallError{Certain: true, Category: "request", Message: reasoningErr.Error()}
+	}
+	if effort != "" {
+		wire.Reasoning = &responsesReasoning{Effort: effort}
+	}
+	if model == "gpt-6.1-sol" {
+		wire.Include = []string{"reasoning.encrypted_content"}
+	}
+	return wire, nil
 }
 
 func responsesRequestFrom(request ModelRequest, model string, stream, webSearch bool) (responsesRequest, error) {
@@ -324,6 +337,9 @@ type responsesAction struct {
 }
 
 type responsesUsage struct {
+	InputDetails *struct {
+		CachedTokens *int64 `json:"cached_tokens"`
+	} `json:"input_tokens_details"`
 	OutputDetails *struct {
 		ReasoningTokens *int64 `json:"reasoning_tokens"`
 	} `json:"output_tokens_details"`
@@ -663,6 +679,12 @@ func responsesUsageValue(usage *responsesUsage) (*ModelUsage, error) {
 		return nil, &CallError{Category: "protocol", Message: "invalid Responses usage"}
 	}
 	result := &ModelUsage{InputTokens: *usage.InputTokens, OutputTokens: *usage.OutputTokens, TotalTokens: *usage.TotalTokens}
+	if usage.InputDetails != nil {
+		result.CacheReadTokens = usage.InputDetails.CachedTokens
+	}
+	if err := checkCacheUsage(result); err != nil {
+		return nil, err
+	}
 	if usage.OutputDetails != nil && usage.OutputDetails.ReasoningTokens != nil {
 		tokens := *usage.OutputDetails.ReasoningTokens
 		if tokens < 0 || tokens > result.OutputTokens {

@@ -5,6 +5,15 @@ import "strings"
 // Status text is public transport output. Never copy arbitrary diagnostics,
 // which may contain private paths, request data or secrets, into this message.
 func channelRunStatus(run Run) string {
+	code := run.StopCode
+	if code == "" {
+		code = runStopCode(run.StopReason)
+	}
+	if run.Status != "unknown" && run.Status != "completed" && run.Status != "running" && run.Status != "waiting_confirmation" {
+		if message := contextStopText(code); message != "" {
+			return message
+		}
+	}
 	switch run.Status {
 	case "completed":
 		return "本轮已完成，没有文本回复。"
@@ -19,8 +28,6 @@ func channelRunStatus(run Run) string {
 	}
 	reason := strings.ToLower(run.StopReason)
 	switch {
-	case strings.Contains(reason, "context") && (strings.Contains(reason, "budget") || strings.Contains(reason, "full")):
-		return "当前请求超过上下文硬预算。请调整辅助思考或有效输出额度，或手动压缩历史后继续；原始记录与未知结果保留。"
 	case strings.Contains(reason, "length"), strings.Contains(reason, "max_tokens"), strings.Contains(reason, "output_limit"):
 		return "模型达到单次输出上限，回复尚未完成。可发送“继续”，或在模型设置中调整输出预留。"
 	case strings.Contains(reason, "context"), strings.Contains(reason, "capability"):

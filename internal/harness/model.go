@@ -8,6 +8,10 @@ import (
 )
 
 type ModelMessage struct {
+	ContextSource    *ContextSource    `json:",omitempty"`
+	Readback         *ContextReadback  `json:",omitempty"`
+	ToolEvidence     *ToolEvidence     `json:",omitempty"`
+	Kind             messageKind       `json:"kind,omitempty"`
 	ProviderSource   string            `json:",omitempty"`
 	FeedbackSource   string            `json:",omitempty"`
 	ChatContinuation *ChatContinuation `json:",omitempty"`
@@ -29,19 +33,21 @@ type ModelMessage struct {
 }
 
 type ModelRequest struct {
-	SupplementalKey string              `json:",omitempty"`
-	Reasoning       *ReasoningSelection `json:",omitempty"`
-	Recovery        *ModelRecovery      `json:",omitempty"`
-	DenyOperations  bool                `json:",omitempty"`
-	ModelID         string
-	ModelRevision   string
-	Purpose         string `json:",omitempty"`
-	Messages        []ModelMessage
-	Inputs          []string `json:",omitempty"`
-	Tools           []ToolDefinition
-	MaxOutputTokens int
-	Memory          []MemoryUse    `json:",omitempty"`
-	Extensions      []ExtensionUse `json:",omitempty"`
+	SummaryReferences []string            `json:",omitempty"`
+	ContextUsage      *ContextUsage       `json:",omitempty"`
+	SupplementalKey   string              `json:",omitempty"`
+	Reasoning         *ReasoningSelection `json:",omitempty"`
+	Recovery          *ModelRecovery      `json:",omitempty"`
+	DenyOperations    bool                `json:",omitempty"`
+	ModelID           string
+	ModelRevision     string
+	Purpose           string `json:",omitempty"`
+	Messages          []ModelMessage
+	Inputs            []string `json:",omitempty"`
+	Tools             []ToolDefinition
+	MaxOutputTokens   int
+	Memory            []MemoryUse    `json:",omitempty"`
+	Extensions        []ExtensionUse `json:",omitempty"`
 }
 
 type ExtensionUse struct {
@@ -100,10 +106,12 @@ type ProviderWebSearchCall struct {
 }
 
 type ModelUsage struct {
-	ReasoningTokens *int64 `json:"reasoning_tokens,omitempty"`
-	InputTokens     int64  `json:"input_tokens"`
-	OutputTokens    int64  `json:"output_tokens"`
-	TotalTokens     int64  `json:"total_tokens"`
+	CacheReadTokens    *int64 `json:"cache_read_tokens,omitempty"`
+	CacheCreatedTokens *int64 `json:"cache_created_tokens,omitempty"`
+	ReasoningTokens    *int64 `json:"reasoning_tokens,omitempty"`
+	InputTokens        int64  `json:"input_tokens"`
+	OutputTokens       int64  `json:"output_tokens"`
+	TotalTokens        int64  `json:"total_tokens"`
 }
 
 type ModelClient interface {
@@ -151,9 +159,10 @@ type ProviderToolItem struct {
 }
 
 type ToolResult struct {
-	Attachments []AttachmentRef `json:",omitempty"`
-	Outcome     *ToolOutcome    `json:",omitempty"`
-	Truncated   bool            `json:",omitempty"`
+	Readback    *ContextReadback `json:",omitempty"`
+	Attachments []AttachmentRef  `json:",omitempty"`
+	Outcome     *ToolOutcome     `json:",omitempty"`
+	Truncated   bool             `json:",omitempty"`
 	Content     string
 	IsError     bool
 	Receipts    []ToolReceipt  `json:",omitempty"`

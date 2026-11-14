@@ -254,6 +254,12 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 		// Local selections and summaries must never travel implicitly to
 		// another publication scope. Original messages/Attempts are retained.
 		for _, prefix := range []string{"chat/memory/", capabilityMetaPrefix, summaryMetaPrefix} {
+			if prefix == summaryMetaPrefix {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 OR starts_with(key,$2)`, prefix+conversationID, prefix+conversationID+"/"); err != nil {
+					return err
+				}
+				continue
+			}
 			if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, prefix+conversationID); err != nil {
 				return err
 			}
@@ -437,7 +443,7 @@ func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) err
 					return err
 				}
 			}
-			public := ModelMessage{Role: entry.message.Role, Content: entry.message.Content, Public: true, Channel: source, Attachments: refs}
+			public := ModelMessage{Kind: messagePublished, Role: entry.message.Role, Content: entry.message.Content, Public: true, Channel: source, Attachments: refs}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3) ON CONFLICT(request_key) WHERE request_key!='' DO NOTHING`, chat, key, string(mustJSON(public))); err != nil {
 				return err
 			}

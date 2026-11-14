@@ -23,6 +23,7 @@ func runContext(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	data := flags.String("data-dir", defaultDataDir(), "harness data directory")
 	chat := flags.String("session", "", "conversation id")
 	limit := flags.Int("summary-bytes", 0, "per-operation summary byte bound; does not enable automatic compaction")
+	target := flags.String("summary-target", "", "per-operation auto/manual target; omitted inherits the saved policy")
 	asJSON := flags.Bool("json", false, "print structured context state")
 	if err := parseFlags(flags, args[1:]); err != nil {
 		return err
@@ -33,7 +34,7 @@ func runContext(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	if err := resolveDataDir(data); err != nil {
 		return err
 	}
-	command := harness.ContextCommand{Action: action, SummaryBytes: *limit}
+	command := harness.ContextCommand{Action: action, SummaryBytes: *limit, SummaryTargetMode: *target}
 	tasks, closeAll, err := harness.OpenTasks(ctx, *data, harness.Adapters{})
 	var result harness.ContextResult
 	if errors.Is(err, harness.ErrOwnerActive) {
@@ -76,7 +77,7 @@ func printContextResult(writer io.Writer, result harness.ContextResult, asJSON b
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(writer, "Covered through %d; source SHA-256 %s\n", summary.CoveredThrough, summary.SourceDigest)
+		_, err = fmt.Fprintf(writer, "Covered through message %d; visibility=%s.\n", summary.CoveredThrough, result.State.Scope)
 		if err != nil {
 			return err
 		}

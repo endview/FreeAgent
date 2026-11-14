@@ -98,6 +98,7 @@ export interface Turn {
   key: string;
   state: string;
   reason?: string;
+  reason_code?: string;
   messages: ChatMessage[];
   activity: Activity[];
   steps: number;
@@ -213,6 +214,12 @@ export interface ExtensionTurnSetting {
   options: { value: string; label: string }[];
 }
 export interface ContextState {
+  compaction_state?: string;
+  summary_target_mode?: string;
+  summary_target_tokens?: number;
+  policy_source?: string;
+  visibility_scope?: string;
+  last_usage_attempt_id?: string;
   expected_revisions?: Record<string, number>;
   window: {
     model_id: string;
@@ -228,10 +235,17 @@ export interface ContextState {
     estimated_input_tokens: number;
     bytes: number;
     limiting_resource: string;
+    estimate_method?: string;
+    attempt_id?: string;
     newer_history_available?: boolean;
     parts: { kind: string; bytes: number; estimated_tokens: number }[];
   };
-  last_reported_usage?: { input_tokens: number; output_tokens: number };
+  last_reported_usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens?: number;
+    cache_created_tokens?: number;
+  };
   status: string;
   revision: string;
   summary?: {

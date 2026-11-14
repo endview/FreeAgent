@@ -271,8 +271,8 @@ func TestAutomaticCompactionWithoutSavingsRetainsHistoryAndContinues(t *testing.
 		t.Fatalf("no-progress summary blocked valid original context: status=%s calls=%d err=%v", result.Run.Status, summaries, err)
 	}
 	state, err := NewTaskService(core).ContextState(t.Context(), chat)
-	if err != nil || state.Summary != nil || state.AutomaticPaused != "" {
-		t.Fatalf("invalid selection or persistent no-progress suppression: %+v %v", state, err)
+	if err != nil || state.Summary != nil || state.AutomaticPaused == "" {
+		t.Fatalf("invalid selection or missing no-progress suppression: %+v %v", state, err)
 	}
 }
 

@@ -66,23 +66,17 @@ func NewOpenAICompatibleClient(config ModelConfig, key ResolvedKey, httpClient *
 	return &OpenAICompatibleClient{baseURL: key.BaseURL, model: config.Model, key: key, client: &client, caps: caps}, nil
 }
 
-// BaseURL lets dispatch confirm that the client still targets the address
-// recorded in the run's model binding.
-func (client *OpenAICompatibleClient) BaseURL() string { return client.baseURL }
-
-func (client *OpenAICompatibleClient) Generate(ctx context.Context, request ModelRequest, emit func(string)) (ModelResponse, error) {
-	config := ModelConfig{Provider: "openai-compatible", Model: client.model, Capabilities: client.caps}
-	if err := validateModelRequest(config, request); err != nil {
-		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
-	}
-	wire := openAIRequest{Model: client.model, Stream: client.caps.Streaming != "none"}
-	selection := client.caps.Reasoning.Default
+// openAIRequestFrom is shared by dispatch and exact HTTP payload accounting.
+func openAIRequestFrom(request ModelRequest, model string, caps ModelCapabilities, baseURL, profileID string) (openAIRequest, error) {
+	config := ModelConfig{Provider: "openai-compatible", Model: model, Capabilities: caps}
+	wire := openAIRequest{Model: model, Stream: caps.Streaming != "none"}
+	selection := caps.Reasoning.Default
 	if request.Reasoning != nil {
 		selection = *request.Reasoning
 	}
 	toggle, effort, reasoningErr := config.reasoningParameters(selection)
 	if reasoningErr != nil {
-		return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: reasoningErr.Error()}
+		return openAIRequest{}, &CallError{Certain: true, Category: "request", Message: reasoningErr.Error()}
 	}
 	wire.ReasoningEffort = effort
 	if toggle != nil {
@@ -92,16 +86,16 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 		}
 		wire.Thinking = &openAIThinking{Type: kind}
 	}
-	if client.caps.TokenLimit == "max_completion_tokens" {
+	if caps.TokenLimit == "max_completion_tokens" {
 		wire.MaxCompletionTokens = request.MaxOutputTokens
 	} else {
 		wire.MaxTokens = request.MaxOutputTokens
 	}
-	if wire.Stream && client.caps.Usage != "none" {
+	if wire.Stream && caps.Usage != "none" {
 		wire.StreamOptions = &openAIStreamOptions{IncludeUsage: true}
 	}
 	if len(request.Tools) != 0 {
-		parallel := client.caps.ParallelTools != "none"
+		parallel := caps.ParallelTools != "none"
 		wire.ParallelToolCalls = &parallel
 	}
 	for _, message := range providerImageMessages(request.Messages) {
@@ -109,9 +103,9 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 			Role: message.Role, Content: message.Content, Name: message.Name, Images: message.Images,
 			ToolCallID: message.ToolCallID, ToolCalls: toOpenAIToolCalls(message.ToolCalls),
 		}
-		if saved := message.ChatContinuation; saved != nil && message.Role == "assistant" && saved.Source == chatContinuationSource(client.baseURL, client.key.ProfileID, client.model) {
+		if saved := message.ChatContinuation; saved != nil && message.Role == "assistant" && saved.Source == chatContinuationSource(baseURL, profileID, model) {
 			if !validChatContinuation(saved) {
-				return ModelResponse{}, &CallError{Certain: true, Category: "request", Message: "invalid saved reasoning continuation"}
+				return openAIRequest{}, &CallError{Certain: true, Category: "request", Message: "invalid saved reasoning continuation"}
 			}
 			content := saved.Content
 			if !saved.ReasoningOmitted {
@@ -128,6 +122,26 @@ func (client *OpenAICompatibleClient) Generate(ctx context.Context, request Mode
 		wire.Tools = append(wire.Tools, openAITool{Type: "function", Function: openAIFunction{
 			Name: tool.Name, Description: tool.Description, Parameters: tool.InputSchema,
 		}})
+	}
+	return wire, nil
+}
+
+// BaseURL lets dispatch confirm that the client still targets the address
+// recorded in the run's model binding.
+func (client *OpenAICompatibleClient) BaseURL() string { return client.baseURL }
+
+func (client *OpenAICompatibleClient) Generate(ctx context.Context, request ModelRequest, emit func(string)) (ModelResponse, error) {
+	config := ModelConfig{Provider: "openai-compatible", Model: client.model, Capabilities: client.caps}
+	selection := client.caps.Reasoning.Default
+	if request.Reasoning != nil {
+		selection = *request.Reasoning
+	}
+	if err := validateModelRequest(config, request); err != nil {
+		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
+	}
+	wire, err := openAIRequestFrom(request, client.model, client.caps, client.baseURL, client.key.ProfileID)
+	if err != nil {
+		return ModelResponse{}, err
 	}
 	body, err := json.Marshal(wire)
 	if err != nil {
@@ -564,6 +578,13 @@ func modelUsage(usage *openAIUsage) (*ModelUsage, error) {
 		return nil, &CallError{Category: "protocol", Message: "invalid model usage"}
 	}
 	result := &ModelUsage{InputTokens: *usage.PromptTokens, OutputTokens: *usage.CompletionTokens, TotalTokens: *usage.TotalTokens}
+	result.CacheReadTokens = usage.PromptCacheHitTokens
+	if usage.PromptDetails != nil && usage.PromptDetails.CachedTokens != nil {
+		result.CacheReadTokens = usage.PromptDetails.CachedTokens
+	}
+	if err := checkCacheUsage(result); err != nil {
+		return nil, err
+	}
 	if usage.CompletionDetails != nil && usage.CompletionDetails.ReasoningTokens != nil {
 		tokens := *usage.CompletionDetails.ReasoningTokens
 		if tokens < 0 || tokens > result.OutputTokens {
@@ -726,6 +747,10 @@ type openAIStreamOptions struct {
 }
 
 type openAIUsage struct {
+	PromptCacheHitTokens *int64 `json:"prompt_cache_hit_tokens"`
+	PromptDetails        *struct {
+		CachedTokens *int64 `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
 	CompletionDetails *struct {
 		ReasoningTokens *int64 `json:"reasoning_tokens"`
 	} `json:"completion_tokens_details"`

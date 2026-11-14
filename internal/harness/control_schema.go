@@ -144,15 +144,17 @@ func buildControlInputSchemas() map[string]json.RawMessage {
 	}]("id", "enabled")
 	schemas[ControlSetPublicWeb] = controlTypeSchema[PublicWebConfig]()
 	schemas[ControlSetRuntimeLimits] = controlTypeSchema[struct {
-		ModelRetries          *int `json:"model_retries"`
-		AutoCompactAt         *int `json:"auto_compact_percent"`
-		HistoryPageSize       *int `json:"history_page_size"`
-		MaxContextBytes       *int `json:"max_context_bytes"`
-		MaxOutputTokens       *int `json:"max_output_tokens"`
-		MaxToolResult         *int `json:"max_tool_result_bytes"`
-		TaskSummaryBytes      *int `json:"task_summary_bytes"`
-		ExtensionContextChars *int `json:"extension_max_context_chars"`
-		ExtensionModelCalls   *int `json:"extension_max_model_calls_per_turn"`
+		ModelRetries          *int    `json:"model_retries"`
+		AutoCompactAt         *int    `json:"auto_compact_percent"`
+		HistoryPageSize       *int    `json:"history_page_size"`
+		MaxContextBytes       *int    `json:"max_context_bytes"`
+		MaxOutputTokens       *int    `json:"max_output_tokens"`
+		MaxToolResult         *int    `json:"max_tool_result_bytes"`
+		TaskSummaryBytes      *int    `json:"task_summary_bytes"`
+		AutomaticCompaction   *bool   `json:"automatic_compaction"`
+		SummaryTargetMode     *string `json:"summary_target_mode"`
+		ExtensionContextChars *int    `json:"extension_max_context_chars"`
+		ExtensionModelCalls   *int    `json:"extension_max_model_calls_per_turn"`
 	}]()
 	schemas[ControlSetSandbox] = controlTypeSchema[struct {
 		Mode SandboxMode `json:"mode"`

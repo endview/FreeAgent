@@ -41,9 +41,10 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 				return next, ErrConfigChanged
 			}
 		}
-		return next, nil
+		return service.foldToolContext(next), nil
 	}
 	*rebuildOut = rebuild
+	prepared = service.foldToolContext(prepared)
 	usage, err := service.requestUsage(run, prepared)
 	if err != nil {
 		return prepared, err
@@ -55,13 +56,7 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 		*rebuildOut = nil
 		return prepared, usage.budgetError()
 	}
-	if service.Config.TaskSummaryBytes <= 0 || service.compactionFailed || run.ID == "" || usage.Occupancy < autoCompactPercent(service.Config) {
-		return prepared, usage.budgetError()
-	}
-	if reason, err := service.compactionSuppressed(ctx, run.ConversationID); err != nil || reason != "" {
-		if err != nil {
-			return prepared, err
-		}
+	if !AutomaticCompactionEnabled(service.Config) || run.ID == "" || usage.Occupancy < autoCompactPercent(service.Config) {
 		return prepared, usage.budgetError()
 	}
 	// A fixed component cannot be made smaller by summarizing other history.
@@ -69,13 +64,9 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 	if errors.As(usage.budgetError(), &budget) && budget.Code != "history_context_full" {
 		return prepared, budget
 	}
-	plan, err := service.planCompactionFor(ctx, run, ContextCommand{Action: "compact"}, true)
-	if err != nil {
-		return prepared, err
-	}
 	var compacted ModelRequest
 	started := time.Now()
-	result, err := service.applyCompaction(ctx, run, plan, true, func(summary *ConversationSummary) error {
+	result, err := service.recoverContext(ctx, run, "prepared", func(summary *ConversationSummary) error {
 		var err error
 		compacted, err = rebuild(summary)
 		if err != nil {
@@ -118,10 +109,14 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 		if current.Status != "running" {
 			return prepared, errors.Join(err, ErrActiveRun)
 		}
-		if _, adoptErr := service.adoptSteering(ctx, run); adoptErr != nil {
+		adopted, adoptErr := service.adoptSteering(ctx, run)
+		if adoptErr != nil {
 			return prepared, adoptErr
 		}
-		summary, _, loadErr := service.Store.contextSummary(ctx, run.ConversationID, false)
+		if adopted {
+			return service.prepareAfterSteering(ctx, run, prepared, binding, rebuildOut)
+		}
+		summary, _, loadErr := service.Store.contextSummary(ctx, run.ConversationID, false, service.contextScope())
 		if loadErr != nil {
 			return prepared, loadErr
 		}
@@ -163,5 +158,21 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 	if !result.Changed {
 		return prepared, usage.budgetError()
 	}
+	adopted, adoptErr := service.adoptSteering(ctx, run)
+	if adoptErr != nil {
+		return prepared, adoptErr
+	}
+	if adopted {
+		return service.prepareAfterSteering(ctx, run, compacted, binding, rebuildOut)
+	}
 	return compacted, nil
+}
+
+func (service *Service) prepareAfterSteering(ctx context.Context, run Run, previous ModelRequest, binding ModelBinding, out *func(*ConversationSummary) (ModelRequest, error)) (ModelRequest, error) {
+	fresh, err := service.buildContext(ctx, run)
+	if err != nil {
+		return previous, err
+	}
+	fresh.Reasoning = previous.Reasoning
+	return service.prepareContextRequest(ctx, run, fresh, binding, out)
 }

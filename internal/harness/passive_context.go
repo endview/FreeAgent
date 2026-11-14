@@ -8,6 +8,9 @@ import (
 // Explicitly enabled passive character data does not grant tools to None.
 // The manifest cannot declare tools/workflows or call model/tool Host APIs.
 func (service *Service) preparePassiveContext(ctx context.Context, run Run, request ModelRequest) (ModelRequest, error) {
+	if err := service.refreshExtensionInputCache(ctx, run); err != nil {
+		return ModelRequest{}, err
+	}
 	if service.extensions == nil || service.capabilities == nil {
 		return request, nil
 	}

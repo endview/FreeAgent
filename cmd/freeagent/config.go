@@ -34,6 +34,8 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	var httpConfig harness.HTTPConfig
 	var allowedExecutables, allowedOrigins repeatedStrings
 	summaryBytes := 0
+	var automaticCompaction bool
+	var summaryTargetMode string
 	autoCompactAt := 80
 	modelRetries := 2
 	collaboration := harness.DefaultCollaborationSettings()
@@ -125,6 +127,8 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		flags.Var(&allowedOrigins, "origin", "allowed scheme://host[:port]; repeat for multiple origins")
 	}
 	if args[0] == "context" {
+		flags.BoolVar(&automaticCompaction, "automatic", true, "enable or disable scheduling independently of summary size")
+		flags.StringVar(&summaryTargetMode, "summary-target", "auto", "auto soft token target or manual UTF-8 byte ceiling")
 		flags.IntVar(&modelRetries, "model-retries", 2, "automatic model recovery attempts, 0-6; may incur provider charges")
 		flags.IntVar(&summaryBytes, "summary-bytes", 0, "summary byte cap; 0 disables automatic compaction")
 		flags.IntVar(&autoCompactAt, "auto-percent", 80, "automatic compaction trigger, 50-95 percent of available input budget")
@@ -159,6 +163,7 @@ func runConfig(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	}
 	if args[0] != "show" {
 		invocation := configInvocation{
+			AutomaticCompaction: automaticCompaction, SummaryTargetMode: summaryTargetMode,
 			ModelRetries: modelRetries,
 			Command:      args[0], Flags: flags,
 			ModelID: modelID, Model: model, KeyRef: keyRef, MakeDefault: makeDefault,
@@ -282,6 +287,7 @@ func writeConfigResult(stdout io.Writer, path string, config harness.Config, res
 			"auto_compact_percent":  config.AutoCompactAt,
 		},
 		"changed": result != nil, "network_tested": false, "credentials_resolved": false,
+		"context_policy": map[string]any{"automatic_compaction": harness.AutomaticCompactionEnabled(config), "summary_target_mode": harness.SummaryTargetMode(config)},
 	}
 	if result != nil {
 		output["operation"] = result.Operation

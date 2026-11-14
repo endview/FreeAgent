@@ -34,30 +34,31 @@ const (
 )
 
 type Store struct {
-	scheduledMu      sync.Mutex
-	scheduled        *scheduledOwner
-	channelBridge    atomic.Pointer[ChannelBridge]
-	inputMu          sync.Mutex
-	cancelMu         sync.Mutex
-	requestCancels   map[string]context.CancelFunc
-	telegramMu       sync.Mutex
-	telegramBot      string
-	telegramBots     map[string]bool
-	telegramRequests map[string]TelegramAccessRequest
-	securityMu       sync.Mutex
-	attachmentMu     sync.Mutex
-	replyMu          sync.Mutex
-	dataDir          string
-	db               *pgDatabase
-	pgOwner          *pgOwner
-	runtimeRelease   func() error
-	owner            processFileLock
-	mu               sync.Mutex
-	runMu            executionGate
-	modelMu          sync.Mutex
-	modelSlots       chan struct{}
-	closed           bool
-	summaryVerified  map[string]string
+	scheduledMu         sync.Mutex
+	scheduled           *scheduledOwner
+	channelBridge       atomic.Pointer[ChannelBridge]
+	inputMu             sync.Mutex
+	cancelMu            sync.Mutex
+	requestCancels      map[string]context.CancelFunc
+	telegramMu          sync.Mutex
+	telegramBot         string
+	telegramBots        map[string]bool
+	telegramRequests    map[string]TelegramAccessRequest
+	securityMu          sync.Mutex
+	attachmentMu        sync.Mutex
+	replyMu             sync.Mutex
+	dataDir             string
+	db                  *pgDatabase
+	pgOwner             *pgOwner
+	runtimeRelease      func() error
+	owner               processFileLock
+	mu                  sync.Mutex
+	runMu               executionGate
+	modelMu             sync.Mutex
+	modelSlots          chan struct{}
+	closed              bool
+	summaryVerified     map[string]string
+	contextCalibrations map[string]contextCalibration
 }
 
 type Conversation struct {
@@ -112,6 +113,7 @@ type Run struct {
 	ConfigJSON       string               `json:"-"`
 	Status           string               `json:"status"`
 	StopReason       string               `json:"stop_reason,omitempty"`
+	StopCode         string               `json:"stop_code,omitempty"`
 	Steps            int                  `json:"steps"`
 	ElapsedMS        int64                `json:"elapsed_ms"`
 	ActiveSince      string               `json:"-"`
@@ -327,28 +329,11 @@ func (store *Store) PinConversation(ctx context.Context, id string, pinned bool)
 }
 
 func (store *Store) ListMessages(ctx context.Context, conversationID string) ([]Message, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT id, COALESCE(run_id,''), body_json FROM fa.messages WHERE conversation_id=$1 ORDER BY id`, conversationID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := make([]Message, 0)
-	for rows.Next() {
-		var item Message
-		var body string
-		if err := rows.Scan(&item.ID, &item.RunID, &body); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal([]byte(body), &item.ModelMessage); err != nil {
-			return nil, fmt.Errorf("harness: invalid stored message: %w", err)
-		}
-		result = append(result, item)
-	}
-	return result, rows.Err()
+	return readConversationRecords(ctx, store.db, conversationID)
 }
 
 func (store *Store) contextMessages(ctx context.Context, run Run, maxMessages, maxBytes int) ([]Message, error) {
-	rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM fa.messages
+	rows, err := store.db.QueryContext(ctx, `SELECT id,COALESCE(run_id,''),body_json FROM `+conversationRecords+`
 		WHERE conversation_id=$1 AND (id<=$2 OR run_id=$3) ORDER BY id DESC LIMIT $4`, run.ConversationID, historyBound(run), run.ID, maxMessages+1)
 	if err != nil {
 		return nil, err
@@ -393,6 +378,7 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 		&result.ConfigJSON, &result.Status, &result.StopReason, &result.Steps, &result.ElapsedMS, &result.Output, &result.CreatedAt, &result.UpdatedAt, &result.ActiveSince)
 	if err == nil {
 		result = withModelFacts(result)
+		result.StopCode = runStopCode(result.StopReason)
 	}
 	return result, err
 }
@@ -893,7 +879,7 @@ func saveToolTxMode(ctx context.Context, tx *sql.Tx, run Run, attempt Attempt, c
 		return nil, errors.Join(ErrModelBoundary, err)
 	}
 	if addMessage {
-		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "tool", ToolCallID: call.ID, Content: result.Content, Attachments: result.Attachments}); err != nil {
+		if err := insertMessage(ctx, tx, run, toolMessage(call, result)); err != nil {
 			return nil, err
 		}
 	}
@@ -969,7 +955,7 @@ func (store *Store) abandonRun(ctx context.Context, runID string) error {
 				return err
 			}
 		}
-		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "tool", ToolCallID: call.ID, Content: response.Content}); err != nil {
+		if err := insertMessage(ctx, tx, run, toolMessage(call, response)); err != nil {
 			return err
 		}
 	}
@@ -1460,7 +1446,7 @@ func (store *Store) settleControlProposal(ctx context.Context, run Run, attempt 
 	if err := json.Unmarshal([]byte(attempt.RequestJSON), &call); err != nil {
 		return err
 	}
-	if err := insertMessage(ctx, tx, run, ModelMessage{Role: "tool", ToolCallID: call.ID, Content: result.Content, Attachments: result.Attachments}); err != nil {
+	if err := insertMessage(ctx, tx, run, toolMessage(call, result)); err != nil {
 		return err
 	}
 	nextStatus, stopReason := "running", ""
@@ -1531,6 +1517,19 @@ func (store *Store) recover(ctx context.Context) error {
 }
 
 func insertMessage(ctx context.Context, tx *sql.Tx, run Run, message ModelMessage) error {
+	var origin struct {
+		Trigger *struct {
+			Kind string `json:"kind"`
+		} `json:"extension_trigger"`
+	}
+	if json.Unmarshal([]byte(run.ConfigJSON), &origin) == nil && origin.Trigger != nil && origin.Trigger.Kind == "scheduled" {
+		message.Kind = messageCandidate
+	}
+	kind, err := storedMessageKind(message)
+	if err != nil {
+		return err
+	}
+	message.Kind = kind
 	raw, err := json.Marshal(message)
 	if err != nil {
 		return err

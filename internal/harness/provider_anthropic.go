@@ -319,10 +319,10 @@ type anthropicResponseBlock struct {
 }
 
 type anthropicUsage struct {
-	InputTokens              int64 `json:"input_tokens"`
-	OutputTokens             int64 `json:"output_tokens"`
-	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+	InputTokens              int64  `json:"input_tokens"`
+	OutputTokens             int64  `json:"output_tokens"`
+	CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     *int64 `json:"cache_read_input_tokens"`
 }
 
 type anthropicErrorBody struct {
@@ -609,16 +609,23 @@ func anthropicUsageValue(usage *anthropicUsage) (*ModelUsage, error) {
 	if usage == nil {
 		return nil, nil
 	}
-	if usage.InputTokens < 0 || usage.OutputTokens < 0 || usage.CacheCreationInputTokens < 0 ||
-		usage.CacheReadInputTokens < 0 || usage.InputTokens > 1<<50 || usage.OutputTokens > 1<<50 {
+	created, read := int64(0), int64(0)
+	if usage.CacheCreationInputTokens != nil {
+		created = *usage.CacheCreationInputTokens
+	}
+	if usage.CacheReadInputTokens != nil {
+		read = *usage.CacheReadInputTokens
+	}
+	if usage.InputTokens < 0 || usage.OutputTokens < 0 || created < 0 ||
+		read < 0 || usage.InputTokens > 1<<50 || usage.OutputTokens > 1<<50 {
 		return nil, &CallError{Category: "protocol", Message: "invalid model usage"}
 	}
-	input := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+	input := usage.InputTokens + created + read
 	total := input + usage.OutputTokens
 	if input < usage.InputTokens || total < input || total > 1<<50 {
 		return nil, &CallError{Category: "protocol", Message: "invalid model usage"}
 	}
-	return &ModelUsage{InputTokens: input, OutputTokens: usage.OutputTokens, TotalTokens: total}, nil
+	return &ModelUsage{InputTokens: input, OutputTokens: usage.OutputTokens, TotalTokens: total, CacheCreatedTokens: usage.CacheCreationInputTokens, CacheReadTokens: usage.CacheReadInputTokens}, nil
 }
 
 func normalizeAnthropicError(status int, raw []byte, key string) *CallError {

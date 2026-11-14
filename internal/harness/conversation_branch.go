@@ -115,7 +115,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 		return result, err
 	}
 	var cutRaw, cutRun string
-	if err := tx.QueryRowContext(ctx, `SELECT body_json,coalesce(run_id,'') FROM fa.messages WHERE id=$1 AND conversation_id=$2`, command.MessageID, chat).Scan(&cutRaw, &cutRun); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT body_json,coalesce(run_id,'') FROM `+conversationRecords+` WHERE id=$1 AND conversation_id=$2`, command.MessageID, chat).Scan(&cutRaw, &cutRun); err != nil {
 		return result, err
 	}
 	var cut ModelMessage
@@ -141,7 +141,7 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 	if command.Mode == "rerun" {
 		cutoff--
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM fa.messages WHERE conversation_id=$1 AND id<=$2 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false ORDER BY id`, chat, cutoff)
+	rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM `+conversationRecords+` WHERE conversation_id=$1 AND id<=$2 AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false ORDER BY id`, chat, cutoff)
 	if err != nil {
 		return result, err
 	}
@@ -165,14 +165,28 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 			return result, ErrStoreFormat
 		}
 		if space.Source != SpaceSourceLocal {
-			projected := publicMessages([]Message{{ID: id, ModelMessage: m}})
+			projected, err := contextVisible(Message{ID: id, ModelMessage: m}, "channel_public", "", false)
+			if err != nil {
+				rows.Close()
+				return result, err
+			}
 			for _, p := range projected {
 				if p.Public {
+					// This is an authorized copy into a new transcript, not a
+					// second transport receipt for a missing local source Run.
+					p.Kind = messagePublished
 					messages = append(messages, p.ModelMessage)
 				}
 			}
 		} else {
-			messages = append(messages, m)
+			projected, err := contextVisible(Message{ID: id, ModelMessage: m}, "", "", false)
+			if err != nil {
+				rows.Close()
+				return result, err
+			}
+			for _, p := range projected {
+				messages = append(messages, p.ModelMessage)
+			}
 		}
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
@@ -282,7 +296,19 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 		return copied, nil
 	}
 	for _, m := range messages {
+		m.ContextSource = nil
+		if m.Readback != nil {
+			parts := strings.SplitN(m.Content, "\n", 2)
+			if len(parts) == 2 {
+				m.Content = "Archival history readback copied into this conversation. Original reference identifiers are local to the source conversation; use this copy's new context reference.\n" + parts[1]
+			}
+			m.Readback = nil
+		}
 		m.Attachments, err = copyRefs(m.Attachments)
+		if err != nil {
+			return result, err
+		}
+		m.Kind, err = storedMessageKind(m)
 		if err != nil {
 			return result, err
 		}

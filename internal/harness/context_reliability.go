@@ -37,13 +37,15 @@ func compactionMayFallback(err error) bool {
 }
 
 type compactionSuppression struct {
-	Fingerprint string `json:"fingerprint"`
-	AttemptID   string `json:"attempt_id"`
-	Reason      string `json:"reason"`
+	Failure      string `json:"failure,omitempty"`
+	SourceDigest string `json:"source_digest,omitempty"`
+	Fingerprint  string `json:"fingerprint"`
+	AttemptID    string `json:"attempt_id"`
+	Reason       string `json:"reason"`
 }
 
 func (service *Service) compactionSuppressionKey(chat string) string {
-	return "context/compaction-suppression/" + chat
+	return "context/compaction-suppression/" + chat + "/" + service.contextScope()
 }
 
 func (service *Service) compactionFingerprint() (string, error) {
@@ -56,9 +58,9 @@ func (service *Service) compactionFingerprint() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return contentHash(mustJSON([]any{"summary-policy/2", binding.ID, binding.BaseURL, binding.Config.Provider,
+	return contentHash(mustJSON([]any{"summary-policy/3", contextProjectionVersion, service.contextScope(), limits.MaxContextBytes, caps.ContextTokens, binding.ID, binding.BaseURL, binding.Config.Provider,
 		binding.Config.Key, binding.Config.Model, caps.Protocol, caps.Reasoning.Control,
-		toggle, effort, limits.MaxOutputTokens, service.Config.TaskSummaryBytes})), nil
+		toggle, effort, limits.MaxOutputTokens, service.Config.TaskSummaryBytes, service.Config.SummaryTargetMode, service.Config.AutomaticCompaction})), nil
 }
 
 func (service *Service) compactionSuppressed(ctx context.Context, chat string) (string, error) {
@@ -82,6 +84,15 @@ func (service *Service) compactionSuppressed(ctx context.Context, chat string) (
 }
 
 func (service *Service) rememberCompactionFailure(ctx context.Context, run Run, causes ...error) (bool, string, error) {
+	if len(causes) > 0 {
+		var failure *CallError
+		if errors.As(causes[0], &failure) && failure.Code == "summary_no_progress" {
+			reason, err := service.compactionSuppressed(ctx, run.ConversationID)
+			if err != nil || reason != "" {
+				return false, reason, err
+			}
+		}
+	}
 	var id, raw string
 	err := service.Store.db.QueryRowContext(ctx, `SELECT id,response_json FROM fa.attempts WHERE run_id=$1 AND kind='model' AND request_doc->>'Purpose'='compaction' ORDER BY seq DESC LIMIT 1`, run.ID).Scan(&id, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -124,7 +135,7 @@ func (service *Service) rememberCompactionFailure(ctx context.Context, run Run, 
 	if err != nil {
 		return false, "", err
 	}
-	saved := compactionSuppression{fingerprint, id, reason}
+	saved := compactionSuppression{Fingerprint: fingerprint, AttemptID: id, Reason: reason, Failure: "configuration"}
 	updated, err := service.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE fa.meta.document->>'fingerprint' IS DISTINCT FROM excluded.document->>'fingerprint'`, service.compactionSuppressionKey(run.ConversationID), string(mustJSON(saved)))
 	if err != nil {
 		return false, "", err

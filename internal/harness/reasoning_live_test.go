@@ -98,3 +98,28 @@ func TestLiveProviderReasoningToolContinuation(t *testing.T) {
 		}
 	}
 }
+
+func TestLiveProviderBoundedReasoningResult(t *testing.T) {
+	client := liveReasoningClient(t, "chat", "none")
+	selection := ReasoningSelection{Mode: "enabled", Effort: "high"}
+	request := ModelRequest{Reasoning: &selection, MaxOutputTokens: 2048, Tools: []ToolDefinition{contextToolDefinition(), {Name: "read_marker", Effect: EffectRead, Description: "Read the synthetic marker; no external effects.", InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)}}, Messages: []ModelMessage{{Role: "user", Content: "Call read_marker exactly once. Its result includes an explicit FINAL_MARKER line; ignore irrelevant filler. After the tool result, output only the exact marker value. Do not call any other tool or read the filler."}}}
+	first, err := client.Generate(t.Context(), request, nil)
+	if err != nil || len(first.ToolCalls) != 1 || first.ToolCalls[0].Name != "read_marker" {
+		t.Fatalf("real tool selection: %v", err)
+	}
+	const marker = "BOUNDED_REASONING_CONTEXT_OK"
+	body := "FINAL_MARKER=" + marker + "\n" + strings.Repeat("irrelevant synthetic filler\n", 2000) + "\nFINAL_MARKER=" + marker
+	request.Messages = append(request.Messages, ModelMessage{Role: "assistant", Content: first.Content, ToolCalls: first.ToolCalls, ChatContinuation: first.ChatContinuation}, ModelMessage{Role: "tool", ToolCallID: first.ToolCalls[0].ID, Content: body, ContextSource: &ContextSource{Ref: "#m3", Revision: contentHash([]byte(body)), Part: "tool_results", Bytes: len(body)}})
+	core, _, _ := testHarness(t, EchoModel{})
+	core.Config.MaxContextBytes = 16000
+	core.Config.MaxOutputTokens = 128
+	folded := core.foldToolContext(request)
+	if !folded.Messages[len(folded.Messages)-1].ContextSource.Folded {
+		t.Fatal("live follow-up did not use bounded result")
+	}
+	second, err := client.Generate(t.Context(), folded, nil)
+	if err != nil || strings.TrimSpace(second.Content) != marker || len(second.ToolCalls) != 0 {
+		t.Fatalf("bounded native reasoning continuation: %v", err)
+	}
+	t.Logf("real DeepSeek accepted bounded result with original thinking continuation; result_bytes=%d preview_bytes=%d", len(body), len(folded.Messages[len(folded.Messages)-1].Content))
+}

@@ -206,7 +206,7 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	}
 	defer tx.Rollback()
 	var received ChannelReceived
-	err = tx.QueryRowContext(ctx, `SELECT id,conversation_id,COALESCE(run_id,'') FROM fa.messages WHERE request_key=$1`, source.requestKey()).
+	err = tx.QueryRowContext(ctx, `SELECT id,conversation_id,COALESCE(run_id,'') FROM `+conversationRecords+` WHERE request_key=$1`, source.requestKey()).
 		Scan(&received.MessageID, &received.ConversationID, &received.RunID)
 	if err == nil {
 		received.Duplicate = true
@@ -249,9 +249,12 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	}
 	feedbackSource := ""
 	if source.ReplyTo != "" {
-		_ = tx.QueryRowContext(ctx, `SELECT request_key FROM fa.messages WHERE conversation_id=$1 AND body_json->>'Role'='assistant' AND body_json->>'Public'='true' AND body_json#>>'{Channel,message_id}'=$2 AND body_json#>>'{Channel,source}'=$3 AND body_json#>>'{Channel,application_id}'=$4 AND body_json#>>'{Channel,chat_id}'=$5 AND request_key LIKE 'channel/delivery/%' ORDER BY id DESC LIMIT 1`, received.ConversationID, source.ReplyTo, source.Source, source.ApplicationID, source.ChatID).Scan(&feedbackSource)
+		_ = tx.QueryRowContext(ctx, `SELECT request_key FROM `+conversationRecords+` WHERE conversation_id=$1 AND body_json->>'Role'='assistant' AND body_json->>'Public'='true' AND body_json#>>'{Channel,message_id}'=$2 AND body_json#>>'{Channel,source}'=$3 AND body_json#>>'{Channel,application_id}'=$4 AND body_json#>>'{Channel,chat_id}'=$5 AND request_key LIKE 'channel/delivery/%' ORDER BY id DESC LIMIT 1`, received.ConversationID, source.ReplyTo, source.Source, source.ApplicationID, source.ChatID).Scan(&feedbackSource)
 	}
-	body := ModelMessage{Role: "user", Content: text, Channel: &source, Public: true, FeedbackSource: feedbackSource}
+	body := ModelMessage{Kind: messageUser, Role: "user", Content: text, Channel: &source, Public: true, FeedbackSource: feedbackSource}
+	if source.Purpose == "command" {
+		body.Kind = messageNotice
+	}
 	err = tx.QueryRowContext(ctx, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3) RETURNING id`, received.ConversationID, source.requestKey(), string(mustJSON(body))).Scan(&received.MessageID)
 	if err != nil {
 		return received, err
@@ -339,7 +342,7 @@ func (service *Service) bindChannel(ctx context.Context, chat string, origin *Ch
 		return nil
 	}
 	var through int64
-	if err := service.Store.db.QueryRowContext(ctx, `SELECT COALESCE(max(id),0) FROM fa.messages WHERE conversation_id=$1`, chat).Scan(&through); err != nil {
+	if err := service.Store.db.QueryRowContext(ctx, `SELECT COALESCE(max(id),0) FROM `+conversationRecords+` WHERE conversation_id=$1`, chat).Scan(&through); err != nil {
 		return err
 	}
 	service.channel = &ChannelRunOrigin{ChannelTarget: target, HistoryThrough: through}
@@ -456,25 +459,21 @@ func (tasks *TaskService) RecordChannelDelivery(ctx context.Context, runID, deli
 	}
 	defer tx.Rollback()
 	key := "channel/delivery/" + run.ID + "/" + deliveryID
-	result, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key,
+	_, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE fa.meta.document->>'state' IN ('queued','unknown','failed') AND excluded.document->>'state' IN ('partial','sent')`, key,
 		string(mustJSON(map[string]any{"run_id": run.ID, "state": state, "confirmed_bytes": len(text), "target": origin.ChannelTarget, "occurred_at": nowText()})))
 	if err != nil {
 		return err
 	}
-	changed, err := result.RowsAffected()
-	if err != nil || changed == 0 {
-		return err
-	}
-	if text != "" {
+	var body *ModelMessage
+	if text != "" && (state == "sent" || state == "partial") {
 		source := &ChannelMessageSource{ChannelTarget: origin.ChannelTarget, MessageID: deliveryID, Purpose: "delivery"}
 		if len(maintenance) > 0 && maintenance[0] {
 			source.Purpose = "command"
 		}
-		body := ModelMessage{Role: "assistant", Content: text, Channel: source, Public: true}
-		_, err = tx.ExecContext(ctx, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3)`, run.ConversationID, key, string(mustJSON(body)))
-		if err != nil {
-			return err
-		}
+		body = &ModelMessage{Role: "assistant", Content: text, Channel: source, Public: true}
+	}
+	if err = saveChannelReceipt(ctx, tx, key, run.ConversationID, run.ID, state, body); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

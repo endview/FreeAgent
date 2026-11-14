@@ -29,6 +29,9 @@ func testHarness(t *testing.T, model ModelClient) (*Service, *FileTools, string)
 		t.Fatal(err)
 	}
 	config := testEchoConfig(workspace)
+	// These execution regressions use the legacy explicit-byte policy. New
+	// automatic-target fixtures opt in and verify their own capacity behavior.
+	config.SummaryTargetMode = ""
 	if err := WriteConfig(data, config); err != nil {
 		t.Fatal(err)
 	}

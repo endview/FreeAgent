@@ -22,6 +22,18 @@ fs.mkdirSync(artifacts,{recursive:true});
   await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:'上下文',exact:true}).click();
   await page.getByRole('spinbutton',{name:'默认输出 token 上限',exact:true}).fill('4097');await page.getByRole('button',{name:'保存设置',exact:true}).click();
   await page.getByRole('status').filter({hasText:'设置已保存'}).waitFor();checks.context_save=true;
+  await choose('摘要目标','自动目标');
+  await page.getByRole('checkbox',{name:'自动压缩上下文',exact:true}).uncheck();
+  await page.getByRole('button',{name:'保存设置',exact:true}).click();await page.getByRole('status').filter({hasText:'设置已保存'}).waitFor();
+  let contextSaved=(await api('settings')).context;assert.equal(contextSaved.summary_target_mode,'auto');assert.equal(contextSaved.automatic,false);
+  await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:'通用',exact:true}).click();
+  await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:'上下文',exact:true}).click();
+  assert.equal(await page.getByRole('checkbox',{name:'自动压缩上下文',exact:true}).isChecked(),false);
+  assert.equal(await page.getByRole('spinbutton',{name:'摘要上限（UTF-8 字节）',exact:true}).isDisabled(),true);checks.automatic_target_and_schedule_are_independent=true;
+  await choose('摘要目标','手动上限');await page.getByRole('spinbutton',{name:'摘要上限（UTF-8 字节）',exact:true}).fill('10240');
+  await page.getByRole('button',{name:'保存设置',exact:true}).click();await page.getByRole('status').filter({hasText:'设置已保存'}).waitFor();
+  contextSaved=(await api('settings')).context;assert.equal(contextSaved.task_summary_bytes,10240);assert.equal(contextSaved.automatic,false);checks.manual_target_save_keeps_scheduling_off=true;
+
   await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:'内置工具',exact:true}).click();
   await page.getByRole('checkbox',{name:'网络工具',exact:true}).check();await page.getByRole('textbox',{name:'允许的网络来源（每行一个）',exact:true}).fill('https://example.com');await page.getByRole('button',{name:'保存设置',exact:true}).click();
   await page.getByRole('status').filter({hasText:'设置已保存'}).waitFor();checks.enable_network=true;

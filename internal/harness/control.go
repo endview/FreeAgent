@@ -265,6 +265,7 @@ type ControlConfigState struct {
 	HTTP           HTTPConfig            `json:"http"`
 	Memory         MemoryConfig          `json:"memory"`
 	Collaboration  CollaborationSettings `json:"collaboration"`
+	ContextPolicy  map[string]any        `json:"context_policy"`
 	Limits         map[string]int        `json:"limits"`
 	EnabledSkills  []string              `json:"enabled_skills,omitempty"`
 	EnabledExts    []string              `json:"enabled_extensions,omitempty"`
@@ -707,8 +708,8 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 			entries[i].Description = "Update only name/note of an existing saved Key by id. Creating a Key, changing its endpoint or entering secrets requires the dedicated Provider form."
 		}
 		if entries[i].Kind == ControlSetRuntimeLimits {
-			entries[i].Description += " task_summary_bytes: 0 disables automatic compaction; 1..16384 enables it and bounds the summary bytes. Existing summaries are retained."
-			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"extension_max_context_chars":{"type":"integer","minimum":0,"maximum":1048576},"extension_max_model_calls_per_turn":{"type":"integer","minimum":0,"maximum":128},"model_retries":{"type":"integer","minimum":0,"maximum":6},"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216}},"additionalProperties":false}`)
+			entries[i].Description += " automatic_compaction controls scheduling independently; summary_target_mode=auto uses a soft token target and separate storage protection, manual uses task_summary_bytes (1..16384). Legacy task_summary_bytes=0 disables automatic compaction; positive legacy writes enable it. Existing summaries are retained. Changes apply to future Runs; no active snapshot is silently altered."
+			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"extension_max_context_chars":{"type":"integer","minimum":0,"maximum":1048576},"extension_max_model_calls_per_turn":{"type":"integer","minimum":0,"maximum":128},"model_retries":{"type":"integer","minimum":0,"maximum":6},"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216},"automatic_compaction":{"type":"boolean"},"summary_target_mode":{"type":"string","enum":["auto","manual"]}},"additionalProperties":false}`)
 		}
 	}
 	return entries
@@ -833,7 +834,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 			FileScope: string(settings.FileScope), NetworkMode: string(settings.NetworkPolicy.Mode),
 			EnabledTools: effectiveBuiltinToolSettings(config), CommandReady: commands.Status == "ready", Commands: commands,
 			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled, HTTP: config.HTTP,
-			Memory: config.Memory, Collaboration: redactCollaborationSettings(config.Collaboration), Limits: map[string]int{
+			Memory: config.Memory, Collaboration: redactCollaborationSettings(config.Collaboration), ContextPolicy: contextPolicySnapshot(config), Limits: map[string]int{
 				"extension_max_context_chars": config.Extensions.MaxContextChars, "extension_max_model_calls_per_turn": config.Extensions.MaxModelCallsPerTurn,
 				"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
 				"model_retries":     config.ModelRetries,
@@ -2985,15 +2986,17 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		config.Collaboration = args
 	case ControlSetRuntimeLimits:
 		var args struct {
-			ModelRetries          *int `json:"model_retries"`
-			AutoCompactAt         *int `json:"auto_compact_percent"`
-			HistoryPageSize       *int `json:"history_page_size"`
-			MaxContextBytes       *int `json:"max_context_bytes"`
-			MaxOutputTokens       *int `json:"max_output_tokens"`
-			MaxToolResult         *int `json:"max_tool_result_bytes"`
-			TaskSummaryBytes      *int `json:"task_summary_bytes"`
-			ExtensionContextChars *int `json:"extension_max_context_chars"`
-			ExtensionModelCalls   *int `json:"extension_max_model_calls_per_turn"`
+			ModelRetries          *int    `json:"model_retries"`
+			AutoCompactAt         *int    `json:"auto_compact_percent"`
+			HistoryPageSize       *int    `json:"history_page_size"`
+			MaxContextBytes       *int    `json:"max_context_bytes"`
+			MaxOutputTokens       *int    `json:"max_output_tokens"`
+			MaxToolResult         *int    `json:"max_tool_result_bytes"`
+			TaskSummaryBytes      *int    `json:"task_summary_bytes"`
+			AutomaticCompaction   *bool   `json:"automatic_compaction"`
+			SummaryTargetMode     *string `json:"summary_target_mode"`
+			ExtensionContextChars *int    `json:"extension_max_context_chars"`
+			ExtensionModelCalls   *int    `json:"extension_max_model_calls_per_turn"`
 		}
 		if err := decodeControlJSON(raw, &args); err != nil {
 			return err
@@ -3018,7 +3021,25 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		}
 		if args.TaskSummaryBytes != nil {
 			config.TaskSummaryBytes = *args.TaskSummaryBytes
+			if args.SummaryTargetMode == nil {
+				config.SummaryTargetMode = "manual"
+				if *args.TaskSummaryBytes == 0 {
+					config.SummaryTargetMode = ""
+				}
+			}
+			if args.AutomaticCompaction == nil {
+				enabled := *args.TaskSummaryBytes > 0
+				config.AutomaticCompaction = &enabled
+			}
 		}
+		if args.AutomaticCompaction != nil {
+			value := *args.AutomaticCompaction
+			config.AutomaticCompaction = &value
+		}
+		if args.SummaryTargetMode != nil {
+			config.SummaryTargetMode = *args.SummaryTargetMode
+		}
+
 		if args.ExtensionContextChars != nil {
 			config.Extensions.MaxContextChars = *args.ExtensionContextChars
 		}
@@ -3217,7 +3238,7 @@ func configResourceValue(config Config, resource string) any {
 		return map[string]any{"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
 			"extension_max_context_chars": config.Extensions.MaxContextChars, "extension_max_model_calls_per_turn": config.Extensions.MaxModelCallsPerTurn,
 			"model_retries":     config.ModelRetries,
-			"max_output_tokens": config.MaxOutputTokens, "max_tool_result_bytes": config.MaxToolResult, "auto_compact_percent": autoCompactPercent(config), "task_summary_bytes": config.TaskSummaryBytes}
+			"max_output_tokens": config.MaxOutputTokens, "max_tool_result_bytes": config.MaxToolResult, "auto_compact_percent": autoCompactPercent(config), "task_summary_bytes": config.TaskSummaryBytes, "automatic_compaction": config.AutomaticCompaction, "summary_target_mode": config.SummaryTargetMode}
 	case "config.workspace":
 		return config.Workspace
 	case "config." + ControlSetPermission:
@@ -3396,15 +3417,17 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		return decodeAndAssign(raw, &config.Collaboration)
 	case "config.limits":
 		var data struct {
-			ModelRetries          int `json:"model_retries"`
-			AutoCompactAt         int `json:"auto_compact_percent"`
-			HistoryPageSize       int `json:"history_page_size"`
-			MaxContextBytes       int `json:"max_context_bytes"`
-			MaxOutputTokens       int `json:"max_output_tokens"`
-			MaxToolResult         int `json:"max_tool_result_bytes"`
-			TaskSummaryBytes      int `json:"task_summary_bytes"`
-			ExtensionContextChars int `json:"extension_max_context_chars"`
-			ExtensionModelCalls   int `json:"extension_max_model_calls_per_turn"`
+			ModelRetries          int    `json:"model_retries"`
+			AutoCompactAt         int    `json:"auto_compact_percent"`
+			HistoryPageSize       int    `json:"history_page_size"`
+			MaxContextBytes       int    `json:"max_context_bytes"`
+			MaxOutputTokens       int    `json:"max_output_tokens"`
+			MaxToolResult         int    `json:"max_tool_result_bytes"`
+			TaskSummaryBytes      int    `json:"task_summary_bytes"`
+			AutomaticCompaction   *bool  `json:"automatic_compaction"`
+			SummaryTargetMode     string `json:"summary_target_mode"`
+			ExtensionContextChars int    `json:"extension_max_context_chars"`
+			ExtensionModelCalls   int    `json:"extension_max_model_calls_per_turn"`
 		}
 		if err := json.Unmarshal(raw, &data); err != nil {
 			return err
@@ -3412,6 +3435,7 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		config.HistoryPageSize, config.MaxContextBytes, config.MaxOutputTokens = data.HistoryPageSize, data.MaxContextBytes, data.MaxOutputTokens
 		config.MaxToolResult, config.TaskSummaryBytes = data.MaxToolResult, data.TaskSummaryBytes
 		config.AutoCompactAt = data.AutoCompactAt
+		config.AutomaticCompaction, config.SummaryTargetMode = data.AutomaticCompaction, data.SummaryTargetMode
 		config.ModelRetries = data.ModelRetries
 		config.Extensions.MaxContextChars = data.ExtensionContextChars
 		config.Extensions.MaxModelCallsPerTurn = data.ExtensionModelCalls

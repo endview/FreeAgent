@@ -18,8 +18,10 @@ import (
 // Keeping this adapter at the CLI boundary makes the owner API the only writer
 // without duplicating the core config semantics.
 type configInvocation struct {
-	Command string
-	Flags   *flag.FlagSet
+	AutomaticCompaction bool
+	SummaryTargetMode   string
+	Command             string
+	Flags               *flag.FlagSet
 
 	ModelID     string
 	Model       harness.ModelConfig
@@ -207,6 +209,12 @@ func (inv configInvocation) controlPlan(ctx context.Context, dataDir string) (st
 		return marshalControlArgs(harness.ControlSetHTTPPolicy, httpConfig)
 	case "context":
 		limits := map[string]any{}
+		if visited("automatic") {
+			limits["automatic_compaction"] = inv.AutomaticCompaction
+		}
+		if visited("summary-target") {
+			limits["summary_target_mode"] = inv.SummaryTargetMode
+		}
 		if visited("model-retries") {
 			limits["model_retries"] = inv.ModelRetries
 		}

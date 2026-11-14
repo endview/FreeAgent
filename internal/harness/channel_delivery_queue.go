@@ -84,7 +84,7 @@ func (b *ChannelBridge) recordDelivered(ctx context.Context, op channelwire.Oper
 			return err
 		}
 		body := ModelMessage{Role: "assistant", Content: "[Delivered file: " + record.Ref.Name + "]", Public: true, Attachments: []AttachmentRef{record.Ref}, Channel: &ChannelMessageSource{ChannelTarget: ChannelTarget(op.Target), MessageID: op.MessageID, Purpose: "delivery"}}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO fa.messages(conversation_id,run_id,request_key,body_json) VALUES($1,NULL,$2,$3) ON CONFLICT(request_key) WHERE request_key!='' DO NOTHING`, op.ConversationID, "channel-file-delivery/"+op.ID, string(mustJSON(body))); err != nil {
+		if err := saveChannelReceipt(ctx, tx, "channel-file-delivery/"+op.ID, op.ConversationID, op.RunID, "sent", &body); err != nil {
 			return err
 		}
 		return tx.Commit()

@@ -110,7 +110,7 @@ func (tasks *TaskService) PreviewSourceAnalysis(ctx context.Context, chat string
 		}
 		// Confirmed channel replies are public mirrors with no run_id. Include
 		// exactly this Run's mirrors, rather than its unconfirmed private answer.
-		rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT id,body_json FROM fa.messages WHERE conversation_id=$1 AND (run_id=$2 OR starts_with(request_key,$3)) AND ($4::bigint=0 OR id>=$4) AND ($5::bigint=0 OR id<=$5) ORDER BY id LIMIT 257`, chat, id, "channel/delivery/"+id+"/", selection.FromMessage, selection.ThroughMessage)
+		rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT id,body_json FROM `+conversationRecords+` WHERE conversation_id=$1 AND (run_id=$2 OR starts_with(request_key,$3)) AND ($4::bigint=0 OR id>=$4) AND ($5::bigint=0 OR id<=$5) ORDER BY id LIMIT 257`, chat, id, "channel/delivery/"+id+"/", selection.FromMessage, selection.ThroughMessage)
 		if err != nil {
 			return result, err
 		}

@@ -24,6 +24,7 @@ export interface RuntimeState {
   refreshRequired: boolean;
   loading: boolean;
   inputRevision: number;
+  contextRevision: number;
   navQuery: string;
   navSpace: string;
   navCursor: string;
@@ -46,6 +47,7 @@ const initial: RuntimeState = {
   refreshRequired: false,
   loading: false,
   inputRevision: 0,
+  contextRevision: 0,
   navQuery: "",
   navSpace: "local",
   navCursor: "",
@@ -240,7 +242,8 @@ function flush() {
   }
   let snapshot = state.snapshot,
     refresh = false,
-    inputChanged = false;
+    inputChanged = false,
+    contextChanged = false;
   for (const event of events) {
     observeVersion(event.server_version);
     const policy = policyFor(event.kind);
@@ -251,6 +254,7 @@ function flush() {
       continue;
     }
     if (event.kind === "reconnect") {
+      contextChanged = true;
       navigationDirty = true;
       environmentDirty = true;
       refresh = true;
@@ -291,6 +295,15 @@ function flush() {
       lastSeq = event.seq;
     }
     if (
+      (!event.conversation_id || event.conversation_id === state.selected) &&
+      (event.kind.startsWith("context_") ||
+        event.purpose === "compaction" ||
+        ["refresh", "run_started", "run_completed", "run_settled"].includes(
+          event.kind,
+        ))
+    )
+      contextChanged = true;
+    if (
       event.kind === "model_text" &&
       !event.purpose &&
       event.conversation_id === state.selected &&
@@ -321,10 +334,11 @@ function flush() {
     )
       refresh = true;
   }
-  if (snapshot !== state.snapshot || inputChanged)
+  if (snapshot !== state.snapshot || inputChanged || contextChanged)
     update({
       snapshot,
       ...(inputChanged ? { inputRevision: state.inputRevision + 1 } : {}),
+      ...(contextChanged ? { contextRevision: state.contextRevision + 1 } : {}),
     });
   if (refresh || navigationDirty || environmentDirty) scheduleRefresh();
 }

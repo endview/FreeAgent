@@ -44,7 +44,11 @@ func liveProviderConfig(t *testing.T) (ModelConfig, *KeyStore, string) {
 	}
 	keys := testKeyStore(t)
 	id := addTestProfile(t, keys, base, KeySourceEnv, keyEnv, "")
-	return ModelConfig{Provider: "openai-compatible", Key: id, Model: model}, keys, keyEnv
+	config := ModelConfig{Provider: "openai-compatible", Key: id, Model: model}
+	if os.Getenv("FREEAGENT_LIVE_REASONING_CONTROL") == "deepseek" {
+		config.Capabilities.Reasoning = ReasoningCapabilities{Control: "deepseek", Efforts: "low,high,max", Default: ReasoningSelection{Mode: "disabled"}, Auxiliary: ReasoningSelection{Mode: "disabled"}}
+	}
+	return config, keys, keyEnv
 }
 
 type acceptanceModel struct {

@@ -32,6 +32,7 @@ type ChatTurn struct {
 	Key             string                `json:"key"`
 	State           string                `json:"state"`
 	Reason          string                `json:"reason,omitempty"`
+	ReasonCode      string                `json:"reason_code,omitempty"`
 	ModelID         string                `json:"model_id,omitempty"`
 	Permission      *PermissionSelection  `json:"permission,omitempty"`
 	RuntimeRevision string                `json:"runtime_revision,omitempty"`
@@ -216,7 +217,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		if err != nil {
 			return ChatView{}, err
 		}
-		turn := ChatTurn{ActivityEarlier: earlier, Key: run.ID, RequestKey: run.RequestKey, State: chatState(run, attempts), Reason: run.StopReason,
+		turn := ChatTurn{ActivityEarlier: earlier, Key: run.ID, RequestKey: run.RequestKey, State: chatState(run, attempts), Reason: run.StopReason, ReasonCode: run.StopCode,
 			Steps: run.Steps, ElapsedMS: activeElapsed(run),
 			ModelID: run.ModelID, Permission: run.Permission, Messages: make([]ChatMessage, 0), Activity: make([]ChatActivity, 0),
 			Sources: make([]MemoryUse, 0), Evidence: attemptEvidence(attempts), Ended: run.Status == "abandoned"}
@@ -405,7 +406,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 		return ChatView{}, e
 	}
 	if before == "" {
-		rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM fa.messages WHERE conversation_id=$1 AND run_id IS NULL AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND ((body_json #>> '{Channel,purpose}') IN ('background','command','request') OR EXISTS(SELECT 1 FROM fa.meta WHERE key='conversation/branch/'||messages.conversation_id)) ORDER BY id DESC LIMIT 100`, conversationID)
+		rows, err := tx.QueryContext(ctx, `SELECT id,body_json FROM `+conversationRecords+` WHERE conversation_id=$1 AND run_id IS NULL AND coalesce(((body_json #>> '{Deferred}')::boolean),false)=false AND ((body_json #>> '{Channel,purpose}') IN ('background','command','request','delivery') OR EXISTS(SELECT 1 FROM fa.meta WHERE key='conversation/branch/'||messages.conversation_id)) ORDER BY id DESC LIMIT 100`, conversationID)
 		if err != nil {
 			return ChatView{}, err
 		}
@@ -451,7 +452,7 @@ func (tasks *TaskService) ChatRaw(ctx context.Context, conversationID, kind, key
 	var raw string
 	switch kind {
 	case "message":
-		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT m.body_json FROM fa.messages m WHERE m.conversation_id=$1 AND m.id=$2`, conversationID, key).Scan(&raw)
+		err = tasks.core.Store.db.QueryRowContext(ctx, `SELECT m.body_json FROM `+conversationRecordRows+` AS m WHERE m.conversation_id=$1 AND m.id=$2`, conversationID, key).Scan(&raw)
 		if err != nil {
 			return "", err
 		}

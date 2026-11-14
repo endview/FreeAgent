@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeCurrentTurns, stateMeta } from '../frontend/lib/presentation/state.mjs';
-import { summaryByteLimit, contextActions, contextStatus } from '../frontend/lib/presentation/context.mjs';
+import { summaryByteLimit, contextActions, contextStatus, contextStopReason, contextScopeLabel } from '../frontend/lib/presentation/context.mjs';
+
+test('stop codes distinguish payload and model windows and preserve unknown diagnostics', () => {
+  assert.match(contextStopReason('context_payload_limit'), /本地请求字节/);
+  assert.match(contextStopReason('context_window_full'), /模型输入窗口/);
+  assert.match(contextStopReason('context_structure_invalid'), /结构/);
+  assert.equal(contextStopReason('future_code', 'original diagnostic'), 'original diagnostic');
+  assert.equal(contextScopeLabel('channel_public'), '渠道公开视图');
+});
 
 test('completed maintenance disappears from current snapshots without dropping older history or UNKNOWN', () => {
   const old = { key: 'old', state: 'completed' };

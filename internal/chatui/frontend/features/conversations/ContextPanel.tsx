@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useRuntime } from "@/lib/store/runtime";
 import { api } from "@/lib/api/client";
 import type { ContextState } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
+import { Choice } from "@/components/Choice";
 import { Field, Result } from "@/features/settings/shared";
 import { MemorySelection } from "./MemorySelection";
 import {
   contextActions,
   contextStatus,
   summaryByteLimit,
+  contextScopeLabel,
 } from "../../lib/presentation/context.mjs";
 
 export function ContextPanel({
@@ -23,15 +26,30 @@ export function ContextPanel({
     [error, setError] = useState(""),
     [result, setResult] = useState("");
   const [requestKey, setRequestKey] = useState("");
+  const [targetMode, setTargetMode] = useState("manual");
+  const { contextRevision } = useRuntime();
+  const editing = useRef(false),
+    openedChat = useRef(chat);
+  const draftRevisions = useRef<Record<string, number> | undefined>(undefined);
   useEffect(() => {
     let disposed = false;
+    if (openedChat.current !== chat) {
+      openedChat.current = chat;
+      editing.current = false;
+    }
     api<ContextState>(
       `attach/context?conversation_id=${encodeURIComponent(chat)}`,
     )
       .then((value) => {
         if (!disposed) {
           setState(value);
-          setBytes(value.byte_limit || 4096);
+          if (!editing.current) {
+            draftRevisions.current = value.expected_revisions;
+            setBytes(value.byte_limit || 4096);
+            setTargetMode(
+              value.summary_target_mode === "auto" ? "auto" : "manual",
+            );
+          }
         }
       })
       .catch((error) => {
@@ -40,7 +58,7 @@ export function ContextPanel({
     return () => {
       disposed = true;
     };
-  }, [chat]);
+  }, [chat, contextRevision]);
   const allowed = contextActions(state, busy);
   async function saveDefault() {
     if (!state) return;
@@ -48,12 +66,15 @@ export function ContextPanel({
     setError("");
     setResult("");
     try {
-      const limit = summaryByteLimit(bytes);
+      const limit = targetMode === "manual" ? summaryByteLimit(bytes) : 0;
       await api(
         "settings/context",
         {
-          task_summary_bytes: limit,
-          expected_revisions: state.expected_revisions,
+          ...(limit ? { task_summary_bytes: limit } : {}),
+          summary_target_mode: targetMode,
+          automatic_compaction: true,
+          expected_revisions:
+            draftRevisions.current || state.expected_revisions,
         },
         "PATCH",
       );
@@ -61,9 +82,13 @@ export function ContextPanel({
         `attach/context?conversation_id=${encodeURIComponent(chat)}`,
       );
       setState(saved);
+      editing.current = false;
+      draftRevisions.current = saved.expected_revisions;
       setBytes(saved.byte_limit);
       setResult(
-        `Core 默认摘要上限已保存为 ${saved.byte_limit.toLocaleString()} 字节，自动压缩已开启；已有摘要保留，可手动重新压缩后继续受限任务。`,
+        targetMode === "auto"
+          ? "Core 默认已保存为自动摘要目标，自动压缩已开启；已有摘要保留，新请求使用新配置。"
+          : `Core 默认摘要上限已保存为 ${saved.byte_limit.toLocaleString()} 字节，自动压缩已开启；已有摘要保留，可手动重新压缩后继续受限任务。`,
       );
       onDone();
     } catch (error) {
@@ -81,7 +106,7 @@ export function ContextPanel({
       return;
     let limit: number;
     try {
-      limit = summaryByteLimit(bytes);
+      limit = targetMode === "manual" ? summaryByteLimit(bytes) : 0;
     } catch (error) {
       setError((error as Error).message);
       return;
@@ -104,7 +129,12 @@ export function ContextPanel({
         command: {
           action,
           expected_revision: state.revision,
-          ...(action !== "clear" ? { summary_bytes: limit } : {}),
+          ...(action !== "clear"
+            ? {
+                summary_target_mode: targetMode,
+                ...(limit ? { summary_bytes: limit } : {}),
+              }
+            : {}),
         },
       });
       setState(value.state);
@@ -131,10 +161,17 @@ export function ContextPanel({
   return (
     <section className="context-panel">
       <h2>上下文</h2>
-      <p>{busy ? "正在压缩上下文…" : contextStatus(state)}</p>
+      <p>
+        {busy || state?.compaction_state === "dispatched"
+          ? "正在生成上下文摘要…"
+          : state?.compaction_state === "unknown"
+            ? "摘要请求结果未知，请先核对记录。"
+            : contextStatus(state)}
+      </p>
       {state && (
         <>
           <p className="form-hint">
+            {contextScopeLabel(state.visibility_scope)} ·
             {state.automatic ? "自动压缩已开启" : "自动压缩已关闭"} · 触发比例{" "}
             {state.window.automatic_percent}%
           </p>
@@ -183,6 +220,29 @@ export function ContextPanel({
               </dd>
             </div>
           </dl>
+          <p className="form-hint">
+            本地请求字节保护：{state.window.byte_limit.toLocaleString()}{" "}
+            字节；它与模型 token 窗口分别校验。
+            {state.last_request?.limiting_resource === "bytes"
+              ? "当前主要受字节保护约束。"
+              : ""}
+            {state.last_request?.estimate_method ===
+            "matched_attempt_prefix_plus_new_input"
+              ? "估算已用匹配请求的实际输入用量校准。"
+              : "本地估算不等于厂商精确 token 数。"}
+          </p>
+          {state.last_reported_usage && (
+            <p className="form-hint">
+              最近模型实报输入：
+              {state.last_reported_usage.input_tokens.toLocaleString()} tokens
+              {state.last_reported_usage.cache_read_tokens !== undefined
+                ? ` · 缓存读取 ${state.last_reported_usage.cache_read_tokens.toLocaleString()} tokens`
+                : " · 缓存用量未知"}
+              {state.last_request?.attempt_id !== state.last_usage_attempt_id
+                ? "。该用量来自最近已发送请求，不等于当前准备请求的实测值。"
+                : "。与上方请求关联。"}
+            </p>
+          )}
           {state.last_request?.newer_history_available && (
             <p className="form-hint">
               这是上一条实际请求的估算，之后的消息尚未计入。
@@ -202,6 +262,34 @@ export function ContextPanel({
             </details>
           )}
           <Field
+            label="本次摘要目标"
+            hint={
+              state.summary_target_mode === "legacy_manual"
+                ? "旧配置按原值保留；选择自动后可保存为默认，不会凭数值猜测原设置意图。"
+                : "本次目标与自动压缩开关分别管理。"
+            }
+          >
+            <Choice
+              label="本次摘要目标"
+              value={targetMode}
+              options={[
+                ["auto", "自动目标"],
+                ["manual", "手动字节上限"],
+              ]}
+              disabled={busy}
+              onChange={(mode) => {
+                editing.current = true;
+                setTargetMode(mode);
+              }}
+            />
+          </Field>
+          {state.summary_target_tokens ? (
+            <p className="form-hint">
+              自动软目标约 {state.summary_target_tokens.toLocaleString()}{" "}
+              tokens；保存字节保护独立校验。
+            </p>
+          ) : null}
+          <Field
             label="摘要目标（UTF-8 字节）"
             hint="手动压缩仅使用本次目标；保存默认设置影响此 Core 的后续请求，并开启自动压缩。"
           >
@@ -210,9 +298,12 @@ export function ContextPanel({
               min={1}
               max={16384}
               step={1}
-              disabled={busy}
+              disabled={busy || targetMode === "auto"}
               value={bytes}
-              onChange={(event) => setBytes(Number(event.target.value))}
+              onChange={(event) => {
+                editing.current = true;
+                setBytes(Number(event.target.value));
+              }}
             />
           </Field>
           <Button

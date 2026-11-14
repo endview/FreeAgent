@@ -19,3 +19,18 @@ func TestContextSettingsUsesCoreLimitAndRejectsOmittedValue(t *testing.T) {
 		}
 	}
 }
+
+func TestContextPolicyCanSaveAutomaticTargetWithoutChangingSchedule(t *testing.T) {
+	ui := setupUI(t, harness.EchoModel{})
+	for _, enabled := range []bool{false, true, false} {
+		code, raw := ui.request(t, "PATCH", "/api/settings/context", map[string]any{"automatic_compaction": enabled, "summary_target_mode": "auto"})
+		config := ui.tasks.Config()
+		if code != 200 || harness.AutomaticCompactionEnabled(config) != enabled || config.SummaryTargetMode != "auto" {
+			t.Fatalf("policy did not persist: %d %s", code, raw)
+		}
+	}
+	code, raw := ui.request(t, "PATCH", "/api/settings/context", map[string]any{"summary_target_mode": "manual", "task_summary_bytes": 10240, "automatic_compaction": false})
+	if code != 200 || ui.tasks.Config().TaskSummaryBytes != 10240 || harness.AutomaticCompactionEnabled(ui.tasks.Config()) {
+		t.Fatalf("manual target enabled scheduling: %d %s", code, raw)
+	}
+}

@@ -73,8 +73,14 @@ func TestCompletedLargeToolOutputIsSummarizedAsBoundedSourceFragments(t *testing
 	core.Config.MaxOutputTokens = 128
 	core.Config.TaskSummaryBytes = 512
 	result, err := core.Run(t.Context(), chat, "after-large", "continue")
-	if err != nil || result.Run.Status != "completed" || parts < 2 {
+	if err != nil || result.Run.Status != "completed" {
 		t.Fatalf("status=%s fragments=%d error=%v", result.Run.Status, parts, err)
+	}
+	// A usable result preview can avoid automatic model calls entirely. A
+	// deliberate archive still reads and summarizes the full authorized source.
+	compacted, err := NewTaskService(core).ManageContext(t.Context(), chat, ContextCommand{Action: "compact", SummaryBytes: 512})
+	if err != nil || compacted.State.Summary == nil || parts < 2 {
+		t.Fatalf("manual archive: %+v fragments=%d err=%v", compacted, parts, err)
 	}
 	attempts, _ = core.Store.ListAttempts(t.Context(), prior.ID)
 	if len(attempts) != 3 {

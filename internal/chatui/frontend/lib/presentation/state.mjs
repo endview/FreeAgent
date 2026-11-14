@@ -240,6 +240,7 @@ export function turnSignature(turn = {}) {
     key: turn.key || "",
     state: turn.state || "",
     reason: turn.reason || "",
+    reason_code: turn.reason_code || "",
     can_continue: Boolean(turn.can_continue),
     can_end: Boolean(turn.can_end),
     ended: Boolean(turn.ended),

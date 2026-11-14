@@ -70,6 +70,7 @@ import {
   DialogHeader,
 } from "@/components/ui/dialog";
 import { ContextPanel } from "./ContextPanel";
+import { contextStopReason } from "../../lib/presentation/context.mjs";
 import { DeliveryPanel } from "./DeliveryPanel";
 import { SourceAnalysis } from "./SourceAnalysis";
 import { StickerPanel } from "./StickerPanel";
@@ -372,7 +373,9 @@ const TurnView = memo(function TurnView({
         >
           <div>
             <strong>{state}</strong>
-            {turn.reason && <p>{turn.reason}</p>}
+            {turn.reason && (
+              <p>{contextStopReason(turn.reason_code, turn.reason)}</p>
+            )}
             {turn.state === "unknown" && (
               <p>结果还不能确认。原执行记录已保留，不自动重放副作用。</p>
             )}

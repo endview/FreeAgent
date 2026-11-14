@@ -25,15 +25,17 @@ resource invalidation also closes the waiting Attempt and Run.
 
 ## Context And Channels
 
-`task_summary_bytes` is the only automatic-compaction switch: 0 disables it,
-1–16384 enables it with that summary-byte bound. New installations use 4096;
-existing omitted/zero settings are not changed. Settings, CLI
-`config context --summary-bytes` and model-proposed `runtime.set_limits` share
-the same control operation. Model-proposed persistent changes need confirmation.
+`automatic_compaction` controls scheduling independently of
+`summary_target_mode` (`auto` or `manual`). Missing fields preserve the old
+`task_summary_bytes` behavior: omitted/zero keeps scheduling off and explicit
+byte limits remain manual. New installations use an automatic target; existing
+10,240-byte settings are not inferred to be auto. Settings, CLI
+`config context` and model-proposed `runtime.set_limits` share the same control
+operation. Model-proposed persistent changes need confirmation.
 Manual compaction does not enable automatic compaction or grant tools to None.
 `auto_compact_percent` sets the shared 50–95% trigger (default 80). Model total
 token windows remain separate from local byte limits and reported usage.
-See [the v7.13 guide](CONTEXT_AND_CONTINUOUS_EXECUTION.md).
+See [context management](CONTEXT_MANAGEMENT.md).
 
 Telegram uses `/start` applications bound to numeric Bot/chat/person identities
 and administrator approval. The short application code only locates a pending

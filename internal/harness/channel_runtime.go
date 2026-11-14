@@ -355,6 +355,36 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		return err
 	}
 	switch cmd {
+	case "/context":
+		core, readErr := s.tasks.contextReader(ctx, chat)
+		if readErr != nil {
+			return readErr
+		}
+		if readErr = core.resolveRequestPermission(ctx, chat, e.Person, e.Target.Source); readErr != nil {
+			return readErr
+		}
+		state, readErr := NewTaskService(core).ContextState(ctx, chat)
+		if readErr != nil {
+			return s.plain(ctx, e, "上下文状态读取失败，请在本机核对记录。")
+		}
+		text := fmt.Sprintf("上下文：%s；摘要上限=%d UTF-8 字节；请求字节保护=%d；输出预留=%d tokens。", state.Status, state.ByteLimit, state.Window.ByteLimit, state.Window.OutputReserve)
+		if state.LastRequest != nil {
+			text += fmt.Sprintf("\n最近准备请求：占用=%d%%，%d 字节，估算输入=%d tokens（不是实时值）。", state.LastRequest.Occupancy, state.LastRequest.Bytes, state.LastRequest.EstimatedTokens)
+		}
+		if state.TargetMode == "auto" {
+			text += fmt.Sprintf("\n摘要采用自动软目标，约 %d tokens；字节保护单独生效。", state.TargetTokens)
+		}
+		if state.Status == "stale" {
+			text += "\n旧摘要需要按当前授权视图重建，可用 /compact refresh；原记录保留。"
+		}
+		if state.AutomaticPaused != "" {
+			text += "\n" + state.AutomaticPaused
+		}
+		if state.Blocked != "" {
+			text += "\n存在运行任务、待确认或未知结果，请先处理该任务。"
+		}
+		text += "\n可用 /compact 手动压缩；已开启多对话时可用 /new。修改模型窗口与辅助思考请打开设置。"
+		return s.plain(ctx, e, text)
 	case "/analyze":
 		return s.sourceAnalysisCommand(ctx, e, chat, args)
 	case "/save-reply":
@@ -374,9 +404,9 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		return s.plain(ctx, e, text)
 	case "/help", "/start":
 		if e.Target.Source == SpaceSourceTelegram {
-			return s.plain(ctx, e, "运行中直接发送消息即可补充当前任务。\n/mode /status /stop /continue /abandon /compact /save-reply /inputs /history /branch 消息ID；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
+			return s.plain(ctx, e, "运行中直接发送消息即可补充当前任务。\n/mode /status /context /stop /continue /abandon /compact /save-reply /inputs /history /branch 消息ID；开启多对话：/multi on；/sessions /new [标题] /switch ID /default ID。产品设置与敏感审批在本机确认。")
 		}
-		return s.plain(ctx, e, "/mode /status /stop /continue /abandon /compact /save-reply /steer 文本 /queue 文本 /inputs /queue-cancel key /queue-resume /history /branch 消息ID；开启多对话：/multi on；/sessions /new 标题 /switch ID /default ID。产品设置与敏感审批在本机确认。")
+		return s.plain(ctx, e, "/mode /status /context /stop /continue /abandon /compact /save-reply /steer 文本 /queue 文本 /inputs /queue-cancel key /queue-resume /history /branch 消息ID；开启多对话：/multi on；/sessions /new [标题] /switch ID /default ID。产品设置与敏感审批在本机确认。")
 	case "/status":
 		run, err := s.tasks.Latest(ctx, chat)
 		if err != nil {
@@ -386,7 +416,7 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		if run.Permission == nil || run.Permission.PersonID != e.Person || s.tasks.checkTelegramRun(ctx, run) != nil {
 			answer = "此入口只显示已确认公开的回复；未投递或管理员私有结果请在本机核对。"
 			var publicText string
-			if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT (body_json #>> '{Content}') FROM fa.messages WHERE conversation_id=$1 AND request_key LIKE $2 AND ((body_json #>> '{Public}')::boolean)=true ORDER BY id DESC LIMIT 1`, chat, "channel/delivery/"+run.ID+"/%").Scan(&publicText); err == nil {
+			if err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT (body_json #>> '{Content}') FROM `+conversationRecords+` WHERE conversation_id=$1 AND request_key LIKE $2 AND ((body_json #>> '{Public}')::boolean)=true ORDER BY id DESC LIMIT 1`, chat, "channel/delivery/"+run.ID+"/%").Scan(&publicText); err == nil {
 				answer = publicText
 			}
 		}
@@ -447,10 +477,15 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 			}
 			title := strings.Join(args, " ")
 			var c Conversation
-			c, err = s.tasks.NewConversationInSpace(ctx, space.ID, title)
+			request := string(mustJSON([]any{e.Target, e.Message}))
+			c, err = s.tasks.NewActiveConversationInSpace(ctx, space.ID, title, request)
 			if err == nil {
-				err = s.tasks.SetSpaceActiveConversation(ctx, space.ID, c.ID)
+				return s.plain(ctx, e, "已创建并切换到："+c.Title+"\n"+c.ID)
 			}
+			if errors.Is(err, ErrInvalidConversationTitle) {
+				return s.plain(ctx, e, "对话名称需为 1–80 个字符，且不能包含换行或控制字符。")
+			}
+			return s.plain(ctx, e, "未能创建新对话；请用 /sessions 核对当前对话后重试。")
 		default:
 			if !space.MultiConversation {
 				return s.plain(ctx, e, "请先 /multi on。")
@@ -491,8 +526,15 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		}
 		return s.launch(ctx, e, chat, func(ctx context.Context) (RunResult, error) { return s.tasks.Continue(ctx, run.ID) })
 	case "/compact":
+		action := "compact"
+		if len(args) > 0 {
+			if len(args) != 1 || args[0] != "refresh" {
+				return s.plain(ctx, e, "使用 /compact；重建过期摘要使用 /compact refresh。")
+			}
+			action = "refresh"
+		}
 		return s.launch(ctx, e, chat, func(ctx context.Context) (RunResult, error) {
-			return s.tasks.CompactChannel(ctx, chat, e.Person, e.Target)
+			return s.tasks.CompactChannel(ctx, chat, e.Person, e.Target, action)
 		})
 	default:
 		return s.plain(ctx, e, "未知命令。使用 /help 查看支持的命令；不会把未知命令交给模型执行。")
@@ -824,7 +866,7 @@ func (s *channelSession) replyMessage(ctx context.Context, run Run) string {
 	if origin == nil {
 		return ""
 	}
-	err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM fa.messages WHERE conversation_id=$1 AND id<=$2 AND (body_json #>> '{Channel,purpose}') IN ('request','command') ORDER BY id DESC LIMIT 1`, run.ConversationID, origin.HistoryThrough).Scan(&raw)
+	err := s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json FROM `+conversationRecords+` WHERE conversation_id=$1 AND id<=$2 AND (body_json #>> '{Channel,purpose}') IN ('request','command') ORDER BY id DESC LIMIT 1`, run.ConversationID, origin.HistoryThrough).Scan(&raw)
 	if err != nil {
 		return ""
 	}

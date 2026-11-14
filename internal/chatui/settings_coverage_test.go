@@ -77,7 +77,7 @@ func TestFrontendSettingsCoverage(t *testing.T) {
 				page = "attachments"
 			case "server":
 				page = "data"
-			case "max_context_bytes", "max_output_tokens", "model_retries", "task_summary_bytes", "auto_compact_percent":
+			case "max_context_bytes", "max_output_tokens", "model_retries", "task_summary_bytes", "auto_compact_percent", "automatic_compaction", "summary_target_mode":
 				page = "context"
 			case "commands":
 				page = "commands"

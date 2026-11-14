@@ -70,27 +70,30 @@ type Service struct {
 	Keys *KeyStore
 	// A composition may hold the store's exclusive execution lease while
 	// scheduling bounded calls. The normal single-task path never bypasses it.
-	ownsLease         bool
-	guard             callGuard
-	bindings          []ModelBinding
-	runLimits         *ExecutionLimits
-	selection         string
-	onAccepted        func(Run)
-	autoPolicy        *autoRunPolicy
-	routing           []RoutingDecision
-	callOverride      *ModelBinding
-	activity          *executionActivity
-	memory            *memoryRunPolicy
-	permission        *PermissionSelection
-	channel           *ChannelRunOrigin
-	capabilities      *CapabilitySelection
-	skills            *skillRuntime
-	extensions        *extensionHost
-	extensionPrepared bool
-	extensionBlocks   []ExtensionBlock
-	extensionUses     []ExtensionUse
-	extensionToolDefs []extensionRuntimeTool
-	controlMu         *sync.Mutex
+	ownsLease              bool
+	guard                  callGuard
+	bindings               []ModelBinding
+	runLimits              *ExecutionLimits
+	selection              string
+	onAccepted             func(Run)
+	autoPolicy             *autoRunPolicy
+	routing                []RoutingDecision
+	callOverride           *ModelBinding
+	activity               *executionActivity
+	memory                 *memoryRunPolicy
+	permission             *PermissionSelection
+	channel                *ChannelRunOrigin
+	capabilities           *CapabilitySelection
+	skills                 *skillRuntime
+	extensions             *extensionHost
+	extensionPrepared      bool
+	extensionInputRevision string
+	extensionInputText     string
+	contextProbe           bool
+	extensionBlocks        []ExtensionBlock
+	extensionUses          []ExtensionUse
+	extensionToolDefs      []extensionRuntimeTool
+	controlMu              *sync.Mutex
 	// configMu guards Config replacement on a core shared by several
 	// TaskService values; copies taken for a Run keep their own Config.
 	configMu                  *sync.RWMutex
@@ -958,6 +961,12 @@ func (service *Service) generate(ctx context.Context, run Run, request ModelRequ
 	if budgetErr := usage.budgetError(); budgetErr != nil {
 		return Attempt{}, ModelResponse{}, budgetErr
 	}
+	usage.Sources = contextRequestSources(request)
+	request.ContextUsage = &usage
+	raw, err = json.Marshal(request)
+	if err != nil {
+		return Attempt{}, ModelResponse{}, err
+	}
 	return service.dispatchModel(ctx, run, request, raw, rebuild, false)
 }
 
@@ -1043,7 +1052,7 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 				releaseSlot()
 				return service.retryModel(ctx, run, attempt, request, response, certainty, rebuild)
 			}
-			if saveErr == nil && outputErr == nil && !retried && rebuild != nil && service.Config.TaskSummaryBytes > 0 && service.Config.ModelRetries > 0 && (request.Recovery == nil || request.Recovery.Number < service.Config.ModelRetries) && certainty.Category == "context_limit" && streamBytes == 0 && response.Content == "" && len(response.ToolCalls) == 0 && len(response.ProviderItems) == 0 && ctx.Err() == nil {
+			if saveErr == nil && outputErr == nil && !retried && rebuild != nil && AutomaticCompactionEnabled(service.Config) && service.Config.ModelRetries > 0 && (request.Recovery == nil || request.Recovery.Number < service.Config.ModelRetries) && certainty.Category == "context_limit" && streamBytes == 0 && response.Content == "" && len(response.ToolCalls) == 0 && len(response.ProviderItems) == 0 && ctx.Err() == nil {
 				releaseSlot()
 				recovery := ModelRecovery{Root: attempt.ID, Previous: attempt.ID, Number: 1, Reason: "context_limit", Fingerprint: contentHash([]byte(attempt.RequestJSON))}
 				if request.Recovery != nil {
@@ -1053,25 +1062,21 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 				if err := service.Store.reserveModelRetry(ctx, run, recovery, service.Config.ModelRetries); err != nil {
 					return attempt, response, err
 				}
-				plan, err := service.planCompactionFor(ctx, run, ContextCommand{Action: "compact"}, true)
 				var retryRequest ModelRequest
-				if err == nil {
-					var compact ContextResult
-					compact, err = service.applyCompaction(ctx, run, plan, true, func(summary *ConversationSummary) error {
-						var e error
-						retryRequest, e = rebuild(summary)
-						if e != nil {
-							return e
-						}
-						u, e := service.requestUsage(run, retryRequest)
-						if e != nil {
-							return e
-						}
-						return u.budgetError()
-					})
-					if err == nil && !compact.Changed {
-						err = fmt.Errorf("%w: provider refused context; no compressible progress", ErrContextLimit)
+				compact, err := service.recoverContext(ctx, run, "provider_refusal", func(summary *ConversationSummary) error {
+					var e error
+					retryRequest, e = rebuild(summary)
+					if e != nil {
+						return e
 					}
+					u, e := service.requestUsage(run, retryRequest)
+					if e != nil {
+						return e
+					}
+					return u.budgetError()
+				})
+				if err == nil && !compact.Changed {
+					err = fmt.Errorf("%w: provider refused context; no compressible progress", ErrContextLimit)
 				}
 				if err != nil {
 					current, loadErr := service.Store.GetRun(persistCtx, run.ID)
@@ -1143,6 +1148,11 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 	if saveErr != nil && !isOutputLimit(saveErr) {
 		modelEvent(EventModelInterrupted, "response persistence failed")
 		return attempt, response, saveErr
+	}
+	if saveErr == nil {
+		if err := service.observeContextUsage(persistCtx, run, attempt, request, response); err != nil {
+			return attempt, response, err
+		}
 	}
 	attempt.Status, attempt.ResponseJSON = "finished", string(responseRaw)
 	modelEvent(EventModelFinished, "")
@@ -1472,7 +1482,7 @@ func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest
 	if service.analysisOnly {
 		return service.buildContextWithSummary(ctx, run, nil)
 	}
-	summary, _, err := service.Store.contextSummary(ctx, run.ConversationID, false)
+	summary, _, err := service.Store.contextSummary(ctx, run.ConversationID, false, service.contextScope())
 	if err == nil {
 		request, buildErr := service.buildContextWithSummary(ctx, run, summary)
 		if buildErr == nil {
@@ -1480,13 +1490,8 @@ func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest
 		}
 		err = buildErr
 	}
-	if (errors.Is(err, ErrContextLimit) || errors.Is(err, ErrSummaryStale)) && service.Config.TaskSummaryBytes > 0 && !service.compactionFailed && run.ID != "" {
-		plan, planErr := service.planCompactionFor(ctx, run, ContextCommand{Action: "compact"}, true)
-		if planErr != nil {
-			service.compactionFailed = true
-			return ModelRequest{}, planErr
-		}
-		result, compactErr := service.applyCompaction(ctx, run, plan, true)
+	if (errors.Is(err, ErrContextLimit) || errors.Is(err, ErrSummaryStale)) && AutomaticCompactionEnabled(service.Config) && run.ID != "" {
+		result, compactErr := service.recoverContext(ctx, run, "history_read_or_stale")
 		if compactErr != nil {
 			service.compactionFailed = true
 			return ModelRequest{}, compactErr
@@ -1494,7 +1499,7 @@ func (service *Service) buildContext(ctx context.Context, run Run) (ModelRequest
 		if !result.Changed {
 			return ModelRequest{}, ErrContextLimit
 		}
-		summary, _, loadErr := service.Store.contextSummary(ctx, run.ConversationID, false)
+		summary, _, loadErr := service.Store.contextSummary(ctx, run.ConversationID, false, service.contextScope())
 		if loadErr != nil {
 			return ModelRequest{}, loadErr
 		}
@@ -1533,18 +1538,9 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 	if err != nil {
 		return ModelRequest{}, err
 	}
-	if service.scopedHistory() {
-		visible := make([]Message, 0, len(history))
-		for _, item := range history {
-			if (!service.operationsDenied() || service.replyExpressionsEnabled() || service.controlToolsEnabled()) && item.RunID == run.ID {
-				visible = append(visible, item)
-			} else if item.RunID == run.ID {
-				visible = append(visible, publicMessages([]Message{item})...)
-			} else {
-				visible = append(visible, service.projectPublicMessages([]Message{item})...)
-			}
-		}
-		history = visible
+	history, err = projectContextMessages(history, scope, run.ID, !service.operationsDenied() || service.replyExpressionsEnabled() || service.controlToolsEnabled())
+	if err != nil {
+		return ModelRequest{}, err
 	}
 	if run.ID == "" {
 		history = append(history, Message{ModelMessage: ModelMessage{Role: "user", Content: run.Prompt}})
@@ -1569,21 +1565,30 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 	if err != nil {
 		return ModelRequest{}, err
 	}
+	for i := range memoryMessages {
+		memoryMessages[i].ContextSource = &ContextSource{Part: "memory"}
+	}
 	request.Memory = memoryUses
 	request.Messages = []ModelMessage{system}
+	request.Messages = append(request.Messages, memoryMessages...)
 	if summary != nil {
 		request.Messages = append(request.Messages, summaryInput(summary))
 	}
-	request.Messages = append(request.Messages, memoryMessages...)
 	for _, item := range history {
-		request.Messages = append(request.Messages, channelSourceLabel(item.ModelMessage))
+		message := sourceMessage(item, run)
+		if len(message.Content) > 512 {
+			if err := service.legacyToolEvidence(ctx, item.RunID, &message); err != nil {
+				return ModelRequest{}, err
+			}
+		}
+		request.Messages = append(request.Messages, channelSourceLabel(message))
 	}
 	request, err = service.prepareCapabilityRequest(ctx, run, request)
 	if err != nil {
 		return ModelRequest{}, err
 	}
 	if err := completeMessageGroups(request.Messages); err != nil {
-		return ModelRequest{}, err
+		return ModelRequest{}, fmt.Errorf("%w: %w", ErrContextStructure, err)
 	}
 	if binding.Config.Capabilities.Tools == "none" {
 		for _, message := range request.Messages {
@@ -1592,7 +1597,7 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 			}
 		}
 	}
-	return request, nil
+	return service.foldToolContext(request), nil
 }
 
 func (service *Service) unresolvedWarning(ctx context.Context) (string, error) {
@@ -1632,6 +1637,9 @@ func validateResponse(response ModelResponse) error {
 	}
 	if response.ChatContinuation != nil && !validChatContinuation(response.ChatContinuation) {
 		return errors.New("harness: invalid chat continuation")
+	}
+	if err := checkCacheUsage(response.Usage); err != nil {
+		return err
 	}
 	if response.Provider != nil {
 		meta := response.Provider
@@ -1767,10 +1775,35 @@ func (service *Service) finishExtensions(ctx context.Context, run Run) {
 	if len(selection.Extensions) == 0 {
 		return
 	}
-	history, err := service.Store.contextMessages(ctx, run, 64, 64<<10)
+	needsHistory := false
+	for _, id := range selection.Extensions {
+		definition, err := service.extensions.definition(id)
+		if err != nil {
+			continue
+		}
+		for _, need := range definition.Manifest.Needs {
+			if need == "tool_results" || strings.HasPrefix(need, "history:") {
+				needsHistory = true
+			}
+		}
+	}
+	var history []Message
+	var err error
+	if needsHistory {
+		history, err = service.Store.contextMessages(ctx, run, 64, 16<<20)
+	}
 	if err != nil {
 		service.event(Event{Kind: EventExtensionError, Message: "turn.finished history: " + safeError(err),
 			RunID: run.ID, ConversationID: run.ConversationID})
+		return
+	}
+	scope := ""
+	if service.scopedHistory() {
+		scope = service.publicSummaryScope()
+	}
+	history, err = projectContextMessages(history, scope, run.ID, false)
+	if err != nil {
+		service.event(Event{Kind: EventExtensionError, Message: "turn.finished projection: " + safeError(err), RunID: run.ID})
 		return
 	}
 	for _, id := range selection.Extensions {
@@ -1803,6 +1836,8 @@ func modelHistory(messages []Message) []ModelMessage {
 		body := message.ModelMessage
 		body.ChatContinuation, body.ProviderItems = nil, nil
 		body.ProviderSource = ""
+		body.ContextSource, body.Readback, body.ToolEvidence = nil, nil, nil
+		body.Kind = ""
 		result = append(result, body)
 	}
 	return result
@@ -1815,6 +1850,22 @@ func safeError(err error) string {
 	var callErr *CallError
 	if errors.As(err, &callErr) && callErr == nil {
 		return ""
+	}
+	// Preserve controlled diagnostic codes when a definitive content failure
+	// is serialized into the existing Run reason. Never infer a code from
+	// arbitrary provider prose, and keep a more specific budget error first.
+	var budget *ContextBudgetError
+	if callErr != nil && callErr.Certain && !errors.As(err, &budget) {
+		code := callErr.Code
+		if runStopCode("harness: "+code) != code || code == "" {
+			code = callErr.Category
+			if code == "context_limit" {
+				code = "context_window_full"
+			}
+		}
+		if code != "" && runStopCode("harness: "+code) == code {
+			return fmt.Sprintf("harness: %s: %.450s", code, err.Error())
+		}
 	}
 	return fmt.Sprintf("%.512s", err.Error())
 }
