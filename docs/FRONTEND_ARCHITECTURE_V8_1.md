@@ -31,6 +31,15 @@ internal/chatui/
 
 基础展示组件通过 props 接收状态；页面调用现有 API。Core 决定授权、审批和执行结果，前端不能自行把批准、生成完成或接收消息当作执行成功。没有 React Router、Zustand、TanStack Query、表单框架、Storybook 或插件 UI 运行时。
 
+## 2026-11-15：A+B 工作台迁移
+
+- `styles/conversation.css` 管理对话主栏、阅读排版、概览与执行链；色值仍只在 `tokens.css` 中。设置使用既有 `workbench.css` 与二级导航，不引入另一套主题或依赖。
+- `TurnOverview.tsx` 读取选中轮次快照与当前对话上下文。最近动态最多三条，优先未处理的等待、失败和 UNKNOWN；输入器的后续选择不改写历史配置。小窗口用 Radix Dialog 展示同一概览。
+- `ExecutionChain.tsx` 使用只读 `GET /api/chats/{chat}/activity?run_id={run}&before={attempt}`，每页最多 128 项。服务端验证 Run 和游标所属会话；公网沿用现有认证。更早未处理项由有界的 `attention_activity` 补充到概览，不将整条链塞进每次 SSE 快照。
+- 消息新记录中的 `model_id/model_name` 源自生成请求与响应；旧消息只使用当时保存的 Run 配置并标注“本轮配置”，不从当前型号列表倒填。模型尝试保留独立的型号与思考证据。
+- 能力面板同时显示内置工具、Skill、MCP、扩展。内置工具展示全局开关状态与管理入口；权限仍由 Core 判断，不伪造不存在的会话级开关。
+- 没有新增数据库表。执行链沿用 Attempt 投影，生成来源只增补既有消息 JSON 的可选字段。
+
 ## 数据流与连续性
 
 - 每个页面实例一条全局 fetch SSE；切页不重连。事件只表达进展，重连、代次变化、跳号或有界缓冲溢出重新读取快照。

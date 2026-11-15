@@ -5,7 +5,14 @@ import type { Attachment } from "@/lib/api/types";
 import { useRuntime } from "@/lib/store/runtime";
 import { clearFormDraft } from "@/lib/drafts";
 import { Button } from "@/components/ui/button";
-import { Field, Loading, Result, useFormDraft, useResource } from "./shared";
+import {
+  DraftStatus,
+  Field,
+  Loading,
+  Result,
+  useFormDraft,
+  useResource,
+} from "./shared";
 
 interface Policy extends Record<string, unknown> {
   text: boolean;
@@ -37,7 +44,11 @@ export default function AttachmentSettings() {
   );
 }
 function Editor({ initial }: { initial: Policy }) {
-  const [form, change] = useFormDraft<Policy>("attachment-policy", initial),
+  const [form, change, dirty] = useFormDraft<Policy>(
+      "attachment-policy",
+      initial,
+      true,
+    ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [result, setResult] = useState("");
@@ -110,10 +121,13 @@ function Editor({ initial }: { initial: Policy }) {
               </Field>
             ))}
           </div>
-          <Button type="submit">保存附件策略</Button>
+          <div className="settings-savebar">
+            <DraftStatus dirty={dirty} busy={busy} />
+            <Button type="submit">保存附件策略</Button>
+          </div>
         </fieldset>
       </form>
-      <Result error={error} text={result} />
+      <Result error={error} text={dirty ? undefined : result} />
       {error && (
         <Button
           variant="outline"

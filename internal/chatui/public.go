@@ -158,7 +158,7 @@ func publicRoute(path, method string) (string, bool) {
 		switch parts[2] {
 		case "submit", "stop", "continue", "preview", "confirm", "end", "pin", "model", "permission", "capabilities", "title", "exclude-memory", "workflow":
 			return path, method == "POST"
-		case "memory", "raw":
+		case "memory", "raw", "activity":
 			return path, method == "GET"
 		}
 	}

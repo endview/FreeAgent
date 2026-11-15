@@ -29,7 +29,7 @@ fs.mkdirSync(artifacts,{recursive:true});
   await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:'通用',exact:true}).click();
   await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:'上下文',exact:true}).click();
   assert.equal(await page.getByRole('checkbox',{name:'自动压缩上下文',exact:true}).isChecked(),false);
-  assert.equal(await page.getByRole('spinbutton',{name:'摘要上限（UTF-8 字节）',exact:true}).isDisabled(),true);checks.automatic_target_and_schedule_are_independent=true;
+  assert.equal(await page.getByRole('spinbutton',{name:'摘要上限（UTF-8 字节）',exact:true}).count(),0);await page.locator('.automatic-target').waitFor();checks.automatic_target_and_schedule_are_independent=true;
   await choose('摘要目标','手动上限');await page.getByRole('spinbutton',{name:'摘要上限（UTF-8 字节）',exact:true}).fill('10240');
   await page.getByRole('button',{name:'保存设置',exact:true}).click();await page.getByRole('status').filter({hasText:'设置已保存'}).waitFor();
   contextSaved=(await api('settings')).context;assert.equal(contextSaved.task_summary_bytes,10240);assert.equal(contextSaved.automatic,false);checks.manual_target_save_keeps_scheduling_off=true;

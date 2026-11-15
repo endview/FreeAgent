@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Choice } from "@/components/Choice";
 import {
   Field,
+  DraftStatus,
   Loading,
   Result,
   lines,
@@ -78,10 +79,14 @@ export default function PublicSettings() {
   );
 }
 function Editor({ initial }: { initial: PublicInfo }) {
-  const [form, change] = useFormDraft<Config>("public-settings", {
-    ...initial.config,
-    expected_revisions: initial.expected_revisions,
-  });
+  const [form, change, dirty] = useFormDraft<Config>(
+    "public-settings",
+    {
+      ...initial.config,
+      expected_revisions: initial.expected_revisions,
+    },
+    true,
+  );
   const [info, setInfo] = useState(initial),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -295,10 +300,17 @@ function Editor({ initial }: { initial: PublicInfo }) {
               />
             </Field>
           </section>
-          <Button type="submit">保存公网设置</Button>
+          <div className="settings-savebar">
+            <DraftStatus
+              dirty={dirty}
+              busy={busy}
+              hint="保存后按具体设置立即生效或等待重启。"
+            />
+            <Button type="submit">保存公网设置</Button>
+          </div>
         </fieldset>
       </form>
-      <Result error={error} text={result} />
+      <Result error={error} text={dirty ? undefined : result} />
       {error && (
         <Button
           variant="outline"

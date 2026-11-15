@@ -106,6 +106,7 @@
               "raw": "合成输出"
             }
           ],
+          "attention_count": 0,
           "activity": [],
           "evidence": {},
           "sources": null,

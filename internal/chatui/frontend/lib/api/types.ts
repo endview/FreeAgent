@@ -28,6 +28,8 @@ export interface Attachment {
   source?: string;
 }
 export interface ChatMessage {
+  model_id?: string;
+  model_name?: string;
   key: string;
   role: string;
   raw: string;
@@ -43,6 +45,12 @@ export interface ToolReceipt {
   detail?: string;
 }
 export interface Activity {
+  sequence?: number;
+  started_at?: string;
+  replacement?: string;
+  resolution?: string;
+  model_name?: string;
+  truncated?: boolean;
   extensions?: {
     source: string;
     name: string;
@@ -86,6 +94,11 @@ export interface Confirmation {
   [key: string]: unknown;
 }
 export interface Turn {
+  model_name?: string;
+  reasoning?: ReasoningSelection;
+  permission?: { mode: Permission; source?: string };
+  capabilities?: CapabilitySelection;
+  enabled_tools?: string[];
   analysis?: { skill?: string; digest?: string };
   trigger?: {
     kind: string;
@@ -109,6 +122,8 @@ export interface Turn {
   reason_code?: string;
   messages: ChatMessage[];
   activity: Activity[];
+  attention_activity?: Activity[];
+  attention_count?: number;
   steps: number;
   elapsed_ms: number;
   can_continue: boolean;
@@ -189,6 +204,7 @@ export interface ReasoningModelInfo {
   checked_at: string;
 }
 export interface Environment {
+  enabled_tools?: Record<string, boolean>;
   delivery_available?: boolean;
   workspace: string;
   environment: string;

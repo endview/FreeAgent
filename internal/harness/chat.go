@@ -34,6 +34,9 @@ type ChatTurn struct {
 	Reason          string                `json:"reason,omitempty"`
 	ReasonCode      string                `json:"reason_code,omitempty"`
 	ModelID         string                `json:"model_id,omitempty"`
+	ModelName       string                `json:"model_name,omitempty"`
+	Reasoning       *ReasoningSelection   `json:"reasoning,omitempty"`
+	Capabilities    *CapabilitySelection  `json:"capabilities,omitempty"`
 	Permission      *PermissionSelection  `json:"permission,omitempty"`
 	RuntimeRevision string                `json:"runtime_revision,omitempty"`
 	EnabledTools    []string              `json:"enabled_tools,omitempty"`
@@ -42,6 +45,8 @@ type ChatTurn struct {
 	ElapsedMS       int64                 `json:"elapsed_ms"`
 	Messages        []ChatMessage         `json:"messages"`
 	ActivityEarlier bool                  `json:"activity_has_earlier,omitempty"`
+	Attention       []ChatActivity        `json:"attention_activity,omitempty"`
+	AttentionCount  int                   `json:"attention_count"`
 	Activity        []ChatActivity        `json:"activity"`
 	Evidence        Evidence              `json:"evidence"`
 	Sources         []MemoryUse           `json:"sources"`
@@ -54,6 +59,8 @@ type ChatTurn struct {
 }
 
 type ChatMessage struct {
+	ModelID     string          `json:"model_id,omitempty"`
+	ModelName   string          `json:"model_name,omitempty"`
 	Attachments []AttachmentRef `json:"attachments,omitempty"`
 	Key         string          `json:"key"`
 	Role        string          `json:"role"`
@@ -62,6 +69,10 @@ type ChatMessage struct {
 }
 
 type ChatActivity struct {
+	Sequence           int64               `json:"sequence"`
+	Replacement        string              `json:"replacement,omitempty"`
+	Resolution         string              `json:"resolution,omitempty"`
+	ModelName          string              `json:"model_name,omitempty"`
 	Extensions         []ExtensionUse      `json:"extensions,omitempty"`
 	RequestedReasoning *ReasoningSelection `json:"requested_reasoning,omitempty"`
 	Outcome            *ToolOutcome        `json:"outcome,omitempty"`
@@ -227,7 +238,11 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 				return ChatView{}, err
 			}
 		}
-		if snapshot, snapshotErr := decodeRunSnapshot(run.ConfigJSON); snapshotErr == nil {
+		snapshot, snapshotErr := decodeRunSnapshot(run.ConfigJSON)
+		if snapshotErr == nil {
+			turn.ModelName = bindingModelName(snapshot, run.ModelID)
+			turn.Reasoning = snapshot.Reasoning
+			turn.Capabilities = snapshot.Capabilities
 			turn.Trigger = snapshot.ExtensionTrigger
 			if snapshot.AnalysisOnly && len(snapshot.AnalysisSource) > 0 {
 				var origin SourceAnalysisOrigin
@@ -281,7 +296,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 			}
 			if message.Role == "user" || message.Role == "assistant" && message.Content != "" {
 				text, truncated := chatText(message.Content)
-				turn.Messages = append(turn.Messages, ChatMessage{Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated, Attachments: message.Attachments})
+				turn.Messages = append(turn.Messages, ChatMessage{ModelID: message.ModelID, ModelName: message.ModelName, Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated, Attachments: message.Attachments})
 			}
 			if message.Role == "tool" {
 				turn.Attachments = append(turn.Attachments, message.Attachments...)
@@ -317,80 +332,27 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 			}
 		}
 		for _, attempt := range attempts {
-			activity := ChatActivity{Key: attempt.ID, Kind: attempt.Kind, Status: attempt.Status, Name: attempt.ModelID}
-			var start string
-			if e := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "attempt/time/"+attempt.ID).Scan(&start); e == nil {
-				if _, e := time.Parse(time.RFC3339Nano, start); e == nil {
-					activity.StartedAt = start
-				}
-			} else if !errors.Is(e, sql.ErrNoRows) {
-				return ChatView{}, e
+			activity, sources, err := projectChatActivity(ctx, tx, attempt)
+			if err != nil {
+				return ChatView{}, err
 			}
-			if attempt.Kind == "model" {
-				var request ModelRequest
-				if json.Unmarshal([]byte(attempt.RequestJSON), &request) != nil {
-					return ChatView{}, ErrStoreFormat
-				}
-				if request.Purpose != "" {
-					activity.Kind = request.Purpose
-				}
-				addSources(request.Memory)
-				activity.RequestedReasoning = request.Reasoning
-				activity.Extensions = request.Extensions
-				if attempt.ResponseJSON != "" {
-					var response ModelResponse
-					if json.Unmarshal([]byte(attempt.ResponseJSON), &response) != nil {
-						// Lost calls can retain a runtime diagnostic instead of a response.
-						if attempt.Status != "unknown" || json.Valid([]byte(attempt.ResponseJSON)) {
-							return ChatView{}, ErrStoreFormat
-						}
-						activity.Text, activity.Truncated = chatText(attempt.ResponseJSON)
-					} else {
-						if activity.StartedAt != "" || response.LatencyMS > 0 {
-							duration := response.LatencyMS
-							activity.DurationMS = &duration
-						}
-						activity.Usage = response.Usage
-						if response.Failure != nil {
-							activity.Failure, activity.IsError = response.Failure, true
-							activity.Text, activity.Truncated = chatText(response.Content)
-						}
-					}
-				}
-			} else if attempt.Kind == "workflow" {
-				var request workflowAttemptRequest
-				var result ToolResult
-				if json.Unmarshal([]byte(attempt.RequestJSON), &request) != nil {
-					return ChatView{}, ErrStoreFormat
-				}
-				if json.Unmarshal([]byte(attempt.ResponseJSON), &result) != nil && attempt.ResponseJSON != "" {
-					return ChatView{}, ErrStoreFormat
-				}
-				activity.Kind = "workflow"
-				activity.Name = request.ExtensionID + "/" + request.Workflow
-				activity.Text, activity.IsError = result.Content, result.IsError
-				activity.Text, activity.Truncated = chatText(activity.Text)
-			} else {
-				var call ToolCall
-				var result ToolResult
-				if json.Unmarshal([]byte(attempt.RequestJSON), &call) != nil {
-					return ChatView{}, ErrStoreFormat
-				}
-				_ = json.Unmarshal([]byte(attempt.ResponseJSON), &result)
-				activity.Name, activity.Target, activity.Text, activity.IsError, activity.Receipts =
-					call.Name, activityTarget(call), result.Content, result.IsError, result.Receipts
-				activity.Text, activity.Truncated = chatText(activity.Text)
-				if result.Outcome != nil {
-					activity.Outcome = result.Outcome
-					activity.Status = result.Outcome.Status
-					if result.Outcome.Dispatched && (result.Outcome.DurationKnown || result.Outcome.DurationMS > 0) {
-						duration := result.Outcome.DurationMS
-						activity.DurationMS = &duration
-					}
-				}
-				addSources(result.Memory)
+			if attempt.Kind == "model" && activity.ModelName == "" {
+				activity.ModelName = bindingModelName(snapshot, attempt.ModelID)
 			}
+			addSources(sources)
 			turn.Activity = append(turn.Activity, activity)
+		}
+		if earlier {
+			turn.Attention, turn.AttentionCount, err = chatAttention(ctx, tx, run)
+			if err != nil {
+				return ChatView{}, err
+			}
+		} else {
+			for _, activity := range turn.Activity {
+				if activityNeedsAttention(activity, run.Status) {
+					turn.AttentionCount++
+				}
+			}
 		}
 		view.Turns = append(view.Turns, turn)
 	}
@@ -429,7 +391,7 @@ func (tasks *TaskService) Chat(ctx context.Context, conversationID, before strin
 				text = message.Channel.DisplayName + " [" + message.Channel.PersonID + "] " + text
 			}
 			text, truncated := chatText(text)
-			view.Background = append(view.Background, ChatMessage{Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated, Attachments: message.Attachments})
+			view.Background = append(view.Background, ChatMessage{ModelID: message.ModelID, ModelName: message.ModelName, Key: strconv.FormatInt(id, 10), Role: message.Role, Raw: text, Truncated: truncated, Attachments: message.Attachments})
 		}
 		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 			return ChatView{}, err
@@ -527,5 +489,90 @@ func listChatAttempts(ctx context.Context, tx *sql.Tx, run string) ([]Attempt, b
 		attempts = attempts[:128]
 	}
 	slices.Reverse(attempts)
+	if err := annotateReplacements(ctx, tx, run, attempts); err != nil {
+		return nil, false, err
+	}
 	return attempts, earlier, nil
+}
+
+func projectChatActivity(ctx context.Context, tx *sql.Tx, attempt Attempt) (ChatActivity, []MemoryUse, error) {
+	var sources []MemoryUse
+	activity := ChatActivity{Sequence: attempt.Sequence, Replacement: attempt.Replacement, Resolution: attempt.Resolution, Key: attempt.ID, Kind: attempt.Kind, Status: attempt.Status, Name: attempt.ModelID}
+	var start string
+	if e := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "attempt/time/"+attempt.ID).Scan(&start); e == nil {
+		if _, e := time.Parse(time.RFC3339Nano, start); e == nil {
+			activity.StartedAt = start
+		}
+	} else if !errors.Is(e, sql.ErrNoRows) {
+		return ChatActivity{}, nil, e
+	}
+	if attempt.Kind == "model" {
+		var request ModelRequest
+		if json.Unmarshal([]byte(attempt.RequestJSON), &request) != nil {
+			return ChatActivity{}, nil, ErrStoreFormat
+		}
+		if request.Purpose != "" {
+			activity.Kind = request.Purpose
+		}
+		sources = append(sources, request.Memory...)
+		activity.Name = request.ModelID
+		activity.RequestedReasoning = request.Reasoning
+		activity.Extensions = request.Extensions
+		if attempt.ResponseJSON != "" {
+			var response ModelResponse
+			if json.Unmarshal([]byte(attempt.ResponseJSON), &response) != nil {
+				// Lost calls can retain a runtime diagnostic instead of a response.
+				if attempt.Status != "unknown" || json.Valid([]byte(attempt.ResponseJSON)) {
+					return ChatActivity{}, nil, ErrStoreFormat
+				}
+				activity.Text, activity.Truncated = chatText(attempt.ResponseJSON)
+			} else {
+				if activity.StartedAt != "" || response.LatencyMS > 0 {
+					duration := response.LatencyMS
+					activity.DurationMS = &duration
+				}
+				activity.Usage = response.Usage
+				if response.Provider != nil {
+					activity.ModelName = response.Provider.Model
+				}
+				if response.Failure != nil {
+					activity.Failure, activity.IsError = response.Failure, true
+					activity.Text, activity.Truncated = chatText(response.Content)
+				}
+			}
+		}
+	} else if attempt.Kind == "workflow" {
+		var request workflowAttemptRequest
+		var result ToolResult
+		if json.Unmarshal([]byte(attempt.RequestJSON), &request) != nil {
+			return ChatActivity{}, nil, ErrStoreFormat
+		}
+		if json.Unmarshal([]byte(attempt.ResponseJSON), &result) != nil && attempt.ResponseJSON != "" {
+			return ChatActivity{}, nil, ErrStoreFormat
+		}
+		activity.Kind = "workflow"
+		activity.Name = request.ExtensionID + "/" + request.Workflow
+		activity.Text, activity.IsError = result.Content, result.IsError
+		activity.Text, activity.Truncated = chatText(activity.Text)
+	} else {
+		var call ToolCall
+		var result ToolResult
+		if json.Unmarshal([]byte(attempt.RequestJSON), &call) != nil {
+			return ChatActivity{}, nil, ErrStoreFormat
+		}
+		_ = json.Unmarshal([]byte(attempt.ResponseJSON), &result)
+		activity.Name, activity.Target, activity.Text, activity.IsError, activity.Receipts =
+			call.Name, activityTarget(call), result.Content, result.IsError, result.Receipts
+		activity.Text, activity.Truncated = chatText(activity.Text)
+		if result.Outcome != nil {
+			activity.Outcome = result.Outcome
+			activity.Status = result.Outcome.Status
+			if result.Outcome.Dispatched && (result.Outcome.DurationKnown || result.Outcome.DurationMS > 0) {
+				duration := result.Outcome.DurationMS
+				activity.DurationMS = &duration
+			}
+		}
+		sources = append(sources, result.Memory...)
+	}
+	return activity, sources, nil
 }

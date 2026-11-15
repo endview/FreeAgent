@@ -24,7 +24,8 @@ const viewports = [[2560,1080],[1920,1080],[1440,900],[1366,768],[1280,720],[102
   };
   async function settings(section,label,width,chat) {
     await page.goto(info.origin+'/?view=settings&section='+section+'&chat='+chat);
-    if (width<=760) await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:label,exact:true}).click();
+    await page.locator('.settings-layout').waitFor();
+    if (width<=760 && !(await page.locator('.settings-heading h1').isVisible())) await page.getByRole('navigation',{name:'设置分类',exact:true}).getByRole('button',{name:label,exact:true}).click();
     await page.locator('.settings-heading h1').filter({hasText:label}).waitFor();
   }
   try {
@@ -49,6 +50,7 @@ const viewports = [[2560,1080],[1920,1080],[1440,900],[1366,768],[1280,720],[102
       await page.getByRole('button',{name:'上下文',exact:true}).click();
       const dialog=page.getByRole('dialog',{name:'上下文管理',exact:true});
       const context=await bounded(dialog,'context dialog');
+      const close=await bounded(dialog.getByRole('button',{name:'关闭',exact:true}),'close context');assert(close.width>=44&&close.height>=44,'dialog close hit area');
       assert(await dialog.evaluate(e=>e.scrollWidth<=e.clientWidth+1),'context dialog content overflow');
       await page.screenshot({path:path.join(out,`layout-context-dialog-${width}x${height}-${theme}.png`)});
       await page.keyboard.press('Escape');
@@ -77,7 +79,7 @@ const viewports = [[2560,1080],[1920,1080],[1440,900],[1366,768],[1280,720],[102
     await settings('general','通用',1440,chat.id);
     assert.equal(await page.locator('.scope-label').innerText(),'当前客户端');
     const search=page.getByRole('textbox',{name:'查找设置',exact:true});await search.fill('上下文');
-    const nav=page.getByRole('navigation',{name:'设置分类'});assert.equal(await nav.getByRole('button').count(),1);
+    const nav=page.getByRole('navigation',{name:'设置分类'});assert.equal(await nav.getByRole('button',{name:'上下文',exact:true}).count(),1);
     await nav.getByRole('button',{name:'上下文',exact:true}).click();assert.equal(await page.locator('.scope-label').innerText(),'Core 默认设置');
     await search.fill('');
     const summary={viewports:results,errors,settings_search:true,scope_labels:true,real_device:false};

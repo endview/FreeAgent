@@ -1,5 +1,11 @@
 import { Popover } from "radix-ui";
-import { WandSparkles } from "lucide-react";
+import {
+  SlidersHorizontal,
+  Wrench,
+  BookOpen,
+  Plug,
+  Blocks,
+} from "lucide-react";
 import type { CapabilityCatalog, CapabilitySelection } from "@/lib/api/types";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
@@ -13,6 +19,8 @@ export function Capabilities({
   busy = false,
   saving = false,
   conversationID,
+  builtin,
+  onManage,
 }: {
   catalog?: CapabilityCatalog;
   selection: CapabilitySelection;
@@ -20,11 +28,13 @@ export function Capabilities({
   busy?: boolean;
   saving?: boolean;
   conversationID?: string;
+  builtin?: Record<string, boolean>;
+  onManage?: (section: string) => void;
 }) {
   return (
     <Popover.Root>
       <Popover.Trigger aria-label="本轮能力" className="capabilities-button">
-        <WandSparkles size={15} />
+        <SlidersHorizontal size={15} />
         <span>
           能力
           {(selection.skills?.length || 0) +
@@ -49,9 +59,58 @@ export function Capabilities({
                 ? "勾选后自动保存到此对话，后续消息沿用。"
                 : "选择本次新对话允许使用的能力。"}
           </p>
+          <section className="capability-group" data-kind="tools">
+            <h3>
+              <Wrench size={16} />
+              内置工具
+              {onManage && (
+                <Popover.Close asChild>
+                  <button onClick={() => onManage("tools")}>管理</button>
+                </Popover.Close>
+              )}
+            </h3>
+            <p>全局开启情况；实际执行仍受本轮权限约束。</p>
+            {Object.entries({
+              file: "文件工具",
+              command_run: "命令工具",
+              network: "网络工具",
+              memory: "记忆工具",
+            }).map(([key, label]) => (
+              <div className="builtin-availability" key={key}>
+                <span>{label}</span>
+                <span>
+                  {builtin
+                    ? builtin[key]
+                      ? "已开启"
+                      : "未开启"
+                    : "状态未读取"}
+                </span>
+              </div>
+            ))}
+          </section>
           {(Object.keys(labels) as (keyof typeof labels)[]).map((group) => (
-            <section key={group}>
-              <h3>{labels[group]}</h3>
+            <section key={group} className="capability-group" data-kind={group}>
+              <h3>
+                {group === "skills" ? (
+                  <BookOpen size={16} />
+                ) : group === "mcp_servers" ? (
+                  <Plug size={16} />
+                ) : (
+                  <Blocks size={16} />
+                )}{" "}
+                {labels[group]}
+                {onManage && (
+                  <Popover.Close asChild>
+                    <button
+                      onClick={() =>
+                        onManage(group === "mcp_servers" ? "mcp" : group)
+                      }
+                    >
+                      管理
+                    </button>
+                  </Popover.Close>
+                )}
+              </h3>
               {catalog?.[group]?.length ? (
                 catalog[group].map((item) => (
                   <label className="check-line" key={item.id}>

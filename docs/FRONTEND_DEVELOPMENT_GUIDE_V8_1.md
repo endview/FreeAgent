@@ -82,3 +82,42 @@ python scripts/test-frontend.py --engine output/freeagent-ui.exe --runtime outpu
 该基准仅对自己的临时库生成一万会话和五千轮，输出 API 200 样本统计、分页、输入延迟和 JS heap；不等于真实模型延迟或 WebView2 全进程组内存。正式重复构建、全量 Go/竞态、打包和原生设备验收另行执行。
 
 请求失败先看界面分类和 Core 记录；UNKNOWN 不是普通重试按钮。可用 `freeagent doctor --export <新.zip>` 导出允许项诊断，不发送原始配置、owner.log、凭据、正文或数据库连接文件到公开 issue。
+
+## 设置页的交互约定
+
+- `shared.tsx` 的 `Field` 为原生控件与 `Choice` 关联帮助、原生校验错误和 `aria-invalid`。自定义控件需要继续传递这些属性，不把错误只放在页尾。
+- `SettingsGroup` 按用途组织相关字段；复用语义 token。宽容器使用说明/字段两列，小容器堆叠；不要靠隐藏内容消除溢出。
+- `useFormDraft(id, initial, true)` 用于确有持久保存行为的表单。第三项返回 dirty；成功保存后 `change(saved)` 再 `clearFormDraft(id)` 更新基线。它保留切页草稿，仅在有修改时接入浏览器刷新/关闭提醒；秘密仍不进浏览器持久存储。
+- 浏览角色、筛选列表、只读工具输入不启用刷新保护。服务端自动刷新数据的表单要区分读入与用户编辑，不能把新快照误标为未保存。
+- `DraftStatus` 与保存操作成组放在正常文档流中，避免遮挡字段；继续编辑后收起旧的保存成功提示。即时开关明确标注，和需要确认的设置分开。
+- 点击区域和可见形状分别设计：Switch 具有 44×44px 点击区域及 40×24px 轨道，Dialog 关闭按钮具有 44×44px 区域。不要用通用高度规则把开关拉成圆形。
+
+新增检查可运行：
+
+```powershell
+python scripts/test-frontend.py --engine output/freeagent-ui.exe --runtime output/postgresql-runtime/windows/pgsql --channel chrome --only usability,layout
+```
+
+该命令使用独立 Core 和合成数据。审查发现、设计取舍及实际结果见 [2026-11-15 交互审查](UI_INTERFACE_REVIEW_2026-11-15.md)。
+
+## A+B 工作台维护
+
+2026-11-15 的布局与轮次规则见 [正式迁移记录](UI_WORKBENCH_IMPLEMENTATION_2026-11-15.md)。对话样式在 `styles/conversation.css`，设置沿用 `workbench.css`。调整颜色只修改语义 token，新增功能保持一条全局事件流。
+
+- 修改最近动态排序时，运行 `test/activity.test.mjs`：等待、失败、UNKNOWN 同属优先组，随后按更新时间排列；同一记录状态变化不能新增一行。已核实或已有重试的旧尝试仍留在完整链中。
+- 扩展执行链展示字段时，同时核对普通快照与分页的 `projectChatActivity` 投影；每轮仅解码一次配置绑定。不要为界面另存 Run 或完整历史缓存。
+- 模型、思考和权限选择属于后续任务；历史回答使用生成来源或明确标注的旧快照。能力全局启用、轮次选择、实际附加证据分别展示。
+- 详情弹窗只在用户主动打开时聚焦，关闭后返回触发控件；实时更新不抢输入焦点。链条分页保留滚动位置，文本与长路径允许换行。
+
+专项验收（先构建实际 Go 引擎）：
+
+```powershell
+pnpm --dir internal/chatui typecheck
+pnpm --dir internal/chatui test
+pnpm --dir internal/chatui lint
+pnpm --dir internal/chatui build
+go build -o output/freeagent-ui-ab.exe ./cmd/freeagent
+python scripts/test-frontend.py --engine output/freeagent-ui-ab.exe --runtime output/postgresql-runtime/windows/pgsql --channel chrome --only workbench,tool-core,provider,settings,interaction,browsers
+```
+
+`workbench` 的多模型切换走真实 Core 与本地合成模型服务；270 条异常链使用明确的 UI 固定数据。分页、完整数量及跨会话/游标隔离另由 `internal/harness/chat_activity_test.go` 在真实独立 PostgreSQL 下验证。

@@ -83,8 +83,8 @@ export default function App() {
     }
   });
   const loadedView = useRef("");
-  const [side, setSide] = useState(252);
-  const [reading, setReading] = useState(820);
+  const [side, setSide] = useState(232);
+  const [reading, setReading] = useState(846);
   const [composerMax, setComposerMax] = useState(190);
   const [query, setQuery] = useState("");
   function route(
@@ -382,6 +382,9 @@ export default function App() {
         } as CSSProperties
       }
     >
+      <a className="skip-link" href="#workspace-content" data-internal>
+        跳到主内容
+      </a>
       <aside className="sidebar">{nav}</aside>
       <div className="sidebar-divider">
         <Divider
@@ -390,7 +393,7 @@ export default function App() {
           value={side}
           min={208}
           max={380}
-          reset={252}
+          reset={232}
           onChange={setSide}
         />
       </div>
@@ -409,7 +412,7 @@ export default function App() {
           {nav}
         </DialogContent>
       </Dialog>
-      <main className="workspace">
+      <main className="workspace" id="workspace-content" tabIndex={-1}>
         <header className="workspace-header">
           <div className="breadcrumb">
             {view === "settings" && (
@@ -551,6 +554,7 @@ export default function App() {
             onComposerMax={setComposerMax}
             onOpenChat={openChat}
             onOpenModelSettings={() => route("settings", "providers")}
+            onOpenSettings={(section) => route("settings", section)}
             onViewCommand={(text) => {
               const next = viewCommand(text, {
                 theme,

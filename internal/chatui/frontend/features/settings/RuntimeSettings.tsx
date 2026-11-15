@@ -7,6 +7,8 @@ import { Choice } from "@/components/Choice";
 import type { Permission } from "@/lib/api/types";
 import {
   Field,
+  DraftStatus,
+  SettingsGroup,
   Loading,
   Result,
   lines,
@@ -79,9 +81,7 @@ export default function RuntimeSettings({ section }: { section: string }) {
 }
 function Editor({ initial, section }: { initial: Settings; section: string }) {
   const draftID = `settings:${section}`;
-  const [value, change] = useFormDraft<Settings>(draftID, initial);
-  const [saved, setSaved] = useState(initial);
-  const dirty = JSON.stringify(value) !== JSON.stringify(saved);
+  const [value, change, dirty] = useFormDraft<Settings>(draftID, initial, true);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [result, setResult] = useState("");
@@ -189,7 +189,6 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
         "PATCH",
       );
       change(next);
-      setSaved(next);
       clearFormDraft(draftID);
       await loadEnvironment();
       setResult("设置已保存。新任务使用新配置，已有任务保留自己的执行快照。");
@@ -626,134 +625,203 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
         )}
         {section === "context" && (
           <>
-            <p className="settings-intro">
-              压缩保留原始历史；摘要请求计入模型用量。当前对话的手动压缩在输入区打开。
-            </p>
-            <label className="check-line">
-              <input
-                type="checkbox"
-                checked={context.automatic}
-                onChange={(event) =>
-                  field("context", {
-                    ...context,
-                    automatic: event.target.checked,
-                  })
-                }
-              />
-              自动压缩上下文
-            </label>
-            <Field
-              label="摘要目标"
-              hint="自动按有效模型窗口计算软目标，并保留独立存储保护。关闭自动压缩只关闭自动调度，手动压缩仍可用。"
+            <SettingsGroup
+              title="自动压缩"
+              description="历史接近窗口上限时生成摘要。原始记录保留，摘要请求计入模型用量。"
             >
-              <Choice
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={context.automatic}
+                  onChange={(event) =>
+                    field("context", {
+                      ...context,
+                      automatic: event.target.checked,
+                    })
+                  }
+                />
+                自动压缩上下文
+              </label>
+              <Field
                 label="摘要目标"
-                value={
-                  context.summary_target_mode === "auto" ? "auto" : "manual"
-                }
-                options={[
-                  ["auto", "自动目标"],
-                  [
-                    "manual",
-                    context.summary_target_mode === "legacy_manual"
-                      ? "手动上限（保留旧配置）"
-                      : "手动上限",
-                  ],
-                ]}
-                onChange={(mode) =>
-                  field("context", { ...context, summary_target_mode: mode })
-                }
-              />
-            </Field>
-            <div className="form-grid">
-              {(
-                [
-                  ["max_output_tokens", "默认输出 token 上限", 1, 32768],
-                  ["max_context_bytes", "请求字节上限", 4096, 16777216],
-                  ["auto_compact_percent", "自动触发占比（%）", 50, 95],
-                  ["task_summary_bytes", "摘要上限（UTF-8 字节）", 1, 16384],
-                ] as const
-              ).map(([id, label, min, max]) => (
-                <Field key={id} label={label}>
+                hint="自动目标随模型窗口计算；手动上限按 UTF-8 字节设置，不是 token。"
+              >
+                <Choice
+                  label="摘要目标"
+                  value={
+                    context.summary_target_mode === "auto" ? "auto" : "manual"
+                  }
+                  options={[
+                    ["auto", "自动目标"],
+                    [
+                      "manual",
+                      context.summary_target_mode === "legacy_manual"
+                        ? "手动上限（保留旧配置）"
+                        : "手动上限",
+                    ],
+                  ]}
+                  onChange={(mode) =>
+                    field("context", { ...context, summary_target_mode: mode })
+                  }
+                />
+              </Field>
+              <div className="form-grid">
+                <Field
+                  label="自动触发占比（%）"
+                  hint={
+                    context.automatic
+                      ? "50～95；比例越低，越早尝试压缩。"
+                      : "自动压缩已关闭；开启后才按此比例触发。"
+                  }
+                >
                   <input
                     type="number"
-                    min={min}
-                    max={max}
-                    step={1}
+                    min={50}
+                    max={95}
                     required
-                    disabled={
-                      id === "task_summary_bytes" &&
-                      context.summary_target_mode === "auto"
-                    }
-                    value={
-                      id === "task_summary_bytes" && !context[id]
-                        ? 4096
-                        : context[id]
-                    }
+                    step={1}
+                    value={context.auto_compact_percent}
                     onChange={(event) =>
                       field("context", {
                         ...context,
-                        [id]: Number(event.target.value),
+                        auto_compact_percent: Number(event.target.value),
                       })
                     }
                   />
                 </Field>
-              ))}
-              <Field label="模型请求自动恢复次数">
-                <input
-                  type="number"
-                  min={0}
-                  max={6}
-                  step={1}
-                  required
-                  value={value.recovery.model_retries}
-                  onChange={(event) =>
-                    field("recovery", {
-                      model_retries: Number(event.target.value),
-                    })
-                  }
-                />
-              </Field>
-            </div>
-            <p className="form-hint">
-              模型重试可能增加费用；不确定的工具结果只做有界只读核查。
-            </p>
+                {context.summary_target_mode !== "auto" && (
+                  <Field
+                    label="摘要上限（UTF-8 字节）"
+                    hint="1～16,384 字节；中文字符通常占多个字节。"
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={16384}
+                      required
+                      step={1}
+                      value={context.task_summary_bytes || 4096}
+                      onChange={(event) =>
+                        field("context", {
+                          ...context,
+                          task_summary_bytes: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </Field>
+                )}
+              </div>
+              {context.summary_target_mode === "auto" && (
+                <p className="form-hint automatic-target">
+                  摘要长度：由有效模型窗口自动计算。当前请求的实际目标在对话“上下文”中查看。
+                </p>
+              )}
+              <p className="form-hint">
+                关闭自动压缩后，仍可在对话中手动压缩。
+              </p>
+            </SettingsGroup>
+            <SettingsGroup
+              title="请求预算与恢复"
+              description="模型窗口、回复额度和请求字节保护分别限制不同内容。模型专属设置在“模型与 Key”中调整。"
+            >
+              <div className="form-grid">
+                <Field
+                  label="默认输出 token 上限"
+                  hint="模型未配置独立输出额度时使用；不会扩大模型上下文窗口。"
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={32768}
+                    required
+                    step={1}
+                    value={context.max_output_tokens}
+                    onChange={(event) =>
+                      field("context", {
+                        ...context,
+                        max_output_tokens: Number(event.target.value),
+                      })
+                    }
+                  />
+                </Field>
+                <Field
+                  label="请求字节上限"
+                  hint="本地请求的 UTF-8 字节保护，与模型 token 窗口分开校验。"
+                >
+                  <input
+                    type="number"
+                    min={4096}
+                    max={16777216}
+                    required
+                    step={1}
+                    value={context.max_context_bytes}
+                    onChange={(event) =>
+                      field("context", {
+                        ...context,
+                        max_context_bytes: Number(event.target.value),
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="模型请求自动恢复次数">
+                  <input
+                    type="number"
+                    min={0}
+                    max={6}
+                    step={1}
+                    required
+                    value={value.recovery.model_retries}
+                    onChange={(event) =>
+                      field("recovery", {
+                        model_retries: Number(event.target.value),
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+              <p className="form-hint">
+                模型重试可能增加费用；不确定的工具结果只做有界只读核查。
+              </p>
+            </SettingsGroup>
           </>
         )}
-        <Result error={error} text={result} />
-        <div className="provider-actions settings-savebar">
-          <span>
-            {busy ? "正在保存…" : dirty ? "有未保存的修改" : "与已保存设置一致"}
-          </span>
-          <Button type="submit">{busy ? "正在保存…" : "保存设置"}</Button>
-          {error && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={async () => {
-                if (!window.confirm("读取最新设置并放弃本页草稿？")) return;
-                try {
-                  const next = await api<Settings>("settings");
-                  change(next);
-                  setSaved(next);
-                  clearFormDraft(draftID);
-                  setRoots((next.file_access.allowed_roots || []).join("\n"));
-                  setBlocked(
-                    (next.file_access.global_blocked_paths || []).join("\n"),
-                  );
-                  setOrigins((next.network.allowed_origins || []).join("\n"));
-                  setExecutables(
-                    (next.command_run.allowed_executables || []).join("\n"),
-                  );
-                  setError("");
-                } catch (error) {
-                  setError((error as Error).message);
-                }
-              }}
-            >
-              读取最新并放弃草稿
-            </Button>
-          )}
+        <Result error={error} text={dirty ? undefined : result} />
+        <div className="settings-savebar">
+          <DraftStatus
+            dirty={dirty}
+            busy={busy}
+            hint={dirty ? "切页保留草稿；保存后用于后续请求。" : undefined}
+          />
+          <div className="provider-actions">
+            <Button type="submit">{busy ? "正在保存…" : "保存设置"}</Button>
+            {(error || dirty) && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={async () => {
+                  if (!window.confirm("读取最新设置并放弃本页草稿？")) return;
+                  try {
+                    const next = await api<Settings>("settings");
+                    change(next);
+                    clearFormDraft(draftID);
+                    setRoots((next.file_access.allowed_roots || []).join("\n"));
+                    setBlocked(
+                      (next.file_access.global_blocked_paths || []).join("\n"),
+                    );
+                    setOrigins((next.network.allowed_origins || []).join("\n"));
+                    setExecutables(
+                      (next.command_run.allowed_executables || []).join("\n"),
+                    );
+                    setError("");
+                  } catch (error) {
+                    setError((error as Error).message);
+                  }
+                }}
+              >
+                {error ? "读取最新并放弃草稿" : "放弃修改"}
+              </Button>
+            )}
+          </div>
         </div>
       </fieldset>
     </form>

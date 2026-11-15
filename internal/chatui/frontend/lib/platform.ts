@@ -35,8 +35,8 @@ declare global {
 }
 export const defaultView: ViewPreferences = {
   theme: "system",
-  sidebar: 252,
-  reading: 820,
+  sidebar: 232,
+  reading: 846,
   composer: 190,
 };
 export function viewCommand(
@@ -82,8 +82,8 @@ export function validateView(value: Partial<ViewPreferences>): ViewPreferences {
     theme: ["light", "dark", "system"].includes(value.theme || "")
       ? value.theme!
       : "system",
-    sidebar: clamp(value.sidebar, 208, 380, 252),
-    reading: clamp(value.reading, 540, 1120, 820),
+    sidebar: clamp(value.sidebar, 208, 380, 232),
+    reading: clamp(value.reading, 540, 1120, 846),
     composer: clamp(value.composer, 88, 380, 190),
   };
 }

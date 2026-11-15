@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, FileText, History } from "lucide-react";
+import { Copy, FileText, History, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { downloadAttachment } from "@/lib/api/download";
 import type { ChatMessage as ChatMessageData } from "@/lib/api/types";
@@ -13,6 +13,7 @@ export function ChatMessage({
   elapsed,
   run,
   onRestart,
+  onInspect,
 }: {
   message: ChatMessageData;
   chat: string;
@@ -20,6 +21,7 @@ export function ChatMessage({
   elapsed: number;
   run: string;
   onRestart: (key: string, mode: string) => void;
+  onInspect?: () => void;
 }) {
   const key = chat + ":" + message.key;
   const [raw, setRaw] = useState(fullMessages.get(key) || message.raw),
@@ -64,9 +66,20 @@ export function ChatMessage({
     <article className={assistant ? "assistant-message" : "user-message"}>
       {assistant && (
         <div className="assistant-label">
-          <div className="small-mark">F</div>
+          <div className="small-mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </div>
           <strong>FreeAgent</strong>
-          <span>{model}</span>
+          <button
+            className="turn-model"
+            onClick={onInspect}
+            aria-label={`查看本轮配置：${model || "型号未记录"}`}
+          >
+            {model || "型号未记录"}
+            <ChevronDown size={11} />
+          </button>
         </div>
       )}
       {assistant ? <Message text={raw} /> : <p>{raw}</p>}

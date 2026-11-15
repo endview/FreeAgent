@@ -91,20 +91,14 @@ export default function GeneralSettings({
             ["composer", "输入区最大高度（px）", 88, 380],
           ] as const
         ).map(([id, label, min, max]) => (
-          <Field key={id} label={label}>
-            <input
-              type="number"
-              min={min}
-              max={max}
-              step={1}
-              value={value[id]}
-              onChange={(event) => {
-                const number = Number(event.target.value);
-                if (number >= min && number <= max)
-                  onChange({ ...value, [id]: number });
-              }}
-            />
-          </Field>
+          <DimensionField
+            key={id}
+            label={label}
+            min={min}
+            max={max}
+            value={value[id]}
+            onChange={(next) => onChange({ ...value, [id]: next })}
+          />
         ))}
       </div>
       <Button variant="outline" onClick={() => onChange(defaultView)}>
@@ -174,5 +168,72 @@ export default function GeneralSettings({
       </section>
       <Result error={error} />
     </>
+  );
+}
+
+function DimensionField({
+  label,
+  min,
+  max,
+  value,
+  onChange,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  const [error, setError] = useState("");
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) {
+      setText(String(value));
+      setError("");
+    }
+  }, [value]);
+  function valid(raw: string) {
+    const next = Number(raw);
+    return (
+      raw.trim() !== "" && Number.isInteger(next) && next >= min && next <= max
+    );
+  }
+  return (
+    <Field
+      label={label}
+      hint={`${min}～${max} px；有效数值自动保存。`}
+      error={error}
+    >
+      <input
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={1}
+        value={text}
+        onFocus={() => {
+          editing.current = true;
+        }}
+        onChange={(event) => {
+          const raw = event.target.value;
+          setText(raw);
+          setError("");
+          if (valid(raw)) onChange(Number(raw));
+        }}
+        onBlur={() => {
+          editing.current = false;
+          if (!valid(text))
+            setError(`请输入 ${min}～${max} 的整数；当前仍使用 ${value} px。`);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            setText(String(value));
+            setError("");
+          }
+        }}
+      />
+    </Field>
   );
 }

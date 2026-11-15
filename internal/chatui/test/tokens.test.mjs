@@ -43,7 +43,7 @@ test('contrast formula matches WCAG reference values', () => {
   assert.equal(contrast('#167b68', '#ffffff').toFixed(2), '5.16');
 });
 test('the approved workbench palette keeps UNKNOWN distinct from failure',()=>{
-  assert.equal(tokens['--sidebar'],'#f5f6f8');assert.equal(tokens['--primary'],'#2958d4');
+  assert.equal(tokens['--sidebar'],'#f1f3f7');assert.equal(tokens['--primary'],'#4d61c5');
   assert.notEqual(tokens['--state-unknown'],tokens['--state-failed']);
 });
 test('reading and navigation text and state colors meet contrast thresholds',()=>{

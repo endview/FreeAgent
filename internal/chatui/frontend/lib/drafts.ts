@@ -6,6 +6,35 @@ import type {
 } from "./api/types.ts";
 // Secrets and settings drafts are volatile, and never enter client storage.
 const forms = new Map<string, Record<string, unknown>>();
+const formBaselines = new Map<string, string>();
+const guardedForms = new Set<string>();
+const formListeners = new Set<() => void>();
+export function hasFormDraft(id: string) {
+  return (
+    forms.has(id) && JSON.stringify(forms.get(id)) !== formBaselines.get(id)
+  );
+}
+export function hasUnsavedForms() {
+  return [...guardedForms].some(hasFormDraft);
+}
+export function subscribeFormDrafts(listener: () => void) {
+  formListeners.add(listener);
+  return () => {
+    formListeners.delete(listener);
+  };
+}
+function warnUnsaved(event: BeforeUnloadEvent) {
+  if (!hasUnsavedForms()) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+function formsChanged() {
+  if (typeof window !== "undefined") {
+    window.removeEventListener("beforeunload", warnUnsaved);
+    if (hasUnsavedForms()) window.addEventListener("beforeunload", warnUnsaved);
+  }
+  formListeners.forEach((listener) => listener());
+}
 const messages = new Map<string, string>();
 const requests = new Map<string, PendingSend>();
 const attachments = new Map<string, Attachment[]>();
@@ -51,6 +80,9 @@ export function configureDrafts(
   clearTimeout(timer);
   persist();
   forms.clear();
+  formBaselines.clear();
+  guardedForms.clear();
+  formsChanged();
   messages.clear();
   requests.clear();
   attachments.clear();
@@ -115,14 +147,21 @@ export function configureDrafts(
 export function formDraft<T extends Record<string, unknown>>(
   id: string,
   initial: T,
+  guard = false,
 ): T {
+  if (!forms.has(id)) formBaselines.set(id, JSON.stringify(initial));
+  if (guard) guardedForms.add(id);
   return (forms.get(id) || initial) as T;
 }
 export function saveFormDraft(id: string, value: Record<string, unknown>) {
-  forms.set(id, value);
+  if (JSON.stringify(value) === formBaselines.get(id)) forms.delete(id);
+  else forms.set(id, value);
+  formsChanged();
 }
 export function clearFormDraft(id: string) {
+  if (forms.has(id)) formBaselines.set(id, JSON.stringify(forms.get(id)));
   forms.delete(id);
+  formsChanged();
 }
 export function messageDraft(chat: string) {
   return messages.get(chat) || "";
@@ -175,6 +214,9 @@ export function consumeSentDraft(chat: string, request: PendingSend) {
 export function clearDrafts() {
   clearTimeout(timer);
   forms.clear();
+  formBaselines.clear();
+  guardedForms.clear();
+  formsChanged();
   messages.clear();
   requests.clear();
   attachments.clear();

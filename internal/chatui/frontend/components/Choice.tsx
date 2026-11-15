@@ -7,6 +7,8 @@ export function Choice({
   options,
   disabled = false,
   prefix = "",
+  "aria-describedby": describedBy,
+  "aria-invalid": invalid,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -14,10 +16,17 @@ export function Choice({
   options: [string, string][];
   disabled?: boolean;
   prefix?: string;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
 }) {
   return (
     <Select.Root value={value} onValueChange={onChange} disabled={disabled}>
-      <Select.Trigger aria-label={label} className="choice">
+      <Select.Trigger
+        aria-label={label}
+        aria-describedby={describedBy}
+        aria-invalid={invalid}
+        className="choice"
+      >
         <Select.Value>
           {prefix
             ? prefix + (options.find(([id]) => id === value)?.[1] || value)
@@ -32,8 +41,9 @@ export function Choice({
           className="choice-menu"
           position="popper"
           sideOffset={5}
+          collisionPadding={12}
         >
-          <Select.Viewport>
+          <Select.Viewport className="choice-viewport">
             {options.map(([id, name]) => (
               <Select.Item key={id} value={id} className="choice-item">
                 <Select.ItemText>{name}</Select.ItemText>

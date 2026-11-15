@@ -17,7 +17,14 @@ import { clearFormDraft } from "@/lib/drafts";
 import { ControlPreview } from "@/components/ControlPreview";
 import { Button } from "@/components/ui/button";
 import { Choice, Toggle } from "@/components/Choice";
-import { Field, Loading, Result, useFormDraft, useResource } from "./shared";
+import {
+  DraftStatus,
+  Field,
+  Loading,
+  Result,
+  useFormDraft,
+  useResource,
+} from "./shared";
 
 interface Profile {
   id: string;
@@ -75,12 +82,15 @@ export default function Providers() {
       <p className="settings-intro">
         按需开启 Provider。保存配置不会自动发送模型请求。
       </p>
-      <div className="providers-layout">
+      <div
+        className={`providers-layout ${!resource.value.profiles.length ? "resource-empty" : ""}`}
+      >
         <nav className="provider-list" aria-label="Provider 配置">
           {resource.value.profiles.map((item) => (
             <button
               key={item.id}
               className={selected === item.id ? "selected" : ""}
+              aria-current={selected === item.id ? "true" : undefined}
               onClick={() => choose(item.id)}
             >
               <strong>{item.name}</strong>
@@ -117,16 +127,20 @@ function ProviderEditor({
 }) {
   const env = useRuntime().environment;
   const draftID = `provider:${profile?.id || "new"}`;
-  const [form, change] = useFormDraft<KeyForm>(draftID, {
-    id: profile?.id || "",
-    name: profile?.name || "",
-    base_url: profile?.base_url || "",
-    protocol: profile?.protocol || "openai-compatible",
-    source: profile?.source || "saved",
-    key: "",
-    note: profile?.note || "",
-    enable: false,
-  });
+  const [form, change, dirty] = useFormDraft<KeyForm>(
+    draftID,
+    {
+      id: profile?.id || "",
+      name: profile?.name || "",
+      base_url: profile?.base_url || "",
+      protocol: profile?.protocol || "openai-compatible",
+      source: profile?.source || "saved",
+      key: "",
+      note: profile?.note || "",
+      enable: false,
+    },
+    true,
+  );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [result, setResult] = useState("");
@@ -335,7 +349,12 @@ function ProviderEditor({
           )}
           {profile && (
             <div className="setting-line">
-              <span>启用此 Provider</span>
+              <span>
+                启用此 Provider
+                <small className="form-hint">
+                  开关立即保存；下面的连接配置需单独保存。
+                </small>
+              </span>
               <Toggle
                 label="启用此 Provider"
                 checked={Boolean(env?.providers?.[profile.id])}
@@ -351,6 +370,8 @@ function ProviderEditor({
           <div className="form-grid">
             <Field label="名称">
               <input
+                name="provider_name"
+                autoComplete="off"
                 required
                 maxLength={64}
                 value={form.name}
@@ -373,6 +394,9 @@ function ProviderEditor({
               <input
                 required
                 type="url"
+                name="provider_base_url"
+                autoComplete="off"
+                spellCheck={false}
                 value={form.base_url}
                 onChange={(event) => field("base_url", event.target.value)}
                 placeholder="https://api.example.com/v1"
@@ -393,6 +417,8 @@ function ProviderEditor({
               >
                 <input
                   type="password"
+                  name="provider_api_key"
+                  spellCheck={false}
                   autoComplete="new-password"
                   value={form.key}
                   onChange={(event) => field("key", event.target.value)}
@@ -430,16 +456,31 @@ function ProviderEditor({
               保存后启用 Provider
             </label>
           )}
-          <div className="provider-actions">
-            <Button variant="outline" type="button" onClick={test}>
-              <Zap size={15} />
-              测试连接
-            </Button>
-            <Button type="submit">{busy ? "处理中…" : "保存配置"}</Button>
+          <div className="settings-savebar">
+            <DraftStatus
+              dirty={dirty}
+              busy={busy}
+              cleanLabel={profile ? undefined : "尚未创建配置"}
+              hint={
+                dirty
+                  ? "切页保留草稿；刷新或关闭前请保存。"
+                  : "测试连接只检查配置，不会自动保存。"
+              }
+            />
+            <div className="provider-actions">
+              <Button variant="outline" type="button" onClick={test}>
+                <Zap size={15} />
+                测试连接
+              </Button>
+              <Button type="submit">{busy ? "处理中…" : "保存配置"}</Button>
+            </div>
           </div>
         </fieldset>
       </form>
-      <Result error={error} text={result} />
+      <Result
+        error={error}
+        text={dirty && result === "配置已保存。" ? undefined : result}
+      />
       <section className="settings-section">
         <div className="section-title">
           <h2>模型</h2>

@@ -10,15 +10,14 @@ import {
 import {
   ArrowDown,
   ArrowUp,
-  Check,
-  CircleHelp,
-  TriangleAlert,
   ChevronRight,
   Clock3,
   FileText,
   History,
   LoaderCircle,
   Paperclip,
+  PanelRight,
+  ListTree,
   Square,
   WandSparkles,
   X,
@@ -84,11 +83,14 @@ import {
 import { ApprovalView } from "@/components/ApprovalView";
 import { ChatMessage } from "@/features/messages/ChatMessage";
 import { Message } from "@/features/messages/Message";
+import { ExecutionChain } from "./ExecutionChain";
+import { TurnOverview } from "./TurnOverview";
 
 interface PendingInput {
   capabilities?: CapabilitySelection;
   attachments?: Attachment[];
   reasoning?: ReasoningCapabilities["default"];
+  model_id?: string;
   key: string;
   action: string;
   status: string;
@@ -202,6 +204,8 @@ const TurnView = memo(function TurnView({
   streams,
   onRestart,
   onContext,
+  onInspect,
+  onChain,
 }: {
   turn: Turn;
   chat: string;
@@ -209,8 +213,9 @@ const TurnView = memo(function TurnView({
   streams: Stream[];
   onRestart: (message: string, mode: string) => void;
   onContext: () => void;
+  onInspect: () => void;
+  onChain: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const state = statusLabels[turn.state] || "需要处理";
   async function action(name: string, body: unknown = {}) {
@@ -239,7 +244,14 @@ const TurnView = memo(function TurnView({
           key={message.key}
           message={message}
           chat={chat}
-          model={turn.model_id}
+          model={
+            message.model_name ||
+            message.model_id ||
+            (turn.model_name || turn.model_id
+              ? `${turn.model_name || turn.model_id}（本轮配置）`
+              : "型号未记录")
+          }
+          onInspect={onInspect}
           elapsed={turn.elapsed_ms}
           run={turn.key}
           onRestart={onRestart}
@@ -247,73 +259,16 @@ const TurnView = memo(function TurnView({
       ))}
       {turn.activity.length > 0 && (
         <div className="tool-group">
-          <button
-            className="tool-summary"
-            onClick={() => setExpanded(!expanded)}
-          >
-            <ChevronRight size={15} className={expanded ? "expanded" : ""} />
-            {turn.state === "completed" ? (
-              <Check size={15} />
-            ) : turn.state === "unknown" ? (
-              <CircleHelp size={15} />
-            ) : turn.state === "failed" ? (
-              <TriangleAlert size={15} />
-            ) : (
-              <Clock3 size={15} />
-            )}
-            <span>{turn.activity.length} 项执行记录</span>
+          <button className="tool-summary" onClick={onChain}>
+            <ListTree size={15} />
+            <span>本轮执行记录</span>
+            <span>
+              {turn.activity.length}
+              {turn.activity_has_earlier ? "+" : ""} 条
+            </span>
             <time>{(turn.elapsed_ms / 1000).toFixed(1)} 秒</time>
+            <ChevronRight size={13} />
           </button>
-          {expanded && (
-            <div className="tool-list">
-              {turn.activity.map((item) => (
-                <details key={item.key}>
-                  <summary>
-                    <code>{item.name || item.kind}</code>
-                    <span>{item.status}</span>
-                    <time>
-                      {item.duration_ms === undefined
-                        ? ""
-                        : item.duration_ms + " ms"}
-                    </time>
-                  </summary>
-                  {item.target && <p>{item.target}</p>}
-                  {item.requested_reasoning && (
-                    <p>
-                      请求的思考设置：
-                      {item.requested_reasoning.effort ||
-                        item.requested_reasoning.mode ||
-                        "Provider 默认"}
-                      （服务端未回显档位）
-                    </p>
-                  )}
-                  {item.usage && (
-                    <p>
-                      输入 {item.usage.input_tokens} / 输出{" "}
-                      {item.usage.output_tokens} token；推理{" "}
-                      {item.usage.reasoning_tokens === undefined
-                        ? "未知"
-                        : item.usage.reasoning_tokens}
-                    </p>
-                  )}
-                  {item.extensions?.map((use, index) => (
-                    <p key={index}>
-                      已附加上下文：{use.label || use.name} ·{" "}
-                      {use.bytes.toLocaleString()} 字节
-                      {use.version ? ` · ${use.version}` : ""}
-                    </p>
-                  ))}
-                  {item.text && <pre>{item.text}</pre>}
-                  {item.receipts?.map((receipt, index) => (
-                    <p key={index}>
-                      {receipt.kind} · {receipt.status}
-                      {receipt.host_escape_hatch ? " · host" : ""}
-                    </p>
-                  ))}
-                </details>
-              ))}
-            </div>
-          )}
         </div>
       )}
       {Array.isArray(turn.sources) && turn.sources.length > 0 && (
@@ -335,6 +290,25 @@ const TurnView = memo(function TurnView({
       )}
       {streams.map((stream) => (
         <article className="assistant-message" key={stream.attempt}>
+          <div className="assistant-label">
+            <div className="small-mark" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </div>
+            <strong>FreeAgent</strong>
+            <button className="turn-model" onClick={onInspect}>
+              {turn.activity.find((item) => item.key === stream.attempt)
+                ?.model_name ||
+                turn.activity.find((item) => item.key === stream.attempt)
+                  ?.name ||
+                turn.model_name ||
+                turn.model_id ||
+                "型号未记录"}
+              <ChevronRight size={12} />
+            </button>
+            <span>生成中</span>
+          </div>
           <Message text={stream.raw} streaming={!stream.interrupted} />
           {stream.interrupted && (
             <p className="inline-warning">
@@ -359,9 +333,7 @@ const TurnView = memo(function TurnView({
         </p>
       )}
       {turn.activity_has_earlier && (
-        <p className="form-hint">
-          当前显示最近 128 项执行记录，完整记录可用 CLI inspect 查看。
-        </p>
+        <p className="form-hint">更早记录保留在完整执行链条中，可按页读取。</p>
       )}
       {turn.evidence && (
         <details className="run-evidence">
@@ -453,6 +425,7 @@ export default function ConversationPage({
   onComposerMax,
   onOpenChat,
   onOpenModelSettings,
+  onOpenSettings,
   onViewCommand,
 }: {
   reading: number;
@@ -461,9 +434,27 @@ export default function ConversationPage({
   onComposerMax: (height: number) => void;
   onOpenChat: (id: string) => Promise<void>;
   onOpenModelSettings?: () => void;
+  onOpenSettings: (section: string) => void;
   onViewCommand?: (text: string) => boolean;
 }) {
   const state = useRuntime();
+  const [overviewVisible, setOverviewVisible] = useState(true);
+  const [wideOverview, setWideOverview] = useState(
+    () => matchMedia("(min-width:1180px)").matches,
+  );
+  useEffect(() => {
+    const media = matchMedia("(min-width:1180px)");
+    const update = () => {
+      setWideOverview(media.matches);
+      if (media.matches) setOverviewMobile(false);
+    };
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  const [overviewMobile, setOverviewMobile] = useState(false);
+  const [inspectedRun, setInspectedRun] = useState("");
+  const [chainRun, setChainRun] = useState("");
+  const [chainFocus, setChainFocus] = useState("");
   const [draft, setDraft] = useState(messageDraft(state.selected));
   const earlyDraft = useRef<{ chat: string; text: string } | null>(null);
   const [model, setModel] = useState("");
@@ -533,6 +524,9 @@ export default function ConversationPage({
     state.snapshot?.busy || latest?.state === "generating",
   );
   useEffect(() => {
+    setInspectedRun("");
+    setChainRun("");
+    setOverviewMobile(false);
     setEarlier([]);
     setEarlierCursor("");
     setHasEarlier(null);
@@ -603,6 +597,16 @@ export default function ConversationPage({
       );
     } else if (following) element.scrollTop = element.scrollHeight;
   }, [state.selected, state.snapshot, following]);
+  useEffect(() => {
+    const content = reader.current?.querySelector(".reading-column");
+    if (!content || !following) return;
+    const observer = new ResizeObserver(() => {
+      if (reader.current)
+        reader.current.scrollTop = reader.current.scrollHeight;
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [following, state.selected]);
   function changeDraft(value: string) {
     if (!state.environment)
       earlyDraft.current = { chat: state.selected, text: value };
@@ -1138,394 +1142,506 @@ export default function ConversationPage({
     .map(([id, model]) => [id, model.model || id] as [string, string]);
   if (state.environment?.auto === true)
     modelOptions.unshift(["auto", "自动路由"]);
+  const turns = [
+    ...new Map(
+      [...earlier, ...(state.snapshot?.view.turns || [])].map((turn) => [
+        turn.key,
+        turn,
+      ]),
+    ).values(),
+  ];
+  const inspected =
+    turns.find((turn) => turn.key === inspectedRun) || turns.at(-1);
+  const chain = turns.find((turn) => turn.key === chainRun);
+  function inspect(run: string) {
+    setInspectedRun(run);
+    if (wideOverview) setOverviewVisible(true);
+    else setOverviewMobile(true);
+  }
+  function openChain(run: string, key = "") {
+    setOverviewMobile(false);
+    setChainRun(run);
+    setChainFocus(key);
+  }
+  function goToTurn(run: string) {
+    setOverviewMobile(false);
+    setFollowing(false);
+    requestAnimationFrame(() => {
+      const node = document.querySelector<HTMLElement>(
+        `[data-run="${CSS.escape(run)}"]`,
+      );
+      node?.scrollIntoView({ block: "center", behavior: "instant" });
+      node
+        ?.querySelector<HTMLButtonElement>(".approval-card button")
+        ?.focus({ preventScroll: true });
+    });
+  }
+  const nextModel =
+    model ||
+    state.snapshot?.view.model_id ||
+    state.environment?.default_model ||
+    modelOptions[0]?.[0] ||
+    "";
   return (
-    <>
-      <section
-        className="messages"
-        ref={reader}
-        aria-label="对话消息"
-        onScroll={() => {
-          if (reader.current) {
-            scrollPositions.set(state.selected, reader.current.scrollTop);
-            setFollowing(
-              reader.current.scrollHeight -
-                reader.current.scrollTop -
-                reader.current.clientHeight <
-                90,
-            );
-          }
-        }}
-      >
-        <div className="reading-frame">
-          <div className="reading-column">
-            {state.snapshot?.view.conversation.space_id !== "local" &&
-              state.selected && (
-                <>
-                  <DeliveryPanel
-                    chat={state.selected}
-                    run={latest?.key || ""}
-                    revision={(latest?.key || "") + latest?.state}
-                  />
-                  {state.spaces.find(
-                    (space) =>
-                      space.id === state.snapshot?.view.conversation.space_id,
-                  )?.source === "telegram" && (
-                    <StickerPanel key={state.selected} chat={state.selected} />
-                  )}
-                </>
-              )}
-            {state.snapshot?.view.background?.length ? (
-              <details className="run-evidence">
-                <summary>收到的背景与渠道命令（未自动执行）</summary>
-                {state.snapshot.view.background.map((message) => (
-                  <p key={message.key}>{message.raw}</p>
-                ))}
-              </details>
-            ) : null}
-            {(hasEarlier ?? state.snapshot?.view.has_earlier) && (
-              <button
-                className="load-earlier"
-                disabled={loadingEarlier}
-                onClick={loadEarlier}
-              >
-                {loadingEarlier ? "正在读取…" : "加载更早的消息"}
-              </button>
+    <div className="conversation-workbench">
+      <div className="conversation-main">
+        <div className="conversation-toolbar">
+          <span>对话与交付</span>
+          <div>
+            {latest && (
+              <span className={`round-state state-${latest.state}`}>
+                {statusLabels[latest.state] || "需要处理"}
+              </span>
             )}
-            {!state.selected ? (
-              <div className="empty-conversation">
-                <MessageSquareMark />
-                <h1>从一件具体的事开始</h1>
-                <p>
-                  {modelOptions.length
-                    ? "描述目标、附上文件，使用你选择的能力继续工作。"
-                    : "先在设置中配置并开启一个 Provider，再开始对话。"}
-                </p>
-              </div>
-            ) : state.loading && !state.snapshot ? (
-              <p className="loading-label">正在读取对话…</p>
-            ) : null}
-            {[
-              ...new Map(
-                [...earlier, ...(state.snapshot?.view.turns || [])].map(
-                  (turn) => [turn.key, turn],
-                ),
-              ).values(),
-            ].map((turn) => (
-              <TurnView
-                key={turn.key}
-                turn={turn}
-                chat={state.selected}
-                streams={byRun.get(turn.key) || emptyStreams}
-                onRefresh={onRefresh}
-                onRestart={restart}
-                onContext={() => setContextOpen(true)}
-              />
-            ))}
-          </div>
-          <Divider
-            axis="x"
-            label="调整阅读宽度"
-            value={reading}
-            min={540}
-            max={1120}
-            reset={820}
-            onChange={onReading}
-          />
-        </div>
-      </section>
-      <section className="composer-area">
-        <SlashCommands
-          query={commandQuery(draft)}
-          disabled={mutating}
-          onChoose={(entry) => void chooseCommand(entry)}
-        />
-        <div className="composer-column">
-          {!following && (
             <button
-              className="latest-button"
-              onClick={() => setFollowing(true)}
+              aria-label="本轮详情"
+              aria-expanded={wideOverview ? overviewVisible : overviewMobile}
+              onClick={() => {
+                if (wideOverview) setOverviewVisible((value) => !value);
+                else setOverviewMobile(true);
+              }}
             >
-              <ArrowDown size={14} />
-              回到最新消息
+              <PanelRight size={16} />
+              <span>本轮详情</span>
             </button>
-          )}
-          {inputs.entries.filter(
-            (item) =>
-              item.status === "pending" || item.status === "target_ended",
-          ).length > 0 && (
-            <div className="queue-list">
-              {inputs.entries
-                .filter(
-                  (item) =>
-                    item.status === "pending" || item.status === "target_ended",
-                )
-                .map((item) => (
-                  <div key={item.key}>
-                    <Clock3 size={14} />
-                    <span>{item.prompt || item.action}</span>
-                    {item.status === "target_ended" && (
-                      <span>目标任务已结束，尚未执行</span>
+          </div>
+        </div>
+        <section
+          className="messages"
+          ref={reader}
+          aria-label="对话消息"
+          onScroll={() => {
+            if (reader.current) {
+              scrollPositions.set(state.selected, reader.current.scrollTop);
+              setFollowing(
+                reader.current.scrollHeight -
+                  reader.current.scrollTop -
+                  reader.current.clientHeight <
+                  90,
+              );
+            }
+          }}
+        >
+          <div className="reading-frame">
+            <div className="reading-column">
+              {state.snapshot?.view.conversation.space_id !== "local" &&
+                state.selected && (
+                  <>
+                    <DeliveryPanel
+                      chat={state.selected}
+                      run={latest?.key || ""}
+                      revision={(latest?.key || "") + latest?.state}
+                    />
+                    {state.spaces.find(
+                      (space) =>
+                        space.id === state.snapshot?.view.conversation.space_id,
+                    )?.source === "telegram" && (
+                      <StickerPanel
+                        key={state.selected}
+                        chat={state.selected}
+                      />
                     )}
-                    {item.action === "queue" && latest && (
-                      <button onClick={() => inputAction("steer", item.key)}>
-                        转为引导
-                      </button>
-                    )}
-                    <button onClick={() => void restoreInput(item)}>
-                      退回输入框
-                    </button>
-                    <button
-                      aria-label="删除排队消息"
-                      onClick={() => inputAction("cancel", item.key)}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-              <button
-                onClick={() => inputAction(inputs.paused ? "resume" : "pause")}
-              >
-                {inputs.paused ? "恢复队列" : "暂停队列"}
-              </button>
+                  </>
+                )}
+              {state.snapshot?.view.background?.length ? (
+                <details className="run-evidence">
+                  <summary>收到的背景与渠道命令（未自动执行）</summary>
+                  {state.snapshot.view.background.map((message) => (
+                    <p key={message.key}>{message.raw}</p>
+                  ))}
+                </details>
+              ) : null}
+              {(hasEarlier ?? state.snapshot?.view.has_earlier) && (
+                <button
+                  className="load-earlier"
+                  disabled={loadingEarlier}
+                  onClick={loadEarlier}
+                >
+                  {loadingEarlier ? "正在读取…" : "加载更早的消息"}
+                </button>
+              )}
+              {!state.selected ? (
+                <div className="empty-conversation">
+                  <MessageSquareMark />
+                  <h1>从一件具体的事开始</h1>
+                  <p>
+                    {modelOptions.length
+                      ? "描述目标、附上文件，使用你选择的能力继续工作。"
+                      : "先在设置中配置并开启一个 Provider，再开始对话。"}
+                  </p>
+                </div>
+              ) : state.loading && !state.snapshot ? (
+                <p className="loading-label">正在读取对话…</p>
+              ) : null}
+              {turns.map((turn) => (
+                <TurnView
+                  key={turn.key}
+                  turn={turn}
+                  chat={state.selected}
+                  streams={byRun.get(turn.key) || emptyStreams}
+                  onRefresh={onRefresh}
+                  onRestart={restart}
+                  onContext={() => setContextOpen(true)}
+                  onInspect={() => inspect(turn.key)}
+                  onChain={() => openChain(turn.key)}
+                />
+              ))}
             </div>
-          )}
-          <div
-            className="composer"
-            onDragOver={(event) => {
-              if (event.dataTransfer.types.includes("Files"))
-                event.preventDefault();
-            }}
-            onDrop={(event) => {
-              if (event.dataTransfer.files.length) {
-                event.preventDefault();
-                void addFiles(event.dataTransfer.files);
-              }
-            }}
-          >
             <Divider
-              axis="y"
-              label="调整输入区最大高度"
-              value={composerMax}
-              min={88}
-              max={380}
-              reset={190}
-              onChange={onComposerMax}
+              axis="x"
+              label="调整阅读宽度"
+              value={reading}
+              min={540}
+              max={1120}
+              reset={846}
+              onChange={onReading}
             />
-            {attachments.length > 0 && (
-              <div className="attachment-drafts">
-                {attachments.map((ref) => (
-                  <span key={ref.id}>
-                    <FileText size={14} />
-                    {ref.name}
-                    <button
-                      aria-label={`移除 ${ref.name}`}
-                      onClick={() => {
-                        const values = attachments.filter(
-                          (item) => item.id !== ref.id,
-                        );
-                        saveAttachmentDraft(state.selected, values);
-                        setAttachments(values);
-                      }}
-                    >
-                      <X size={13} />
-                    </button>
-                  </span>
-                ))}
+          </div>
+        </section>
+        <section className="composer-area">
+          <SlashCommands
+            query={commandQuery(draft)}
+            disabled={mutating}
+            onChoose={(entry) => void chooseCommand(entry)}
+          />
+          <div className="composer-column">
+            {!following && (
+              <button
+                className="latest-button"
+                onClick={() => setFollowing(true)}
+              >
+                <ArrowDown size={14} />
+                回到最新消息
+              </button>
+            )}
+            {inputs.entries.filter(
+              (item) =>
+                item.status === "pending" || item.status === "target_ended",
+            ).length > 0 && (
+              <div className="queue-list">
+                {inputs.entries
+                  .filter(
+                    (item) =>
+                      item.status === "pending" ||
+                      item.status === "target_ended",
+                  )
+                  .map((item) => (
+                    <div key={item.key}>
+                      <Clock3 size={14} />
+                      <span>
+                        {item.prompt || item.action}
+                        {item.action === "queue" && (
+                          <small>
+                            准备使用{" "}
+                            {item.model_id
+                              ? state.environment?.models[item.model_id]
+                                  ?.model || item.model_id
+                              : "会话默认模型"}
+                          </small>
+                        )}
+                      </span>
+                      {item.status === "target_ended" && (
+                        <span>目标任务已结束，尚未执行</span>
+                      )}
+                      {item.action === "queue" && latest && (
+                        <button onClick={() => inputAction("steer", item.key)}>
+                          转为引导
+                        </button>
+                      )}
+                      <button onClick={() => void restoreInput(item)}>
+                        退回输入框
+                      </button>
+                      <button
+                        aria-label="删除排队消息"
+                        onClick={() => inputAction("cancel", item.key)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                <button
+                  onClick={() =>
+                    inputAction(inputs.paused ? "resume" : "pause")
+                  }
+                >
+                  {inputs.paused ? "恢复队列" : "暂停队列"}
+                </button>
               </div>
             )}
-            <textarea
-              aria-label="消息"
-              ref={textarea}
-              rows={2}
-              value={draft}
-              placeholder={
-                runBusy
-                  ? "补充消息，先加入队列，也可转为引导…"
-                  : "说说接下来要做什么…"
-              }
-              onChange={(event) => changeDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing &&
-                  event.keyCode !== 229
-                ) {
+            <div
+              className="composer"
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes("Files"))
                   event.preventDefault();
-                  void send();
+              }}
+              onDrop={(event) => {
+                if (event.dataTransfer.files.length) {
+                  event.preventDefault();
+                  void addFiles(event.dataTransfer.files);
                 }
               }}
-            />
-            <div className="composer-tools">
-              <input
-                hidden
-                type="file"
-                multiple
-                ref={fileInput}
-                onChange={(event) => {
-                  void addFiles(event.target.files);
-                  event.target.value = "";
+            >
+              <Divider
+                axis="y"
+                label="调整输入区最大高度"
+                value={composerMax}
+                min={88}
+                max={380}
+                reset={190}
+                onChange={onComposerMax}
+              />
+              {attachments.length > 0 && (
+                <div className="attachment-drafts">
+                  {attachments.map((ref) => (
+                    <span key={ref.id}>
+                      <FileText size={14} />
+                      {ref.name}
+                      <button
+                        aria-label={`移除 ${ref.name}`}
+                        onClick={() => {
+                          const values = attachments.filter(
+                            (item) => item.id !== ref.id,
+                          );
+                          saveAttachmentDraft(state.selected, values);
+                          setAttachments(values);
+                        }}
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <textarea
+                aria-label="消息"
+                ref={textarea}
+                rows={2}
+                value={draft}
+                placeholder={
+                  runBusy
+                    ? "补充消息，先加入队列，也可转为引导…"
+                    : "说说接下来要做什么…"
+                }
+                onChange={(event) => changeDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing &&
+                    event.keyCode !== 229
+                  ) {
+                    event.preventDefault();
+                    void send();
+                  }
                 }}
               />
-              <button
-                aria-label="添加附件"
-                disabled={mutating}
-                onClick={() => fileInput.current?.click()}
-              >
-                <Paperclip size={18} />
-              </button>
-              {modelOptions.length > 0 && (
-                <Choice
-                  label="当前模型"
-                  prefix="模型："
-                  value={
-                    model ||
-                    state.snapshot?.view.model_id ||
-                    state.environment?.default_model ||
-                    modelOptions[0][0]
-                  }
-                  options={modelOptions}
-                  onChange={(value) => {
-                    setModel(value);
-                    setModelDirty(true);
+              <div className="composer-tools">
+                <input
+                  hidden
+                  type="file"
+                  multiple
+                  ref={fileInput}
+                  onChange={(event) => {
+                    void addFiles(event.target.files);
+                    event.target.value = "";
                   }}
                 />
-              )}
-              <Choice
-                label="当前权限"
-                value={permission}
-                onChange={(value) => void choosePermission(value)}
-                options={[
-                  ["none", "仅聊天"],
-                  ["ask", "每次询问"],
-                  ["workspace", "工作区"],
-                  ["full", "Full access"],
-                ]}
-              />
-              <ReasoningChoice
-                info={
-                  state.environment?.models[
-                    model ||
+                <button
+                  aria-label="添加附件"
+                  disabled={mutating}
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <Paperclip size={18} />
+                </button>
+                {modelOptions.length > 0 && (
+                  <Choice
+                    label="当前模型"
+                    prefix="模型："
+                    value={
+                      model ||
                       state.snapshot?.view.model_id ||
-                      state.environment.default_model
-                  ]?.reasoning_info
-                }
-                caps={
-                  state.environment?.models[
-                    model ||
-                      state.snapshot?.view.model_id ||
-                      state.environment.default_model
-                  ]?.capabilities?.reasoning as
-                    | ReasoningCapabilities
-                    | undefined
-                }
-                protocol={String(
-                  state.environment?.models[
-                    model ||
-                      state.snapshot?.view.model_id ||
-                      state.environment.default_model
-                  ]?.capabilities?.protocol || "chat",
+                      state.environment?.default_model ||
+                      modelOptions[0][0]
+                    }
+                    options={modelOptions}
+                    onChange={(value) => {
+                      setModel(value);
+                      setModelDirty(true);
+                    }}
+                  />
                 )}
-                value={reasoning}
-                onChange={setReasoning}
-                onConfigure={onOpenModelSettings}
-              />
-              <ExtensionTurnChoices
-                catalog={state.environment?.capabilities}
-                selection={{
-                  ...capabilities,
-                  ...(turnSettings === undefined
-                    ? {}
-                    : { extension_settings: turnSettings }),
-                }}
-                onChange={(next) =>
-                  setTurnSettings(next.extension_settings || {})
-                }
-              />
-              <Capabilities
-                conversationID={state.selected}
-                catalog={state.environment?.capabilities}
-                selection={capabilities}
-                busy={runBusy}
-                saving={capabilitySaving}
-                onChange={(next) => {
-                  void saveCapabilities(next);
-                }}
-              />
-              <span className="composer-spacer" />
-              {runBusy ? (
-                <>
+                <Choice
+                  label="当前权限"
+                  value={permission}
+                  onChange={(value) => void choosePermission(value)}
+                  options={[
+                    ["none", "仅聊天"],
+                    ["ask", "每次询问"],
+                    ["workspace", "工作区"],
+                    ["full", "Full access"],
+                  ]}
+                />
+                <ReasoningChoice
+                  info={
+                    state.environment?.models[
+                      model ||
+                        state.snapshot?.view.model_id ||
+                        state.environment.default_model
+                    ]?.reasoning_info
+                  }
+                  caps={
+                    state.environment?.models[
+                      model ||
+                        state.snapshot?.view.model_id ||
+                        state.environment.default_model
+                    ]?.capabilities?.reasoning as
+                      | ReasoningCapabilities
+                      | undefined
+                  }
+                  protocol={String(
+                    state.environment?.models[
+                      model ||
+                        state.snapshot?.view.model_id ||
+                        state.environment.default_model
+                    ]?.capabilities?.protocol || "chat",
+                  )}
+                  value={reasoning}
+                  onChange={setReasoning}
+                  onConfigure={onOpenModelSettings}
+                />
+                <ExtensionTurnChoices
+                  catalog={state.environment?.capabilities}
+                  selection={{
+                    ...capabilities,
+                    ...(turnSettings === undefined
+                      ? {}
+                      : { extension_settings: turnSettings }),
+                  }}
+                  onChange={(next) =>
+                    setTurnSettings(next.extension_settings || {})
+                  }
+                />
+                <Capabilities
+                  builtin={state.environment?.enabled_tools}
+                  onManage={onOpenSettings}
+                  conversationID={state.selected}
+                  catalog={state.environment?.capabilities}
+                  selection={capabilities}
+                  busy={runBusy}
+                  saving={capabilitySaving}
+                  onChange={(next) => {
+                    void saveCapabilities(next);
+                  }}
+                />
+                <span className="composer-spacer" />
+                {runBusy ? (
+                  <>
+                    <button
+                      aria-label="加入队列"
+                      className="send-button"
+                      disabled={
+                        !draft.trim() ||
+                        mutating ||
+                        !state.ready ||
+                        (Boolean(state.selected) && !state.snapshot)
+                      }
+                      onClick={send}
+                    >
+                      <ArrowUp size={18} />
+                    </button>
+                    <button
+                      aria-label="停止运行"
+                      className="send-button stop-button"
+                      onClick={() =>
+                        api(`chats/${state.selected}/stop`, {})
+                          .then(refresh)
+                          .catch(report)
+                      }
+                    >
+                      <Square size={12} fill="currentColor" />
+                    </button>
+                  </>
+                ) : (
                   <button
-                    aria-label="加入队列"
+                    aria-label="发送消息"
                     className="send-button"
                     disabled={
                       !draft.trim() ||
                       mutating ||
+                      !modelOptions.length ||
                       !state.ready ||
                       (Boolean(state.selected) && !state.snapshot)
                     }
                     onClick={send}
                   >
-                    <ArrowUp size={18} />
+                    {mutating ? (
+                      <LoaderCircle size={17} className="spin" />
+                    ) : (
+                      <ArrowUp size={20} />
+                    )}
                   </button>
-                  <button
-                    aria-label="停止运行"
-                    className="send-button stop-button"
-                    onClick={() =>
-                      api(`chats/${state.selected}/stop`, {})
-                        .then(refresh)
-                        .catch(report)
-                    }
-                  >
-                    <Square size={12} fill="currentColor" />
-                  </button>
-                </>
-              ) : (
-                <button
-                  aria-label="发送消息"
-                  className="send-button"
-                  disabled={
-                    !draft.trim() ||
-                    mutating ||
-                    !modelOptions.length ||
-                    !state.ready ||
-                    (Boolean(state.selected) && !state.snapshot)
-                  }
-                  onClick={send}
-                >
-                  {mutating ? (
-                    <LoaderCircle size={17} className="spin" />
-                  ) : (
-                    <ArrowUp size={20} />
-                  )}
-                </button>
+                )}
+              </div>
+            </div>
+            <div className="composer-meta">
+              <span
+                className="next-model-note"
+                title="用于后续任务，已开始的任务保留原配置"
+              >
+                下次发送 ·{" "}
+                {state.environment?.models[nextModel]?.model ||
+                  nextModel ||
+                  "先配置模型"}
+              </span>
+              {attachments.length > 0 && !draft.trim() && (
+                <span>请补充你希望如何处理附件。</span>
               )}
+              {(!state.ready || (state.selected && !state.snapshot)) && (
+                <span>正在读取目标会话；输入会保留。</span>
+              )}
+              <span>
+                <button
+                  disabled={!state.selected}
+                  onClick={() => setContextOpen(true)}
+                >
+                  <History size={12} />
+                  上下文
+                </button>
+              </span>
+              <span>
+                {permission === "full"
+                  ? "Full access · 当前空间授权"
+                  : "Enter 发送 · Shift Enter 换行"}
+              </span>
             </div>
           </div>
-          <div className="composer-meta">
-            {attachments.length > 0 && !draft.trim() && (
-              <span>请补充你希望如何处理附件。</span>
-            )}
-            {(!state.ready || (state.selected && !state.snapshot)) && (
-              <span>正在读取目标会话；输入会保留。</span>
-            )}
-            <span>
-              <button
-                disabled={!state.selected}
-                onClick={() => setContextOpen(true)}
-              >
-                <History size={12} />
-                上下文
-              </button>
-            </span>
-            <span>
-              {permission === "full"
-                ? "Full access · 当前空间授权"
-                : "Enter 发送 · Shift Enter 换行"}
-            </span>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
+      <TurnOverview
+        chat={state.selected}
+        turn={inspected}
+        visible={overviewVisible}
+        mobile={overviewMobile}
+        onClose={() => setOverviewVisible(false)}
+        onMobileClose={() => setOverviewMobile(false)}
+        onChain={(key) => inspected && openChain(inspected.key, key)}
+        onContext={() => {
+          setOverviewMobile(false);
+          setContextOpen(true);
+        }}
+        onSettings={onOpenSettings}
+        onGoToTurn={() => inspected && goToTurn(inspected.key)}
+      />
+      {chain && (
+        <ExecutionChain
+          key={state.selected + chain.key}
+          chat={state.selected}
+          turn={chain}
+          focus={chainFocus}
+          onClose={() => setChainRun("")}
+          onInspect={() => goToTurn(chain.key)}
+        />
+      )}
       <Dialog open={contextOpen} onOpenChange={setContextOpen}>
         <DialogContent className="context-dialog">
           <DialogHeader>
@@ -1539,7 +1655,7 @@ export default function ConversationPage({
           )}
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 function MessageSquareMark() {

@@ -1118,7 +1118,11 @@ func (store *Store) saveGuardedModel(ctx context.Context, run Run, attempt Attem
 		return err
 	}
 	if request.Purpose == "" {
-		if err := insertMessage(ctx, tx, run, ModelMessage{Role: "assistant", Content: response.Content, ToolCalls: response.ToolCalls, ProviderItems: response.ProviderItems, ProviderSource: response.ProviderSource, ChatContinuation: response.ChatContinuation}); err != nil {
+		modelName := recordedModelName(run.ConfigJSON, request.ModelID)
+		if response.Provider != nil && response.Provider.Model != "" {
+			modelName = response.Provider.Model
+		}
+		if err := insertMessage(ctx, tx, run, ModelMessage{ModelID: request.ModelID, ModelName: modelName, Role: "assistant", Content: response.Content, ToolCalls: response.ToolCalls, ProviderItems: response.ProviderItems, ProviderSource: response.ProviderSource, ChatContinuation: response.ChatContinuation}); err != nil {
 			return err
 		}
 		for _, call := range response.ToolCalls {

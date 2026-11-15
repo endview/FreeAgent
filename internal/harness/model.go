@@ -8,6 +8,9 @@ import (
 )
 
 type ModelMessage struct {
+	// Generation metadata is presentation provenance, never model input authority.
+	ModelID          string            `json:",omitempty"`
+	ModelName        string            `json:",omitempty"`
 	ContextSource    *ContextSource    `json:",omitempty"`
 	Readback         *ContextReadback  `json:",omitempty"`
 	ToolEvidence     *ToolEvidence     `json:",omitempty"`

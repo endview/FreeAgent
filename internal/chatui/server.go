@@ -328,6 +328,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			server.fail(writer, err)
 			return
 		}
+		builtin := harness.EffectiveBuiltinTools(config)
 		models := map[string]any{}
 		keys := server.tasks.Keys()
 		for id, model := range config.Models {
@@ -369,6 +370,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 			"providers":        config.Providers,
 			"permission_modes": []harness.PermissionMode{harness.PermissionNone, harness.PermissionAsk, harness.PermissionWorkspace, harness.PermissionFull},
 			"capabilities":     server.tasks.CapabilityCatalog(),
+			"enabled_tools":    map[string]bool{"file": builtin.File, "command_run": builtin.CommandRun && config.Commands.Enabled, "network": builtin.Network, "memory": builtin.Memory},
 			"max_prompt_bytes": config.MaxContextBytes, "attachments": config.Attachments,
 		})
 		return
@@ -442,6 +444,15 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	chat := parts[0]
+	if len(parts) == 2 && parts[1] == "activity" && request.Method == http.MethodGet {
+		page, err := server.tasks.ChatActivities(request.Context(), chat, request.URL.Query().Get("run_id"), request.URL.Query().Get("before"))
+		if err != nil {
+			server.fail(writer, err)
+			return
+		}
+		server.writeJSON(writer, http.StatusOK, page)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "raw" && request.Method == http.MethodGet {
 		raw, err := server.tasks.ChatRaw(request.Context(), chat, request.URL.Query().Get("kind"), request.URL.Query().Get("key"))
 		if err != nil {

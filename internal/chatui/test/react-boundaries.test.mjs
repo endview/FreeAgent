@@ -2,9 +2,24 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {decodeSnapshot,decodeEvent,decodeControlOperation} from '../frontend/lib/api/decode.ts';
-import {configureDrafts,formDraft,saveFormDraft,saveMessageDraft,messageDraft,savePendingSend,pendingSend,clearDrafts,saveAttachmentDraft,attachmentDraft,consumeSentDraft,branchRequestKey,clearBranchRequest} from '../frontend/lib/drafts.ts';
+import {configureDrafts,formDraft,saveFormDraft,saveMessageDraft,messageDraft,savePendingSend,pendingSend,clearDrafts,saveAttachmentDraft,attachmentDraft,consumeSentDraft,branchRequestKey,clearBranchRequest,clearFormDraft,hasFormDraft,hasUnsavedForms} from '../frontend/lib/drafts.ts';
 
 const sample=JSON.parse(readFileSync(new URL('./fixtures/core-contract.json',import.meta.url),'utf8'));
+test('saved form baseline follows a successful save; reverting or leaving a filter draft does not warn',()=>{
+  clearDrafts();
+  const original={name:'saved',key:''};
+  formDraft('provider',original,true);
+  saveFormDraft('provider',{...original,name:'edited'});
+  assert.equal(hasUnsavedForms(),true);
+  assert.equal(formDraft('provider',original,true).name,'edited');
+  saveFormDraft('provider',original);assert.equal(hasUnsavedForms(),false);
+  saveFormDraft('provider',{...original,name:'new saved'});clearFormDraft('provider');
+  saveFormDraft('provider',{...original,name:'new saved'});assert.equal(hasFormDraft('provider'),false);
+  saveFormDraft('provider',original);assert.equal(hasUnsavedForms(),true);
+  clearFormDraft('provider');formDraft('role-browser',{role:'a'});
+  saveFormDraft('role-browser',{role:'b'});assert.equal(hasUnsavedForms(),false);
+  clearDrafts();assert.equal(hasUnsavedForms(),false);
+});
 test('snapshot decoder validates actual Core fields and rejects malformed nested data',()=>{
   assert.equal(decodeSnapshot(sample.snapshot).view.conversation.id,'synthetic-chat');
   for(const mutate of [value=>value.view.turns=null,value=>value.view.permission=null,value=>value.streams={},value=>value.view.turns[0].messages[0].raw={},value=>value.snapshot_seq=-1]){

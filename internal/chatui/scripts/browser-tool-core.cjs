@@ -44,7 +44,7 @@ fs.mkdirSync(artifacts,{recursive:true});
   checks.approval_does_not_steal_focus=await input.evaluate(el=>document.activeElement!==document.querySelector('.approval-footer button:last-child'));
   await page.getByRole('button',{name:'批准并继续',exact:true}).click();await page.getByText('TOOL_RESULT_RETAINED_'+tag,{exact:true}).waitFor();
   checks.tool_approval=fs.readFileSync(root+'/workspace/'+file,'utf8')==='CREATED_ONCE_'+tag;
-  await page.locator('.tool-summary').first().click();checks.tool_timing=await page.locator('.tool-list time').count()>0;
+  await page.locator('.tool-summary').first().click();checks.tool_timing=await page.locator('.chain-record time').filter({hasText:/s/}).count()>0;await page.keyboard.press('Escape');
   const reject='browser-rejected-'+tag+'.txt';await input.fill('WRITE '+reject);await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.getByRole('button',{name:'拒绝',exact:true}).waitFor();await page.getByRole('button',{name:'拒绝',exact:true}).click();await page.getByRole('button',{name:'拒绝',exact:true}).waitFor({state:'hidden'});checks.decline_no_file=!fs.existsSync(root+'/workspace/'+reject);
   await page.getByRole('button',{name:'上下文',exact:true}).click();await page.getByRole('dialog').getByText('自动压缩已开启',{exact:false}).waitFor();checks.context_inspection=true;await page.keyboard.press('Escape');
   await input.fill('LONG_OPERATION_'+tag);await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.getByRole('button',{name:'停止运行',exact:true}).waitFor();
