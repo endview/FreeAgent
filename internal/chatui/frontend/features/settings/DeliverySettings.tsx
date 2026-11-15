@@ -143,7 +143,7 @@ function Editor({
           />
         </Field>
       ))}
-      <label>
+      <label className="check-line">
         <input
           type="checkbox"
           checked={policy.enabled}
@@ -153,7 +153,7 @@ function Editor({
         />
         允许已授权扩展的一次性主动跟进
       </label>
-      <p>
+      <p className="form-hint">
         关闭后，未派发的扩展候选取消。用户明确确认的一次性提醒仍按其原授权处理。
       </p>
       {extensions.map((x) => (
@@ -400,7 +400,7 @@ function Editor({
               ["cancel_on_input", "收到新输入就取消跟进"],
             ] as const
           ).map(([field, label]) => (
-            <label key={field}>
+            <label className="check-line" key={field}>
               <input
                 type="checkbox"
                 checked={rule[field]}

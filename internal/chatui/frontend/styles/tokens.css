@@ -1063,11 +1063,6 @@ button.send-button:disabled {
   padding: 38px clamp(24px, 5vw, 72px);
   overflow: auto;
 }
-.settings-detail > * {
-  max-width: 700px;
-  margin-left: auto;
-  margin-right: auto;
-}
 .settings-heading {
   display: flex;
   align-items: center;
@@ -1856,52 +1851,6 @@ button.send-button:disabled {
   border-radius: 50%;
   background: var(--warning);
 }
-.login-page {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--sidebar);
-}
-.login-brand {
-  font-size: 22px;
-  font-weight: 600;
-  margin-bottom: 30px;
-}
-.login-page form {
-  width: min(380px, 100%);
-  padding: 30px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.login-page h1 {
-  font-size: 22px;
-  font-weight: 500;
-  margin-bottom: 12px;
-}
-.login-page p {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 1.8;
-  margin-bottom: 22px;
-}
-.login-page label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 12px;
-  margin-bottom: 22px;
-}
-.login-page input {
-  font-size: 16px;
-  padding: 10px;
-  border: 1px solid var(--input);
-  border-radius: 5px;
-  width: 100%;
-}
 @media (max-width: 760px) {
   .settings-layout .settings-detail {
     display: none;
@@ -2181,10 +2130,6 @@ select {
 }
 .settings-detail {
   max-width: none;
-}
-.settings-detail > form,
-.settings-detail > .settings-section {
-  max-width: 860px;
 }
 @media (max-width: 1000px) {
   .providers-layout {

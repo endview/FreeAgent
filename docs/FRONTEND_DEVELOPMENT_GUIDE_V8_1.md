@@ -85,6 +85,10 @@ python scripts/test-frontend.py --engine output/freeagent-ui.exe --runtime outpu
 
 ## 设置页的交互约定
 
+- 所有设置内容位于唯一 `.settings-content` 容器中，整体居中并约束最大宽度。不要重新给每个 `.settings-detail` 直接子元素设置自动边距，也不要按页面补 `margin-left`；直接字段与按钮必须和标题共用内容轴。
+- 勾选项使用 `.check-line`，保留原生 checkbox 与标签关联；可见框 18px、文字 14px、标签点击区至少 44px。渠道项用响应式网格排列，避免原生内联标签互相挤压。
+- 公网登录复用 `LoginPage` 与既有 Cookie/CSRF 流程。实例地址只取当前 `window.location.host`；帮助与错误区域不得展示真实会话、固定部署域名或推测的锁定倒计时。密码保持在内存，提交即清除；登录交互可通过 `scripts/test-frontend.py --only login` 验证（仍需指定独立引擎与 PostgreSQL runtime）。
+- 扩展提供的单次请求设置放在能力弹层里，输入器工具栏保持模型、思考、权限、能力等常用入口。单次请求草稿与会话能力选择分别保存，不能把临时表达选择写成全局默认。
 - `shared.tsx` 的 `Field` 为原生控件与 `Choice` 关联帮助、原生校验错误和 `aria-invalid`。自定义控件需要继续传递这些属性，不把错误只放在页尾。
 - `SettingsGroup` 按用途组织相关字段；复用语义 token。宽容器使用说明/字段两列，小容器堆叠；不要靠隐藏内容消除溢出。
 - `useFormDraft(id, initial, true)` 用于确有持久保存行为的表单。第三项返回 dirty；成功保存后 `change(saved)` 再 `clearFormDraft(id)` 更新基线。它保留切页草稿，仅在有修改时接入浏览器刷新/关闭提醒；秘密仍不进浏览器持久存储。

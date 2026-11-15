@@ -55,6 +55,7 @@ import { clearDrafts } from "@/lib/drafts";
 import ConversationPage from "@/features/conversations/ConversationPage";
 import { Choice } from "@/components/Choice";
 import { Navigation } from "@/features/conversations/Navigation";
+import { LoginPage } from "@/features/auth/LoginPage";
 const SettingsPage = lazy(() => import("@/features/settings/SettingsPage"));
 
 export default function App() {
@@ -63,6 +64,7 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
+  const loginInFlight = useRef(false);
   const [view, setView] = useState(
     new URLSearchParams(location.search).get("view") || "chat",
   );
@@ -225,6 +227,8 @@ export default function App() {
   }
   async function submitLogin(event: React.FormEvent) {
     event.preventDefault();
+    if (loginInFlight.current) return;
+    loginInFlight.current = true;
     setLoggingIn(true);
     setLoginError("");
     const value = password;
@@ -236,6 +240,7 @@ export default function App() {
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : "登录失败。");
     } finally {
+      loginInFlight.current = false;
       setLoggingIn(false);
     }
   }
@@ -349,27 +354,13 @@ export default function App() {
   );
   if (!authenticated)
     return (
-      <main className="login-page">
-        <div className="login-brand">FreeAgent</div>
-        <form onSubmit={submitLogin}>
-          <h1>登录工作台</h1>
-          <p>接续此实例中的对话和任务。</p>
-          <label>
-            管理员密码
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
-          {loginError && <p role="alert">{loginError}</p>}
-          <Button disabled={loggingIn}>
-            {loggingIn ? "正在登录…" : "登录"}
-          </Button>
-        </form>
-      </main>
+      <LoginPage
+        password={password}
+        onPasswordChange={setPassword}
+        error={loginError}
+        busy={loggingIn}
+        onSubmit={submitLogin}
+      />
     );
   return (
     <div

@@ -189,65 +189,67 @@ export default function SettingsPage({
         ref={content}
         aria-label={title}
       >
-        <button
-          className="settings-back"
-          onClick={() => {
-            setDetail(false);
-            const url = new URL(location.href);
-            url.searchParams.delete("section");
-            history.pushState({}, "", url);
-            requestAnimationFrame(() =>
-              navigation.current
-                ?.querySelector<HTMLButtonElement>("[aria-current]")
-                ?.focus(),
-            );
-          }}
-        >
-          <ArrowLeft size={14} aria-hidden="true" />
-          返回设置列表
-        </button>
-        <div className="settings-heading">
-          <h1 ref={heading} tabIndex={-1}>
-            {title}
-          </h1>
-          <span className="scope-label">{scope}</span>
+        <div className="settings-content">
+          <button
+            className="settings-back"
+            onClick={() => {
+              setDetail(false);
+              const url = new URL(location.href);
+              url.searchParams.delete("section");
+              history.pushState({}, "", url);
+              requestAnimationFrame(() =>
+                navigation.current
+                  ?.querySelector<HTMLButtonElement>("[aria-current]")
+                  ?.focus(),
+              );
+            }}
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+            返回设置列表
+          </button>
+          <div className="settings-heading">
+            <h1 ref={heading} tabIndex={-1}>
+              {title}
+            </h1>
+            <span className="scope-label">{scope}</span>
+          </div>
+          <p className="settings-scope-hint">{scopeHint}</p>
+          {section === "advanced" ? (
+            <AdvancedSettings />
+          ) : section === "general" ? (
+            <GeneralSettings value={preferences} onChange={onPreferences} />
+          ) : section === "spaces" ? (
+            <SpacesSettings />
+          ) : section === "channels" ? (
+            <ChannelSettings />
+          ) : section === "delivery" ? (
+            <DeliverySettings />
+          ) : section === "public" ? (
+            <PublicSettings />
+          ) : section === "memory" ? (
+            <MemorySettings />
+          ) : section === "attachments" ? (
+            <AttachmentSettings />
+          ) : section === "data" || section === "diagnosis" ? (
+            <DataSettings key={section} diagnosis={section === "diagnosis"} />
+          ) : section === "providers" ? (
+            <Providers />
+          ) : section === "mcp" ? (
+            <MCPSettings />
+          ) : section === "skills" ? (
+            <SkillSettings />
+          ) : section === "extensions" ? (
+            <ExtensionSettings />
+          ) : section === "sessions" ? (
+            <CommandSessions />
+          ) : ["permissions", "files", "commands", "tools", "context"].includes(
+              section,
+            ) ? (
+            <RuntimeSettings key={section} section={section} />
+          ) : (
+            <p className="inline-error">未找到此设置页，请从左侧选择。</p>
+          )}
         </div>
-        <p className="settings-scope-hint">{scopeHint}</p>
-        {section === "advanced" ? (
-          <AdvancedSettings />
-        ) : section === "general" ? (
-          <GeneralSettings value={preferences} onChange={onPreferences} />
-        ) : section === "spaces" ? (
-          <SpacesSettings />
-        ) : section === "channels" ? (
-          <ChannelSettings />
-        ) : section === "delivery" ? (
-          <DeliverySettings />
-        ) : section === "public" ? (
-          <PublicSettings />
-        ) : section === "memory" ? (
-          <MemorySettings />
-        ) : section === "attachments" ? (
-          <AttachmentSettings />
-        ) : section === "data" || section === "diagnosis" ? (
-          <DataSettings key={section} diagnosis={section === "diagnosis"} />
-        ) : section === "providers" ? (
-          <Providers />
-        ) : section === "mcp" ? (
-          <MCPSettings />
-        ) : section === "skills" ? (
-          <SkillSettings />
-        ) : section === "extensions" ? (
-          <ExtensionSettings />
-        ) : section === "sessions" ? (
-          <CommandSessions />
-        ) : ["permissions", "files", "commands", "tools", "context"].includes(
-            section,
-          ) ? (
-          <RuntimeSettings key={section} section={section} />
-        ) : (
-          <p className="inline-error">未找到此设置页，请从左侧选择。</p>
-        )}
       </section>
     </div>
   );

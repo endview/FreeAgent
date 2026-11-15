@@ -21,6 +21,8 @@ export function Capabilities({
   conversationID,
   builtin,
   onManage,
+  turnSettings,
+  onTurnSettingsChange,
 }: {
   catalog?: CapabilityCatalog;
   selection: CapabilitySelection;
@@ -30,6 +32,10 @@ export function Capabilities({
   conversationID?: string;
   builtin?: Record<string, boolean>;
   onManage?: (section: string) => void;
+  turnSettings?: CapabilitySelection["extension_settings"];
+  onTurnSettingsChange?: (
+    next: NonNullable<CapabilitySelection["extension_settings"]>,
+  ) => void;
 }) {
   return (
     <Popover.Root>
@@ -158,6 +164,29 @@ export function Capabilities({
                 onChange={onChange}
                 disabled={saving}
               />
+            )}
+          {onTurnSettingsChange &&
+            catalog?.extensions.some(
+              (item) =>
+                item.enabled &&
+                selection.extensions?.includes(item.id) &&
+                item.turn_settings?.length,
+            ) && (
+              <section className="extension-turn-options">
+                <h3>本次请求设置</h3>
+                <p>仅用于下一次发送，发送后恢复继承扩展设置。</p>
+                <ExtensionTurnChoices
+                  catalog={catalog}
+                  selection={{
+                    ...selection,
+                    extension_settings:
+                      turnSettings ?? selection.extension_settings,
+                  }}
+                  onChange={(next) =>
+                    onTurnSettingsChange(next.extension_settings || {})
+                  }
+                />
+              </section>
             )}
           <Popover.Arrow className="popover-arrow" />
         </Popover.Content>

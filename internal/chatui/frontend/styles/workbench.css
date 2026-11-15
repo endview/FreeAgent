@@ -63,10 +63,23 @@
   container-type: inline-size;
   padding: 32px clamp(20px, 4vw, 56px) 64px;
 }
-.settings-detail > *,
-.settings-detail > form,
-.settings-detail > .settings-section {
+.settings-content {
+  width: 100%;
   max-width: 1040px;
+  min-width: 0;
+  margin-inline: auto;
+}
+.settings-content > * {
+  min-width: 0;
+}
+.settings-content > p {
+  overflow-wrap: anywhere;
+}
+.settings-content > .settings-back {
+  margin-bottom: 8px;
+}
+.settings-content > .check-line {
+  margin: 12px 0;
 }
 .settings-heading {
   margin-bottom: 8px;
@@ -260,12 +273,55 @@
 .settings-detail [aria-invalid="true"] {
   border-color: var(--destructive);
 }
-.settings-detail .check-line {
-  min-height: 36px;
+.settings-detail .check-line,
+.capability-popover .check-line {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding-block: 10px;
   font-size: 14px;
+  line-height: 1.7;
+  cursor: pointer;
+  overflow-wrap: anywhere;
 }
-.settings-detail .check-line input {
-  flex-shrink: 0;
+.settings-detail .check-line input[type="checkbox"],
+.capability-popover .check-line input[type="checkbox"] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 3px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+.check-line:has(input:disabled) {
+  cursor: default;
+}
+.channel-options {
+  margin: 18px 0 6px;
+  min-width: 0;
+}
+.channel-options legend {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.channel-options .form-hint {
+  margin: 0 0 10px;
+}
+.channel-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+}
+.channel-options .check-line {
+  margin: 0;
+}
+@container (max-width: 840px) {
+  .channel-options-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .settings-detail .setting-line small {
   display: block;

@@ -73,7 +73,7 @@ import { contextStopReason } from "../../lib/presentation/context.mjs";
 import { DeliveryPanel } from "./DeliveryPanel";
 import { SourceAnalysis } from "./SourceAnalysis";
 import { StickerPanel } from "./StickerPanel";
-import { Capabilities, ExtensionTurnChoices } from "./Capabilities";
+import { Capabilities } from "./Capabilities";
 import { SlashCommands, type SlashEntry } from "./SlashCommands";
 import {
   commandQuery,
@@ -1509,19 +1509,9 @@ export default function ConversationPage({
                   onChange={setReasoning}
                   onConfigure={onOpenModelSettings}
                 />
-                <ExtensionTurnChoices
-                  catalog={state.environment?.capabilities}
-                  selection={{
-                    ...capabilities,
-                    ...(turnSettings === undefined
-                      ? {}
-                      : { extension_settings: turnSettings }),
-                  }}
-                  onChange={(next) =>
-                    setTurnSettings(next.extension_settings || {})
-                  }
-                />
                 <Capabilities
+                  turnSettings={turnSettings}
+                  onTurnSettingsChange={setTurnSettings}
                   builtin={state.environment?.enabled_tools}
                   onManage={onOpenSettings}
                   conversationID={state.selected}
