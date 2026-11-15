@@ -52,3 +52,15 @@
 - 初次试用包标记 `v8.8.0-dev.3+dirty`。用户随后授权推送 GitHub 并更新 Hytron，正式同步版本为 `v8.8.0-dev.4`；程序由干净提交构建，部署结果另行追加。
 - 便携包包含固定版本 PostgreSQL，不包含用户库或凭据。已在带中文、空格和特殊字符的新路径验证归档完整性、CLI 和 Web 启动、退出及默认模型；原生桌面交互另行验收。
 - 正式页面实图在 `output/ui-concepts-20261115/implementation/index.html`，可离线打开；图片中的模型、人物和长链异常均为验收数据。
+
+## GitHub 与 Hytron 同步（v8.8.0-dev.4）
+
+程序提交 `fd2adb025c998e1079d87b2ae4a880f76c87228d` 已推送至 `endview/FreeAgent` 的 main。Windows/Linux 便携包均由该干净提交构建，前端重新构建与仓库静态资源一致。
+
+- Debian 12 使用独立非 root 用户、unit、端口和数据目录，78 个竞态测试及子测试与 16 项 Linux 便携验收通过，包含真实 Linux 沙箱。常驻 Bot 没有参与这些测试。
+- 维护前确认没有活跃任务，验证 Core 在线备份并单独导出 AffectWeave；通过 `cancel_active=false` 完成平滑交接，停机后再保留一致性副本，然后原子切换程序。
+- Hytron 当前运行 v8.8.0-dev.4。原 7 会话、102 Run、650 消息、491 Attempt 内容核对保留，配置、凭据、授权和 AffectWeave 1.6.0-dev.2 的人物业务记录不变。
+- Core 与渠道 active、NRestarts=0；Telegram 已重连，doctor 通过。HTTPS 200、CSP 生效，3 份首屏资源与新 Owner 的内容逐字节一致；7 个会话的上下文视图及执行链分页可读。
+- 未向真人 TG 发送测试消息，也未调用生产模型。此次没有修改 NPM 或其他 VPS 应用。人工登录后的聊天与真实设备交互需要用户实际复验。
+
+刷新 https://bot.endview.cc 即可加载正式 A+B 界面。Windows 使用同版本干净便携包；先前的 `+dirty` 试用包不作为本次部署程序。部署与资源核对回执保存在忽略目录 `output/ui-ab-deploy-20261115/`，恢复位置与后续维护说明同步到本机私有 VPS 文档。
