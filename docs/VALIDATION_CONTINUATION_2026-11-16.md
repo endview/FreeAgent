@@ -31,6 +31,18 @@ Debian 12 全范围 race 的初次运行发现扩展版本夹具未同步、控�
 
 浏览器截图与合成日志位于忽略目录及独立测试盘；公开报告不包含真实对话、人物资料、内部会话编号或凭据。
 
+## 发行与 Hytron 实际结果
+
+- FreeAgent 最终程序提交 `9c1a76771d4976570c21cd2758e0170b7921de49`，发行 [v8.8.0-dev.8](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.8)；AffectWeave 提交 `977df11f7e17d47f749b821666992bf383152c91`，发行 [1.6.0-dev.3](https://github.com/endview/affectweave/releases/tag/v1.6.0-dev.3)。两个平台各重复构建两次，归档 SHA256 一致，GitHub 上传 digest 已核对。
+- 最终 Windows 便携包完成原生桌面首次启动/重开/关闭、CLI/Web、Key 隔离和提取二进制冒烟；Linux 便携包以独立非 root 用户验证启动、沙箱、前后台命令、UNKNOWN/重启与备份恢复。均为 PASS。
+- 未决面板额外使用真实 Owner/PG、合成未决记录和最终归档在 Edge 验证：用户确认、忽略、固定编号、刷新回读和 390px 窄屏通过。公网登录、CSRF 与禁止公网协调维护分别由真实服务测试覆盖。
+- Hytron 已安装上述两个版本。维护前在线备份、扩展独立 dump 和停机一致副本已验证；平滑交接没有取消用户任务。配置、凭据、对话、原始执行证据、PG 身份和人物业务记录核对保留。两服务正常，TG 重连，公网 HTTPS/CSP 与本地资源一致。
+- 三条可证明为前置读取拒绝的旧 UNKNOWN 已追加精确协调，不删除或改写原未知 Attempt；原 TG 会话已解除阻塞。原会话手动压缩真实成功：1 次模型调用，12,324 → 10,089 字节；没有发送 TG 回复。
+- 官方端点/实际型号核对后，通过标准设置入口声明 DeepSeek 窗口 1,000,000 tokens，字节保护明确切为自动（8,000,000 字节），原手动 131,072 字节与辅助思考 disabled 保留。
+- 按用户明确选择，TG 会话继续不选中 AffectWeave，只更新程序。人物、自然分段默认、分析和主动对话设置均保留。真人 TG 分条验收记 NOT_RUN；固定文本模拟和真实扩展联测不冒充真人收发。
+
+完整 GitHub 检查见 [FreeAgent 最终提交](https://github.com/endview/FreeAgent/actions/runs/43752250209) 与 [AffectWeave](https://github.com/endview/affectweave/actions/runs/43750542541)。记录时 Linux 标准/race 和扩展 CI 已通过，Windows CI 仍在运行；本机 Windows 全量与最终便携包已通过。
+
 ## 使用与限制
 
 完整操作见[未确认操作](UNRESOLVED_OPERATIONS.md)、[上下文管理](CONTEXT_MANAGEMENT.md)和[投递](REPLY_DELIVERY.md)。首版未决详情仅 Owner 完整视图可读；其他受众仍受 Core 内部保护。完全匹配重放保护不宣称识别所有等效命令。失控进程、证据持久化未知和必需协议字段超限时仍停止，不承诺无限长执行。
