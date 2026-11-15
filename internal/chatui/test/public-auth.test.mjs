@@ -5,6 +5,8 @@ import { apiPath, authHeaders, publicSession, loginPublicPassword } from '../fro
 test('public transport cannot carry local capabilities or arbitrary attach routes', () => {
   assert.deepEqual(authHeaders({ remote: true, key: 'private-local', csrf: 'csrf', active: true }), { 'X-FreeAgent-CSRF': 'csrf', 'X-FreeAgent-Activity': '1' });
   assert.equal(apiPath('attach/context?conversation_id=c', true), '/api/remote/context?conversation_id=c');
+  assert.equal(apiPath('attach/unresolved?conversation_id=c', true), '/api/remote/unresolved?conversation_id=c');
+  for(const name of ['deliveries','stickers','analyze','analyze/memory','memory'])assert.equal(apiPath('attach/'+name,true),'/api/remote/'+name);
   assert.equal(apiPath('attachments/opaque', true), '/api/attachments/opaque');
   for (const path of ['attach/state', 'attach/handoff', 'attach/backup', 'attach/submit']) assert.throws(() => apiPath(path, true));
   assert.equal(apiPath('attach/state', false), '/api/attach/state');

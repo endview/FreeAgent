@@ -2,6 +2,7 @@ package chatui
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -25,5 +26,24 @@ func TestUnresolvedAPIRequiresInteractiveOwnerAndReconciliationStaysLocal(t *tes
 	}
 	if _, ok := publicRoute("/api/remote/unknown-reconcile", http.MethodGet); ok {
 		t.Fatal("public maintenance route exposed")
+	}
+}
+
+func TestPublicUnresolvedRequiresLoginAndCSRFWithoutMaintenanceAccess(t *testing.T) {
+	f := newPublicFixture(t, nil)
+	chat := f.ui.create(t)
+	path := "/api/remote/unresolved?conversation_id=" + chat
+	if response := f.request(t, "GET", path, nil, nil); response.Code != 401 {
+		t.Fatal(response.Code)
+	}
+	f.login(t)
+	if response := f.request(t, "GET", path, nil, nil); response.Code != 200 || strings.TrimSpace(response.Body.String()) != "[]" {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	if response := f.request(t, "POST", "/api/remote/unresolved", strings.NewReader(`{}`), map[string]string{"X-FreeAgent-CSRF": ""}); response.Code != 403 {
+		t.Fatal("CSRF missing", response.Code)
+	}
+	if response := f.request(t, "GET", "/api/remote/unknown-reconcile", nil, nil); response.Code != 404 {
+		t.Fatal("public maintenance exposed", response.Code)
 	}
 }
