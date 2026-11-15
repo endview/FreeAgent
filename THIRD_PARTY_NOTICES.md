@@ -3524,6 +3524,10 @@ Button and Dialog adapted from shadcn-ui/ui commit 8a3536678a528cc012b9e62484290
 ```text
 MIT License
 
+FreeAgent modifications: semantic color tokens and retained focus outlines;
+button transitions limited to colors; Chinese dialog close labels and 44px
+close hit areas are provided by the workbench stylesheet.
+
 Copyright (c) 2023 shadcn
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
