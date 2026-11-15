@@ -32,4 +32,21 @@
 - Windows 独立 PostgreSQL 下 ChatUI 的 Public/Frontend 测试通过，`internal/publicweb` 的真实 Cookie、来源锁定、会话轮换和策略测试通过。新增登录后首屏 JS gzip 159,695 字节，仍低于 250,000 字节预算。
 - Chromium、Firefox、WebKit 的收发、窄屏设置、输入字号和中文 IME 229 防误发均通过；能力弹层在手机上滚动到回复设置后，控件仍完整位于视口内。
 
-实图和报告在 `output/ui-consistency-before-20261115/`、`output/ui-consistency-after-20261115/`、`output/ui-consistency-final-20261115/`；正式登录验收在 `output/ui-login-production-20261115/`。真实手机软键盘与原生 WebView2 未运行。Hytron 部署结果在维护完成后追加。
+实图和报告在 `output/ui-consistency-before-20261115/`、`output/ui-consistency-after-20261115/`、`output/ui-consistency-final-20261115/`；正式登录验收在 `output/ui-login-production-20261115/`。真实手机软键盘与原生 WebView2 未运行。
+
+## 正式归档与 Hytron 部署
+
+正式程序与下载包版本为 `v8.8.0-dev.5`，基于干净提交 `9f6fa2efe08923a5c320ba73fd9ca00db0426211`；`f5abb48` 是 UI 实现提交，后续只同步了第三方组件声明，修正此前 Windows CI 的许可证清单检查失败。
+
+- Windows/Linux 各两次构建，完整归档和源码清单相同。最终 Windows 包在中文、空格和括号路径中通过初始化、Key 隔离、Web 收发与退出、解压后 CLI 冒烟；原生桌面交互未重做。
+- Debian 12 使用独立非 root 用户、unit、端口和数据目录，78 项定向竞态测试及子测试通过。最终包与该回归源码逐文件比对，除 `THIRD_PARTY_NOTICES.md` 外完全一致；最终归档另通过 16 项便携验收，包括真实 Linux 沙箱。
+- Hytron 维护前空闲、在线备份验证和 AffectWeave 单独导出通过；使用 `cancel_active=false` 平滑退出，保留离线一致副本后原子切换程序。
+- 升级时原 7 会话、108 Run、679 消息和 516 Attempt 内容完整保留；配置、凭据、授权及 AffectWeave 1.6.0-dev.2 的人物业务记录核对不变。
+- Core 和渠道均 active，NRestarts=0，Telegram 重连、doctor 与扩展存储正常；HTTPS 200，3 份首屏资源与新 Owner 一致。7 会话的视图与执行链分页均可读。
+- 公网真实登录页已检查 1440×900、390×844、1024×768、320×568 和浅深主题：域名正确、无横向溢出、无前端运行错误。CSP 拦截的是 Cloudflare 边缘注入的外部统计脚本，FreeAgent 自身资源没有被拦截；未放宽 CSP。
+
+本次未向真人 TG 发测试消息、未调用生产模型，也未提交公网登录密码。已登录聊天的人工复验和真实设备交互不算入本次结果。发布提交的完整 CI 见 [GitHub Actions](https://github.com/endview/FreeAgent/actions/runs/43720044111)，部署记录归档时仍在运行。
+
+验证与维护回执在忽略目录 `output/ui-login-release-20261115/`；恢复位置及维护说明同步到本机私有 VPS 文档。
+
+[GitHub Release v8.8.0-dev.5](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.5) 已公开发布为开发预发布，包含 Windows/Linux 便携包和校验清单。上传文件与本机已验证归档一致；两个下载地址均已通过匿名 HTTP 检查，tag 对应 Hytron 实际部署提交。
