@@ -80,18 +80,19 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 	case path == "/api/settings/context" && request.Method == http.MethodPatch:
 		var body struct {
 			settingsPatch
-			ModelRetries        *int    `json:"model_retries"`
-			MaxOutputTokens     *int    `json:"max_output_tokens"`
-			MaxContextBytes     *int    `json:"max_context_bytes"`
-			TaskSummaryBytes    *int    `json:"task_summary_bytes"`
-			AutoCompactAt       *int    `json:"auto_compact_percent"`
-			AutomaticCompaction *bool   `json:"automatic_compaction"`
-			SummaryTargetMode   *string `json:"summary_target_mode"`
+			ModelRetries         *int    `json:"model_retries"`
+			MaxOutputTokens      *int    `json:"max_output_tokens"`
+			MaxContextBytes      *int    `json:"max_context_bytes"`
+			ContextByteLimitMode *string `json:"context_byte_limit_mode"`
+			TaskSummaryBytes     *int    `json:"task_summary_bytes"`
+			AutoCompactAt        *int    `json:"auto_compact_percent"`
+			AutomaticCompaction  *bool   `json:"automatic_compaction"`
+			SummaryTargetMode    *string `json:"summary_target_mode"`
 		}
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
-		if body.TaskSummaryBytes == nil && body.AutoCompactAt == nil && body.ModelRetries == nil && body.MaxOutputTokens == nil && body.MaxContextBytes == nil && body.AutomaticCompaction == nil && body.SummaryTargetMode == nil {
+		if body.TaskSummaryBytes == nil && body.AutoCompactAt == nil && body.ModelRetries == nil && body.MaxOutputTokens == nil && body.MaxContextBytes == nil && body.ContextByteLimitMode == nil && body.AutomaticCompaction == nil && body.SummaryTargetMode == nil {
 			server.writeError(writer, http.StatusBadRequest, "input", "task_summary_bytes is required (0 disables automatic compaction)")
 			return true
 		}
@@ -107,6 +108,9 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 		}
 		if body.MaxContextBytes != nil {
 			args["max_context_bytes"] = *body.MaxContextBytes
+		}
+		if body.ContextByteLimitMode != nil {
+			args["context_byte_limit_mode"] = *body.ContextByteLimitMode
 		}
 		if body.ModelRetries != nil {
 			args["model_retries"] = *body.ModelRetries
@@ -142,7 +146,7 @@ func (server *Server) settingsProjection() map[string]any {
 		"schema_version": 1,
 		"revision":       policy.Generation,
 		"recovery":       map[string]any{"model_retries": config.ModelRetries, "tool_verification_rounds": 2, "retry_may_charge": true},
-		"context":        map[string]any{"automatic": harness.AutomaticCompactionEnabled(config), "summary_target_mode": harness.SummaryTargetMode(config), "task_summary_bytes": config.TaskSummaryBytes, "auto_compact_percent": config.AutoCompactAt, "max_output_tokens": config.MaxOutputTokens, "max_context_bytes": config.MaxContextBytes},
+		"context":        map[string]any{"context_byte_limit_mode": harness.ContextByteLimitMode(config), "automatic": harness.AutomaticCompactionEnabled(config), "summary_target_mode": harness.SummaryTargetMode(config), "task_summary_bytes": config.TaskSummaryBytes, "auto_compact_percent": config.AutoCompactAt, "max_output_tokens": config.MaxOutputTokens, "max_context_bytes": config.MaxContextBytes},
 		"default_permission_mode": func() harness.PermissionMode {
 			if config.Execution.PermissionMode == "" {
 				return harness.PermissionAsk

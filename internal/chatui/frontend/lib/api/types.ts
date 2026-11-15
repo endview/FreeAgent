@@ -233,6 +233,8 @@ export interface CapabilityCatalog {
   }[];
 }
 export interface ExtensionTurnSetting {
+  default_value?: string;
+  inherited_value?: string;
   key: string;
   label: string;
   options: { value: string; label: string }[];

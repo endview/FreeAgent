@@ -121,6 +121,9 @@ func (s *channelSession) queueReplyGroup(ctx context.Context, run Run, origin *C
 		person = run.Permission.PersonID
 	}
 	for i, part := range parts {
+		if i > 0 {
+			reply = ""
+		}
 		id := contentHash(mustJSON([]any{connection, group, i + 1}))
 		claim := "channel/send/" + run.ID + "/" + contentHash([]byte(fmt.Sprintf("%s/%d", revision, i)))
 		op := channelwire.Operation{ID: id, Connection: connection, Kind: "text", Target: channelwire.Target(origin.ChannelTarget), Reply: reply, Text: part.Text, State: "pending", CreatedAt: nowText(), RunID: run.ID, ConversationID: run.ConversationID, Group: group, Sequence: i + 1, Total: total, ClaimKey: claim, Maintenance: maintenance, Entities: part.Entities, FormatVersion: format, LogicalPart: part.LogicalPart, PlatformPart: part.PlatformPart, MinGapMS: gap, Person: person, LocalOwner: person == "", AccessRevision: origin.AccessRevision}

@@ -221,6 +221,7 @@ type ApprovalItem struct {
 }
 
 type PreparedTool struct {
+	handoffBusiness   bool
 	exportSource      string
 	exportKeepVersion bool
 	exportName        string

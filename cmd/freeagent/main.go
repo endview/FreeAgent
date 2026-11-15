@@ -115,6 +115,8 @@ commands <list|poll|stop|start> [--id <attempt>] [--session <id> --arguments <JS
   Start requires a running GUI/web/chat owner. /commands [list|poll <id>|stop <id>|start <JSON>] uses that same owner.
 tools test <server>
 doctor [--text] [--export <new.zip>] [--preflight --backup <directory>]
+doctor --reconcile-unknown [--apply-digest <preview-digest>]
+unresolved <list|ignore|confirm-applied|confirm-not-applied> --session <id> [--after <number> --item <number> --revision <hash> --confirm]
 backup --out <new-directory>
 backup-verify --source <backup-directory>
 restore --source <backup-directory> --data-dir <new-directory>
@@ -184,6 +186,8 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runExtensions(ctx, args[1:], stdin, stdout, stderr)
 	case "doctor":
 		return runDoctor(ctx, args[1:], stdout, stderr)
+	case "unresolved":
+		return runUnresolved(ctx, args[1:], stdout, stderr)
 	case "backup", "backup-verify", "restore":
 		return runBackupCommand(ctx, args[0], args[1:], stdout, stderr)
 	default:
@@ -1020,6 +1024,8 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	exportPath := flags.String("export", "", "export allowlisted diagnosis to a new ZIP; excludes raw logs, secrets and conversation content")
 	preflight := flags.Bool("preflight", false, "check existing work and verified backup before updating; does not stop dispatch")
 	backupPath := flags.String("backup", "", "backup directory to verify for --preflight")
+	reconcile := flags.Bool("reconcile-unknown", false, "preview positively proven read-denial UNKNOWN corrections")
+	applyDigest := flags.String("apply-digest", "", "apply the exact reviewed reconciliation digest")
 	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
@@ -1031,6 +1037,24 @@ func runDoctor(ctx context.Context, args []string, stdout, stderr io.Writer) err
 	}
 	if err := resolveDataDir(dataDir); err != nil {
 		return err
+	}
+	if *reconcile {
+		tasks, closeAll, err := harness.OpenTasks(ctx, *dataDir, harness.Adapters{})
+		var result harness.UnknownReconciliation
+		if errors.Is(err, harness.ErrOwnerActive) {
+			client, e := interactiveOwner(ctx, *dataDir)
+			if e != nil {
+				return e
+			}
+			result, err = client.ReconcileReadDenials(ctx, *applyDigest)
+		} else if err == nil {
+			defer closeAll()
+			result, err = tasks.ReconcileReadDenials(ctx, *applyDigest)
+		}
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
 	}
 	report, checks, ok := doctorReport(ctx, *dataDir)
 	if *preflight || *exportPath != "" {

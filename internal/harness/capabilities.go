@@ -56,6 +56,12 @@ func (tasks *TaskService) CapabilityCatalog() CapabilityCatalog {
 			if installed && item.Enabled && extensions.Errors[item.ID] == nil {
 				item.Name = definition.Manifest.Name
 				item.TurnSettings = extensionTurnSettings(definition.Manifest)
+				for i := range item.TurnSettings {
+					field := &item.TurnSettings[i]
+					if saved, ok := tasks.core.currentConfig().Extensions.Settings[item.ID][field.Key].(string); ok {
+						field.Inherited = &saved
+					}
+				}
 			}
 		}
 	}

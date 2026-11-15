@@ -23,6 +23,7 @@ func TestDeclaredContextWindowIsSeparateFromByteBoundAndReportedUsage(t *testing
 		t.Fatal("small model window not enforced", u)
 	}
 	binding.Config.Capabilities.ContextTokens = 0
+	config.ContextByteLimitMode = "" // legacy unknown-window output reservation
 	u = measureContext(contextWindow(config, limits, binding, 512), request, Run{})
 	if u.Window.Source != "local_byte_budget" || u.Window.Tokens != 0 || u.ReservedBytes != 2048 || u.EstimateMethod == "reported" {
 		t.Fatal("byte fallback was represented as an actual model token window", u)

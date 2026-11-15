@@ -68,6 +68,7 @@ interface Settings extends Record<string, unknown> {
     auto_compact_percent: number;
     max_output_tokens: number;
     max_context_bytes: number;
+    context_byte_limit_mode?: string;
   };
   recovery: { model_retries: number };
 }
@@ -180,6 +181,10 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
           auto_compact_percent: value.context.auto_compact_percent,
           max_output_tokens: value.context.max_output_tokens,
           max_context_bytes: value.context.max_context_bytes,
+          context_byte_limit_mode:
+            value.context.context_byte_limit_mode === "auto"
+              ? "auto"
+              : "manual",
           model_retries: value.recovery.model_retries,
         };
       }
@@ -627,7 +632,7 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
           <>
             <SettingsGroup
               title="自动压缩"
-              description="历史接近窗口上限时生成摘要。原始记录保留，摘要请求计入模型用量。"
+              description="历史接近窗口上限时生成摘要；硬预算下摘要失败时，可暂时省略已完成的旧轮次并明确提示。原始记录保留，可按引用回读。关闭后不自动摘要或省略历史。"
             >
               <label className="check-line">
                 <input
@@ -745,7 +750,7 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
                   />
                 </Field>
                 <Field
-                  label="请求字节上限"
+                  label="手动请求字节上限"
                   hint="本地请求的 UTF-8 字节保护，与模型 token 窗口分开校验。"
                 >
                   <input
@@ -754,6 +759,7 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
                     max={16777216}
                     required
                     step={1}
+                    disabled={context.context_byte_limit_mode === "auto"}
                     value={context.max_context_bytes}
                     onChange={(event) =>
                       field("context", {
@@ -762,6 +768,27 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
                       })
                     }
                   />
+                </Field>
+                <Field
+                  label="请求字节保护方式"
+                  hint="自动按模型窗口计算；切回手动可继续使用原字节值。"
+                >
+                  <select
+                    value={
+                      context.context_byte_limit_mode === "auto"
+                        ? "auto"
+                        : "manual"
+                    }
+                    onChange={(event) =>
+                      field("context", {
+                        ...context,
+                        context_byte_limit_mode: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="auto">自动</option>
+                    <option value="manual">手动（保留原值）</option>
+                  </select>
                 </Field>
                 <Field label="模型请求自动恢复次数">
                   <input

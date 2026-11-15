@@ -156,7 +156,7 @@ func (tasks *TaskService) ExtensionRunFacts(ctx context.Context, chatID, runID s
 		}
 		v["receipt_id"] = key
 		var deliveredText string
-		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json->>'Content' FROM fa.messages WHERE request_key=$1 AND body_json->>'Public'='true'`, key).Scan(&deliveredText); err == nil {
+		if err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT body_json->>'Content' FROM `+conversationRecords+` WHERE request_key=$1 AND conversation_id=$2 AND body_json->>'Public'='true' ORDER BY id DESC LIMIT 1`, key, chatID).Scan(&deliveredText); err == nil {
 			v["text"] = truncateUTF8Bytes(deliveredText, 8192)
 		}
 		facts.Deliveries = append(facts.Deliveries, mustJSON(v))

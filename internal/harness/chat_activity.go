@@ -26,13 +26,13 @@ func bindingModelName(snapshot runSnapshot, id string) string {
 }
 
 func activityNeedsAttention(a ChatActivity, runStatus string) bool {
-	return a.Replacement == "" && a.Resolution == "" && (a.Status == "unknown" || a.Status == "failed" || a.IsError || runStatus == "waiting_confirmation" && a.Status == "pending")
+	return a.Replacement == "" && (a.Resolution == "" || a.Resolution == "handed_off") && (a.Status == "unknown" || a.Status == "failed" || a.IsError || runStatus == "waiting_confirmation" && a.Status == "pending")
 }
 
 // Long runs retain their newest unresolved entries even when they have fallen
 // out of the live tail. This is bounded read-side metadata, not a second queue.
 func chatAttention(ctx context.Context, tx *sql.Tx, run Run) ([]ChatActivity, int, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT a.id,a.run_id,a.kind,a.call_id,a.status,a.request_json,a.response_json,a.seq,count(*) OVER() FROM fa.attempts a WHERE a.run_id=$1 AND NOT `+resolvedAttemptSQL+` AND (a.status IN ('unknown','failed') OR a.status='pending' AND $2='waiting_confirmation' OR a.response_doc->>'IsError'='true' OR a.response_doc#>>'{Outcome,status}' IN ('unknown','failed') OR coalesce(a.response_doc->'Failure','null'::jsonb)!='null'::jsonb) ORDER BY a.seq DESC LIMIT 3`, run.ID, run.Status)
+	rows, err := tx.QueryContext(ctx, `SELECT a.id,a.run_id,a.kind,a.call_id,a.status,a.request_json,a.response_json,a.seq,count(*) OVER() FROM fa.attempts a WHERE a.run_id=$1 AND (NOT `+resolvedAttemptSQL+` OR EXISTS(SELECT 1 FROM fa.meta u WHERE u.key='attempt/unresolved/'||a.id AND u.document->>'handoff'='true' AND coalesce(u.document->>'resolution','')='')) AND (a.status IN ('unknown','failed') OR a.status='pending' AND $2='waiting_confirmation' OR a.response_doc->>'IsError'='true' OR a.response_doc#>>'{Outcome,status}' IN ('unknown','failed') OR coalesce(a.response_doc->'Failure','null'::jsonb)!='null'::jsonb) ORDER BY a.seq DESC LIMIT 3`, run.ID, run.Status)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -50,6 +50,9 @@ func chatAttention(ctx context.Context, tx *sql.Tx, run Run) ([]ChatActivity, in
 		return nil, 0, err
 	}
 	var items []ChatActivity
+	if err := annotateReplacements(ctx, tx, run.ID, attempts); err != nil {
+		return nil, 0, err
+	}
 	snapshot, _ := decodeRunSnapshot(run.ConfigJSON)
 	for _, a := range attempts {
 		item, _, err := projectChatActivity(ctx, tx, a)

@@ -1,5 +1,9 @@
 // UI projection only: decisions and completion remain owned by Core.
 export function activityState(item, turnState = "") {
+  if (item.resolution === "handed_off") return "unknown";
+  if (item.resolution === "ignored") return "ignored";
+  if (item.resolution?.startsWith("user_confirmed_")) return "user_confirmed";
+  if (item.resolution === "not_dispatched") return "not_dispatched";
   if (item.resolution) return "resolved";
   if (item.replacement) return "retried";
   if (item.status === "unknown") return "unknown";
@@ -31,6 +35,9 @@ export const activityLabels = {
   pending: "待执行",
   resolved: "已核实",
   retried: "已重试",
+  ignored: "已结束提醒",
+  user_confirmed: "用户已确认",
+  not_dispatched: "已核实未执行",
 };
 export function activityTitle(item) {
   const titles = {

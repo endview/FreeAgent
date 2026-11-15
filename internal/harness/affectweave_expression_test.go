@@ -9,6 +9,66 @@ import (
 	"time"
 )
 
+func TestAffectWeaveRealExtensionParagraphsWithAnalysisDisabled(t *testing.T) {
+	b, tasks, target, rule := affectWakeHarness(t)
+	cfg := tasks.Config()
+	cfg.Extensions.Settings[affectExtensionID]["reply_mode"] = "paragraphs"
+	cfg.Extensions.Settings[affectExtensionID]["analysis_enabled"] = false
+	cfg.Extensions.Settings[affectExtensionID]["expression_enabled"] = false
+	if err := WriteConfig(tasks.DataDir(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	tasks.core.setConfig(cfg)
+	tasks.core.extensions.configure(cfg)
+	control, err := tasks.Control()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = control.ReviewExternalChange(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	seenHint := false
+	tasks.core.Model = modelFunc(func(_ context.Context, r ModelRequest, emit func(string)) (ModelResponse, error) {
+		if r.SupplementalKey != "" {
+			t.Fatal("explicit paragraphs must not require auxiliary analysis")
+		}
+		seenHint = strings.Contains(string(mustJSON(r.Messages)), "separate them with a blank line")
+		emit("First paragraph.")
+		return ModelResponse{Content: replyFixtureText}, nil
+	})
+	input, err := tasks.ReceiveChannelText(t.Context(), ChannelMessageSource{ChannelTarget: target, PersonID: "telegram:user:7", MessageID: "segmented", Purpose: "request"}, "Please reply in two paragraphs.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := tasks.SubmitChannel(t.Context(), input)
+	if err != nil || !seenHint || result.Run.Status != "completed" {
+		t.Fatal(seenHint, result.Run.Status, err)
+	}
+	if result.Run.ConversationID != rule.ConversationID {
+		t.Fatal("conversation changed")
+	}
+	for range 2 {
+		if err = b.Deliver(t.Context(), result); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		ops, err := b.Outbox(t.Context(), "tg")
+		if err != nil || len(ops) != 1 || ops[0].LogicalPart != i+1 {
+			t.Fatal(ops, err)
+		}
+		if (ops[0].Reply != "") != (i == 0) {
+			t.Fatal("only first message may quote original input", ops[0])
+		}
+		if err = b.Receipt(t.Context(), "tg", channelwire.Receipt{ID: ops[0].ID, Dispatch: ops[0].Dispatch, State: "sent", MessageID: newID()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ops, err := b.Outbox(t.Context(), "tg"); err != nil || len(ops) != 0 {
+		t.Fatal("whole answer was duplicated", ops, err)
+	}
+}
+
 func TestAffectWeaveGrantedExpressionAndFixedFollowupRecheck(t *testing.T) {
 	b, tasks, target, rule := affectWakeHarness(t)
 	source, _ := tasks.Latest(t.Context(), rule.ConversationID)

@@ -79,6 +79,11 @@ if (!root || !out) throw Error('Run via scripts/test-frontend.py');
     const branch = await (await branchResponse).json();
     await page.getByText('Echo: branch once', { exact: true }).waitFor();
     await page.waitForFunction(() => document.querySelector('textarea[aria-label="消息"]')?.value === '');
+    await page.waitForFunction(async ({origin,key,id}) => {
+      if(new URL(location.href).searchParams.get('chat')!==id)return false;
+      const response=await fetch(origin+'/api/chats/'+id,{headers:{'X-FreeAgent-Key':key}});
+      return response.ok && (await response.json()).view.turns.length===1;
+    },{origin:info.origin,key,id:branch.conversation.id});
     assert.equal((await api('chats/' + branch.conversation.id)).view.turns.length, 1);
     assert(await send().isDisabled()); checks.branch_autosend_clears_draft = true;
     await open(branchSource);

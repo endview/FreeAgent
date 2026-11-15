@@ -514,6 +514,7 @@ func TestConfigWorkspaceUsesExecutionLeaseSemantics(t *testing.T) {
 	}
 	config.TaskSummaryBytes = 0
 	config.MaxContextBytes = 12000
+	config.ContextByteLimitMode = "manual" // this fixture intentionally exhausts a small explicit payload budget
 	config.MaxOutputTokens = 128
 	config.Models["looping"] = harness.ModelConfig{Provider: "openai-compatible", Model: "fixture",
 		Key: fixtureKey(t, server.URL, harness.KeySourceNone, "", "")}

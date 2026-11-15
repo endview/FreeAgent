@@ -1,5 +1,22 @@
 package harness
 
+func ContextByteLimitMode(config Config) string {
+	if config.ContextByteLimitMode == "" {
+		return "legacy_manual"
+	}
+	return config.ContextByteLimitMode
+}
+
+func contextByteLimit(config Config, manual, window int) int {
+	if config.ContextByteLimitMode != "auto" {
+		return manual
+	}
+	if window <= 0 {
+		return 128 << 10
+	}
+	return min(8<<20, max(256<<10, window*8))
+}
+
 // Explicit policy separates scheduling from artifact size. Missing fields
 // preserve old behavior; equality to a historical default never implies auto.
 func AutomaticCompactionEnabled(config Config) bool {
@@ -36,5 +53,5 @@ func summaryPolicy(config Config, window ContextWindow) (bytes, tokens int, sour
 }
 
 func contextPolicySnapshot(config Config) map[string]any {
-	return map[string]any{"automatic_compaction": AutomaticCompactionEnabled(config), "summary_target_mode": SummaryTargetMode(config), "task_summary_bytes": config.TaskSummaryBytes}
+	return map[string]any{"context_byte_limit_mode": ContextByteLimitMode(config), "automatic_compaction": AutomaticCompactionEnabled(config), "summary_target_mode": SummaryTargetMode(config), "task_summary_bytes": config.TaskSummaryBytes}
 }

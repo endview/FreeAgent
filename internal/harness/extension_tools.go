@@ -39,8 +39,9 @@ func (tools *extensionToolRunner) Prepare(ctx context.Context, call ToolCall) (P
 			return PreparedTool{}, errors.New("extension arguments do not satisfy the input schema")
 		}
 		return PreparedTool{
-			Effect:  tool.Definition.Effect,
-			Preview: tool.ExtensionID + "/" + tool.Name + "\n" + string(call.Arguments),
+			handoffBusiness: tool.Workflow == "",
+			Effect:          tool.Definition.Effect,
+			Preview:         tool.ExtensionID + "/" + tool.Name + "\n" + string(call.Arguments),
 			Items: []ApprovalItem{{Kind: "extension", Target: tool.ExtensionID + "/" + tool.Name,
 				Fields: map[string]string{"arguments": string(call.Arguments)}}},
 			Execute: func(parent context.Context) (ToolResult, error) {

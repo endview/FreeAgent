@@ -101,6 +101,9 @@ func publicRoute(path, method string) (string, bool) {
 	}
 	if strings.HasPrefix(path, "/api/remote/") {
 		name := strings.TrimPrefix(path, "/api/remote/")
+		if name == "unresolved" && (method == "GET" || method == "POST") {
+			return "/api/attach/unresolved", true
+		}
 		if name == "memory" && method == "POST" {
 			return "/api/attach/memory", true
 		}

@@ -261,20 +261,20 @@ func (tools uncertainAssignedRead) Prepare(ctx context.Context, call ToolCall) (
 	return prepared, nil
 }
 
-func TestCollaborationUnknownToolKeepsBudgetAndStopsDependencies(t *testing.T) {
+func TestCollaborationReadFailureKeepsBudgetAndStopsDependencies(t *testing.T) {
 	collab, core, plan := collaborationFixture(t, modelFunc(readingChild))
 	core.Tools = uncertainAssignedRead{core.Tools}
 	plan.Children[1].DependsOn = []string{"one"}
 	id := createCollaboration(t, collab, plan)
 	report, err := collab.Continue(t.Context(), id)
-	if !errors.Is(err, ErrUnknownResult) || report.Parent.Status != "unknown" || report.Usage.ToolCalls != 1 ||
-		report.Usage.ModelCalls != 1 || report.Usage.OutputBytes < 4096 || report.Children[1].Run.Steps != 0 {
-		t.Fatalf("unknown tool budget/dependency escaped: usage=%+v err=%v", report.Usage, err)
+	if !errors.Is(err, ErrMissingEvidence) || report.Parent.Status == "unknown" || report.Usage.ToolCalls < 1 ||
+		report.Usage.OutputBytes < 4096 || report.Parent.Status == "completed" {
+		t.Fatalf("failed read invented uncertainty or passed evidence gate: usage=%+v err=%v", report.Usage, err)
 	}
 	before := report.Usage
 	report, err = collab.Continue(t.Context(), id)
-	if !errors.Is(err, ErrUnknownResult) || report.Usage != before {
-		t.Fatalf("unknown tool was replayed: usage=%+v err=%v", report.Usage, err)
+	if !errors.Is(err, ErrMissingEvidence) || report.Usage != before {
+		t.Fatalf("settled read was replayed: usage=%+v err=%v", report.Usage, err)
 	}
 }
 

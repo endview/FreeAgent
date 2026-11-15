@@ -284,10 +284,10 @@ func TestMCPCancelAfterDispatchRemainsUnknown(t *testing.T) {
 	start := time.Now()
 	result, err := service.Run(ctx, conversation(t, service), "cancel", "wait")
 	<-done
-	if !errors.Is(err, ErrUnknownResult) || result.Run.Status != "unknown" || time.Since(start) > 6*time.Second {
+	if !errors.Is(err, context.Canceled) || result.Run.Status != "abandoned" || time.Since(start) > 6*time.Second {
 		t.Fatalf("cancellation=%+v error=%v duration=%s", result, err, time.Since(start))
 	}
-	if _, err := service.Continue(context.Background(), result.Run.ID); !errors.Is(err, ErrUnknownResult) {
+	if _, err := service.Continue(context.Background(), result.Run.ID); err == nil {
 		t.Fatalf("unknown MCP call continued: %v", err)
 	}
 	raw, _ := os.ReadFile(marker)

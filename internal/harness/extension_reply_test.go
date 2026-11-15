@@ -205,6 +205,52 @@ func TestExtensionReplyTurnOverrideFrozenSettingsAndRevocation(t *testing.T) {
 	}
 }
 
+func TestReplyPartsDispatchOnceAndReferenceOnlyFirstMessage(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		t.Run(map[bool]string{false: "direct", true: "outbox"}[remote], func(t *testing.T) {
+			b, tasks, target, chat := replyExtensionFixture(t, true, true, true, "parts-normal")
+			session := b.connections["tg"].session
+			session.remote = remote
+			var references []string
+			session.send = func(_ context.Context, _ ChannelTarget, reply, text string, _ []channelButton) (string, error) {
+				references = append(references, reply)
+				return newID(), nil
+			}
+			tasks.core.Model = modelFunc(func(_ context.Context, _ ModelRequest, emit func(string)) (ModelResponse, error) {
+				emit("First paragraph.")
+				if len(references) != 0 {
+					t.Fatal("answer sent before generation finished")
+				}
+				return ModelResponse{Content: replyFixtureText}, nil
+			})
+			result := submitReplyFixture(t, tasks, target, chat, "2", nil)
+			for range 2 {
+				if err := b.Deliver(t.Context(), result); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if remote {
+				for i := 0; i < 2; i++ {
+					ops, err := b.Outbox(t.Context(), "tg")
+					if err != nil || len(ops) != 1 {
+						t.Fatal(ops, err)
+					}
+					references = append(references, ops[0].Reply)
+					if err = b.Receipt(t.Context(), "tg", channelwire.Receipt{ID: ops[0].ID, Dispatch: ops[0].Dispatch, State: "sent", MessageID: newID()}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if ops, err := b.Outbox(t.Context(), "tg"); err != nil || len(ops) != 0 {
+					t.Fatal("duplicate whole answer", ops, err)
+				}
+			}
+			if len(references) != 2 || references[0] == "" || references[1] != "" {
+				t.Fatal("first-only reply reference violated", references)
+			}
+		})
+	}
+}
+
 func TestExtensionReplyRejectsChangedContentAndUnregisteredCapability(t *testing.T) {
 	for _, mode := range []string{"parts-invalid", "parts-unregistered"} {
 		t.Run(mode, func(t *testing.T) {

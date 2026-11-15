@@ -32,6 +32,7 @@ func testHarness(t *testing.T, model ModelClient) (*Service, *FileTools, string)
 	// These execution regressions use the legacy explicit-byte policy. New
 	// automatic-target fixtures opt in and verify their own capacity behavior.
 	config.SummaryTargetMode = ""
+	config.ContextByteLimitMode = ""
 	if err := WriteConfig(data, config); err != nil {
 		t.Fatal(err)
 	}

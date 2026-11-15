@@ -692,6 +692,49 @@ function ExtensionEditor({
           />
         </Suspense>
       )}
+      <section className="settings-section">
+        <h3>扩展默认设置</h3>
+        {item.enabled &&
+          item.turn_settings?.map((field) => (
+            <Field key={field.key} label={`${field.label}（扩展默认）`}>
+              <select
+                aria-label={`${item.name}：默认${field.label}`}
+                disabled={!settings}
+                value={String(settings?.[field.key] || "")}
+                onChange={(event) => {
+                  const next = { ...settings };
+                  if (event.target.value) next[field.key] = event.target.value;
+                  else delete next[field.key];
+                  change({
+                    ...form,
+                    settings: JSON.stringify(next, null, 2),
+                  });
+                }}
+              >
+                <option value="">
+                  扩展内置默认：
+                  {field.options.find(
+                    (option) => option.value === field.default_value,
+                  )?.label || "由扩展决定"}
+                </option>
+                {field.options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ))}
+        {item.enabled && Boolean(item.turn_settings?.length) && (
+          <Button
+            type="submit"
+            form={`extension-config-${item.id}`}
+            disabled={busy}
+          >
+            保存扩展默认设置
+          </Button>
+        )}
+      </section>
       <details
         className="settings-section extension-advanced"
         open={item.id !== "cc.endview.affectweave"}
@@ -737,6 +780,7 @@ function ExtensionEditor({
             </Button>
           )}
           <form
+            id={`extension-config-${item.id}`}
             onSubmit={(event) => {
               event.preventDefault();
               void perform(async () => {
@@ -774,33 +818,6 @@ function ExtensionEditor({
               });
             }}
           >
-            {item.enabled &&
-              item.turn_settings?.map((field) => (
-                <Field key={field.key} label={`${field.label}（扩展默认）`}>
-                  <select
-                    aria-label={`${item.name}：默认${field.label}`}
-                    disabled={!settings}
-                    value={String(settings?.[field.key] || "")}
-                    onChange={(event) => {
-                      const next = { ...settings };
-                      if (event.target.value)
-                        next[field.key] = event.target.value;
-                      else delete next[field.key];
-                      change({
-                        ...form,
-                        settings: JSON.stringify(next, null, 2),
-                      });
-                    }}
-                  >
-                    <option value="">使用扩展内置默认</option>
-                    {field.options.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              ))}
             <Field label="扩展设置（JSON）">
               <textarea
                 rows={7}

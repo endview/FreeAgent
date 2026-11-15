@@ -2,53 +2,38 @@ package harness
 
 import (
 	"context"
-	"encoding/json"
 )
 
-// Keep a bounded recent prefix of actual human inputs verbatim. Retaining a
-// user message retains the complete suffix after it, never a protocol half.
+// Retention counts the complete projected suffix, not just the small human
+// messages that precede large answers. Only complete protocol groups survive.
 func (service *Service) retainRecentUserText(ctx context.Context, run Run, base, through int64) (int64, error) {
 	limits, binding, err := service.requestLimits()
 	if err != nil {
 		return through, err
 	}
 	window := contextWindow(service.Config, limits, binding, limits.MaxOutputTokens)
-	byteBudget, tokenBudget := min(4096, limits.MaxContextBytes/20), 1024
-	if window.InputBudget > 0 {
-		tokenBudget = min(tokenBudget, window.InputBudget/20)
+	byteCapacity := window.ByteLimit
+	if window.Tokens == 0 && window.ByteLimitMode != "auto" {
+		byteCapacity -= window.OutputReserve * 4
 	}
-	rows, err := service.Store.db.QueryContext(ctx, `SELECT id,coalesce(run_id,''),body_json FROM `+conversationRecords+` WHERE conversation_id=$1 AND id>$2 AND id<=$3 AND body_json->>'Role'='user' AND coalesce(body_json->>'Deferred','false')='false' ORDER BY id DESC LIMIT 128`, run.ConversationID, base, through)
+	byteBudget, tokenBudget := max(0, byteCapacity)/5, window.InputBudget/5
+	groups, err := service.contextSourceGroups(ctx, run, base, through)
 	if err != nil {
 		return through, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var m Message
-		var raw string
-		if err = rows.Scan(&m.ID, &m.RunID, &raw); err != nil {
-			return through, err
-		}
-		if json.Unmarshal([]byte(raw), &m.ModelMessage) != nil {
-			return through, ErrStoreFormat
-		}
-		scope := ""
-		if service.scopedHistory() {
-			scope = service.publicSummaryScope()
-		}
-		visible, err := contextVisible(m, scope, "", false)
-		if err != nil {
-			return through, err
-		}
-		if len(visible) == 0 {
-			continue
-		}
-		tokens := estimateContextTokens(m.Content)
-		if len(m.Content) > byteBudget || tokens > tokenBudget {
+	if len(groups) == 0 || groups[len(groups)-1].records[len(groups[len(groups)-1].records)-1].ID != through {
+		return through, nil // bounded source read did not reach the recent suffix
+	}
+	for i := len(groups) - 1; i >= 0; i-- {
+		group := groups[i]
+		body := string(mustJSON(group.messages))
+		tokens := estimateContextTokens(body)
+		if len(body) > byteBudget || window.Tokens > 0 && tokens > tokenBudget {
 			break
 		}
-		byteBudget -= len(m.Content)
+		byteBudget -= len(body)
 		tokenBudget -= tokens
-		through = m.ID - 1
+		through = group.records[0].ID - 1
 	}
-	return through, rows.Err()
+	return through, nil
 }

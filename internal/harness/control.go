@@ -709,7 +709,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		}
 		if entries[i].Kind == ControlSetRuntimeLimits {
 			entries[i].Description += " automatic_compaction controls scheduling independently; summary_target_mode=auto uses a soft token target and separate storage protection, manual uses task_summary_bytes (1..16384). Legacy task_summary_bytes=0 disables automatic compaction; positive legacy writes enable it. Existing summaries are retained. Changes apply to future Runs; no active snapshot is silently altered."
-			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"extension_max_context_chars":{"type":"integer","minimum":0,"maximum":1048576},"extension_max_model_calls_per_turn":{"type":"integer","minimum":0,"maximum":128},"model_retries":{"type":"integer","minimum":0,"maximum":6},"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216},"automatic_compaction":{"type":"boolean"},"summary_target_mode":{"type":"string","enum":["auto","manual"]}},"additionalProperties":false}`)
+			entries[i].InputSchema = json.RawMessage(`{"type":"object","properties":{"extension_max_context_chars":{"type":"integer","minimum":0,"maximum":1048576},"extension_max_model_calls_per_turn":{"type":"integer","minimum":0,"maximum":128},"model_retries":{"type":"integer","minimum":0,"maximum":6},"auto_compact_percent":{"type":"integer","minimum":50,"maximum":95},"task_summary_bytes":{"type":"integer","minimum":0,"maximum":16384,"description":"0 disables automatic compaction; positive values enable it with this UTF-8 byte cap"},"history_page_size":{"type":"integer","minimum":1,"maximum":1000},"max_context_bytes":{"type":"integer","minimum":4096,"maximum":16777216},"max_output_tokens":{"type":"integer","minimum":1,"maximum":32768},"max_tool_result_bytes":{"type":"integer","minimum":1,"maximum":16777216},"automatic_compaction":{"type":"boolean"},"summary_target_mode":{"type":"string","enum":["auto","manual"]},"context_byte_limit_mode":{"type":"string","enum":["auto","manual"]}},"additionalProperties":false}`)
 		}
 	}
 	return entries
@@ -2990,6 +2990,7 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 			AutoCompactAt         *int    `json:"auto_compact_percent"`
 			HistoryPageSize       *int    `json:"history_page_size"`
 			MaxContextBytes       *int    `json:"max_context_bytes"`
+			ContextByteLimitMode  *string `json:"context_byte_limit_mode"`
 			MaxOutputTokens       *int    `json:"max_output_tokens"`
 			MaxToolResult         *int    `json:"max_tool_result_bytes"`
 			TaskSummaryBytes      *int    `json:"task_summary_bytes"`
@@ -3012,6 +3013,12 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 		}
 		if args.MaxContextBytes != nil {
 			config.MaxContextBytes = *args.MaxContextBytes
+			if args.ContextByteLimitMode == nil {
+				config.ContextByteLimitMode = "manual"
+			}
+		}
+		if args.ContextByteLimitMode != nil {
+			config.ContextByteLimitMode = *args.ContextByteLimitMode
 		}
 		if args.MaxOutputTokens != nil {
 			config.MaxOutputTokens = *args.MaxOutputTokens

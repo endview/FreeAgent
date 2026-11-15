@@ -287,7 +287,7 @@ func writeConfigResult(stdout io.Writer, path string, config harness.Config, res
 			"auto_compact_percent":  config.AutoCompactAt,
 		},
 		"changed": result != nil, "network_tested": false, "credentials_resolved": false,
-		"context_policy": map[string]any{"automatic_compaction": harness.AutomaticCompactionEnabled(config), "summary_target_mode": harness.SummaryTargetMode(config)},
+		"context_policy": map[string]any{"context_byte_limit_mode": harness.ContextByteLimitMode(config), "automatic_compaction": harness.AutomaticCompactionEnabled(config), "summary_target_mode": harness.SummaryTargetMode(config)},
 	}
 	if result != nil {
 		output["operation"] = result.Operation

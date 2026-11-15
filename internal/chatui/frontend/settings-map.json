@@ -81,6 +81,7 @@
     "http.timeout_seconds": "advanced",
     "instructions": "advanced",
     "max_context_bytes": "context",
+    "context_byte_limit_mode": "context",
     "max_output_tokens": "context",
     "max_tool_result_bytes": "advanced",
     "mcpServers.$id.args": "mcp",

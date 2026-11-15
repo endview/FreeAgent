@@ -666,6 +666,14 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 				if errors.Is(returnErr, ErrUnknownResult) {
 					status = "unknown"
 				}
+				var handedOff bool
+				e := service.Store.db.QueryRowContext(persistCtx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE starts_with(key,$1) AND document->>'run_id'=$2 AND document->>'handoff'='true')`, unresolvedPrefix, run.ID).Scan(&handedOff)
+				if e == nil && handedOff && status == "stopped" {
+					status = "failed"
+					if errors.Is(parent.Err(), context.Canceled) {
+						status = "abandoned"
+					}
+				}
 				_ = service.Store.FinishRun(persistCtx, run.ID, status, safeError(returnErr))
 				current, _ = service.Store.GetRun(persistCtx, run.ID)
 			}
@@ -678,6 +686,16 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 				result.Run = current
 			}
 			result.Answer = current.Output
+			if report, e := service.unresolvedReport(persistCtx, current); e != nil {
+				returnErr = errors.Join(returnErr, e)
+			} else if report != "" {
+				result.Answer += "\n\n本轮已结束 · " + report
+			}
+			if report, e := service.omissionReport(persistCtx, current); e != nil {
+				returnErr = errors.Join(returnErr, e)
+			} else if report != "" {
+				result.Answer += "\n\n" + report
+			}
 			evidence, err := service.Store.Evidence(persistCtx, run.ID)
 			result.Evidence = evidence
 			returnErr = errors.Join(returnErr, err)
@@ -741,6 +759,8 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 					}
 					return result, err
 				}
+				// Handoff may have settled later writes from this same batch.
+				break
 			}
 		}
 		if pending {
@@ -1078,6 +1098,14 @@ func (service *Service) dispatchModel(ctx context.Context, run Run, request Mode
 					}
 					return u.budgetError()
 				})
+				if compactionMayFallback(err) || err == nil && !compact.Changed {
+					var omitErr error
+					retryRequest, omitErr = service.emergencyContext(ctx, run, request, true)
+					if omitErr == nil {
+						err = nil
+						compact.Changed = true
+					}
+				}
 				if err == nil && !compact.Changed {
 					err = fmt.Errorf("%w: provider refused context; no compressible progress", ErrContextLimit)
 				}
@@ -1182,6 +1210,13 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	if err := service.checkConfig(run); err != nil {
 		return err
 	}
+	var storedStatus string
+	if err := service.Store.db.QueryRowContext(ctx, `SELECT status FROM fa.attempts WHERE id=$1 AND run_id=$2`, attempt.ID, run.ID).Scan(&storedStatus); err != nil {
+		return err
+	}
+	if storedStatus == "finished" {
+		return nil
+	}
 	var call ToolCall
 	if err := json.Unmarshal([]byte(attempt.RequestJSON), &call); err != nil {
 		return errors.New("harness: corrupt pending tool call")
@@ -1202,6 +1237,16 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 			return service.Store.saveTool(ctx, run, attempt, call, result)
 		}
 		return service.Store.saveToolNoMessage(ctx, run, attempt, call, result)
+	}
+	if prepared.Effect == EffectModify {
+		replay, replayErr := service.replayUnresolved(ctx, run, call)
+		if replayErr != nil {
+			return replayErr
+		}
+		if replay {
+			prepared.userConfirmation = true
+			prepared.Preview = "原操作结果仍未确认。再次执行可能产生重复作用，请先核查。\n" + prepared.Preview
+		}
 	}
 	if prepared.controlProposal {
 		if service.controlDecision != nil {
@@ -1313,6 +1358,9 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	if err := service.Store.dispatchGuardedTool(ctx, attempt, service.childSteps(), service.guard); err != nil {
 		return err
 	}
+	if _, err := service.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, "attempt/dispatch-contract/"+attempt.ID, string(mustJSON(map[string]any{"version": 1, "effect": prepared.Effect, "business": prepared.handoffBusiness, "record_message": recordMessage && service.guard == nil}))); err != nil {
+		return err
+	}
 	var observedOutcome *ToolOutcome
 	toolEvent := func(kind string) {
 		var activity map[string]any
@@ -1374,6 +1422,11 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 	} else {
 		result, callErr = prepared.Execute(ctx)
 	}
+	// EffectRead is assigned by the local implementation (MCP additionally
+	// requires explicit trust). A failed read has no uncertain business write.
+	if callErr != nil && prepared.Effect == EffectRead {
+		callErr = &CallError{Certain: true, Category: "tool_read", Code: "read_failed", Message: safeError(callErr)}
+	}
 	result = normalizeToolOutcome(ctx, result, callErr, toolStarted, service.limits().MaxToolResult)
 	observedOutcome = result.Outcome
 	persistCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1390,17 +1443,30 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		var certainty *CallError
 		if !errors.As(callErr, &certainty) || !certainty.Certain {
 			saveErr := service.Store.markUnknown(persistCtx, attempt, "tool outcome unknown", string(rawOutput))
-			if saveErr == nil && outputErr == nil && !service.verificationMode && service.Config.ModelRetries > 0 {
+			if saveErr == nil && outputErr == nil && !service.verificationMode && service.Config.ModelRetries > 0 && (call.Name == "file_create" || call.Name == "file_edit") && len(result.Receipts) == 1 && result.Receipts[0].Status == "applied" {
 				attempt.Status, attempt.ResponseJSON = "unknown", string(rawOutput)
-				if err := service.verifyUnknownTool(ctx, run, attempt); err == nil {
+				verificationErr := service.verifyUnknownTool(ctx, run, attempt)
+				if verificationErr == nil {
 					return nil
-				} else {
+				}
+				if !onlyUnknownFailure(verificationErr) {
+					return verificationErr
+				}
+			}
+			if saveErr == nil && outputErr == nil && recordMessage && !service.verificationMode && service.guard == nil && canHandoffTool(call, prepared, result) {
+				attempt.Status, attempt.ResponseJSON = "unknown", string(rawOutput)
+				if err := service.handoffTool(persistCtx, run, attempt, call, service.runtimeTools(run.ID, attempt.ID).Definitions()); err != nil {
 					return errors.Join(ErrUnknownResult, err)
 				}
+				toolEvent(EventToolFinished)
+				return nil
 			}
 			return errors.Join(ErrUnknownResult, outputErr, saveErr)
 		}
-		result.Content = "tool error: " + safeError(callErr)
+		if result.Content != "" {
+			result.Content += "\n"
+		}
+		result.Content += "tool error: " + safeError(callErr)
 		result.IsError = true
 	}
 	if len(result.Content) > service.limits().MaxToolResult {
@@ -1586,6 +1652,20 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 		}
 		request.Messages = append(request.Messages, channelSourceLabel(message))
 	}
+	if notice, e := service.unresolvedReport(ctx, run); e != nil {
+		return request, e
+	} else if notice != "" {
+		at := len(request.Messages)
+		for i, m := range request.Messages {
+			if m.ContextSource != nil && m.ContextSource.Part == "current_input" {
+				at = i
+				break
+			}
+		}
+		request.Messages = append(request.Messages, ModelMessage{})
+		copy(request.Messages[at+1:], request.Messages[at:])
+		request.Messages[at] = ModelMessage{Role: "user", Content: "当前未决事实（执行记录，不能由模型自行清除）：\n" + notice, ContextSource: &ContextSource{Part: "unresolved"}}
+	}
 	request, err = service.prepareCapabilityRequest(ctx, run, request)
 	if err != nil {
 		return ModelRequest{}, err
@@ -1604,6 +1684,9 @@ func (service *Service) buildContextWithSummary(ctx context.Context, run Run, su
 }
 
 func (service *Service) unresolvedWarning(ctx context.Context) (string, error) {
+	if service.scopedHistory() {
+		return "", nil
+	}
 	var background int
 	if service.commands != nil {
 		var err error

@@ -225,7 +225,12 @@ export function ExtensionTurnChoices({
               onChange({ ...selection, extension_settings: settings });
             }}
           >
-            <option value="">继承扩展设置</option>
+            <option value="">
+              继承：
+              {field.options.find(
+                (option) => option.value === field.inherited_value,
+              )?.label || "由扩展决定"}
+            </option>
             {field.options.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}

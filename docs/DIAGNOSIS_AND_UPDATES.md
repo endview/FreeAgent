@@ -39,3 +39,5 @@ freeagent doctor --data-dir <数据目录> --preflight --backup <备份目录>
 同一 `Harness-pg-v1` 目录后续更新保留原生数据。不要用旧 SQLite 目录或旧备份替换它。工作区和加密/受限 Key 文件按各自说明单独保护；数据库备份不等于所有本机文件都已备份。
 
 具体环境的 PASS/FAIL/NOT_RUN 见[实施记录](FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)。
+
+v8.8.0-dev.7 的 `doctor --reconcile-unknown` 提供旧扩展读取拒绝的精确预览；应用须传回预览 digest，原 UNKNOWN 证据保留。仅限本机维护，不调用模型或业务工具。完整操作与回退要求见[未确认操作](UNRESOLVED_OPERATIONS.md)。

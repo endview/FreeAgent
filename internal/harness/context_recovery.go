@@ -9,6 +9,10 @@ import (
 // Every automatic caller uses this boundary. Trigger identifies the decision,
 // never selects another audience or grants permission to replay an operation.
 func (service *Service) recoverContext(ctx context.Context, run Run, trigger string, validate ...func(*ConversationSummary) error) (ContextResult, error) {
+	plan, err := service.planCompactionFor(ctx, run, ContextCommand{Action: "compact"}, true)
+	if err != nil {
+		return ContextResult{}, err
+	}
 	paused, err := service.compactionSuppressed(ctx, run.ConversationID)
 	if err != nil {
 		return ContextResult{}, err
@@ -23,12 +27,8 @@ func (service *Service) recoverContext(ctx context.Context, run Run, trigger str
 			return ContextResult{}, ErrStoreFormat
 		}
 		if saved.Failure != "source" {
-			return ContextResult{}, &CallError{Certain: true, Category: "context", Code: "summary_no_progress", Message: paused}
+			return ContextResult{}, &CallError{Certain: true, Category: "context", Code: "summary_policy_paused", Message: paused}
 		}
-	}
-	plan, err := service.planCompactionFor(ctx, run, ContextCommand{Action: "compact"}, true)
-	if err != nil {
-		return ContextResult{}, err
 	}
 	semanticDigest, err := service.preflightContextPrefix(ctx, run, plan.base.Through, plan.source.Through)
 	if err != nil {

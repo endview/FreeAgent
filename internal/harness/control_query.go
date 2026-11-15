@@ -112,7 +112,8 @@ func (tools *controlTools) readState(ctx context.Context, query controlStateQuer
 	}
 	if query.ExtensionID != "" {
 		if run.ID == "" || tools.service.capabilities == nil || !slices.Contains(tools.service.capabilities.Extensions, query.ExtensionID) {
-			return ToolResult{}, ErrPermissionDenied
+			output["extension_state_error"] = map[string]any{"code": "extension_not_selected", "message": "Extension state is not available in this Run. Select the extension in the conversation capabilities for a future request; the operation schema above remains available."}
+			return ToolResult{Content: string(mustJSON(output)), IsError: true}, nil
 		}
 		identity, err := tools.service.extensionIdentity(ctx, run)
 		if err != nil || len(identity.Inputs) == 0 {

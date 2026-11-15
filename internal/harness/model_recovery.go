@@ -256,7 +256,31 @@ func annotateReplacements(ctx context.Context, reader attemptReader, runID strin
 	if err := verified.Err(); err != nil {
 		return err
 	}
-	return nil
+	if err := verified.Close(); err != nil {
+		return err
+	}
+	rows, err = reader.QueryContext(ctx, `SELECT a.id,u.document->>'resolution' FROM fa.attempts a JOIN fa.meta u ON u.key='attempt/unresolved/'||a.id WHERE a.run_id=$1 AND u.document->>'handoff'='true'`, runID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var resolution sql.NullString
+		if err := rows.Scan(&id, &resolution); err != nil {
+			return err
+		}
+		for i := range attempts {
+			if attempts[i].ID == id {
+				attempts[i].Resolution = "handed_off"
+				if resolution.String != "" {
+					attempts[i].Resolution = resolution.String
+				}
+			}
+		}
+	}
+	return rows.Err()
 }
 
-const resolvedAttemptSQL = `(EXISTS(SELECT 1 FROM fa.meta d JOIN fa.attempts replacement ON replacement.id=(d.document #>> '{replacement}') AND replacement.run_id=a.run_id AND replacement.kind='model' WHERE d.key='attempt/replaced/'||a.id AND a.kind='model') OR EXISTS(SELECT 1 FROM fa.meta v WHERE v.key='attempt/verified/'||a.id AND a.kind='tool' AND (v.document #>> '{outcome}')='happened' AND (v.document #>> '{run_id}')=a.run_id))`
+// Resolved here means execution no longer blocks, not that effects are proven.
+const resolvedAttemptSQL = `(EXISTS(SELECT 1 FROM fa.meta d JOIN fa.attempts replacement ON replacement.id=(d.document #>> '{replacement}') AND replacement.run_id=a.run_id AND replacement.kind='model' WHERE d.key='attempt/replaced/'||a.id AND a.kind='model') OR EXISTS(SELECT 1 FROM fa.meta v WHERE v.key='attempt/verified/'||a.id AND a.kind='tool' AND (v.document #>> '{outcome}')='happened' AND (v.document #>> '{run_id}')=a.run_id) OR EXISTS(SELECT 1 FROM fa.meta u WHERE u.key='attempt/unresolved/'||a.id AND a.kind='tool' AND u.document->>'run_id'=a.run_id AND u.document->>'handoff'='true'))`

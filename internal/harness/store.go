@@ -1408,6 +1408,22 @@ func (store *Store) markUnknown(ctx context.Context, attempt Attempt, reason str
 		body = record[0]
 		responseExpr = `$1`
 	}
+	var handedOff bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key=$1 AND document->>'run_id'=$2 AND document->>'handoff'='true')`, unresolvedPrefix+attempt.ID, attempt.RunID).Scan(&handedOff); err != nil {
+		return err
+	}
+	if handedOff {
+		// A late observation belongs to the old operation. It must not replace
+		// its original evidence or reacquire the conversation's active slot.
+		_, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT DO NOTHING`, "attempt/late-evidence/"+attempt.ID+"/"+contentHash([]byte(body)), string(mustJSON(map[string]any{"reason": reason, "response": body, "observed_at": nowText()})))
+		if err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "attempt/uncertainty/"+attempt.ID, string(mustJSON(map[string]string{"source": unknownSource(reason), "reason": reason}))); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE fa.attempts SET status='unknown', response_json=`+responseExpr+` WHERE id=$2`, body, attempt.ID); err != nil {
 		return err
 	}
@@ -1517,7 +1533,10 @@ func (store *Store) recover(ctx context.Context) error {
 	if err := recoverCollaborationLeases(ctx, tx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return store.recoverHandedOffTools(ctx)
 }
 
 func insertMessage(ctx context.Context, tx *sql.Tx, run Run, message ModelMessage) error {

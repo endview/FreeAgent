@@ -33,7 +33,7 @@ type BranchResult struct {
 
 func branchSourceReady(ctx context.Context, tx *sql.Tx, chat string) error {
 	var blocked bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.runs r WHERE conversation_id=$1 AND (`+activeRunPredicate+` OR EXISTS(SELECT 1 FROM fa.attempts a WHERE a.run_id=r.id AND a.status IN ('pending','dispatched','unknown'))))`, chat).Scan(&blocked)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.runs r WHERE conversation_id=$1 AND (`+activeRunPredicate+` OR EXISTS(SELECT 1 FROM fa.attempts a WHERE a.run_id=r.id AND a.status IN ('pending','dispatched','unknown') AND NOT `+resolvedAttemptSQL+`)))`, chat).Scan(&blocked)
 	if err != nil {
 		return err
 	}
@@ -209,6 +209,9 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 		result.Prompt = *command.Prompt
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO fa.conversations(id,title,workspace,space_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)`, result.Conversation.ID, result.Conversation.Title, result.Conversation.Workspace, result.Conversation.SpaceID, result.Conversation.CreatedAt, result.Conversation.UpdatedAt); err != nil {
+		return result, err
+	}
+	if err := inheritUnresolved(ctx, tx, chat, result.Conversation.ID); err != nil {
 		return result, err
 	}
 	if source.ModelID != "" {

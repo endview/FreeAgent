@@ -36,6 +36,12 @@ See [server deployment](SERVER_DEPLOYMENT.md).
 
 ## Run recovery
 
+v8.8.0-dev.7 distinguishes an unknown effect from a blocked Run. An allowlisted
+tool with a durable, protocol-complete handoff remains UNKNOWN while independent
+work may continue. See [unresolved operations](UNRESOLVED_OPERATIONS.md) for
+stable items, user decisions, replay protection and precise legacy reconciliation.
+Unclassified sources, uncertain storage and uncontrolled processes still block.
+
 `inspect --run <id>` shows the Run, model/tool Attempts and known responses.
 It can include conversation and file contents; do not paste it into public
 reports without reviewing it.

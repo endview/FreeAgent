@@ -27,7 +27,8 @@ The initial config is the complete editable example. Important fields:
 | `models.<id>.capabilities` | absent | Local protocol, streaming, tool, web-search, context, output and strength declaration |
 | `workspace` | selected | Absolute existing directory; linked ancestors rejected; change with `config workspace` |
 | `history_page_size` | 40 | Bounded history-read page size; not a model-request message limit |
-| `max_context_bytes` | 131072 | Local serialized-request resource bound; undeclared token windows also reserve four bytes per output token |
+| `max_context_bytes` | 131072 | Preserved manual serialized-request bound; active in manual/legacy mode |
+| `context_byte_limit_mode` | `auto` for new installs | `auto`: clamp(declared window × 8, 256 KiB, 8 MiB), unknown window 128 KiB; `manual`: saved byte value. Missing field means legacy manual, including unknown-window output reservation |
 | `max_output_tokens` | 4096 | Model output request limit |
 | `max_tool_result_bytes` | 65536 | Persisted tool output bound |
 | `system_prompt` | supplied | User instructions |

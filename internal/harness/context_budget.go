@@ -16,6 +16,7 @@ type ContextWindow struct {
 	Tokens           int    `json:"tokens"`
 	Source           string `json:"source"`
 	ByteLimit        int    `json:"byte_limit"`
+	ByteLimitMode    string `json:"byte_limit_mode"`
 	OutputReserve    int    `json:"output_reserve_tokens"`
 	SafetyTokens     int    `json:"safety_tokens"`
 	InputBudget      int    `json:"input_budget_tokens"`
@@ -69,7 +70,10 @@ func autoCompactPercent(config Config) int {
 
 func contextWindow(config Config, limits ExecutionLimits, binding ModelBinding, output int) ContextWindow {
 	w := ContextWindow{ModelID: binding.ID, Tokens: binding.Config.Capabilities.ContextTokens,
-		ByteLimit: limits.MaxContextBytes, OutputReserve: output, AutomaticPercent: autoCompactPercent(config), Source: "local_byte_budget"}
+		ByteLimit: contextByteLimit(config, limits.MaxContextBytes, binding.Config.Capabilities.ContextTokens), ByteLimitMode: ContextByteLimitMode(config), OutputReserve: output, AutomaticPercent: autoCompactPercent(config), Source: "local_byte_budget"}
+	if binding.Config.Capabilities.ContextBytes > 0 {
+		w.ByteLimit = min(w.ByteLimit, binding.Config.Capabilities.ContextBytes)
+	}
 	if w.Tokens > 0 {
 		w.Source = binding.Config.Capabilities.ContextSource
 		if w.Source == "" {
@@ -111,7 +115,7 @@ func semanticMessage(m ModelMessage) ModelMessage {
 
 func measureContextPayload(window ContextWindow, request ModelRequest, run Run, payload []byte) ContextUsage {
 	u := ContextUsage{Window: window, RunID: run.ID, ObservedAt: nowText(), EstimateMethod: "conservative_semantic_estimate", Messages: len(request.Messages), Resource: "bytes", Bytes: len(payload)}
-	if window.Tokens == 0 {
+	if window.Tokens == 0 && window.ByteLimitMode != "auto" {
 		u.ReservedBytes = request.MaxOutputTokens * 4
 	}
 	parts := map[string]ContextPart{}
@@ -144,7 +148,7 @@ func measureContextPayload(window ContextWindow, request ModelRequest, run Run, 
 			add("images", "", len(picture.Base64), imageTokens)
 		}
 	}
-	for _, name := range []string{"instructions", "tools", "memory", "skills", "extensions", "summary", "history", "tool_results", "readback", "current_input", "images"} {
+	for _, name := range []string{"instructions", "tools", "memory", "skills", "extensions", "summary", "unresolved", "history", "history_omitted", "tool_results", "readback", "current_input", "images"} {
 		if part, ok := parts[name]; ok {
 			u.Parts = append(u.Parts, part)
 			u.EstimatedTokens += part.EstimatedTokens
@@ -175,7 +179,12 @@ func (usage ContextUsage) budgetError() error {
 		return nil
 	}
 	code := "history_context_full"
+	fixedBytes, fixedTokens := 0, 0
 	for _, part := range usage.Parts {
+		if part.Kind != "history" && part.Kind != "tool_results" && part.Kind != "readback" {
+			fixedBytes += part.Bytes
+			fixedTokens += part.EstimatedTokens
+		}
 		tooLarge := part.Bytes+usage.ReservedBytes > usage.Window.ByteLimit || usage.Window.Tokens > 0 && part.EstimatedTokens > usage.Window.InputBudget
 		if !tooLarge {
 			continue
@@ -186,6 +195,9 @@ func (usage ContextUsage) budgetError() error {
 		case "current_input", "images":
 			code = "current_input_too_large"
 		}
+	}
+	if code == "history_context_full" && (fixedBytes+usage.ReservedBytes > usage.Window.ByteLimit || usage.Window.Tokens > 0 && fixedTokens > usage.Window.InputBudget) {
+		code = "fixed_context_too_large"
 	}
 	return &ContextBudgetError{Code: code, Usage: usage}
 }

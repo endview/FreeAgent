@@ -80,6 +80,18 @@ func (service *Service) verifyUnknownTool(ctx context.Context, run Run, original
 	if json.Unmarshal([]byte(original.RequestJSON), &call) != nil {
 		return ErrStoreFormat
 	}
+	// The only authoritative coordinator below proves a single file write.
+	// Other operations must retain uncertainty rather than paying a model to
+	// produce a judgement that this coordinator cannot accept.
+	var observed ToolResult
+	_ = json.Unmarshal([]byte(original.ResponseJSON), &observed)
+	fileWrite := false
+	for _, receipt := range observed.Receipts {
+		fileWrite = fileWrite || receipt.Kind == "file" && receipt.Status == "applied" && receipt.AfterHash != ""
+	}
+	if !fileWrite {
+		return ErrUnknownResult
+	}
 	copy := *service
 	copy.verificationMode = true
 	copy.controlToolsDisabled = true

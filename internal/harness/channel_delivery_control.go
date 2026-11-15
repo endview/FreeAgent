@@ -6,17 +6,20 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/endview/freeagent/internal/channelwire"
 )
 
 type DeliveryPart struct {
-	ID        string `json:"id"`
-	Sequence  int    `json:"sequence"`
-	Kind      string `json:"kind"`
-	State     string `json:"state"`
-	MessageID string `json:"message_id,omitempty"`
+	LogicalPart  int    `json:"logical_part,omitempty"`
+	PlatformPart int    `json:"platform_part,omitempty"`
+	ID           string `json:"id"`
+	Sequence     int    `json:"sequence"`
+	Kind         string `json:"kind"`
+	State        string `json:"state"`
+	MessageID    string `json:"message_id,omitempty"`
 }
 type DeliveryGroup struct {
 	CreatedAt        string         `json:"created_at"`
@@ -37,6 +40,24 @@ type DeliveryCommand struct {
 	Group  string `json:"group"`
 	Digest string `json:"digest"`
 	Action string `json:"action"`
+}
+
+func (group DeliveryGroup) issueSummary() string {
+	sent, unknown, pending := 0, 0, 0
+	for _, p := range group.Parts {
+		switch p.State {
+		case "sent":
+			sent++
+		case "unknown", "dispatching":
+			unknown++
+		case "queued", "pending", "paused", "ready":
+			pending++
+		}
+	}
+	if unknown == 0 && pending == 0 && group.Status != "partial" {
+		return ""
+	}
+	return fmt.Sprintf("渠道交付：已确认发出 %d 条，%d 条结果未确认，%d 条尚未派发。请在 Web 的渠道投递记录中查看；续送只发送从未派发的尾段，需明确确认，不重发 UNKNOWN。", sent, unknown, pending)
 }
 
 type deliveryCursor struct {
@@ -111,7 +132,7 @@ func (tasks *TaskService) ChannelDeliveries(ctx context.Context, chat string, cu
 		if op.Proactive {
 			group.AfterMS, group.ExpiresMS, group.Source, group.SuppressedReason = op.NotBeforeMS, op.ExpiresMS, op.Extension, op.SuppressedReason
 		}
-		group.Parts = append(group.Parts, DeliveryPart{ID: op.ID, Sequence: op.Sequence, Kind: op.Kind, State: op.State, MessageID: op.MessageID})
+		group.Parts = append(group.Parts, DeliveryPart{LogicalPart: op.LogicalPart, PlatformPart: op.PlatformPart, ID: op.ID, Sequence: op.Sequence, Kind: op.Kind, State: op.State, MessageID: op.MessageID})
 		raws[op.Group] = append(raws[op.Group], raw)
 		if op.State != "sent" {
 			if op.State == "unknown" || op.State == "failed" || op.State == "paused" {

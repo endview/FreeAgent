@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -91,8 +92,8 @@ func TestToolUnknownVerificationReadsAndNeverReplaysWrite(t *testing.T) {
 				if err != nil || result.Run.Status != "completed" || calls != 4 {
 					t.Fatalf("status=%s calls=%d err=%v", result.Run.Status, calls, err)
 				}
-			} else if !errors.Is(err, ErrUnknownResult) || result.Run.Status != "unknown" {
-				t.Fatalf("unsafe continuation status=%s calls=%d err=%v", result.Run.Status, calls, err)
+			} else if err != nil || result.Run.Status != "completed" || !strings.Contains(result.Answer, "未确认事项") {
+				t.Fatalf("unverified effect was not handed off: status=%s calls=%d err=%v", result.Run.Status, calls, err)
 			}
 			attempts, e := service.Store.ListAttempts(t.Context(), result.Run.ID)
 			if e != nil {
@@ -103,6 +104,9 @@ func TestToolUnknownVerificationReadsAndNeverReplaysWrite(t *testing.T) {
 			}
 			if mode == "verified" && attempts[1].Resolution != "verified_effect" {
 				t.Fatal("resolution missing")
+			}
+			if mode != "verified" && attempts[1].Resolution != "handed_off" {
+				t.Fatal("unknown was not retained with handoff", attempts[1])
 			}
 			if mode == "exhausted" {
 				reopenHarness(t, service)

@@ -38,6 +38,12 @@ func (server *Server) attachAPI(writer http.ResponseWriter, request *http.Reques
 		return true
 	}
 	switch {
+	case path == "unresolved":
+		server.unresolvedAPI(writer, request)
+		return true
+	case path == "unknown-reconcile":
+		server.reconcileUnknownAPI(writer, request)
+		return true
 	case path == "inputs":
 		server.inputsAPI(writer, request)
 		return true

@@ -442,6 +442,27 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 					}
 				}
 			}
+			core, readErr := s.tasks.contextReader(ctx, chat)
+			if readErr == nil {
+				readErr = core.resolveRequestPermission(ctx, chat, e.Person, e.Target.Source)
+			}
+			if readErr == nil && !core.scopedHistory() {
+				if report, err := core.unresolvedReport(ctx, run); err == nil && report != "" {
+					activity += "\n" + report
+				}
+				if groups, err := NewTaskService(core).ChannelDeliveries(ctx, chat); err == nil {
+					shown := 0
+					for _, group := range groups {
+						if text := group.issueSummary(); text != "" {
+							activity += "\n" + text
+							shown++
+							if shown == 3 {
+								break
+							}
+						}
+					}
+				}
+			}
 		}
 		return s.plain(ctx, e, "当前对话="+chat+"，Run="+run.ID+"，状态="+run.Status+activity+"\n"+answer)
 	case "/multi", "/new", "/switch", "/default", "/sessions":
@@ -818,7 +839,11 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 		}
 		sendCtx := context.WithValue(ctx, channelDeliveryKey{}, channelDeliveryInfo{Claim: key, Run: run.ID, Chat: run.ConversationID, Maintenance: result.Maintenance,
 			Group: group, Sequence: index + 1, Total: totalParts, Entities: part.Entities, Format: format, LogicalPart: part.LogicalPart, PlatformPart: part.PlatformPart, MinGapMS: gap})
-		message, sendErr := s.sendRunText(sendCtx, run, origin.ChannelTarget, s.replyMessage(ctx, run), part.Text, b)
+		reply := ""
+		if index == 0 {
+			reply = s.replyMessage(ctx, run)
+		}
+		message, sendErr := s.sendRunText(sendCtx, run, origin.ChannelTarget, reply, part.Text, b)
 		state, confirmed := "sent", part.Text
 		if isChannelQueued(sendErr) {
 			state, confirmed, sendErr = "queued", "", nil

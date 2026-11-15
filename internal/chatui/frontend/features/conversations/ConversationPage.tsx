@@ -71,6 +71,7 @@ import {
 import { ContextPanel } from "./ContextPanel";
 import { contextStopReason } from "../../lib/presentation/context.mjs";
 import { DeliveryPanel } from "./DeliveryPanel";
+import { UnresolvedPanel } from "./UnresolvedPanel";
 import { SourceAnalysis } from "./SourceAnalysis";
 import { StickerPanel } from "./StickerPanel";
 import { Capabilities } from "./Capabilities";
@@ -680,6 +681,10 @@ export default function ConversationPage({
   async function saveCapabilities(next: CapabilitySelection) {
     if (capabilityRequest.current) return false;
     const chat = state.selected;
+    if (chat && current().snapshot?.view.conversation.id !== chat) {
+      notify("对话能力仍在加载，请稍后再修改。");
+      return false;
+    }
     if (!chat) {
       setCapabilities(next);
       return true;
@@ -1224,13 +1229,27 @@ export default function ConversationPage({
         >
           <div className="reading-frame">
             <div className="reading-column">
+              {state.selected && (
+                <UnresolvedPanel
+                  chat={state.selected}
+                  revision={
+                    (latest?.key || "") +
+                    latest?.state +
+                    state.snapshot?.snapshot_seq
+                  }
+                />
+              )}
               {state.snapshot?.view.conversation.space_id !== "local" &&
                 state.selected && (
                   <>
                     <DeliveryPanel
                       chat={state.selected}
                       run={latest?.key || ""}
-                      revision={(latest?.key || "") + latest?.state}
+                      revision={
+                        (latest?.key || "") +
+                        latest?.state +
+                        state.snapshot?.snapshot_seq
+                      }
                     />
                     {state.spaces.find(
                       (space) =>

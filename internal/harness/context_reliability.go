@@ -31,7 +31,7 @@ func compactionMayFallback(err error) bool {
 	case "output_limit", "rate_limit", "unavailable":
 		return true
 	case "context":
-		return failure.Code == "summary_limit" || failure.Code == "summary_incomplete" || failure.Code == "summary_no_progress"
+		return failure.Code == "summary_limit" || failure.Code == "summary_incomplete" || failure.Code == "summary_no_progress" || failure.Code == "summary_policy_paused"
 	}
 	return false
 }
@@ -86,7 +86,7 @@ func (service *Service) compactionSuppressed(ctx context.Context, chat string) (
 func (service *Service) rememberCompactionFailure(ctx context.Context, run Run, causes ...error) (bool, string, error) {
 	if len(causes) > 0 {
 		var failure *CallError
-		if errors.As(causes[0], &failure) && failure.Code == "summary_no_progress" {
+		if errors.As(causes[0], &failure) && (failure.Code == "summary_no_progress" || failure.Code == "summary_policy_paused") {
 			reason, err := service.compactionSuppressed(ctx, run.ConversationID)
 			if err != nil || reason != "" {
 				return false, reason, err

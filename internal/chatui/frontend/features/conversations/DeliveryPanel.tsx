@@ -20,6 +20,7 @@ interface Group {
     kind: string;
     state: string;
     message_id?: string;
+    logical_part?: number;
   }[];
 }
 export function DeliveryPanel({
@@ -115,7 +116,23 @@ export function DeliveryPanel({
                 : group.status === "preparation_failed"
                   ? "交付准备失败，尚未发送"
                   : group.status}{" "}
-              · {group.parts.length} 项
+              ·{" "}
+              {
+                new Set(
+                  group.parts
+                    .filter((part) => part.kind === "text")
+                    .map((part) => part.logical_part || 1),
+                ).size
+              }{" "}
+              个逻辑文字片段 ·{" "}
+              {group.parts.filter((part) => part.kind === "text").length}{" "}
+              条平台文字 · 已确认{" "}
+              {
+                group.parts.filter(
+                  (part) => part.kind === "text" && part.state === "sent",
+                ).length
+              }{" "}
+              条
             </p>
             {group.after_ms && (
               <p>

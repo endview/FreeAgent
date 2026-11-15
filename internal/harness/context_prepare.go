@@ -41,10 +41,14 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 				return next, ErrConfigChanged
 			}
 		}
-		return service.foldToolContext(next), nil
+		return service.applyContextOmission(ctx, run, service.foldToolContext(next))
 	}
 	*rebuildOut = rebuild
 	prepared = service.foldToolContext(prepared)
+	prepared, err = service.applyContextOmission(ctx, run, prepared)
+	if err != nil {
+		return prepared, err
+	}
 	usage, err := service.requestUsage(run, prepared)
 	if err != nil {
 		return prepared, err
@@ -151,12 +155,12 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 				Activity: map[string]any{"model_calls": result.ModelCalls, "elapsed_ms": time.Since(started).Milliseconds(), "continued": budgetErr == nil}})
 		}
 		if budgetErr != nil {
-			return fallback, errors.Join(budgetErr, err)
+			return service.emergencyContext(ctx, run, fallback)
 		}
 		return fallback, nil
 	}
 	if !result.Changed {
-		return prepared, usage.budgetError()
+		return service.emergencyContext(ctx, run, prepared)
 	}
 	adopted, adoptErr := service.adoptSteering(ctx, run)
 	if adoptErr != nil {

@@ -481,6 +481,7 @@ func (service *Service) requestLimits() (ExecutionLimits, ModelBinding, error) {
 		return limits, binding, err
 	}
 	caps := binding.Config.Capabilities
+	limits.MaxContextBytes = contextByteLimit(service.Config, limits.MaxContextBytes, caps.ContextTokens)
 	if caps.ContextBytes > 0 {
 		limits.MaxContextBytes = min(limits.MaxContextBytes, caps.ContextBytes)
 	}

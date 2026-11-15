@@ -12,9 +12,11 @@ type ExtensionSettingOption struct {
 }
 
 type ExtensionTurnSetting struct {
-	Key     string                   `json:"key"`
-	Label   string                   `json:"label"`
-	Options []ExtensionSettingOption `json:"options"`
+	Default   *string                  `json:"default_value,omitempty"`
+	Inherited *string                  `json:"inherited_value,omitempty"`
+	Key       string                   `json:"key"`
+	Label     string                   `json:"label"`
+	Options   []ExtensionSettingOption `json:"options"`
 }
 
 // Reuse the extension's adjustable settings and JSON Schema. Only finite
@@ -22,10 +24,11 @@ type ExtensionTurnSetting struct {
 func extensionTurnSettings(manifest ExtensionManifest) []ExtensionTurnSetting {
 	var schema struct {
 		Properties map[string]struct {
-			Type  string   `json:"type"`
-			Title string   `json:"title"`
-			Enum  []string `json:"enum"`
-			OneOf []struct {
+			Default json.RawMessage `json:"default"`
+			Type    string          `json:"type"`
+			Title   string          `json:"title"`
+			Enum    []string        `json:"enum"`
+			OneOf   []struct {
 				Const string `json:"const"`
 				Title string `json:"title"`
 			} `json:"oneOf"`
@@ -41,6 +44,11 @@ func extensionTurnSettings(manifest ExtensionManifest) []ExtensionTurnSetting {
 			continue
 		}
 		field := ExtensionTurnSetting{Key: key, Label: p.Title}
+		var defaultValue string
+		if json.Unmarshal(p.Default, &defaultValue) == nil {
+			field.Default = &defaultValue
+			field.Inherited = &defaultValue
+		}
 		if field.Label == "" {
 			field.Label = key
 		}

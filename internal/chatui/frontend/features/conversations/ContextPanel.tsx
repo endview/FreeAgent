@@ -254,7 +254,24 @@ export function ContextPanel({
               <ul>
                 {state.last_request.parts.map((part, index) => (
                   <li key={index}>
-                    {part.kind}：{part.bytes.toLocaleString()} 字节 / 估算{" "}
+                    {(
+                      {
+                        instructions: "固定规则",
+                        tools: "工具定义",
+                        memory: "Memory",
+                        skills: "Skill",
+                        extensions: "扩展材料",
+                        summary: "历史摘要",
+                        unresolved: "未决事实",
+                        history: "历史原文",
+                        history_omitted: "省略历史的引用",
+                        tool_results: "工具结果",
+                        readback: "历史回读",
+                        current_input: "当前输入",
+                        images: "图片",
+                      } as Record<string, string>
+                    )[part.kind] || part.kind}
+                    ：{part.bytes.toLocaleString()} 字节 / 估算{" "}
                     {part.estimated_tokens.toLocaleString()} tokens
                   </li>
                 ))}
