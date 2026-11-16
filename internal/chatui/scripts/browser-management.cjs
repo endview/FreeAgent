@@ -27,6 +27,13 @@ const { chromium } = require("playwright");
     assert(r.ok, JSON.stringify(d));
     return d;
   }
+  async function openConversationMenu(page, title) {
+    const trigger = page
+      .getByRole("button", { name: "管理会话：" + title })
+      .first();
+    await trigger.locator("..").hover();
+    await trigger.click();
+  }
   const chat = await api("chats", {
     title: "回收站真实交互 · 长中文标题与项目整理",
   });
@@ -44,10 +51,7 @@ const { chromium } = require("playwright");
       .getByRole("button", { name: "管理会话：" + chat.title })
       .first()
       .waitFor();
-    await page
-      .getByRole("button", { name: "管理会话：" + chat.title })
-      .first()
-      .click();
+    await openConversationMenu(page, chat.title);
     await page
       .getByRole("menuitem", { name: "移到回收站…", exact: true })
       .click();
@@ -122,19 +126,13 @@ const { chromium } = require("playwright");
       .waitFor({ timeout: 2500 });
     checks.keyboard_menu = true;
     await page.keyboard.press("Escape");
-    await page
-      .getByRole("button", { name: "管理会话：" + chat.title })
-      .first()
-      .click();
+    await openConversationMenu(page, chat.title);
     await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
     const input = page.getByRole("textbox", { name: "会话名称", exact: true });
     await input.fill("新的会话名称");
     await input.press("Escape");
     checks.rename_escape = true;
-    await page
-      .getByRole("button", { name: "管理会话：" + chat.title })
-      .first()
-      .click();
+    await openConversationMenu(page, chat.title);
     await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
     await input.fill("已经保存的名称");
     await page
@@ -145,10 +143,7 @@ const { chromium } = require("playwright");
       .first()
       .waitFor();
     checks.inline_rename_saved = true;
-    await page
-      .getByRole("button", { name: "管理会话：已经保存的名称" })
-      .first()
-      .click();
+    await openConversationMenu(page, "已经保存的名称");
     await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
     await input.fill("保留冲突草稿");
     let cp = await api("conversation-management", {
@@ -166,10 +161,7 @@ const { chromium } = require("playwright");
     // A second browser client retires this chat; the first must stop presenting a composer.
     const other = await browser.newPage();
     await other.goto(info.origin + "/?chat=" + chat.id + "#key=" + key);
-    await other
-      .getByRole("button", { name: "管理会话：另一窗口的标题" })
-      .first()
-      .click();
+    await openConversationMenu(other, "另一窗口的标题");
     await other
       .getByRole("menuitem", { name: "移到回收站…", exact: true })
       .click();
@@ -188,10 +180,7 @@ const { chromium } = require("playwright");
     });
     await api("conversation-management", { operation: "execute", id: cp.id });
     await page.goto(info.origin + "/?chat=" + chat.id + "#key=" + key);
-    await page
-      .getByRole("button", { name: "管理会话：另一窗口的标题" })
-      .first()
-      .click();
+    await openConversationMenu(page, "另一窗口的标题");
     await page
       .getByRole("menuitem", { name: "移到空间…", exact: true })
       .click();
@@ -320,6 +309,7 @@ const { chromium } = require("playwright");
       .waitFor();
     assert.equal(await native.getByRole("menu").count(), 1);
     await native.keyboard.press("Escape");
+    await nativeRow.hover();
     await nativeRow.locator(".conversation-more").click();
     await native.getByRole("menuitem", { name: "重命名", exact: true }).click();
     const nativeInput = native.getByRole("textbox", {

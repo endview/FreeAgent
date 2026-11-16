@@ -19,11 +19,13 @@ one-time follow-ups. See [current validation](docs/VALIDATION_V8_5_2026-11-08.md
 [experience summary](docs/EXPERIENCE_SUMMARY.md). The published release link
 above remains unchanged; upgrading does not enable autonomous sending.
 
-The current workspace is **v8.8.0-dev.10**, adding visible conversation menus,
+The current workspace is **v8.8.0-dev.11**, adding conversation menus,
 space management, frozen batch selections and a seven-day recycle bin.
 Read the [management and offline schema-upgrade guide](docs/CONVERSATION_MANAGEMENT.md)
 before upgrading a schema 1 store. The dev.10 follow-up prevents idle recycle-bin
 maintenance from briefly blocking foreground management and is deployed to Hytron.
+The dev.11 UI update reveals sidebar conversation menus on hover or keyboard focus,
+keeps them visible while open, and retains visible controls on touch devices.
 Conversation records, summaries and
 history reads share one authorized projection. Channel receipts no longer
 duplicate model replies; large tool results have bounded previews with exact

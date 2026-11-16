@@ -14,6 +14,8 @@ TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
 当前版本为 **v8.8.0-dev.10**：新增会话「⋯」菜单、空间内容整理、冻结清单批量操作和 7 天回收站；支持恢复、永久清理、CLI 和经确认的 AI 提案，并修复空闲回收维护短暂阻塞前台整理的问题。本版已发布并部署 Hytron；升级旧库前先阅读[操作与离线升级指南](docs/CONVERSATION_MANAGEMENT.md)。
 
+当前工作区 **v8.8.0-dev.11** 调整侧栏会话「⋯」：桌面悬停或键盘聚焦时显示，菜单打开时保持可见，触屏继续直接显示按钮。实际检查见[悬停交互验收](docs/VALIDATION_MENU_HOVER_2026-11-16.md)。
+
 上下文管理沿用授权投影、有界工具预览、独立窗口/HTTP 字节/摘要额度与恢复机制，见[上下文管理](docs/CONTEXT_MANAGEMENT.md)、[记录来源](docs/CONTEXT_RECORD_SOURCES.md)和[Web 交互说明](docs/WEB_INTERACTION_CLARITY_2026-11-15.md)。Core 不增加扩展业务职责。
 
 v8.6 的轻内核整改保持：经验方法使用可选来源分析 Skill；扩展状态采用中性信封、明确作用域和声明 schema；Telegram 格式与平台动作由独立渠道程序提供。开发继续遵循[扩展原则](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md)。

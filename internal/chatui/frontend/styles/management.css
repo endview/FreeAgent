@@ -282,9 +282,13 @@
   flex: 0 0 44px;
   min-height: 44px;
 }
-@media (hover: hover) {
-  .conversation-row:not(:hover):not(:focus-within) .conversation-more {
-    opacity: 0.55;
+@media (hover: hover) and (pointer: fine) {
+  .conversation-row:not(:hover):not(:has(:focus-visible)):not(
+      [data-state="open"]
+    )
+    .conversation-more:not([data-state="open"]) {
+    opacity: 0;
+    pointer-events: none;
   }
 }
 @media (max-width: 600px) {
