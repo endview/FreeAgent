@@ -5,7 +5,7 @@
 | 范围 | 结果 |
 | --- | --- |
 | Windows 真浏览器 | PASS：系统 Chrome 的独立 profile，DOM 读取、中文输入、点击结果、截图、过期引用拒绝、下载产物、不同会话隔离、暂停/恢复/停止 |
-| Debian 12 真浏览器 | PASS：Hytron 独立非 root unit，Chromium 156.0.8078.79；原始无头流程及 race，通过后补完整最终包复核；保留 Chromium 沙箱 |
+| Debian 12 真浏览器 | PASS：Hytron 独立非 root unit，Chromium 156.0.8078.79；无头流程及 race；保留 Chromium 沙箱 |
 | Core 真实扩展调用 | PASS：真实 stdio 进程与独立 PG，发现工具 → 模型调用 → 记录 → 后续模型请求；浏览器实际导航和截图经 RPC 进入下一次模型请求 |
 | 图片公共契约 | PASS：扩展 RPC 产物、格式/大小/作用域校验，Chat / Responses / Anthropic 实际 HTTP 序列化；二进制不写消息 JSON；无图像能力不伪造视觉理解 |
 | Windows 真实桌面 | PASS：独立测试应用，实际 150% / DPI 144，窗口激活、UIA、点击、中文输入、按钮结果、截图；画面显示 `Saved: 桌面扩展实测 C1` |
@@ -13,6 +13,8 @@
 | 缩放计算 | PASS：100% / 125% / 150%、负原点、越界坐标测试。真实桌面只验收 150%，未改变用户系统缩放设置 |
 | 前端 | PASS：TypeScript、lint、116 项逻辑测试、生产构建；真实 Chrome 设置保存/刷新回读、停用不启动、1440/1024/768/390 宽度无横向溢出或页面错误 |
 | 依赖边界 | PASS：Core 无 optional 平台/业务实现依赖，浏览器 Go 模块和桌面 .NET 程序独立构建 |
+| 生命周期 | PASS：Windows 真浏览器的扩展进程被强制结束后，浏览器随 Job 退出；不会把正常关闭当成未知外部提交已撤回 |
+| 旧宿主兼容 | 两个新扩展拒绝 v8.9.0-dev.1，提示需要 v8.9.0-dev.2 的 tool_scope / tool_artifacts；已存在的 Python / Node 扩展 Core 回归继续通过 |
 
 本机系统 Edge 在初次启动时立即退出、未提供控制端口，未标成验收通过；切换为真实可用的 Chrome 后完成流程。完整 Core 联测也发现最小环境没有 ProgramFiles，已改用 Windows Known Folder 定位浏览器，不依赖扩大继承环境。
 

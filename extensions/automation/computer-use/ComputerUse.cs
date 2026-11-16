@@ -61,7 +61,7 @@ class ComputerUse {
      if(ActiveScope!=""&&ActiveScope!=key){Paused=true;Views.Clear();Target=IntPtr.Zero;}ActiveScope=key;
      answer=Call(S(p,"name"),Obj(p.ContainsKey("arguments")?p["arguments"]:null),key,B(scope,"vision"));
     }else throw new Fault("Method unavailable");Write(id,answer);
-   }catch(Fault e){if(e.Unknown)Error(id,-32006,e.Message);else Write(id,D("content",e.Message,"is_error",true));}
+   }catch(Fault e){if(e.Unknown)Error(id,-32006,e.Message);else if(method=="initialize")Error(id,-32602,e.Message);else Write(id,D("content",e.Message,"is_error",true));}
    catch(Exception){Write(id,D("content","Desktop operation failed. Observe again before repeating; no success is inferred.","is_error",true));Paused=true;ShowHud();}
   }}finally{Stopping=true;Paused=true;StopHud();}
   return 0;
