@@ -44,6 +44,18 @@ interface Skill {
   files?: { path: string }[];
 }
 interface Extension {
+  settings_schema?: {
+    properties?: Record<
+      string,
+      {
+        type?: string;
+        title?: string;
+        description?: string;
+        default?: unknown;
+        items?: { type?: string };
+      }
+    >;
+  };
   storage?: string;
   error?: string;
   turn_settings?: ExtensionTurnSetting[];
@@ -667,7 +679,7 @@ function ExtensionEditor({
           <div>
             <span>全局启用</span>
             <small className="form-hint">
-              开关立即保存；不会自动开启分析或主动发送。
+              开关立即保存；在对话输入区选中后，本轮才能使用扩展能力。
             </small>
           </div>
           <Toggle
@@ -694,6 +706,91 @@ function ExtensionEditor({
       )}
       <section className="settings-section">
         <h3>扩展默认设置</h3>
+        {settings &&
+          Object.entries(item.settings_schema?.properties || {})
+            .filter(
+              ([, field]) =>
+                field.type === "boolean" ||
+                field.type === "string" ||
+                (field.type === "array" && field.items?.type === "string"),
+            )
+            .map(([key, field]) => (
+              <Field
+                key={key}
+                label={field.title || key}
+                hint={field.description}
+              >
+                {field.type === "boolean" ? (
+                  <Toggle
+                    label={field.title || key}
+                    checked={Boolean(settings?.[key] ?? field.default ?? false)}
+                    onChange={(value) =>
+                      change({
+                        ...form,
+                        settings: JSON.stringify(
+                          { ...settings, [key]: value },
+                          null,
+                          2,
+                        ),
+                      })
+                    }
+                  />
+                ) : field.type === "array" ? (
+                  <textarea
+                    rows={3}
+                    value={
+                      Array.isArray(settings?.[key])
+                        ? (settings[key] as string[]).join("\n")
+                        : ""
+                    }
+                    onChange={(event) =>
+                      change({
+                        ...form,
+                        settings: JSON.stringify(
+                          {
+                            ...settings,
+                            [key]: event.target.value.split("\n"),
+                          },
+                          null,
+                          2,
+                        ),
+                      })
+                    }
+                    onBlur={() =>
+                      change({
+                        ...form,
+                        settings: JSON.stringify(
+                          {
+                            ...settings,
+                            [key]: Array.isArray(settings?.[key])
+                              ? (settings[key] as string[])
+                                  .map((value) => value.trim())
+                                  .filter(Boolean)
+                              : [],
+                          },
+                          null,
+                          2,
+                        ),
+                      })
+                    }
+                  />
+                ) : (
+                  <input
+                    value={String(settings?.[key] ?? field.default ?? "")}
+                    onChange={(event) =>
+                      change({
+                        ...form,
+                        settings: JSON.stringify(
+                          { ...settings, [key]: event.target.value },
+                          null,
+                          2,
+                        ),
+                      })
+                    }
+                  />
+                )}
+              </Field>
+            ))}
         {item.enabled &&
           item.turn_settings?.map((field) => (
             <Field key={field.key} label={`${field.label}（扩展默认）`}>
@@ -725,7 +822,10 @@ function ExtensionEditor({
               </select>
             </Field>
           ))}
-        {item.enabled && Boolean(item.turn_settings?.length) && (
+        {Boolean(
+          item.turn_settings?.length ||
+            Object.keys(item.settings_schema?.properties || {}).length,
+        ) && (
           <Button
             type="submit"
             form={`extension-config-${item.id}`}
@@ -741,7 +841,7 @@ function ExtensionEditor({
       >
         <summary>扩展运行与高级配置</summary>
         <p className="form-hint">
-          程序、原始配置与故障处理。人物设置在上方单独保存。
+          程序、原始配置与故障处理。上方控件与原始 JSON 使用同一份设置。
         </p>
         <fieldset disabled={busy}>
           <label className="check-line">

@@ -10,16 +10,20 @@ import (
 // boundary. It owns no execution state; dispatch and receipts remain in
 // Service.executeTool.
 type extensionToolRunner struct {
-	base    ToolRunner
-	service *Service
-	host    *extensionHost
-	runID   string
-	tools   []extensionRuntimeTool
+	base         ToolRunner
+	service      *Service
+	host         *extensionHost
+	runID        string
+	tools        []extensionRuntimeTool
+	localAllowed bool
 }
 
 func (tools *extensionToolRunner) Definitions() []ToolDefinition {
 	definitions := append([]ToolDefinition(nil), tools.base.Definitions()...)
 	for _, tool := range tools.tools {
+		if tool.LocalOnly && !tools.localAllowed {
+			continue
+		}
 		definitions = append(definitions, tool.Definition)
 	}
 	return definitions
@@ -29,6 +33,19 @@ func (tools *extensionToolRunner) Prepare(ctx context.Context, call ToolCall) (P
 	for _, tool := range tools.tools {
 		if tool.Definition.Name != call.Name {
 			continue
+		}
+		if tool.LocalOnly {
+			run, err := tools.service.Store.GetRun(ctx, tools.runID)
+			if err != nil {
+				return PreparedTool{}, err
+			}
+			scope, err := tools.service.extensionToolScope(ctx, run)
+			if err != nil {
+				return PreparedTool{}, err
+			}
+			if !scope.Local {
+				return PreparedTool{}, ErrPermissionDenied
+			}
 		}
 		if len(call.Arguments) > 64<<10 || tools.host.redact(string(call.Arguments)) != string(call.Arguments) {
 			return PreparedTool{}, errors.New("invalid or secret-bearing extension arguments")
@@ -93,6 +110,17 @@ func (service *Service) extensionToolRunner(base ToolRunner, runID string) ToolR
 	if service == nil || service.extensions == nil || len(service.extensionToolDefs) == 0 {
 		return base
 	}
+	local, needsLocal := false, false
+	for _, tool := range service.extensionToolDefs {
+		needsLocal = needsLocal || tool.LocalOnly
+	}
+	if needsLocal {
+		if run, err := service.Store.GetRun(context.Background(), runID); err == nil {
+			if scope, err := service.extensionToolScope(context.Background(), run); err == nil {
+				local = scope.Local
+			}
+		}
+	}
 	return &extensionToolRunner{base: base, service: service, host: service.extensions,
-		runID: runID, tools: append([]extensionRuntimeTool(nil), service.extensionToolDefs...)}
+		runID: runID, localAllowed: local, tools: append([]extensionRuntimeTool(nil), service.extensionToolDefs...)}
 }

@@ -479,9 +479,10 @@ type extensionWorkflowResult struct {
 }
 
 type extensionToolCallResult struct {
-	Content  string         `json:"content,omitempty"`
-	IsError  bool           `json:"is_error,omitempty"`
-	Activity map[string]any `json:"activity,omitempty"`
+	Content   string                  `json:"content,omitempty"`
+	IsError   bool                    `json:"is_error,omitempty"`
+	Activity  map[string]any          `json:"activity,omitempty"`
+	Artifacts []extensionToolArtifact `json:"artifacts,omitempty"`
 }
 
 type extensionHostToolCall struct {
@@ -495,6 +496,7 @@ type extensionToolDefinition struct {
 	Description string          `json:"description,omitempty"`
 	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
 	ReadOnly    bool            `json:"readOnly,omitempty"`
+	LocalOnly   bool            `json:"localOnly,omitempty"`
 }
 
 type extensionToolsListResult struct {
@@ -502,6 +504,7 @@ type extensionToolsListResult struct {
 }
 
 type extensionRuntimeTool struct {
+	LocalOnly   bool
 	ExtensionID string
 	Name        string
 	Workflow    string
@@ -1531,7 +1534,7 @@ func (host *extensionHost) extensionTools(ctx context.Context, id string) ([]ext
 			effect = EffectRead
 		}
 		tools = append(tools, extensionRuntimeTool{
-			ExtensionID: id, Name: tool.Name,
+			ExtensionID: id, Name: tool.Name, LocalOnly: tool.LocalOnly,
 			Definition: ToolDefinition{Name: alias, Description: description,
 				InputSchema: append(json.RawMessage(nil), tool.InputSchema...), Effect: effect},
 			Input: input,
@@ -1605,7 +1608,7 @@ func (client *extensionClient) initialize(parent context.Context, host *extensio
 		"protocol": extensionProtocol, "host_version": buildinfo.Version, "core_id": coreID,
 		"workspace": config.Workspace, "data_dir": dataDir,
 		"settings": config.Extensions.Settings[manifest.ID], "state_version": manifest.StateVersion,
-		"capabilities": []string{"context_analysis", "scheduled_generation"},
+		"capabilities": []string{"context_analysis", "scheduled_generation", "tool_scope", "tool_artifacts"},
 	})
 	if err != nil {
 		return err
@@ -2236,6 +2239,13 @@ func (host *extensionHost) callTool(ctx context.Context, tool extensionRuntimeTo
 	if host == nil || service == nil {
 		return ToolResult{}, errExtensionUnavailable
 	}
+	scope, err := service.extensionToolScope(ctx, run)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	if tool.LocalOnly && !scope.Local {
+		return ToolResult{}, ErrPermissionDenied
+	}
 	config := host.configuration()
 	definition, err := host.definitionFor(tool.ExtensionID, config)
 	if err != nil {
@@ -2258,6 +2268,7 @@ func (host *extensionHost) callTool(ctx context.Context, tool extensionRuntimeTo
 	}
 	raw, err := client.rpc.Call(callCtx, "tool.call", map[string]any{
 		"invocation": invocation.id, "name": tool.Name, "arguments": object,
+		"scope": scope,
 	})
 	if err != nil {
 		return ToolResult{}, &CallError{Message: "extension tool call interrupted; outcome unknown"}
@@ -2281,7 +2292,11 @@ func (host *extensionHost) callTool(ctx context.Context, tool extensionRuntimeTo
 		service.event(Event{Kind: EventExtensionActivity, Message: summary,
 			Activity: result.Activity, RunID: run.ID, ConversationID: run.ConversationID})
 	}
-	return ToolResult{Content: host.redact(result.Content), IsError: result.IsError,
+	attachments, err := service.extensionArtifacts(callCtx, run, tool.ExtensionID, result.Artifacts)
+	if err != nil {
+		return ToolResult{}, &CallError{Message: "extension result artifacts rejected; inspect original operation before repeating"}
+	}
+	return ToolResult{Content: host.redact(result.Content), IsError: result.IsError, Attachments: attachments,
 		Extensions: []ExtensionUse{{Source: "extension", Name: tool.ExtensionID,
 			Version: definition.Manifest.Version, Phase: "tool", BlockID: tool.Name,
 			SHA256: contentHash(tool.Definition.InputSchema), Bytes: len(tool.Definition.InputSchema)}},

@@ -1,0 +1,27 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "cc.endview.computer-use",
+  "version": "0.1.0",
+  "name": "Computer Use · Windows",
+  "description": "本机 Windows 窗口级 UI Automation、截图和操作。必须配置允许的程序并在本机控制面板启用；用户接管会暂停。",
+  "run": {
+    "command": "./freeagent-computer-use.exe"
+  },
+  "tools": true,
+  "timeout_ms": 15000,
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "allowed_executables": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 32,
+        "description": "允许控制的程序绝对路径；默认空列表，无任何窗口控制权限",
+        "title": "允许控制的程序（每行一个绝对路径）"
+      }
+    },
+    "additionalProperties": false
+  }
+}

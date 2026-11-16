@@ -210,6 +210,34 @@ Tool discovery uses `tools/list` and returns definitions with `name`,
 Read-only annotations are hints that the Harness may use for approval policy;
 they cannot enlarge the selected permission mode.
 
+### Tool scope and artifacts (v8.9.0-dev.2)
+
+`initialize.capabilities` advertises `tool_scope` and `tool_artifacts`. Extensions
+that require them must refuse older hosts during initialization. Both are
+generic capabilities; the Core does not import browser or desktop code.
+
+Core-to-extension `tool.call` also carries a host-derived `scope` containing
+`core_id`, `space_id`, `conversation_id`, `run_id`, `local`, and `vision`.
+These values never come from model arguments. `local` is false for channel and
+public-Web requests, including restored Runs with saved remote provenance.
+Tool definitions may declare `localOnly: true`; the host omits them from remote
+requests and rejects dispatch again before executing. This narrows access and
+does not replace normal permissions or approvals.
+
+A tool result may add `artifacts: [{"name":"view.png","base64":"...","image":true}]`.
+At most four artifacts and 8 MiB total decoded data are accepted. The host
+validates decoded content, format, dimensions, attachment policy and quota, then
+creates private references bound to this exact conversation/Run. Paths and
+caller-created attachment IDs are not accepted. An image enters the next model
+request only with declared model vision and the existing image budget; otherwise
+it is an artifact reference. Binary payloads are not copied into durable message
+JSON. Completed older tool observations retain references; only the latest tool
+observation carries visual bytes in the projected request. Original records
+and tool protocol pairs stay intact.
+
+Extension-generated claims are not proof of external success. Interrupted
+side-effect operations continue to use the existing UNKNOWN protections.
+
 This is not the full MCP tool protocol. SDKs and templates use this same shape
 as of v8.0.1. Keep the two call directions clear: extension-to-Host
 `tool.call` asks Core to execute one of its tools, while Core-to-extension

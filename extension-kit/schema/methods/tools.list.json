@@ -2,5 +2,5 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": true,
-  "properties": {}
+  "properties": {"tools":{"type":"array","maxItems":128,"items":{"type":"object","required":["name","inputSchema"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"inputSchema":{"type":"object"},"readOnly":{"type":"boolean"},"localOnly":{"type":"boolean"}},"additionalProperties":true}}}
 }

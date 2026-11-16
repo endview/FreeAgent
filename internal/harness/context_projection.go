@@ -20,6 +20,18 @@ type contextSourceGroup struct {
 }
 
 func contextVisible(message Message, scope, activeRun string, execution bool) ([]Message, error) {
+	if execution && activeRun != "" && message.RunID != activeRun && message.Role == "tool" {
+		refs := make([]AttachmentRef, 0, len(message.Attachments))
+		for _, ref := range message.Attachments {
+			if ref.Source == "tool_image" {
+				message.Content += fmt.Sprintf("\n[Earlier tool image %s; reference %s. Request a new observation for current visual state.]", ref.Name, ref.ID)
+				continue
+			}
+			refs = append(refs, ref)
+		}
+		message.Attachments = refs
+		message.Images = nil
+	}
 	kind, err := storedMessageKind(message.ModelMessage)
 	if err != nil {
 		return nil, err
@@ -77,6 +89,36 @@ func projectContextMessages(messages []Message, scope, activeRun string, executi
 	}
 	if len(postponed) > 0 {
 		return nil, ErrContextStructure
+	}
+	// Preserve the complete protocol group, but only send images from the
+	// latest tool observation. Older observations retain a textual reference.
+	latestImage := false
+	for i := len(projected) - 1; i >= 0; i-- {
+		m := &projected[i]
+		if m.Role != "tool" {
+			continue
+		}
+		hasImage := false
+		for _, r := range m.Attachments {
+			hasImage = hasImage || r.Source == "tool_image"
+		}
+		if !hasImage {
+			continue
+		}
+		if !latestImage {
+			latestImage = true
+			continue
+		}
+		refs := make([]AttachmentRef, 0, len(m.Attachments))
+		for _, r := range m.Attachments {
+			if r.Source == "tool_image" {
+				m.Content += fmt.Sprintf("\n[Older tool image %s; reference %s. Latest observation supersedes this image.]", r.Name, r.ID)
+			} else {
+				refs = append(refs, r)
+			}
+		}
+		m.Attachments = refs
+		m.Images = nil
 	}
 	return projected, nil
 }

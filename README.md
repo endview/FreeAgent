@@ -4,9 +4,13 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The published release is **v8.8.0-dev.11**. See the
-[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.11)
-and [validation and deployment record](docs/VALIDATION_MENU_HOVER_2026-11-16.md).
+The published search release is **v8.9.0-dev.1**. See the
+[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.1)
+and [search validation](docs/VALIDATION_WEB_SEARCH_2026-11-17.md).
+The next **v8.9.0-dev.2** candidate adds optional
+[Browser and Windows Computer Use previews](docs/AUTOMATION_EXTENSIONS.md),
+distributed as separate extensions without browser/desktop runtime dependencies
+in the ordinary Core.
 The [AffectWeave Go package](https://github.com/endview/affectweave/releases/tag/v1.6.0-dev.3)
 is distributed separately and disabled by default.
 [简体中文](README.zh-CN.md).

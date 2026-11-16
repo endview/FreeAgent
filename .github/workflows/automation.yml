@@ -1,0 +1,34 @@
+name: Optional automation extensions
+on:
+  push:
+    paths: ['extensions/automation/**', 'scripts/build-automation-extensions.py', 'internal/harness/extension_artifacts*', '.github/workflows/automation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  extensions:
+    strategy:
+      matrix:
+        include:
+          - os: windows-2025
+            target: windows-amd64
+          - os: ubuntu-24.04
+            target: linux-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: extensions/automation/go.mod
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13.7'
+      - run: go -C extensions/automation test -count=1 ./...
+      - run: go -C extensions/automation vet ./...
+      - run: python scripts/build-automation-extensions.py --target ${{ matrix.target }} --out output/automation
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: automation-${{ matrix.target }}
+          path: |
+            output/automation/*.zip
+            output/automation/*.tar.gz

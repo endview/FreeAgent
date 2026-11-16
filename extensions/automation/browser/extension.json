@@ -1,0 +1,38 @@
+{
+  "protocol": "freeagent-ext/1",
+  "id": "cc.endview.browser",
+  "version": "0.1.0",
+  "name": "浏览器 Browser",
+  "description": "独立 Chromium/Edge profile；网页观察、操作、截图、下载与人工接管。浏览器运行在 Owner 机器，按需启动。",
+  "run": {
+    "command": "./freeagent-browser.exe"
+  },
+  "tools": true,
+  "timeout_ms": 60000,
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "executable": {
+        "type": "string",
+        "description": "已安装的 Chromium/Edge 绝对路径；留空使用已知系统位置",
+        "title": "浏览器程序路径"
+      },
+      "headless": {
+        "type": "boolean",
+        "description": "无头模式；本机接管请关闭，服务器默认开启",
+        "title": "使用无头浏览器",
+        "default": true
+      },
+      "allowed_origins": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 32,
+        "description": "留空允许公共网页；填写后只允许这些精确来源，可显式授权测试用内网来源",
+        "title": "允许的网站来源（每行一个）"
+      }
+    },
+    "additionalProperties": false
+  }
+}

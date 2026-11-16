@@ -33,7 +33,9 @@
       "items": {
         "enum": [
           "context_analysis",
-          "scheduled_generation"
+          "scheduled_generation",
+          "tool_scope",
+          "tool_artifacts"
         ]
       },
       "uniqueItems": true

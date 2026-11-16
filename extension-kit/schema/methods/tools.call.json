@@ -6,6 +6,7 @@
   "properties": {
     "invocation": {"type": "string"},
     "name": {"type": "string", "minLength": 1},
-    "arguments": {"type": "object"}
+    "arguments": {"type": "object"},
+    "scope": {"type":"object","required":["core_id","space_id","conversation_id","run_id","local","vision"],"properties":{"core_id":{"type":"string"},"space_id":{"type":"string"},"conversation_id":{"type":"string"},"run_id":{"type":"string"},"local":{"type":"boolean"},"vision":{"type":"boolean"}},"additionalProperties":false}
   }
 }

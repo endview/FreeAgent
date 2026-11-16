@@ -4,6 +4,8 @@
 
 本指南说明现行工具、上下文、状态、持久确认和交付接口。可选状态增量见第 11 节，扩展交付契约见第 14 节；验收范围与外部条件不足的项目分开记录。
 
+v8.9.0-dev.2 增加通用 `tool_scope` / `tool_artifacts`：可信范围、仅本机工具和有界图片/文件产物，见[协议](../extension-kit/SPEC.md#tool-scope-and-artifacts-v890-dev2)。浏览器与 Windows Computer Use 的源码、构建及使用方法见[自动化扩展](../extensions/automation/README.md)。它们是独立可执行包，不被 Core 导入。
+
 设计和修改扩展前先阅读[扩展开发原则：保持 Core 轻量](EXTENSION_DEVELOPMENT_PRINCIPLES.md)。该文档规定职责、依赖、按需启用和验收边界，并记录本次整改；本指南继续描述实际可调用接口。
 
 本轮整改见[轻内核整改实施计划](FREEAGENT_CORE_BOUNDARY_REFACTOR_PLAN_2026-11-08.md)。当前工作区已实现通用来源分析、状态契约 v2 与单 schema 绑定；最终平台与归档结果由对应验收记录单独给出。

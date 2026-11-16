@@ -105,7 +105,11 @@ func (service *Service) prepareAttachmentRequest(ctx context.Context, run Run, m
 			if err != nil || conversation.SpaceID != r.Space {
 				return request, ErrAttachment
 			}
-			fmt.Fprintf(&text, "\n[User-provided attachment: %s; %s; SHA-256 %s]\n", ref.Name, ref.MIME, ref.SHA256)
+			label := "User-provided attachment"
+			if message.Role == "tool" {
+				label = "Tool-produced attachment"
+			}
+			fmt.Fprintf(&text, "\n[%s: %s; %s; SHA-256 %s]\n", label, ref.Name, ref.MIME, ref.SHA256)
 			if message.Role != "user" && !preview {
 				continue
 			}
