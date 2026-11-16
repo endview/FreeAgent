@@ -16,7 +16,7 @@ def main():
    net=Path(os.environ.get('WINDIR','C:/Windows'))/'Microsoft.NET/Framework64/v4.0.30319';csc=net/'csc.exe';assert csc.exists(),'Windows .NET Framework compiler is required'
    refs=['System.Web.Extensions.dll','System.Windows.Forms.dll','System.Drawing.dll',str(net/'WPF/WindowsBase.dll'),str(net/'WPF/UIAutomationClient.dll'),str(net/'WPF/UIAutomationTypes.dll')]
    subprocess.run([str(csc),'/nologo','/optimize+','/target:exe','/platform:x64','/out:'+str(binary),*['/r:'+r for r in refs],str(module/'computer-use/ComputerUse.cs')],cwd=ROOT,check=True)
-  manifest=json.loads((package/'extension.json').read_text());manifest['run']['command']='./'+binary.name;(package/'extension.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+  manifest=json.loads((package/'extension.json').read_text(encoding='utf-8'));manifest['run']['command']='./'+binary.name;(package/'extension.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
   shutil.copy2(module/'README.md',package/'README.md');shutil.copy2(ROOT/'LICENSE',package/'LICENSE')
   metadata={'extension':manifest['id'],'version':'0.1.0','target':a.target,'minimum_host':'v8.9.0-dev.2','source_base_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),'source_dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).strip()),'bundled_credentials':False,'bundled_user_data':False,'bundled_browser':False}
   (package/'BUILD_INFO.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')

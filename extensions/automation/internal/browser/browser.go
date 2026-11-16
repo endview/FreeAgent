@@ -175,6 +175,9 @@ func (e *Extension) start(ctx context.Context, scope extwire.Scope) (*session, e
 		flags = append([]string{"--headless=new"}, flags...)
 	}
 	s.cmd = exec.Command(binary, flags...)
+	if runtime.GOOS == "linux" {
+		s.cmd.Env = append(os.Environ(), "HOME="+profile, "XDG_CONFIG_HOME="+filepath.Join(profile, "config"), "XDG_CACHE_HOME="+filepath.Join(profile, "cache"), "XDG_DATA_HOME="+filepath.Join(profile, "local"))
+	}
 	configureProcess(s.cmd)
 	s.cmd.Stdout = nil
 	s.cmd.Stderr = nil
