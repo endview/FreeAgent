@@ -11,3 +11,9 @@
 本版仅修改前端导航与交互，Core、AffectWeave 业务逻辑和存储 schema 2 保持不变；dev.9/dev.10 不需再次迁移。schema 1 升级仍按[管理指南](CONVERSATION_MANAGEMENT.md)显式备份迁移。
 
 116 项前端测试、类型检查、lint、生产构建通过；首屏 JS gzip 170,812 字节。真实独立 Core/PG 的导航、管理、设置保存、Echo 对话和七种比例检查均已完成，具体归档、发布与部署结果见[验收记录](VALIDATION_MENU_HOVER_2026-11-16.md)。
+
+已发布 [v8.8.0-dev.11](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.11)，程序源码和标签为 `48d30db8a08a8a995e04d5a6ba26fc0a53a83810`。两平台归档各重复构建两次一致，五份公开附件匿名完整下载与 SHA256 核对通过；最终原生 Windows 便携和独立 Debian 12 运行验收通过。
+
+Hytron 已升级，Core/渠道、TG 连接、公网 HTTPS/CSP 及设置页按需资源正常。7 个会话、114 个 Run、692 条消息、526 条 Attempt 和独立 AffectWeave 数据保持；原两条输入仍保留并暂停。本次没有发送真人 TG 测试消息或调用生产模型。
+
+GitHub CI 的一个 Windows 任务在微软 VC 运行库下载校验阶段失败，相同提交的另一个 Windows 任务已通过该准备步骤；本版保留固定哈希校验。该依赖失败与尚在运行的全量 CI 在验收记录中单独列明，不标为已通过。
