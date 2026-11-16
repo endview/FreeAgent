@@ -63,7 +63,7 @@ func TestLocalCallerApprovalEventsAndCancellation(t *testing.T) {
 				if mode == "cancel" {
 					select {
 					case <-r.Context().Done():
-					case <-time.After(5 * time.Second):
+					case <-time.After(30 * time.Second):
 						t.Error("caller did not close its connection")
 					}
 					return
@@ -117,11 +117,11 @@ func TestLocalCallerApprovalEventsAndCancellation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The example's deadline also includes opening the PostgreSQL
+			// store. Windows race instrumentation can consume two seconds
+			// there before the request reaches this fixture's server.
 			timeout := "10s"
-			if mode == "cancel" {
-				timeout = "2s"
-			}
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 			defer cancel()
 			command := exec.CommandContext(ctx, program, "-test.run=TestLocalCallerProcess", "--",
 				"--data-dir", data, "--timeout", timeout, "create the selected file")
