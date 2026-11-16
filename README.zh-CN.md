@@ -4,11 +4,11 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-已发布 **v8.9.0-dev.1 搜索开发版**，已更新 Hytron；实际搜索与原生联网结果见[记录](docs/VALIDATION_WEB_SEARCH_2026-11-17.md)。
-[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.1)
+已发布 **v8.9.0-dev.2**，已更新 Hytron；实际发布、数据核对与测试范围见[交付记录](docs/DELIVERY_WEB_AUTOMATION_2026-11-17.md)。
+[下载 Windows / Linux 便携包与扩展](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.2)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 
-下一开发候选 **v8.9.0-dev.2** 提供[浏览器与 Windows Computer Use 预览](docs/AUTOMATION_EXTENSIONS.md)，以独立扩展包安装。普通 Core 不携带浏览器/桌面运行时，启用和本轮选择保持分离。
+本版提供联网搜索和[浏览器与 Windows Computer Use 预览](docs/AUTOMATION_EXTENSIONS.md)，后两者以独立扩展包安装。普通 Core 不携带浏览器/桌面运行时，启用和本轮选择保持分离。
 
 本地开发候选已推进到 **v8.5.0-dev.1**：TG 富文本、输入状态、贴纸与表情、模型思考控制、独立可选经验总结，以及有序回复和经授权的一次性跟进。实际验证见[本批记录](docs/VALIDATION_V8_5_2026-11-08.md)，用法见[回复交付](docs/REPLY_DELIVERY.md)和[经验总结](docs/EXPERIENCE_SUMMARY.md)。上面的 GitHub 已发布版本链接继续指向原发行版；升级不会自动开启主动发送。
 
