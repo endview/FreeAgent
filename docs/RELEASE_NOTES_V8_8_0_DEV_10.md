@@ -10,4 +10,8 @@ Windows CI 还暴露示例测试把数据库打开和请求共同限制为 2 秒
 
 本版保留 dev.9 的会话菜单、空间整理、批量操作和 7 天回收站，使用方法见[管理指南](CONVERSATION_MANAGEMENT.md)。存储仍为 schema 2：已升级 dev.9 的数据无需再次迁移；schema 1 仍须显式备份迁移，回退至旧 schema 1 程序须恢复对应备份。
 
-最终归档、发布与 Hytron 实际检查结果在[会话管理验收记录](VALIDATION_CONVERSATION_MANAGEMENT_2026-11-16.md)追加。dev.9 标签及原附件保留，便于核对来源。
+已发布 [v8.8.0-dev.10](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.10)，程序源码与标签为 `115f7ecc1cd3b336c7c536a3c8462fbb6156b7a5`。Windows/Linux 各重复构建两次且字节一致，五份附件匿名完整下载和 SHA256 核验通过；最终原生 Windows 桌面/便携包与 Debian 12 非 root 便携、管理和 race 验收通过。
+
+Hytron 已切换至本版，仍为 schema 2；Core/渠道 active、TG 重连、公网 HTTPS/CSP 和静态资源一致性正常。7 会话、114 Run、692 消息、526 Attempt，凭据和 AffectWeave 1.6.0-dev.3 人物数据均保持；原两条输入仍保留并暂停，TG 明确未选中扩展的状态保持。此次没有真人 TG 测试发送或生产模型调用。
+
+完整归档哈希、CI 状态与设备检查边界见[会话管理验收记录](VALIDATION_CONVERSATION_MANAGEMENT_2026-11-16.md)。dev.9 标签及原附件保留，便于核对来源；后续发布文档提交不改变本版程序标签与归档。

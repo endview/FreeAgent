@@ -122,4 +122,34 @@
 
 dev.9 的 Windows 全量 race 另有一个示例测试失败：取消期限为 2 秒且包含 PostgreSQL 打开，收到 Run/model 事件前即可能过期。补丁将该测试期限调整为 10 秒，并相应延长父进程及模拟服务的等待；产品超时逻辑不变。该示例的 Key fixture 由 TestMain 创建，重复验证使用独立进程，不用共享同名 Key 的 `-count=3`。
 
-dev.10 复用 schema 2，已迁移的 dev.9 无需再次迁移。最终归档和线上实际结果在完成后追加，补丁用新标签发行；dev.9 的原标签、归档和失败 CI 均保留。
+dev.10 复用 schema 2，已迁移的 dev.9 无需再次迁移。补丁已用新标签发行；dev.9 的原标签、归档和失败 CI 均保留。
+
+### dev.10 最终归档与上线
+
+已发布 [v8.8.0-dev.10](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.10)，最终程序、标签、Hytron 部署均为 `115f7ecc1cd3b336c7c536a3c8462fbb6156b7a5`。两平台各从干净提交重复构建两次、字节一致；五份 Release 附件上传 digest 及匿名完整下载 SHA256 均匹配。后续文档更新不移动程序标签、不重写归档。
+
+| 归档 | 字节数 | SHA256 |
+| --- | --- | --- |
+| Windows amd64 portable.zip | 58,136,296 | `fd1a0d3351c442893b7428347913868ab0e2d956c9fdd0957d2c158ab09a7146` |
+| Linux amd64 portable.tar.gz | 34,234,716 | `eded6a871ca4ca910990a79be1adf4935401639706761ce6ded18b7b4da1b918` |
+
+两平台源清单一致，`SOURCE_SHA256SUMS.txt` 自身 SHA256 为 `a124fbd2b5a5f4dd05ccea14388ce21ab983859731d473f0c2a5f9703731a3bf`。
+
+| 最终归档验证 | 实际结果 |
+| --- | --- |
+| 原生 Windows 桌面/便携 | 首启、重开、关闭、共享 Web 保持、完整性、CLI/Web、初始化、Key、错误 manifest 拒绝与提取程序冒烟均通过 |
+| 独立非 root Debian 12 | 最终便携归档和真实沙箱通过；全部独立检查合计 241.670 秒，无生产模型或 TG 调用 |
+| Linux 重复回归 | 新增空闲维护、265 会话批次、附件重试、恢复/到期竞争各 5 次通过，41.394 秒 |
+| Linux 管理专项 | Harness 29.888 秒、chatui 12.755 秒、CLI 1.673 秒，通过 |
+| Linux 管理相关 race | Harness 27.923 秒、chatui 9.936 秒，通过 |
+| Linux 示例取消 race | 13.645 秒，通过 |
+
+Hytron 先完成并校验新的 schema 2 Core 备份、独立扩展导出和停机一致副本，再以 `cancel_active=false` 平滑交接；最终切换与检查耗时 5.275 秒，没有再次迁移数据库或再次结清用户任务。
+
+7 个会话、114 个 Run、692 条消息、526 条 Attempt 原内容及配置/凭据/授权/PG 身份/附件/能力选择核对保留；原旧轮次继续保持结束，两条 pending 输入逐字节保留且队列暂停。AffectWeave 1.6.0-dev.3 程序与业务表记录保持，全局启用且存储就绪，TG 会话明确未选中状态保持。零生产会话被回收或永久删除。
+
+Core/渠道 active、NRestarts=0；doctor 通过，TG 连接正常。公网 HTTPS 200、CSP、入口 JS/CSS 与新 Owner 一致、匿名 session 未登录状态均通过，socket 挂载保留。未修改 NPM 或其他应用，未发送真人 TG 测试消息、未调用生产模型。
+
+2026-11-16 发布收尾复核时，[最终提交 Harness Tests](https://github.com/endview/FreeAgent/actions/runs/43860775972) 的 Ubuntu 标准与 race 均已通过，Windows 标准/race 仍在运行；[最终标签归档工作流](https://github.com/endview/FreeAgent/actions/runs/43861823032) 仍在运行。独立最终归档验证已通过，不将尚在运行的全量 CI 标为通过。真实手机、人工 WebView2 缩放/输入法和真人 TG 收发的 NOT_RUN 边界保持。
+
+补丁证据位于忽略目录 `output/release-dev10-20261116/`：最终归档、重复回归、示例取消、Linux 管理/race、匿名下载、升级与最终健康回执。生产备份路径与维护详情同步私有 VPS 文档；用户刷新网页即可使用新版菜单与空间整理。

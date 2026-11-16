@@ -4,8 +4,8 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The published release is **v8.8.0-dev.9**. See the
-[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.9)
+The published release is **v8.8.0-dev.10**. See the
+[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.10)
 and [validation and deployment record](docs/VALIDATION_CONVERSATION_MANAGEMENT_2026-11-16.md).
 The [AffectWeave Go package](https://github.com/endview/affectweave/releases/tag/v1.6.0-dev.3)
 is distributed separately and disabled by default.
@@ -23,7 +23,7 @@ The current workspace is **v8.8.0-dev.10**, adding visible conversation menus,
 space management, frozen batch selections and a seven-day recycle bin.
 Read the [management and offline schema-upgrade guide](docs/CONVERSATION_MANAGEMENT.md)
 before upgrading a schema 1 store. The dev.10 follow-up prevents idle recycle-bin
-maintenance from briefly blocking foreground management; dev.9 is already deployed.
+maintenance from briefly blocking foreground management and is deployed to Hytron.
 Conversation records, summaries and
 history reads share one authorized projection. Channel receipts no longer
 duplicate model replies; large tool results have bounded previews with exact

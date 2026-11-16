@@ -4,15 +4,15 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-已发布 **v8.8.0-dev.9 开发候选**。实际验收、发布和部署结果见[记录](docs/VALIDATION_CONVERSATION_MANAGEMENT_2026-11-16.md)。
-[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.9)
+已发布 **v8.8.0-dev.10 开发候选**。实际验收、发布和部署结果见[记录](docs/VALIDATION_CONVERSATION_MANAGEMENT_2026-11-16.md)。
+[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.10)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 
 本地开发候选已推进到 **v8.5.0-dev.1**：TG 富文本、输入状态、贴纸与表情、模型思考控制、独立可选经验总结，以及有序回复和经授权的一次性跟进。实际验证见[本批记录](docs/VALIDATION_V8_5_2026-11-08.md)，用法见[回复交付](docs/REPLY_DELIVERY.md)和[经验总结](docs/EXPERIENCE_SUMMARY.md)。上面的 GitHub 已发布版本链接继续指向原发行版；升级不会自动开启主动发送。
 
 本批按 [v8.3.1–v8.5 实施计划](docs/FREEAGENT_V8_3_1_TO_V8_5_CHANNEL_REASONING_EXPERIENCE_PLAN_2026-11-07.md) 推进。
 
-当前工作区为 **v8.8.0-dev.10**：新增会话「⋯」菜单、空间内容整理、冻结清单批量操作和 7 天回收站；支持恢复、永久清理、CLI 和经确认的 AI 提案。升级旧库前先阅读[操作与离线升级指南](docs/CONVERSATION_MANAGEMENT.md)。dev.9 已发布并完成 Hytron 升级；dev.10 修复空闲回收维护短暂阻塞前台整理的问题。
+当前版本为 **v8.8.0-dev.10**：新增会话「⋯」菜单、空间内容整理、冻结清单批量操作和 7 天回收站；支持恢复、永久清理、CLI 和经确认的 AI 提案，并修复空闲回收维护短暂阻塞前台整理的问题。本版已发布并部署 Hytron；升级旧库前先阅读[操作与离线升级指南](docs/CONVERSATION_MANAGEMENT.md)。
 
 上下文管理沿用授权投影、有界工具预览、独立窗口/HTTP 字节/摘要额度与恢复机制，见[上下文管理](docs/CONTEXT_MANAGEMENT.md)、[记录来源](docs/CONTEXT_RECORD_SOURCES.md)和[Web 交互说明](docs/WEB_INTERACTION_CLARITY_2026-11-15.md)。Core 不增加扩展业务职责。
 

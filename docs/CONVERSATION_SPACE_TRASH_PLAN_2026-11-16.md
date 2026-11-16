@@ -1,9 +1,9 @@
 # 会话管理、空间整理与回收站：源码审计及实施方案
 
 - 日期：2026-11-16（Asia/Shanghai）
-- 审计基线：FreeAgent `153de60`；当前程序版本 `v8.8.0-dev.8`。
-- 状态：P0–P2 已完成，v8.8.0-dev.9 已推送 GitHub、发布开发预发行版并升级 Hytron。本文件取代前面聊天中的方案草稿；第 1–17 节保留审计依据与实施契约，实际结果与未执行设备检查见第 18 节。
-- 目标版本：v8.8.0-dev.9，存储 schema 2。
+- 审计基线：FreeAgent `153de60`；审计时程序版本 `v8.8.0-dev.8`。
+- 状态：P0–P2 已完成，已推送 GitHub、发布开发预发行版并升级 Hytron；当前交付 v8.8.0-dev.10。本文件取代前面聊天中的方案草稿；第 1–17 节保留审计依据与实施契约，实际结果与未执行设备检查见第 18 节。
+- 交付版本：v8.8.0-dev.9 首版及 v8.8.0-dev.10 维护竞争补丁，存储 schema 2。
 - 实施范围：代码、独立数据库和合成数据测试、操作/升级文档，以及用户授权的发布与 Hytron schema 2 迁移；原会话、凭据和扩展数据保留。
 
 ## 1. 目标与已确认选择
@@ -610,6 +610,8 @@ P0–P2 已实施：生命周期与存储迁移、真实写入门禁、统一菜
 Windows/Linux 归档各重复构建两次且字节一致，原生 Windows 桌面与 Hytron 独立非 root Linux 运行验收通过。程序源码与发行标签为 `515c1c5d9b2f4ca3dbb7f305991cdaf0d8580748`，已发布 [v8.8.0-dev.9](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.9)。
 
 Hytron 已备份并迁移到 schema 2，Core/渠道正常、TG 重连、公网资源匹配新 Owner。7 个会话、114 个 Run、692 条消息、526 条 Attempt 和独立 AffectWeave 数据核对保留；获准结束一条旧 stopped Run，两条排队输入仍保留并暂停。升级没有自动回收任何生产会话，TG 明确未选中 AffectWeave 的状态保持。
+
+首版标签 CI 发现空闲维护短暂占用全局执行锁，批量整理可能误报任务未结束。已在 [v8.8.0-dev.10](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.10) 修复并再次完成两平台最终归档检查、重复回归与 Hytron 升级；没有再次迁移数据库。当前程序提交 `115f7ecc1cd3b336c7c536a3c8462fbb6156b7a5`，原标签及失败记录保留。
 
 操作和迁移用法见[管理指南](CONVERSATION_MANAGEMENT.md)；归档哈希、具体结果、CI 状态与未执行设备检查见[验收记录](VALIDATION_CONVERSATION_MANAGEMENT_2026-11-16.md)。
 
