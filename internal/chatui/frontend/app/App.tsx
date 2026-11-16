@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Trash2,
   ListChecks,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -399,6 +400,7 @@ function WorkspaceApp() {
             route("retained", section, state.selected, "");
           }}
         >
+          <History size={17} />
           保留的执行记录
         </button>
         <span className="connection-label">
@@ -412,7 +414,7 @@ function WorkspaceApp() {
         >
           <Settings2 size={17} />
           设置
-          <ChevronRight size={15} />
+          <ChevronRight className="nav-settings-chevron" size={15} />
         </button>
         <div className="footer-bottom">
           <span title={state.environment?.workspace}>

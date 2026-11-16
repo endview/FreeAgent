@@ -26,6 +26,8 @@ before upgrading a schema 1 store. The dev.10 follow-up prevents idle recycle-bi
 maintenance from briefly blocking foreground management and is deployed to Hytron.
 The dev.11 UI update reveals sidebar conversation menus on hover or keyboard focus,
 keeps them visible while open, and retains visible controls on touch devices.
+It also aligns the sidebar management icons and labels, with only the Settings
+chevron placed at the right edge.
 Conversation records, summaries and
 history reads share one authorized projection. Channel receipts no longer
 duplicate model replies; large tool results have bounded previews with exact

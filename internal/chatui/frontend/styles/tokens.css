@@ -330,13 +330,18 @@ button svg {
 .nav-settings {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
   width: 100%;
   padding: 10px !important;
   font-size: 13px;
+  text-align: left;
   border-radius: 6px;
 }
-.nav-settings svg:last-child {
+.nav-settings > svg {
+  flex-shrink: 0;
+}
+.nav-settings > .nav-settings-chevron {
   margin-left: auto;
 }
 .footer-bottom {
