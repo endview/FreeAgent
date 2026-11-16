@@ -290,6 +290,10 @@ func TestConversationPurgeAttachmentRetryAndIndependentBranch(t *testing.T) {
 	if err = os.Mkdir(file, 0700); err != nil {
 		t.Fatal(err)
 	}
+	// Cleanup deliberately chmods an attachment to 0600 before unlinking. A
+	// directory used as this fault fixture needs execute permission restored on
+	// Unix before its child can be removed, including on an early test failure.
+	t.Cleanup(func() { _ = os.Chmod(file, 0700) })
 	block := filepath.Join(file, "block")
 	if err = os.WriteFile(block, []byte("locked"), 0600); err != nil {
 		t.Fatal(err)
@@ -312,6 +316,9 @@ func TestConversationPurgeAttachmentRetryAndIndependentBranch(t *testing.T) {
 	}
 	if _, raw, e := tasks.Attachment(ctx, branch.Conversation.ID, branch.Attachments[0].ID); e != nil || string(raw) != "branch retains its independent bytes" {
 		t.Fatal("branch bytes damaged", e)
+	}
+	if err = os.Chmod(file, 0700); err != nil {
+		t.Fatal(err)
 	}
 	if err = os.Remove(block); err != nil {
 		t.Fatal(err)
