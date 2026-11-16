@@ -4,6 +4,7 @@ import App from "./App";
 import { installPlatform } from "@/lib/platform";
 import "@/styles/tokens.css";
 import "@/styles/workbench.css";
+import "@/styles/settings-navigation.css";
 import "@/styles/conversation.css";
 import { DesktopMenu } from "@/components/DesktopMenu";
 installPlatform();

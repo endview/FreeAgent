@@ -18,9 +18,6 @@ import {
   Menu,
   X,
   RefreshCw,
-  Trash2,
-  ListChecks,
-  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,11 +54,15 @@ import ConversationPage from "@/features/conversations/ConversationPage";
 import { Choice } from "@/components/Choice";
 import { Navigation } from "@/features/conversations/Navigation";
 import { LoginPage } from "@/features/auth/LoginPage";
-import ManagementPage, {
+import {
   ManagementProvider,
   ConversationMenu,
   SpaceMenu,
 } from "@/features/conversations/Management";
+import {
+  settingsDestination,
+  isSpaceSettings,
+} from "@/lib/presentation/settings-route.mjs";
 const SettingsPage = lazy(() => import("@/features/settings/SettingsPage"));
 
 export default function App() {
@@ -79,10 +80,15 @@ function WorkspaceApp() {
   const [loggingIn, setLoggingIn] = useState(false);
   const loginInFlight = useRef(false);
   const [view, setView] = useState(
-    new URLSearchParams(location.search).get("view") || "chat",
+    settingsDestination(
+      new URLSearchParams(location.search).get("view") || "chat",
+    ).view,
   );
   const [section, setSection] = useState(
-    new URLSearchParams(location.search).get("section") || "providers",
+    settingsDestination(
+      new URLSearchParams(location.search).get("view") || "chat",
+      new URLSearchParams(location.search).get("section") || "providers",
+    ).section,
   );
   const [mobile, setMobile] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -111,7 +117,6 @@ function WorkspaceApp() {
       const d = (
         event as CustomEvent<{ view: string; space: string; selected: string }>
       ).detail;
-      setManagementSpace(d.space);
       setManagementSelected(d.selected);
       if (d.view === "chat") void openChat(d.selected);
       else
@@ -119,7 +124,7 @@ function WorkspaceApp() {
           d.view,
           d.view === "settings" ? d.space : section,
           state.selected,
-          d.space,
+          d.view === "settings" ? "" : d.space,
         );
     };
     window.addEventListener("freeagent-management-navigate", fn);
@@ -132,12 +137,16 @@ function WorkspaceApp() {
     chat = state.selected,
     space = managementSpace,
   ) {
+    ({ view: nextView, section: nextSection } = settingsDestination(
+      nextView,
+      nextSection,
+    ));
     const params = new URLSearchParams(location.search);
     if (nextView === "chat") params.delete("view");
     else params.set("view", nextView);
     if (nextView === "settings") params.set("section", nextSection);
     else params.delete("section");
-    if (["manage", "trash", "retained"].includes(nextView) && space)
+    if (nextView === "settings" && isSpaceSettings(nextSection) && space)
       params.set("space", space);
     else params.delete("space");
     if (chat) params.set("chat", chat);
@@ -149,6 +158,9 @@ function WorkspaceApp() {
     );
     setView(nextView);
     setSection(nextSection);
+    setManagementSpace(
+      nextView === "settings" && isSpaceSettings(nextSection) ? space : "",
+    );
     setMobile(false);
   }
   const openChat = useCallback(async (chat: string) => {
@@ -170,9 +182,14 @@ function WorkspaceApp() {
   useEffect(() => {
     const pop = () => {
       const params = new URLSearchParams(location.search);
-      setView(params.get("view") || "chat");
+      const destination = settingsDestination(
+        params.get("view") || "chat",
+        params.get("section") || "providers",
+      );
+      setView(destination.view);
       setManagementSpace(params.get("space") || "");
-      setSection(params.get("section") || "providers");
+      setManagementSelected("");
+      setSection(destination.section);
       void selectConversation(params.get("chat") || "").catch(report);
     };
     const auth = () => {
@@ -370,39 +387,6 @@ function WorkspaceApp() {
         </button>
       )}
       <div className="sidebar-footer">
-        <button
-          className="nav-settings"
-          onClick={() => {
-            setManagementSpace(state.navSpace || "");
-            setManagementSelected("");
-            route("manage", section, state.selected, state.navSpace || "");
-          }}
-        >
-          <ListChecks size={17} />
-          管理空间内容
-        </button>
-        <button
-          className="nav-settings"
-          onClick={() => {
-            setManagementSpace("");
-            setManagementSelected("");
-            route("trash", section, state.selected, "");
-          }}
-        >
-          <Trash2 size={17} />
-          回收站
-        </button>
-        <button
-          className="nav-settings"
-          onClick={() => {
-            setManagementSpace("");
-            setManagementSelected("");
-            route("retained", section, state.selected, "");
-          }}
-        >
-          <History size={17} />
-          保留的执行记录
-        </button>
         <span className="connection-label">
           <span className={state.connected ? "online-dot" : "offline-dot"} />
           {remote ? "远程 Core" : "本地 Core"}
@@ -410,7 +394,12 @@ function WorkspaceApp() {
         </span>
         <button
           className={`nav-settings ${view === "settings" ? "active" : ""}`}
-          onClick={() => route("settings")}
+          onClick={() => {
+            route("settings");
+            const url = new URL(location.href);
+            url.searchParams.delete("section");
+            history.replaceState({}, "", url);
+          }}
         >
           <Settings2 size={17} />
           设置
@@ -430,6 +419,60 @@ function WorkspaceApp() {
         </div>
       </div>
     </>
+  );
+  const workspaceHeader = (
+    <header className="workspace-header">
+      <div className="breadcrumb">
+        <button
+          ref={menuButton}
+          className="mobile-menu"
+          aria-label="打开导航"
+          onClick={() => setMobile(true)}
+        >
+          <Menu size={20} />
+        </button>
+        <Folder size={16} />
+        <span>
+          {(selected?.space_id &&
+            state.spaces.find((space) => space.id === selected.space_id)
+              ?.title) ||
+            "本地空间"}
+        </span>
+        <ChevronRight size={13} />
+        <strong>
+          {view === "settings" ? "设置" : selected?.title || "新对话"}
+        </strong>
+      </div>
+      <div className="header-actions">
+        {remote && (
+          <button
+            aria-label="退出登录"
+            onClick={async () => {
+              try {
+                await api("public/logout", {});
+                setCSRF("");
+                clearDrafts();
+                resetRuntime();
+                setAuthenticated(false);
+              } catch (error) {
+                report(error);
+              }
+            }}
+          >
+            退出
+          </button>
+        )}
+        {selected && view === "chat" && <ConversationMenu chat={selected} />}
+        <button
+          aria-label="刷新记录"
+          onClick={() =>
+            Promise.all([loadNavigation(), loadSnapshot()]).catch(report)
+          }
+        >
+          <RefreshCw size={16} />
+        </button>
+      </div>
+    </header>
   );
   if (!authenticated)
     return (
@@ -483,76 +526,7 @@ function WorkspaceApp() {
         </DialogContent>
       </Dialog>
       <main className="workspace" id="workspace-content" tabIndex={-1}>
-        <header className="workspace-header">
-          <div className="breadcrumb">
-            {view === "settings" && (
-              <button
-                className="settings-return"
-                onClick={() => openChat(state.selected).catch(report)}
-              >
-                返回对话
-              </button>
-            )}
-            <button
-              ref={menuButton}
-              className="mobile-menu"
-              aria-label="打开导航"
-              onClick={() => setMobile(true)}
-            >
-              <Menu size={20} />
-            </button>
-            <Folder size={16} />
-            <span>
-              {(selected?.space_id &&
-                state.spaces.find((space) => space.id === selected.space_id)
-                  ?.title) ||
-                "本地空间"}
-            </span>
-            <ChevronRight size={13} />
-            <strong>
-              {view === "settings"
-                ? "设置"
-                : view === "trash"
-                  ? "回收站"
-                  : view === "manage"
-                    ? "空间内容"
-                    : view === "retained"
-                      ? "保留的执行记录"
-                      : selected?.title || "新对话"}
-            </strong>
-          </div>
-          <div className="header-actions">
-            {remote && (
-              <button
-                aria-label="退出登录"
-                onClick={async () => {
-                  try {
-                    await api("public/logout", {});
-                    setCSRF("");
-                    clearDrafts();
-                    resetRuntime();
-                    setAuthenticated(false);
-                  } catch (error) {
-                    report(error);
-                  }
-                }}
-              >
-                退出
-              </button>
-            )}
-            {selected && view === "chat" && (
-              <ConversationMenu chat={selected} />
-            )}
-            <button
-              aria-label="刷新记录"
-              onClick={() =>
-                Promise.all([loadNavigation(), loadSnapshot()]).catch(report)
-              }
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-        </header>
+        {view !== "settings" && workspaceHeader}
         {state.refreshRequired && (
           <div className="update-notice">
             服务端已更新，请保存草稿后刷新页面。
@@ -581,18 +555,27 @@ function WorkspaceApp() {
             </button>
           </div>
         )}
-        {["manage", "trash", "retained"].includes(view) ? (
-          <ManagementPage
-            view={view}
-            space={managementSpace}
-            initialSelected={managementSelected}
-            onOpenChat={(id) => void openChat(id)}
-          />
-        ) : view === "settings" ? (
+        {view === "settings" ? (
           <Suspense fallback={<p className="loading-label">正在读取设置…</p>}>
             <SettingsPage
               section={section}
-              onSection={(next) => route("settings", next)}
+              onSection={(next) => {
+                if (!["spaces", "space-content"].includes(next))
+                  setManagementSelected("");
+                route(
+                  "settings",
+                  next,
+                  state.selected,
+                  ["spaces", "space-content"].includes(next)
+                    ? managementSpace
+                    : "",
+                );
+              }}
+              header={workspaceHeader}
+              space={managementSpace}
+              initialSelected={managementSelected}
+              onOpenChat={(id) => void openChat(id).catch(report)}
+              onReturnChat={() => void openChat(state.selected).catch(report)}
               preferences={{
                 theme,
                 sidebar: side,

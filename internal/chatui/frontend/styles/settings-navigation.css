@@ -1,0 +1,205 @@
+/* Approved settings hierarchy: 14px entries and headings exactly 30% larger. */
+.settings-layout {
+  min-height: 0;
+}
+.app-settings .settings-layout > .settings-nav {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  padding: 22px 16px 16px;
+  background: var(--sidebar);
+}
+.settings-nav-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 8px 18px;
+}
+.settings-nav-heading h1 {
+  font-size: 25px;
+  font-weight: 600;
+}
+.settings-layout .settings-nav-return {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 36px;
+  padding: 4px;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.settings-layout .settings-search {
+  margin: 0 8px 18px;
+  flex-shrink: 0;
+}
+.settings-nav-groups {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+.settings-layout .settings-nav-group {
+  display: block;
+  margin: 0 0 10px;
+}
+.settings-layout .settings-nav-group > h2 {
+  display: block;
+  margin: 0;
+  color: var(--foreground);
+  font-weight: 600;
+}
+.settings-layout .settings-group-toggle {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 18.2px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.settings-layout .settings-group-toggle > span {
+  font-size: inherit;
+  margin: 0;
+}
+.settings-group-chevron {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  transform: rotate(-90deg);
+}
+.settings-group-toggle[aria-expanded="true"] > .settings-group-chevron {
+  transform: none;
+}
+.settings-group-items {
+  padding: 3px 0 5px;
+}
+.settings-group-items[hidden] {
+  display: none;
+}
+.settings-layout .settings-nav-item {
+  justify-content: flex-start;
+  gap: 11px;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 7px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: normal;
+  color: var(--muted-foreground);
+}
+.settings-layout .settings-nav-item > span {
+  min-width: 0;
+  margin: 0;
+  font-size: inherit;
+  overflow-wrap: anywhere;
+}
+.settings-nav-item > svg {
+  flex-shrink: 0;
+}
+.settings-nav-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 8px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.settings-layout .settings-nav-footer button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+.settings-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.settings-main > .workspace-header {
+  flex-shrink: 0;
+}
+.settings-main .settings-content {
+  max-width: 1100px;
+}
+.settings-space-tabs {
+  display: flex;
+  gap: 26px;
+  margin: 0 0 24px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-space-tabs > button {
+  min-height: 44px;
+  padding: 0 1px 10px;
+  border-bottom: 2px solid transparent;
+  font-size: 14px;
+  color: var(--muted-foreground);
+}
+.settings-space-tabs > button[aria-current="page"] {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+}
+.settings-main .management-embedded {
+  padding: 0;
+  overflow: visible;
+}
+.settings-detail .management-embedded .choice {
+  width: auto;
+}
+.management-content-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+@media (max-width: 760px) {
+  .app-settings .settings-layout > .settings-nav {
+    flex: 1;
+    width: 100%;
+    padding: 20px 18px;
+    background: var(--background);
+    border: 0;
+  }
+  .settings-layout .settings-nav-return {
+    min-height: 44px;
+  }
+  .settings-layout .settings-nav-footer button {
+    width: 44px;
+    min-height: 44px;
+  }
+  .settings-layout .settings-group-toggle {
+    min-height: 48px;
+  }
+  .settings-layout .settings-nav-item {
+    min-height: 44px;
+  }
+  .settings-layout .settings-nav-group {
+    margin-bottom: 15px;
+  }
+  .settings-layout .settings-main {
+    display: none;
+  }
+  .settings-layout.mobile-detail-active .settings-main {
+    display: flex;
+  }
+  .management-content-actions {
+    flex-wrap: wrap;
+  }
+}
+@media (any-pointer: coarse) {
+  .settings-layout .settings-nav-item {
+    min-height: 44px;
+  }
+}

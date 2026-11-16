@@ -867,11 +867,13 @@ export default function ManagementPage({
   space,
   initialSelected = "",
   onOpenChat,
+  embedded = false,
 }: {
   view: string;
   space: string;
   initialSelected?: string;
   onOpenChat: (id: string) => void;
+  embedded?: boolean;
 }) {
   const { open, navigate } = useManagement();
   const state = useRuntime();
@@ -1103,20 +1105,37 @@ export default function ManagementPage({
     }
   };
   return (
-    <section className="management-page">
-      <div className="management-page-heading">
-        <div>
-          <h1>{title}</h1>
-          <p>
-            {view === "trash"
-              ? "保留 7 天；恢复不会重新启动任务或主动发送。"
-              : view === "retained"
-                ? "这些记录用于核验与防止重复执行，不是可恢复的会话。"
-                : "按空间整理会话，勾选后移动或移到回收站。"}
-          </p>
+    <section
+      className={`management-page ${embedded ? "management-embedded" : ""}`}
+    >
+      {!embedded && (
+        <div className="management-page-heading">
+          <div>
+            <h1>{title}</h1>
+            <p>
+              {view === "trash"
+                ? "保留 7 天；恢复不会重新启动任务或主动发送。"
+                : view === "retained"
+                  ? "这些记录用于核验与防止重复执行，不是可恢复的会话。"
+                  : "按空间整理会话，勾选后移动或移到回收站。"}
+            </p>
+          </div>
+          <SpaceMenu spaceID={space} />
         </div>
-        <SpaceMenu spaceID={space} />
-      </div>
+      )}
+      {embedded && view === "manage" && (
+        <div className="management-content-actions">
+          <Button
+            variant="outline"
+            onClick={() =>
+              setTab(tab === "attachments" ? "conversations" : "attachments")
+            }
+          >
+            {tab === "attachments" ? "返回会话列表" : "附件与结果文件"}
+          </Button>
+          <SpaceMenu spaceID={space} />
+        </div>
+      )}
       {page.cleanup_status?.failed && (
         <p className="management-error" role="status">
           {page.cleanup_status.message ||
@@ -1125,20 +1144,22 @@ export default function ManagementPage({
       )}
       {view === "manage" && (
         <>
-          <nav className="management-tabs" aria-label="内容分类">
-            <Button
-              variant={tab === "conversations" ? "default" : "outline"}
-              onClick={() => setTab("conversations")}
-            >
-              会话
-            </Button>
-            <Button
-              variant={tab === "attachments" ? "default" : "outline"}
-              onClick={() => setTab("attachments")}
-            >
-              附件与结果文件
-            </Button>
-          </nav>
+          {!embedded && (
+            <nav className="management-tabs" aria-label="内容分类">
+              <Button
+                variant={tab === "conversations" ? "default" : "outline"}
+                onClick={() => setTab("conversations")}
+              >
+                会话
+              </Button>
+              <Button
+                variant={tab === "attachments" ? "default" : "outline"}
+                onClick={() => setTab("attachments")}
+              >
+                附件与结果文件
+              </Button>
+            </nav>
+          )}
           <details className="management-location">
             <summary>工作目录与独立数据</summary>
             <p>

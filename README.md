@@ -24,10 +24,10 @@ space management, frozen batch selections and a seven-day recycle bin.
 Read the [management and offline schema-upgrade guide](docs/CONVERSATION_MANAGEMENT.md)
 before upgrading a schema 1 store. The dev.10 follow-up prevents idle recycle-bin
 maintenance from briefly blocking foreground management and is deployed to Hytron.
-The dev.11 UI update reveals sidebar conversation menus on hover or keyboard focus,
-keeps them visible while open, and retains visible controls on touch devices.
-It also aligns the sidebar management icons and labels, with only the Settings
-chevron placed at the right edge.
+The dev.11 UI update reveals sidebar conversation menus on hover or keyboard focus
+and keeps touch controls visible. Settings has four collapsible groups with icons
+for individual pages. Conversation organization, Trash and retained execution
+evidence live under Space Management; the chat sidebar keeps one Settings entry.
 Conversation records, summaries and
 history reads share one authorized projection. Channel receipts no longer
 duplicate model replies; large tool results have bounded previews with exact
