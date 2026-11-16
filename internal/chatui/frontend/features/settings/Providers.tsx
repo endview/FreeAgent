@@ -181,7 +181,7 @@ function ProviderEditor({
       clearFormDraft(draftID);
       change({ ...form, key: "", enable: false });
       clearFormDraft(draftID);
-      if (!profile && form.enable) {
+      if (!profile && form.enable && form.protocol !== "search") {
         try {
           await api("providers", { id: saved.id, enabled: true }, "PUT");
         } catch (error) {
@@ -386,6 +386,7 @@ function ProviderEditor({
                 options={[
                   ["openai-compatible", "OpenAI 兼容"],
                   ["anthropic", "Anthropic Messages"],
+                  ["search", "搜索 API（不提供模型）"],
                 ]}
                 onChange={(value) => field("protocol", value)}
               />
@@ -446,7 +447,7 @@ function ProviderEditor({
               onChange={(event) => field("note", event.target.value)}
             />
           </Field>
-          {!profile && (
+          {!profile && form.protocol !== "search" && (
             <label className="check-line">
               <input
                 type="checkbox"
@@ -468,7 +469,12 @@ function ProviderEditor({
               }
             />
             <div className="provider-actions">
-              <Button variant="outline" type="button" onClick={test}>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={test}
+                disabled={form.protocol === "search"}
+              >
                 <Zap size={15} />
                 测试连接
               </Button>
@@ -481,148 +487,159 @@ function ProviderEditor({
         error={error}
         text={dirty && result === "配置已保存。" ? undefined : result}
       />
-      <section className="settings-section">
-        <div className="section-title">
-          <h2>模型</h2>
-          {profile && (
-            <button
-              aria-label="重新获取模型"
-              disabled={busy}
-              onClick={() =>
-                void perform(async () => {
-                  const value = await api<Probe>(
-                    `keys/${encodeURIComponent(profile.id)}/models`,
-                    {},
-                  );
-                  probes.set(profile.id, value);
-                  setProbe(value);
-                  setResult(`获取到 ${value.models?.length || 0} 个模型。`);
-                })
-              }
-            >
-              <RefreshCw size={15} />
-            </button>
-          )}
-        </div>
-        {probe && (
-          <Field label={`返回的模型（${probe.models?.length || 0}）`}>
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="筛选具体型号"
-            />
-          </Field>
-        )}
-        <ul className="settings-model-list">
-          {models.map(([id, model]) => (
-            <li key={id}>
-              <div>
-                <strong>{model.model || id}</strong>
-                <small>
-                  {id}
-                  {env?.default_model === id ? " · 默认模型" : ""}
-                </small>
-              </div>
-              <Button
-                variant="ghost"
-                disabled={busy || env?.default_model === id}
+      {form.protocol !== "search" ? (
+        <section className="settings-section">
+          <div className="section-title">
+            <h2>模型</h2>
+            {profile && (
+              <button
+                aria-label="重新获取模型"
+                disabled={busy}
                 onClick={() =>
                   void perform(async () => {
-                    await api("models/default", { id });
-                    await loadEnvironment();
+                    const value = await api<Probe>(
+                      `keys/${encodeURIComponent(profile.id)}/models`,
+                      {},
+                    );
+                    probes.set(profile.id, value);
+                    setProbe(value);
+                    setResult(`获取到 ${value.models?.length || 0} 个模型。`);
                   })
                 }
               >
-                设为默认
-              </Button>
-              <ModelOptions id={id} model={model} onChange={loadEnvironment} />
-              <button
-                aria-label={`删除模型 ${model.model || id}`}
-                disabled={busy}
-                onClick={() => removeModel(id)}
-              >
-                <Trash2 size={15} />
+                <RefreshCw size={15} />
               </button>
-            </li>
-          ))}
-          {(probe?.models || [])
-            .filter(
-              (name) =>
-                !models.some(([, model]) => model.model === name) &&
-                (!query || name.toLowerCase().includes(query.toLowerCase())),
-            )
-            .map((name) => (
-              <li key={name}>
-                <strong>{name}</strong>
+            )}
+          </div>
+          {probe && (
+            <Field label={`返回的模型（${probe.models?.length || 0}）`}>
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="筛选具体型号"
+              />
+            </Field>
+          )}
+          <ul className="settings-model-list">
+            {models.map(([id, model]) => (
+              <li key={id}>
+                <div>
+                  <strong>{model.model || id}</strong>
+                  <small>
+                    {id}
+                    {env?.default_model === id ? " · 默认模型" : ""}
+                  </small>
+                </div>
                 <Button
                   variant="ghost"
+                  disabled={busy || env?.default_model === id}
+                  onClick={() =>
+                    void perform(async () => {
+                      await api("models/default", { id });
+                      await loadEnvironment();
+                    })
+                  }
+                >
+                  设为默认
+                </Button>
+                <ModelOptions
+                  id={id}
+                  model={model}
+                  onChange={loadEnvironment}
+                />
+                <button
+                  aria-label={`删除模型 ${model.model || id}`}
+                  disabled={busy}
+                  onClick={() => removeModel(id)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </li>
+            ))}
+            {(probe?.models || [])
+              .filter(
+                (name) =>
+                  !models.some(([, model]) => model.model === name) &&
+                  (!query || name.toLowerCase().includes(query.toLowerCase())),
+              )
+              .map((name) => (
+                <li key={name}>
+                  <strong>{name}</strong>
+                  <Button
+                    variant="ghost"
+                    disabled={!profile || busy}
+                    onClick={() => add(name)}
+                  >
+                    添加
+                  </Button>
+                </li>
+              ))}
+          </ul>
+          {!profile && (
+            <p className="form-hint">
+              先保存 Provider，再添加可用模型。测试不会清空当前表单。
+            </p>
+          )}
+          {recommendations.length > 0 && (
+            <div className="inline-form">
+              {recommendations.map((name) => (
+                <Button
+                  key={name}
+                  variant="outline"
                   disabled={!profile || busy}
                   onClick={() => add(name)}
                 >
-                  添加
+                  添加预设 · {name}
                 </Button>
-              </li>
-            ))}
-        </ul>
-        {!profile && (
-          <p className="form-hint">
-            先保存 Provider，再添加可用模型。测试不会清空当前表单。
-          </p>
-        )}
-        {recommendations.length > 0 && (
+              ))}
+            </div>
+          )}
           <div className="inline-form">
-            {recommendations.map((name) => (
-              <Button
-                key={name}
-                variant="outline"
-                disabled={!profile || busy}
-                onClick={() => add(name)}
-              >
-                添加预设 · {name}
-              </Button>
-            ))}
+            <Field label="手动填写模型">
+              <input
+                value={manual}
+                onChange={(event) => setManual(event.target.value)}
+                maxLength={256}
+                placeholder={
+                  presets.find((item) => item.id === presetID)?.model ||
+                  "服务商模型名称"
+                }
+              />
+            </Field>
+            <Button
+              variant="outline"
+              disabled={!profile || busy || !manual.trim()}
+              onClick={() => add(manual)}
+            >
+              添加
+            </Button>
           </div>
-        )}
-        <div className="inline-form">
-          <Field label="手动填写模型">
-            <input
-              value={manual}
-              onChange={(event) => setManual(event.target.value)}
-              maxLength={256}
-              placeholder={
-                presets.find((item) => item.id === presetID)?.model ||
-                "服务商模型名称"
+          {available.length > 0 && (
+            <Button
+              variant="outline"
+              disabled={!profile || busy}
+              onClick={() =>
+                void perform(async () => {
+                  await api("models/enable-batch", {
+                    key: profile!.id,
+                    models: available,
+                  });
+                  await loadEnvironment();
+                  setResult("可用模型已添加。");
+                })
               }
-            />
-          </Field>
-          <Button
-            variant="outline"
-            disabled={!profile || busy || !manual.trim()}
-            onClick={() => add(manual)}
-          >
-            添加
-          </Button>
-        </div>
-        {available.length > 0 && (
-          <Button
-            variant="outline"
-            disabled={!profile || busy}
-            onClick={() =>
-              void perform(async () => {
-                await api("models/enable-batch", {
-                  key: profile!.id,
-                  models: available,
-                });
-                await loadEnvironment();
-                setResult("可用模型已添加。");
-              })
-            }
-          >
-            自动填充 {available.length} 个模型
-          </Button>
-        )}
-      </section>
+            >
+              自动填充 {available.length} 个模型
+            </Button>
+          )}
+        </section>
+      ) : (
+        <p className="settings-scope-hint">
+          此 Key 用于搜索，不会请求模型列表。请到“连接与数据 →
+          联网搜索”绑定、保存并测试搜索连接。
+        </p>
+      )}
     </div>
   );
 }

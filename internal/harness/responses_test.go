@@ -14,6 +14,50 @@ import (
 
 const responsesFixtureKey = "responses-fixture-key"
 
+func TestResponsesSearchSelectionMatchesWireBudgetAndAuxiliary(t *testing.T) {
+	caps := ModelCapabilities{Protocol: "responses", WebSearch: "supported"}
+	for _, tc := range []struct {
+		enabled bool
+		purpose string
+		want    bool
+	}{{false, "", false}, {true, "", true}, {true, "compression", false}} {
+		r := ModelRequest{WebSearch: &tc.enabled, Purpose: tc.purpose, Messages: []ModelMessage{{Role: "user", Content: "check"}}, MaxOutputTokens: 64}
+		wire, e := responsesRequestForCaps(r, "model", caps, true)
+		if e != nil {
+			t.Fatal(e)
+		}
+		found := false
+		for _, tool := range wire.Tools {
+			found = found || tool.Type == "web_search"
+		}
+		if found != tc.want {
+			t.Fatalf("purpose=%s enabled=%v: native=%v", tc.purpose, tc.enabled, found)
+		}
+		payload, e := providerRequestPayload(ModelBinding{Config: ModelConfig{Provider: "openai-compatible", Model: "model", Capabilities: caps}}, r)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if strings.Contains(string(payload), `"type":"web_search"`) != tc.want {
+			t.Fatal("budget wire differs from sent tools")
+		}
+	}
+}
+
+func TestResponsesVisibleCitationsPreserveRawItems(t *testing.T) {
+	raw := []byte(`{"id":"citation","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"中文😀结论。","annotations":[{"type":"url_citation","start_index":0,"end_index":4,"url":"https://example.org/a(b)","title":"来源 [甲]"},{"type":"url_citation","url":"javascript:alert(1)","title":"unsafe"}]}]}]}`)
+	var envelope responsesEnvelope
+	if e := json.Unmarshal(raw, &envelope); e != nil {
+		t.Fatal(e)
+	}
+	result, e := normalizeResponsesEnvelope(envelope, raw, "", false, nil)
+	if e != nil || !strings.Contains(result.Content, "中文😀结论。") || !strings.Contains(result.Content, "https://example.org/a%28b%29") || strings.Contains(result.Content, "javascript:") {
+		t.Fatalf("citations: %+v %v", result, e)
+	}
+	if len(result.ProviderItems) != 1 || !strings.Contains(string(result.ProviderItems[0]), `"annotations"`) {
+		t.Fatal("native annotations discarded")
+	}
+}
+
 func newResponsesFixture(t *testing.T, caps ModelCapabilities, handler http.HandlerFunc) (*ResponsesClient, *httptest.Server) {
 	t.Helper()
 	server := httptest.NewServer(handler)

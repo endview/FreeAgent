@@ -36,6 +36,10 @@ type ModelMessage struct {
 }
 
 type ModelRequest struct {
+	SearchDecision *SearchDecision `json:",omitempty"`
+	// Nil preserves legacy declared Responses search. New search policy always
+	// supplies an explicit choice, including false for auxiliary requests.
+	WebSearch         *bool               `json:",omitempty"`
 	SummaryReferences []string            `json:",omitempty"`
 	ContextUsage      *ContextUsage       `json:",omitempty"`
 	SupplementalKey   string              `json:",omitempty"`
@@ -109,12 +113,18 @@ type ProviderWebSearchCall struct {
 }
 
 type ModelUsage struct {
-	CacheReadTokens    *int64 `json:"cache_read_tokens,omitempty"`
-	CacheCreatedTokens *int64 `json:"cache_created_tokens,omitempty"`
-	ReasoningTokens    *int64 `json:"reasoning_tokens,omitempty"`
-	InputTokens        int64  `json:"input_tokens"`
-	OutputTokens       int64  `json:"output_tokens"`
-	TotalTokens        int64  `json:"total_tokens"`
+	ServerTools        *ServerToolUsage `json:"server_tools,omitempty"`
+	CacheReadTokens    *int64           `json:"cache_read_tokens,omitempty"`
+	CacheCreatedTokens *int64           `json:"cache_created_tokens,omitempty"`
+	ReasoningTokens    *int64           `json:"reasoning_tokens,omitempty"`
+	InputTokens        int64            `json:"input_tokens"`
+	OutputTokens       int64            `json:"output_tokens"`
+	TotalTokens        int64            `json:"total_tokens"`
+}
+
+type ServerToolUsage struct {
+	SearchRequests *int64 `json:"search_requests,omitempty"`
+	FetchRequests  *int64 `json:"fetch_requests,omitempty"`
 }
 
 type ModelClient interface {

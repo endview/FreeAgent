@@ -115,6 +115,8 @@ export function reasonText(reason) {
 const ACTIVITY_META = {
   command_run: ["运行命令", "terminal"],
   http_get: ["请求网址", "globe"],
+  web_search: ["搜索网页", "globe"],
+  web_fetch: ["读取网页", "globe"],
   file_read: ["读取文件", "file-text"],
   file_list: ["列出目录", "folder-tree"],
   file_search: ["搜索文件", "file-search"],

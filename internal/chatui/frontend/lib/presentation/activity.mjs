@@ -54,6 +54,8 @@ export function activityTitle(item) {
     command_run: "执行命令",
     network_request: "请求网络",
     web_search: "搜索网页",
+    web_fetch: "读取网页",
+    web_search: "搜索网页",
     memory_read: "读取记忆",
     memory_write: "更新记忆",
   };

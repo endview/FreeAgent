@@ -66,7 +66,7 @@ func modelProviderForKey(key harness.KeyProfileView) string {
 }
 
 func rejectChannelModelKey(key harness.KeyProfileView) bool {
-	if !harness.IsChannelKeyProtocol(key.Protocol) {
+	if !harness.IsChannelKeyProtocol(key.Protocol) && key.Protocol != harness.KeyProtocolSearch {
 		return false
 	}
 	return true
@@ -644,6 +644,14 @@ func (server *Server) deleteKey(writer http.ResponseWriter, request *http.Reques
 	}
 	config := server.tasks.Config()
 	affected := make([]string, 0)
+	if config.WebSearch != nil {
+		for _, connection := range config.WebSearch.Connections {
+			if connection.Key == profile.ID {
+				server.writeError(writer, http.StatusConflict, "key_in_use", "这个 Key 仍被搜索连接引用。请先在“联网搜索”移除对应连接并保存。")
+				return
+			}
+		}
+	}
 	for id, model := range config.Models {
 		if model.Key == profile.ID {
 			affected = append(affected, id)

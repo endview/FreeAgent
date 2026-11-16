@@ -10,9 +10,12 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/endview/freeagent/internal/webaccess"
 )
 
 // ResponsesClient implements the stateless Responses wire format used by the
@@ -87,7 +90,12 @@ func (client *ResponsesClient) Generate(ctx context.Context, request ModelReques
 	if err := validateModelRequest(config, request); err != nil {
 		return ModelResponse{}, &CallError{Certain: true, Category: "capability", Message: "model cannot accept the complete message/tool group"}
 	}
-	wire, err := responsesRequestForCaps(request, client.model, client.caps, client.webSearch)
+	search := client.webSearch
+	if request.WebSearch != nil {
+		search = *request.WebSearch
+	}
+	search = search && !request.DenyOperations && (request.Purpose == "" || request.Purpose == "chat")
+	wire, err := responsesRequestForEndpoint(request, client.model, client.caps, search, client.baseURL)
 	if err != nil {
 		return ModelResponse{}, err
 	}
@@ -186,6 +194,7 @@ type responsesTool struct {
 }
 
 func responsesRequestForCaps(request ModelRequest, model string, caps ModelCapabilities, webSearch bool) (responsesRequest, error) {
+	webSearch = requestNativeSearch(request, webSearch)
 	config := ModelConfig{Provider: "openai-compatible", Model: model, Capabilities: caps}
 	wire, err := responsesRequestFrom(request, model, caps.Streaming != "none", webSearch)
 	if err != nil {
@@ -206,6 +215,35 @@ func responsesRequestForCaps(request ModelRequest, model string, caps ModelCapab
 		wire.Include = []string{"reasoning.encrypted_content"}
 	}
 	return wire, nil
+}
+
+// Endpoint-specific hosted tool names belong to the Provider adapter. The
+// Harness supplies only the selected permission and never executes these items.
+func responsesRequestForEndpoint(request ModelRequest, model string, caps ModelCapabilities, search bool, base string) (responsesRequest, error) {
+	wire, err := responsesRequestForCaps(request, model, caps, search)
+	if err != nil {
+		return wire, err
+	}
+	u, _ := url.Parse(base)
+	if u != nil && u.Hostname() == "api.deepseek.com" && requestNativeSearch(request, search) {
+		if model != "deepseek-flash" {
+			return responsesRequest{}, &CallError{Certain: true, Category: "capability", Message: "DeepSeek native web tools require the officially supported deepseek-flash model; use a search API for other models"}
+		}
+		for i := range wire.Tools {
+			if wire.Tools[i].Type == "web_search" {
+				wire.Tools[i].Type = "deepseek_web_search"
+			}
+		}
+		wire.Tools = append(wire.Tools, responsesTool{Type: "deepseek_read_url"})
+	}
+	return wire, nil
+}
+
+func requestNativeSearch(request ModelRequest, declared bool) bool {
+	if request.WebSearch != nil {
+		declared = *request.WebSearch
+	}
+	return declared && !request.DenyOperations && (request.Purpose == "" || request.Purpose == "chat")
 }
 
 func responsesRequestFrom(request ModelRequest, model string, stream, webSearch bool) (responsesRequest, error) {
@@ -325,8 +363,13 @@ type responsesOutputItem struct {
 }
 
 type responsesContent struct {
-	Type string `json:"type,omitempty"`
-	Text string `json:"text,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Text        string `json:"text,omitempty"`
+	Annotations []struct {
+		Type  string `json:"type"`
+		URL   string `json:"url"`
+		Title string `json:"title"`
+	} `json:"annotations,omitempty"`
 }
 
 type responsesAction struct {
@@ -337,6 +380,10 @@ type responsesAction struct {
 }
 
 type responsesUsage struct {
+	ServerToolUse *struct {
+		ToolSearch *int64 `json:"tool_search"`
+		ToolFetch  *int64 `json:"tool_fetch"`
+	} `json:"server_tool_use"`
 	InputDetails *struct {
 		CachedTokens *int64 `json:"cached_tokens"`
 	} `json:"input_tokens_details"`
@@ -532,6 +579,29 @@ func normalizeResponsesEnvelope(envelope responsesEnvelope, raw []byte, key stri
 			for _, part := range item.Content {
 				if part.Type == "output_text" {
 					text.WriteString(redact(part.Text, key))
+					// Keep citations next to their output text without guessing a
+					// provider's Unicode/UTF-16 offset convention. The exact raw
+					// annotations remain in ProviderItems for continuation.
+					seen := map[string]bool{}
+					for _, citation := range part.Annotations {
+						if citation.Type != "url_citation" || len(seen) >= 10 || key != "" && strings.Contains(citation.URL, key) {
+							continue
+						}
+						u, err := webaccess.PublicURL(citation.URL)
+						if err != nil || seen[u.String()] {
+							continue
+						}
+						seen[u.String()] = true
+						title := redact(truncateUTF8Bytes(citation.Title, 256), key)
+						if title == "" {
+							title = u.Hostname()
+						}
+						title = strings.NewReplacer("\\", "\\\\", "[", "\\[", "]", "\\]", "\n", " ", "\r", " ").Replace(title)
+						link := strings.NewReplacer("(", "%28", ")", "%29", "<", "%3C", ">", "%3E").Replace(u.String())
+						if _, err := url.Parse(link); err == nil {
+							text.WriteString(" [" + title + "](" + link + ")")
+						}
+					}
 				}
 			}
 		case "reasoning":
@@ -679,6 +749,12 @@ func responsesUsageValue(usage *responsesUsage) (*ModelUsage, error) {
 		return nil, &CallError{Category: "protocol", Message: "invalid Responses usage"}
 	}
 	result := &ModelUsage{InputTokens: *usage.InputTokens, OutputTokens: *usage.OutputTokens, TotalTokens: *usage.TotalTokens}
+	if usage.ServerToolUse != nil {
+		result.ServerTools = &ServerToolUsage{SearchRequests: usage.ServerToolUse.ToolSearch, FetchRequests: usage.ServerToolUse.ToolFetch}
+		if e := validateServerToolUsage(result.ServerTools); e != nil {
+			return nil, e
+		}
+	}
 	if usage.InputDetails != nil {
 		result.CacheReadTokens = usage.InputDetails.CachedTokens
 	}

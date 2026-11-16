@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"strings"
+
+	"github.com/endview/freeagent/internal/webaccess"
 )
 
 // These schemas describe the existing typed control handlers. They are read
@@ -119,6 +121,7 @@ func buildControlInputSchemas() map[string]json.RawMessage {
 		BlockedPaths []string  `json:"blocked_paths,omitempty"`
 	}]()
 	schemas[ControlSetHTTPPolicy] = controlTypeSchema[HTTPConfig]()
+	schemas[ControlSetSearchPolicy] = controlTypeSchema[webaccess.Config]()
 	schemas[ControlSetKeyProfile] = controlTypeSchema[safeKeyMetadataArguments]("id")
 	schemas[ControlSetMCPPolicy] = controlTypeSchema[struct {
 		ID                string   `json:"id"`

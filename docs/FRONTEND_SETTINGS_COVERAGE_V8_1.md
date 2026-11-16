@@ -232,3 +232,9 @@
 | `tools.set_enabled` | 内置工具 |
 
 相关入口以 [功能映射](FRONTEND_FEATURE_MAP_V8_1.md) 和 [开发指南](FRONTEND_DEVELOPMENT_GUIDE_V8_1.md) 为准。公网继续保留受限查询和专用 remote 操作，不为覆盖本表放开本机 attach 管理接口。
+
+## v8.9.0-dev.1 联网搜索
+
+新增的 `web_search.mode`、`default_connection`、`connections.$id.provider/key`、`timeout_seconds`、`max_results`、`max_output_bytes` 全部映射至“连接与数据 → 联网搜索”，通过 `search.set_policy` 保存。搜索 Key 仍属于秘密存储；对话的 `search` 选择属于既有会话能力。
+
+Web 的保存/回读/冲突、CLI/AI 控制提案与同一后端操作对应；连接测试与配置保存分开。机读覆盖表是 [settings-map.json](../internal/chatui/frontend/settings-map.json)，使用范围见[联网搜索](WEB_SEARCH.md)。

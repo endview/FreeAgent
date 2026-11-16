@@ -20,6 +20,7 @@ import {
   ListChecks,
   Trash2,
   History,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 
@@ -63,6 +64,7 @@ export const settingsGroups: {
     title: "连接与数据",
     entries: [
       { id: "channels", name: "渠道", icon: Radio },
+      { id: "search", name: "联网搜索", icon: Globe },
       { id: "delivery", name: "投递授权", icon: Send },
       { id: "public", name: "公网安全", icon: ShieldCheck },
       { id: "data", name: "数据库与备份", icon: Database },

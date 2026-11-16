@@ -550,6 +550,7 @@ func TestExtendedControlCatalogPlansAppliesAndRevertsConfigFamilies(t *testing.T
 		}},
 		{ControlSetAutoPolicy, map[string]any{"enabled": true, "models": []string{"local-profile"}, "max_candidates": 1, "max_assessments": 0, "max_upgrades": 0}, func(config Config) bool { return config.Auto.Enabled && len(config.Auto.Models) == 1 }},
 		{ControlSetHTTPPolicy, map[string]any{"enabled": true, "allowed_origins": []string{"https://example.test"}, "timeout_seconds": 10, "max_output_bytes": 4096}, func(config Config) bool { return config.HTTP.Enabled && len(config.HTTP.AllowedOrigins) == 1 }},
+		{ControlSetSearchPolicy, map[string]any{"mode": "auto", "timeout_seconds": 20, "max_results": 5, "max_output_bytes": 16384}, func(config Config) bool { return config.WebSearch != nil && config.WebSearch.Mode == "auto" }},
 		{ControlSetMemoryPolicy, map[string]any{"knowledge_enabled": true, "max_entries": 8, "max_context_bytes": 8192, "max_document_bytes": 16384}, func(config Config) bool { return config.Memory.KnowledgeEnabled && config.Memory.MaxEntries == 8 }},
 		{ControlSetPromptPolicy, map[string]any{"system_prompt": "updated system prompt", "instructions": []string{}}, func(config Config) bool { return config.SystemPrompt == "updated system prompt" }},
 		{ControlSetRuntimeLimits, map[string]any{"history_page_size": 80, "max_context_bytes": 65536}, func(config Config) bool { return config.HistoryPageSize == 80 && config.MaxContextBytes == 65536 }},

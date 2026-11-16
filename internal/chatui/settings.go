@@ -1,9 +1,11 @@
 package chatui
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/endview/freeagent/internal/harness"
+	"github.com/endview/freeagent/internal/webaccess"
 	"github.com/endview/freeagent/internal/winlaunch"
 )
 
@@ -43,6 +45,70 @@ type settingsCommandPatch struct {
 func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Request) bool {
 	path := request.URL.Path
 	switch {
+	case path == "/api/settings/web-search/test" && request.Method == http.MethodPost:
+		var body struct {
+			Connection string `json:"connection"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		config := server.tasks.Config().WebSearch
+		if config == nil {
+			server.writeError(writer, 400, "input", "请先保存搜索连接。")
+			return true
+		}
+		connection, ok := config.Connections[body.Connection]
+		if !ok {
+			server.writeError(writer, 400, "input", "搜索连接不存在，请先保存。")
+			return true
+		}
+		key, err := server.tasks.Keys().Resolve(connection.Key)
+		if err != nil {
+			server.fail(writer, err)
+			return true
+		}
+		if key.Protocol != harness.KeyProtocolSearch && !(connection.Provider == "deepseek" && key.Protocol == harness.KeyProtocolOpenAICompatible) {
+			server.writeError(writer, 400, "input", "搜索连接的 Key 协议不匹配。")
+			return true
+		}
+		probe, err := harness.ProbeSearchConnection(request.Context(), *config, connection, key)
+		if err != nil {
+			category := "network"
+			var failure *webaccess.HTTPError
+			if errors.As(err, &failure) {
+				category = "unexpected"
+				if failure.Status == 401 || failure.Status == 403 {
+					category = "auth"
+				}
+				if failure.Status == 429 {
+					category = "rate_limited"
+				}
+			}
+			server.writeError(writer, 502, category, err.Error())
+			return true
+		}
+		// A probe does not mutate the protected Key/config files outside the
+		// control boundary. Its result is returned to the initiating client.
+		server.writeJSON(writer, 200, map[string]any{"provider": probe.Provider, "retrieved_at": probe.At, "result_count": len(probe.Results)})
+	case path == "/api/settings/web-search" && request.Method == http.MethodGet:
+		server.writeSearchSettings(writer, request)
+	case path == "/api/settings/web-search" && request.Method == http.MethodPatch:
+		var body struct {
+			settingsPatch
+			Config webaccess.Config `json:"config"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		if _, err := server.applyDirectControl(request.Context(), body.ExpectedRevision, "", harness.ControlSetSearchPolicy, body.Config, body.ExpectedRevisions); err != nil {
+			if validation := body.Config.Validate(); validation != nil {
+				server.writeError(writer, http.StatusBadRequest, "input", validation.Error())
+				return true
+			}
+			server.runtimePolicyFailure(writer, err)
+			return true
+		}
+		server.writeSearchSettings(writer, request)
 	case path == "/api/settings/delivery" && request.Method == http.MethodGet:
 		config, revisions, err := server.settingsSnapshot()
 		if err != nil {
@@ -132,6 +198,25 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 		return false
 	}
 	return true
+}
+
+func (server *Server) writeSearchSettings(writer http.ResponseWriter, request *http.Request) {
+	config, revisions, err := server.settingsSnapshot()
+	if err != nil {
+		server.fail(writer, err)
+		return
+	}
+	policy := webaccess.DefaultConfig()
+	legacy := config.WebSearch == nil
+	if !legacy {
+		policy = *config.WebSearch
+	}
+	server.writeJSON(writer, http.StatusOK, map[string]any{
+		"config": policy, "legacy": legacy, "providers": webaccess.Providers(),
+		"network_enabled":    harness.EffectiveBuiltinTools(config).Network,
+		"expected_revisions": settingsRevision(revisions, "config.web_search"),
+		"revision":           server.tasks.RuntimePolicy().Generation,
+	})
 }
 
 func (server *Server) settingsProjection() map[string]any {
@@ -299,8 +384,8 @@ func (server *Server) patchSettingsTools(writer http.ResponseWriter, request *ht
 	// switch is committed. Stage that part first, then apply the tool switch.
 	if body.Network != nil && *body.Network && body.NetworkAllowedOrigins != nil {
 		current := server.tasks.Config().HTTP
-		current.Enabled = true
 		current.AllowedOrigins = append([]string(nil), (*body.NetworkAllowedOrigins)...)
+		current.Enabled = len(current.AllowedOrigins) > 0
 		if _, err := server.applyDirectControl(request.Context(), first, "", harness.ControlSetHTTPPolicy, current); err != nil {
 			server.runtimePolicyFailure(writer, err)
 			return

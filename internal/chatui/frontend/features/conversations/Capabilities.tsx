@@ -10,6 +10,7 @@ import type { CapabilityCatalog, CapabilitySelection } from "@/lib/api/types";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
 import { characterSelection } from "@/lib/presentation/capabilities.mjs";
+import { Choice } from "@/components/Choice";
 
 const labels = { skills: "Skill", mcp_servers: "MCP", extensions: "扩展" };
 export function Capabilities({
@@ -66,6 +67,34 @@ export function Capabilities({
                 : "选择本次新对话允许使用的能力。"}
           </p>
           <section className="capability-group" data-kind="tools">
+            <h3>联网搜索</h3>
+            <Choice
+              label="此对话搜索方式"
+              value={selection.search || ""}
+              options={[
+                ["", "继承全局设置"],
+                ["off", "关闭搜索"],
+                ["auto", "自动"],
+                ["api", "使用搜索 API"],
+                ["native", "模型原生联网"],
+              ]}
+              onChange={(value) =>
+                onChange({
+                  ...selection,
+                  search: value as CapabilitySelection["search"],
+                })
+              }
+            />
+            <p>
+              全局关闭时，此选择不能开启搜索。
+              {onManage && (
+                <Popover.Close asChild>
+                  <button onClick={() => onManage("search")}>
+                    管理搜索连接
+                  </button>
+                </Popover.Close>
+              )}
+            </p>
             <h3>
               <Wrench size={16} />
               内置工具

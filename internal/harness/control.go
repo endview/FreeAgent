@@ -25,6 +25,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/endview/freeagent/internal/webaccess"
 )
 
 const (
@@ -102,6 +104,7 @@ const (
 	ControlRemoveModel                 = "model.remove"
 	ControlSetAutoPolicy               = "auto.set_policy"
 	ControlSetHTTPPolicy               = "http.set_policy"
+	ControlSetSearchPolicy             = "search.set_policy"
 	ControlSetChannelPolicy            = "channels.set_policy"
 	ControlSetMemoryPolicy             = "memory.set_policy"
 	ControlSetPromptPolicy             = "prompt.set_policy"
@@ -249,6 +252,7 @@ type ControlResult struct {
 }
 
 type ControlConfigState struct {
+	WebSearch      *webaccess.Config     `json:"web_search,omitempty"`
 	Channels       ChannelsConfig        `json:"channels"`
 	PermissionMode string                `json:"permission_mode"`
 	SandboxMode    string                `json:"sandbox_mode"`
@@ -658,6 +662,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlRemoveModel, ResourceFamily: "config.models", Risk: ControlRiskDestructive, Description: "Remove a configured model profile and its future references.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetAutoPolicy, ResourceFamily: "config.auto", Risk: ControlRiskAuthority, Description: "Change bounded Auto model selection settings.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetHTTPPolicy, ResourceFamily: "config.http", Risk: ControlRiskAuthority, Description: "Change the bounded HTTP tool policy and origins.", ModelProposable: true, Reversible: true},
+		{Kind: ControlSetSearchPolicy, ResourceFamily: "config.web_search", Risk: ControlRiskAuthority, Description: "Replace the search policy for future Runs. Use saved search Key references only; read current policy first and preserve connections. mode off/auto/api/native separates authorization from model support. No raw credentials. Confirmation required.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetChannelPolicy, ResourceFamily: "config.channels", Risk: ControlRiskAuthority, Description: "Configure external connections using saved credentials. Telegram plain_text and disable_typing control formatting and private processing indicators; false enables each feature.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetDeliveryPolicy, ResourceFamily: "config.delivery", Risk: ControlRiskAuthority, Description: "Configure transport bounds and explicitly authorized, bounded extension follow-ups per conversation. Expression strategies belong to optional extensions. Active sending defaults off. Fields: sticker_limit 1..3; interval_ms 0..2000; enabled; rules with extension, conversation, timezone, quiet times, daily/cooldown limits, cancellation and expiry bounds.", ModelProposable: true, Reversible: true},
 		{Kind: ControlScheduleDelivery, ResourceFamily: "delivery.schedule", Risk: ControlRiskAuthority, Description: "Schedule one explicitly confirmed fixed text or known sticker to the original Telegram conversation. Arguments: run_id and candidate {key,text or sticker_ref,after,expires,timezone,reason}. Absolute times include timezone; expires at most 24h after due time. No command/model runs at delivery time.", ModelProposable: true, Reversible: false},
@@ -834,7 +839,7 @@ func (service *ControlService) ReadControlState(ctx context.Context) (ControlSta
 		Config: ControlConfigState{Channels: config.Channels, PermissionMode: string(settings.PermissionMode), SandboxMode: string(settings.SandboxMode),
 			FileScope: string(settings.FileScope), NetworkMode: string(settings.NetworkPolicy.Mode),
 			EnabledTools: effectiveBuiltinToolSettings(config), CommandReady: commands.Status == "ready", Commands: commands,
-			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled, HTTP: config.HTTP,
+			DefaultModel: config.DefaultModel, Models: models, Workspace: workspace, Auto: config.Auto, HTTPEnabled: config.HTTP.Enabled, HTTP: config.HTTP, WebSearch: cloneWebConfig(config.WebSearch),
 			Memory: config.Memory, Collaboration: redactCollaborationSettings(config.Collaboration), ContextPolicy: contextPolicySnapshot(config), Limits: map[string]int{
 				"extension_max_context_chars": config.Extensions.MaxContextChars, "extension_max_model_calls_per_turn": config.Extensions.MaxModelCallsPerTurn,
 				"history_page_size": config.HistoryPageSize, "max_context_bytes": config.MaxContextBytes,
@@ -1031,6 +1036,9 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 		if current.ID == "" {
 			return ControlOperation{}, ErrKeyNotFound
 		}
+		if request.Namespace == "" && searchKeyInUse(service.core.currentConfig(), current.ID) {
+			return ControlOperation{}, errors.New("search: remove the referencing search connection before deleting this Key")
+		}
 		users := keyModelUsers(service.core.currentConfig(), current.ID)
 		if request.Namespace == "channels" {
 			users = nil
@@ -1083,6 +1091,9 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 		return ControlOperation{}, err
 	}
 	protocol := normalizeKeyProtocol(input.Protocol)
+	if request.Namespace == "" && current.ID != "" && searchKeyInUse(service.core.currentConfig(), current.ID) && (protocol != current.Protocol || base != current.BaseURL) {
+		return ControlOperation{}, errors.New("search: unlink search connections before changing Key endpoint or protocol; secret rotation is allowed")
+	}
 	if !keys.accepts(protocol) {
 		return ControlOperation{}, ErrPermissionDenied
 	}
@@ -2006,6 +2017,11 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 	if err := applyConfigControl(&candidate, record.Operation.Kind, record.Arguments, ctx, service.core.Store.DataDir()); err != nil {
 		return err
 	}
+	if record.Operation.Kind == ControlSetSearchPolicy {
+		if err := validateSearchKeys(candidate.WebSearch, service.core.Keys); err != nil {
+			return err
+		}
+	}
 	_, err := NewTaskService(service.core).configureRuntimePolicy(ctx, "", func(config *Config) error { *config = candidate; return nil }, true)
 	return err
 }
@@ -2132,6 +2148,9 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 	}
 	if args.Remove || record.Operation.Kind == ControlRemoveKey {
 		config := service.core.currentConfig()
+		if args.Namespace == "" && searchKeyInUse(config, args.ID) {
+			return errors.New("search: remove the referencing search connection before deleting this Key")
+		}
 		if args.Namespace == "" && !bytes.Equal(record.Before["config.models"], mustJSON(configResourceValue(config, "config.models"))) {
 			// Older pending removals without an impact snapshot must be previewed
 			// again. Never extend an approved deletion to newly referencing models.
@@ -2174,6 +2193,15 @@ func (service *ControlService) applyKeyRecordLocked(ctx context.Context, record 
 	}
 	if args.ID == "" {
 		return ErrKeyNotFound
+	}
+	if args.Namespace == "" && searchKeyInUse(service.core.currentConfig(), args.ID) {
+		current, err := keys.Find(args.ID)
+		if err != nil {
+			return err
+		}
+		if input.Protocol != "" && input.Protocol != current.Protocol || input.BaseURL != current.BaseURL {
+			return errors.New("search: unlink search connections before changing Key endpoint or protocol; secret rotation is allowed")
+		}
 	}
 	_, err := keys.Update(args.ID, input)
 	return err
@@ -2485,6 +2513,11 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		if err := buildConfigRecord(&record, &config, ctx, service.core.Store.DataDir()); err != nil {
 			return controlRecord{}, err
 		}
+		if record.Operation.Kind == ControlSetSearchPolicy {
+			if err := validateSearchKeys(config.WebSearch, service.core.Keys); err != nil {
+				return controlRecord{}, err
+			}
+		}
 		if record.Operation.Kind == ControlSetChannelPolicy {
 			keys := NewTaskService(service.core).ChannelKeys()
 			if err := validateChannelKeys(keys, config.Channels); err != nil {
@@ -2600,6 +2633,8 @@ func configControlResource(kind string, raw json.RawMessage) (string, error) {
 		return "config.auto", nil
 	case ControlSetHTTPPolicy:
 		return "config.http", nil
+	case ControlSetSearchPolicy:
+		return "config.web_search", nil
 	case ControlSetChannelPolicy:
 		return "config.channels", nil
 	case ControlSetMemoryPolicy:
@@ -2860,7 +2895,7 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 			config.Commands.Enabled = args.Enabled
 		case "network":
 			tools.Network = args.Enabled
-			config.HTTP.Enabled = args.Enabled
+			config.HTTP.Enabled = args.Enabled && len(config.HTTP.AllowedOrigins) > 0
 			if !args.Enabled {
 				config.HTTP.AllowedOrigins = nil
 			}
@@ -2986,6 +3021,15 @@ func applyConfigControl(config *Config, kind string, raw json.RawMessage, ctx co
 			return err
 		}
 		config.HTTP = args
+	case ControlSetSearchPolicy:
+		var args webaccess.Config
+		if err := decodeControlJSON(raw, &args); err != nil {
+			return err
+		}
+		if err := args.Validate(); err != nil {
+			return err
+		}
+		config.WebSearch = &args
 	case ControlSetChannelPolicy:
 		var args ChannelsConfig
 		if err := decodeControlJSON(raw, &args); err != nil {
@@ -3269,6 +3313,8 @@ func configResourceValue(config Config, resource string) any {
 		return autoControlArguments{AutoConfig: config.Auto, DefaultSelection: &selection}
 	case "config.http":
 		return config.HTTP
+	case "config.web_search":
+		return config.WebSearch
 	case "config.channels":
 		return config.Channels
 	case "config.memory":
@@ -3443,6 +3489,8 @@ func setConfigResource(config *Config, resource string, raw json.RawMessage) err
 		}
 	case "config.http":
 		return decodeAndAssign(raw, &config.HTTP)
+	case "config.web_search":
+		return decodeAndAssign(raw, &config.WebSearch)
 	case "config.channels":
 		return decodeAndAssign(raw, &config.Channels)
 	case "config.memory":

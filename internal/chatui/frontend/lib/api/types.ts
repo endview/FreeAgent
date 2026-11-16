@@ -146,6 +146,7 @@ export interface ChatView {
   [key: string]: unknown;
 }
 export interface CapabilitySelection {
+  search?: "off" | "auto" | "api" | "native" | "";
   skills?: string[];
   mcp_servers?: string[];
   extensions?: string[];

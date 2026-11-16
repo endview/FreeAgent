@@ -194,6 +194,9 @@
   .settings-layout.mobile-detail-active .settings-main {
     display: flex;
   }
+  .app-settings .settings-layout.mobile-detail-active > .settings-nav {
+    display: none;
+  }
   .management-content-actions {
     flex-wrap: wrap;
   }

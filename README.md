@@ -19,7 +19,13 @@ one-time follow-ups. See [current validation](docs/VALIDATION_V8_5_2026-11-08.md
 [experience summary](docs/EXPERIENCE_SUMMARY.md). The published release link
 above remains unchanged; upgrading does not enable autonomous sending.
 
-The current workspace is **v8.8.0-dev.11**, adding conversation menus,
+The current workspace is **v8.9.0-dev.1**, adding optional search API connections,
+bounded public-page reading, per-conversation search selection, and saved search
+settings shared with the control API. See the [search guide](docs/WEB_SEARCH.md)
+and [implementation status](docs/WEB_CAPABILITIES_IMPLEMENTATION_2026-11-17.md).
+Browser and computer-use extensions remain later phases of the plan.
+
+The v8.8 work includes conversation menus,
 space management, frozen batch selections and a seven-day recycle bin.
 Read the [management and offline schema-upgrade guide](docs/CONVERSATION_MANAGEMENT.md)
 before upgrading a schema 1 store. The dev.10 follow-up prevents idle recycle-bin

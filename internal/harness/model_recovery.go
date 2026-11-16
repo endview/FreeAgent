@@ -52,7 +52,7 @@ func (service *Service) canRetryModel(ctx context.Context, request ModelRequest,
 		return false
 	}
 	binding, err := service.binding()
-	if err != nil || binding.Config.EffectiveCapabilities().WebSearch == "supported" {
+	if err != nil || requestNativeSearch(request, binding.Config.EffectiveCapabilities().WebSearch == "supported") {
 		return false
 	}
 	if failure == nil {

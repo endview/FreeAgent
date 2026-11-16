@@ -28,7 +28,7 @@ func providerRequestPayload(binding ModelBinding, request ModelRequest) ([]byte,
 	case "responses":
 		source := nativeContinuationSource("responses", binding.BaseURL, config.Key, config.Model)
 		request.Messages = scopedProviderMessages(request.Messages, source)
-		wire, err := responsesRequestForCaps(request, config.Model, caps, caps.WebSearch == "supported")
+		wire, err := responsesRequestForEndpoint(request, config.Model, caps, caps.WebSearch == "supported", binding.BaseURL)
 		if err != nil {
 			return nil, err
 		}

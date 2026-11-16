@@ -529,7 +529,12 @@ func toolPolicyForProfile(config Config, profile ExecutionProfile) ToolPolicy {
 	}
 	command := commandConfigForProfile(config.Commands, profile)
 	command.Enabled = command.Enabled && tools.CommandRun
+	search := cloneWebConfig(config.WebSearch)
+	if search != nil {
+		search.MaxOutputBytes = min(search.MaxOutputBytes, config.MaxToolResult)
+	}
 	return ToolPolicy{
+		WebSearch:    search,
 		EnabledTools: tools,
 		Commands:     command,
 		HTTP:         HTTPConfig{Enabled: config.HTTP.Enabled, AllowedOrigins: append([]string(nil), config.HTTP.AllowedOrigins...), TimeoutSecs: config.HTTP.TimeoutSecs, MaxOutput: config.HTTP.MaxOutput},

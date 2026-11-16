@@ -13,10 +13,10 @@ They do not discover or certify capabilities through a network request.
 | --- | --- |
 | `provider`, `model` / `--model` | Named profile and explicit model; `--key` implies `openai-compatible` |
 | `key` / `--key` | Key profile id only; its base address and key source live in `keys.json` and are resolved before each dispatch |
-| `protocol` / `--protocol` | `chat`, `responses` or `local`; Chat Completions, OpenAI-compatible Responses and local Echo dispatch are implemented |
+| `protocol` / `--protocol` | `chat`, `responses` or `local`; `chat` selects Chat Completions or Anthropic Messages by provider, `responses` selects OpenAI-compatible Responses, and `local` selects Echo |
 | `streaming` / `--streaming` | `supported` requests SSE; `none` requests JSON |
 | `tools` / `--tools` | `supported` or `none`; incompatible complete tool history is rejected, not split |
-| `web_search` / `--web-search` | `supported` or `none`; explicitly enables a provider-side Responses search tool |
+| `web_search` / `--web-search` | `supported` or `none`; declares model support for an adapted provider-side Responses or Anthropic Messages search tool; the current request policy controls use |
 | `parallel_tools` / `--parallel-tools` | `supported` or `none`; parallel response/history violations are refused |
 | `context_bytes` / `--context-bytes` | Finite serialized input bound; zero inherits Harness limits, not a tokenizer quota |
 | `output_tokens` / `--output-tokens` | Finite requested output bound; zero inherits Harness limits |
@@ -32,6 +32,25 @@ Insufficient context or output capacity is refused before dispatch where
 detectable. Responses output items are retained for the next request; a
 `function_call` becomes a local tool call, while a `web_search_call` remains
 provider metadata and is never treated as a local executable tool.
+
+From v8.9.0-dev.1, a saved `web_search` runtime policy separates model support
+from the current conversation's search selection. `ModelRequest.WebSearch`
+controls that dispatch; nil preserves the pre-v8.9 declared Responses behavior.
+Auxiliary calls and denied operations do not enable search. `SearchDecision`
+records mode, route, connection reference and reason in the existing Attempt;
+it is not proof that the vendor actually searched. Payload accounting uses the
+same request selection as dispatch. Responses URL annotations become visible
+source links; original annotations remain in the native output items.
+
+Official DeepSeek Responses maps the native tools to `deepseek_web_search`
+and `deepseek_read_url` for the documented `deepseek-flash` model. Anthropic
+Messages uses basic versioned web search, preserves complete native result and
+citation blocks, and never dispatches server-tool activity as a local function.
+Its `pause_turn` is a definitive pause with retained blocks, not successful
+completion or automatic replay. Automatic pause continuation and Gemini
+grounding remain pending. Reported server search/fetch usage is retained when
+provided; absent usage is not invented. See [web search](WEB_SEARCH.md) and the
+[real acceptance results](VALIDATION_WEB_SEARCH_2026-11-17.md) for relay limits.
 
 ## Responses And Failures
 

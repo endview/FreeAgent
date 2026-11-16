@@ -7,11 +7,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/endview/freeagent/internal/webaccess"
 )
 
 var ErrToolDisabled = errors.New("harness: tool is disabled")
 
 type ToolPolicy struct {
+	WebSearch    *webaccess.Config   `json:"web_search_policy,omitempty"`
 	EnabledTools BuiltinToolSettings `json:"enabled_tools"`
 	Commands     CommandConfig       `json:"command_policy"`
 	HTTP         HTTPConfig          `json:"http_policy"`
@@ -55,6 +58,9 @@ func (view *RuntimeToolView) Definitions() []ToolDefinition {
 	if view.policy.EnabledTools.Network && view.policy.HTTP.Enabled {
 		definitions = append(definitions, (&HTTPTools{Config: view.policy.HTTP}).Definitions()...)
 	}
+	if view.policy.EnabledTools.Network {
+		definitions = append(definitions, view.webTools().Definitions()...)
+	}
 	for index := range definitions {
 		if !isFileToolName(definitions[index].Name) {
 			continue
@@ -76,6 +82,12 @@ func (view *RuntimeToolView) Prepare(ctx context.Context, call ToolCall) (Prepar
 	}
 	if view.policy.Profile.PermissionMode == PermissionNone {
 		return PreparedTool{}, ErrPermissionDenied
+	}
+	if call.Name == "web_search" || call.Name == "web_fetch" {
+		if !view.policy.EnabledTools.Network {
+			return PreparedTool{}, ErrToolDisabled
+		}
+		return view.webTools().Prepare(ctx, call)
 	}
 	if call.Name == "command_run" {
 		if !view.policy.EnabledTools.CommandRun || !view.policy.Commands.Enabled {
@@ -106,6 +118,7 @@ func (view *RuntimeToolView) Policy() ToolPolicy {
 		return ToolPolicy{}
 	}
 	copy := view.policy
+	copy.WebSearch = cloneWebConfig(view.policy.WebSearch)
 	copy.EnabledTools = view.policy.EnabledTools
 	copy.Commands.AllowedExecutables = append([]string(nil), copy.Commands.AllowedExecutables...)
 	copy.Commands.Rules = append([]CommandRule(nil), copy.Commands.Rules...)
@@ -123,7 +136,19 @@ func (view *RuntimeToolView) ForCapabilities(selection CapabilitySelection) *Run
 	if view == nil || view.base == nil {
 		return view
 	}
-	return &RuntimeToolView{base: view.base.ForCapabilities(selection), policy: view.Policy(), gate: view.gate}
+	policy := view.Policy()
+	if selection.Search != "" {
+		if policy.WebSearch == nil {
+			c := webaccess.DefaultConfig()
+			policy.WebSearch = &c
+		}
+		// A conversation can narrow the global mode, but cannot activate a
+		// globally disabled capability.
+		if policy.WebSearch.Mode != "off" || selection.Search == "off" {
+			policy.WebSearch.Mode = selection.Search
+		}
+	}
+	return &RuntimeToolView{base: view.base.ForCapabilities(selection), policy: policy, gate: view.gate}
 }
 
 type ToolRuntimeManager struct {

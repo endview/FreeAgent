@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/endview/freeagent/internal/fileops"
+	"github.com/endview/freeagent/internal/webaccess"
 )
 
 const (
@@ -21,6 +22,7 @@ const (
 )
 
 type Config struct {
+	WebSearch            *webaccess.Config          `json:"web_search,omitempty"`
 	Delivery             DeliveryConfig             `json:"delivery,omitempty,omitzero"`
 	PublicWeb            PublicWebConfig            `json:"public_web"`
 	Attachments          AttachmentPolicy           `json:"attachments"`
@@ -687,6 +689,11 @@ func (config Config) validate(requireWorkspace bool) error {
 	}
 	if err := config.HTTP.Validate(); err != nil {
 		return err
+	}
+	if config.WebSearch != nil {
+		if err := config.WebSearch.Validate(); err != nil {
+			return err
+		}
 	}
 	seenInstructions := map[string]bool{}
 	for _, name := range config.Instructions {

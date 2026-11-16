@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/endview/freeagent/internal/webaccess"
 )
 
 type HTTPTools struct {
@@ -116,30 +118,8 @@ func loopbackHTTPHost(host string) bool {
 	return strings.EqualFold(host, "localhost") || err == nil && addr.Unmap().IsLoopback()
 }
 
-// Fail closed for private, special-purpose and non-global destinations. This
-// deliberately excludes some otherwise routable special-purpose ranges.
-var deniedHTTPPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("0.0.0.0/8"), netip.MustParsePrefix("100.64.0.0/10"),
-	netip.MustParsePrefix("192.0.0.0/24"), netip.MustParsePrefix("192.0.2.0/24"),
-	netip.MustParsePrefix("192.88.99.0/24"), netip.MustParsePrefix("198.18.0.0/15"),
-	netip.MustParsePrefix("198.51.100.0/24"), netip.MustParsePrefix("203.0.113.0/24"),
-	netip.MustParsePrefix("240.0.0.0/4"), netip.MustParsePrefix("2001::/23"),
-	netip.MustParsePrefix("2001:db8::/32"), netip.MustParsePrefix("2002::/16"),
-	netip.MustParsePrefix("3fff::/20"),
-}
-
 func publicHTTPAddress(addr netip.Addr) bool {
-	addr = addr.Unmap()
-	if !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLoopback() || addr.IsLinkLocalUnicast() ||
-		(addr.Is6() && !netip.MustParsePrefix("2000::/3").Contains(addr)) {
-		return false
-	}
-	for _, prefix := range deniedHTTPPrefixes {
-		if prefix.Contains(addr) {
-			return false
-		}
-	}
-	return true
+	return webaccess.PublicAddress(addr)
 }
 
 func validateHTTPAddresses(host string, addresses []netip.Addr) error {

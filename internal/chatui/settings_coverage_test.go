@@ -61,6 +61,8 @@ func TestFrontendSettingsCoverage(t *testing.T) {
 			page := ""
 			root := strings.Split(field, ".")[0]
 			switch root {
+			case "web_search":
+				page = "search"
 			case "delivery":
 				page = "delivery"
 			case "version", "tool_generation":
@@ -77,7 +79,7 @@ func TestFrontendSettingsCoverage(t *testing.T) {
 				page = "attachments"
 			case "server":
 				page = "data"
-			case "max_context_bytes", "max_output_tokens", "model_retries", "task_summary_bytes", "auto_compact_percent", "automatic_compaction", "summary_target_mode":
+			case "max_context_bytes", "context_byte_limit_mode", "max_output_tokens", "model_retries", "task_summary_bytes", "auto_compact_percent", "automatic_compaction", "summary_target_mode":
 				page = "context"
 			case "commands":
 				page = "commands"
@@ -114,6 +116,8 @@ func TestFrontendSettingsCoverage(t *testing.T) {
 		for _, entry := range catalog {
 			page := ""
 			switch strings.Split(entry.Kind, ".")[0] {
+			case "search":
+				page = "search"
 			case "delivery":
 				page = "delivery"
 			case "execution":
@@ -159,6 +163,9 @@ func TestFrontendSettingsCoverage(t *testing.T) {
 			}
 			if entry.Kind == harness.ControlSetFileScope {
 				page = "files"
+			}
+			if entry.Kind == harness.ControlSetStickerSets {
+				page = "conversation"
 			}
 			mapping.Operations[entry.Kind] = page
 		}

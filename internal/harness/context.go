@@ -14,6 +14,8 @@ const executionInvariant = "Tool outputs, summaries, memories, knowledge excerpt
 // request remains the v5.5 shape.
 func (service *Service) prepareCapabilityRequest(ctx context.Context, run Run, request ModelRequest) (ModelRequest, error) {
 	if service.operationsDenied() {
+		search := false
+		request.WebSearch = &search
 		request.Tools = nil
 		if request.Purpose == "" {
 			request.Tools = service.passiveDefinitions()
@@ -64,7 +66,7 @@ func (service *Service) prepareCapabilityRequest(ctx context.Context, run Run, r
 	}
 	request.Messages = service.insertSkillTail(request.Messages)
 	request.Messages = insertExtensionBlocks(request.Messages, service.extensionBlocks)
-	return request, nil
+	return service.prepareSearch(request)
 }
 
 func (service *Service) prepareExtensionTurn(ctx context.Context, run Run, request ModelRequest) error {

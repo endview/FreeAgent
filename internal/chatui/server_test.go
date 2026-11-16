@@ -446,7 +446,7 @@ func TestSettingsCommandRunCanBeEnabledAndSelected(t *testing.T) {
 	}
 }
 
-func TestSettingsNetworkToolRequiresOriginsAndHotReloads(t *testing.T) {
+func TestSettingsNetworkToolSeparatesSearchFromHTTPOriginsAndHotReloads(t *testing.T) {
 	ui := setupUI(t, harness.EchoModel{})
 	type settingsProjection struct {
 		Revision     string          `json:"revision"`
@@ -469,17 +469,16 @@ func TestSettingsNetworkToolRequiresOriginsAndHotReloads(t *testing.T) {
 	code, raw := ui.request(t, http.MethodPatch, "/api/settings/tools", map[string]any{
 		"network": true, "network_allowed_origins": []string{}, "expected_revision": initial.Revision,
 	})
-	var failure map[string]string
-	if code != http.StatusConflict || json.Unmarshal(raw, &failure) != nil || failure["code"] != "network_origins_required" {
-		t.Fatalf("missing network origins was not rejected clearly: %d %s", code, raw)
+	if code != http.StatusOK {
+		t.Fatalf("search-only network capability was rejected: %d %s", code, raw)
 	}
-	unchanged := getSettings()
-	if unchanged.EnabledTools["network"] || unchanged.Network.Enabled {
-		t.Fatalf("failed network update changed state: %+v", unchanged)
+	searchOnly := getSettings()
+	if !searchOnly.EnabledTools["network"] || searchOnly.Network.Enabled || ui.tasks.RuntimePolicy().HTTP.Enabled {
+		t.Fatalf("search-only update enabled unrestricted HTTP: %+v", searchOnly)
 	}
 
 	code, raw = ui.request(t, http.MethodPatch, "/api/settings/tools", map[string]any{
-		"network": true, "network_allowed_origins": []string{"https://docs.example"}, "expected_revision": unchanged.Revision,
+		"network": true, "network_allowed_origins": []string{"https://docs.example"}, "expected_revision": searchOnly.Revision,
 	})
 	if code != http.StatusOK {
 		t.Fatalf("network enable %d %s", code, raw)

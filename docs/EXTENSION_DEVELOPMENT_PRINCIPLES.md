@@ -155,3 +155,5 @@ go list -deps ./internal/harness
 已经修正的自然分段归属继续保持：AffectWeave 拥有表达模式、默认值和算法，Core 只验证具体部分。Provider 思考控制继续属于模型适配，不移入人物插件。
 
 **边界修正的完成条件是：能力可增减、普通 Core 仍然好用、业务变化不继续侵入执行内核，并且权限与数据连续性没有退化。**
+
+v8.9 联网批次继续遵守此边界：搜索服务请求和正文处理位于 `internal/webaccess`，厂商托管工具属于 Provider 适配；浏览器、桌面操作和它们的运行时属于可选扩展。人物是否搜索、主动发言及自然分段仍由 AffectWeave 决定。扩展需要图像产物时，应扩展通用附件/受众契约，不让 Core 识别某个扩展 ID 来开放截图路径。当前状态见[实施记录](WEB_CAPABILITIES_IMPLEMENTATION_2026-11-17.md)。

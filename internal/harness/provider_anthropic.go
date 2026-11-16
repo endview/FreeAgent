@@ -169,6 +169,7 @@ type anthropicMessage struct {
 }
 
 type anthropicBlock struct {
+	NativeRaw json.RawMessage       `json:"-"`
 	Thinking  string                `json:"thinking,omitempty"`
 	Signature string                `json:"signature,omitempty"`
 	Data      string                `json:"data,omitempty"`
@@ -183,6 +184,9 @@ type anthropicBlock struct {
 }
 
 func (block anthropicBlock) MarshalJSON() ([]byte, error) {
+	if len(block.NativeRaw) > 0 {
+		return block.NativeRaw, nil
+	}
 	type plain anthropicBlock
 	var thinking *string
 	if block.Type == "thinking" {
@@ -195,9 +199,11 @@ func (block anthropicBlock) MarshalJSON() ([]byte, error) {
 }
 
 type anthropicTool struct {
+	Type        string          `json:"type,omitempty"`
+	MaxUses     int             `json:"max_uses,omitempty"`
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
 }
 
 type anthropicToolChoice struct {
@@ -258,10 +264,16 @@ func anthropicRequestFrom(request ModelRequest, model string, caps ModelCapabili
 				}
 				var blocks []anthropicBlock
 				for _, raw := range saved.Blocks {
-					var block anthropicBlock
-					if json.Unmarshal(raw, &block) != nil {
+					// Server-result content is an array, while a client tool_result
+					// may contain a string. Validate only the identity here and
+					// replay the complete native block without lossy conversion.
+					var identity struct {
+						Type string `json:"type"`
+					}
+					if json.Unmarshal(raw, &identity) != nil || identity.Type == "" {
 						return result, ErrModelBoundary
 					}
+					block := anthropicBlock{Type: identity.Type, NativeRaw: append(json.RawMessage(nil), raw...)}
 					blocks = append(blocks, block)
 				}
 				appendMessage("assistant", blocks)
@@ -289,6 +301,9 @@ func anthropicRequestFrom(request ModelRequest, model string, caps ModelCapabili
 	for _, tool := range request.Tools {
 		result.Tools = append(result.Tools, anthropicTool{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema})
 	}
+	if requestNativeSearch(request, caps.WebSearch == "supported") {
+		result.Tools = append(result.Tools, anthropicTool{Type: "web_search_20250305", Name: "web_search", MaxUses: 3})
+	}
 	if len(result.Tools) != 0 && caps.ParallelTools == "none" {
 		result.ToolChoice = &anthropicToolChoice{Type: "auto", DisableParallelToolUse: true}
 	}
@@ -308,17 +323,52 @@ type anthropicEnvelope struct {
 }
 
 type anthropicResponseBlock struct {
-	Thinking  string          `json:"thinking,omitempty"`
-	Signature string          `json:"signature,omitempty"`
-	Data      string          `json:"data,omitempty"`
-	Type      string          `json:"type"`
-	Text      string          `json:"text,omitempty"`
-	ID        string          `json:"id,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	Input     json.RawMessage `json:"input,omitempty"`
+	Caller    json.RawMessage   `json:"caller,omitempty"`
+	Raw       json.RawMessage   `json:"-"`
+	ToolUseID string            `json:"tool_use_id,omitempty"`
+	Content   json.RawMessage   `json:"content,omitempty"`
+	Citations []json.RawMessage `json:"citations,omitempty"`
+	Thinking  string            `json:"thinking,omitempty"`
+	Signature string            `json:"signature,omitempty"`
+	Data      string            `json:"data,omitempty"`
+	Type      string            `json:"type"`
+	Text      string            `json:"text,omitempty"`
+	ID        string            `json:"id,omitempty"`
+	Name      string            `json:"name,omitempty"`
+	Input     json.RawMessage   `json:"input,omitempty"`
+}
+
+func (block *anthropicResponseBlock) UnmarshalJSON(raw []byte) error {
+	type plain anthropicResponseBlock
+	var value plain
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	*block = anthropicResponseBlock(value)
+	block.Raw = append(json.RawMessage(nil), raw...)
+	return nil
+}
+
+func (block anthropicResponseBlock) MarshalJSON() ([]byte, error) {
+	if len(block.Raw) > 0 {
+		return block.Raw, nil
+	}
+	type plain anthropicResponseBlock
+	var thinking *string
+	if block.Type == "thinking" {
+		thinking = &block.Thinking
+	}
+	return json.Marshal(struct {
+		plain
+		Thinking *string `json:"thinking,omitempty"`
+	}{plain(block), thinking})
 }
 
 type anthropicUsage struct {
+	ServerToolUse *struct {
+		Search *int64 `json:"web_search_requests"`
+		Fetch  *int64 `json:"web_fetch_requests"`
+	} `json:"server_tool_use"`
 	InputTokens              int64  `json:"input_tokens"`
 	OutputTokens             int64  `json:"output_tokens"`
 	CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens"`
@@ -346,10 +396,11 @@ func decodeAnthropicJSON(reader io.Reader, key string) (ModelResponse, error) {
 }
 
 type anthropicStreamBlock struct {
-	index  int
-	block  anthropicResponseBlock
-	input  strings.Builder
-	closed bool
+	index   int
+	block   anthropicResponseBlock
+	input   strings.Builder
+	changed bool
+	closed  bool
 }
 
 func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (ModelResponse, error) {
@@ -382,12 +433,13 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 			} `json:"message"`
 			ContentBlock *anthropicResponseBlock `json:"content_block"`
 			Delta        *struct {
-				Thinking    string `json:"thinking"`
-				Signature   string `json:"signature"`
-				Type        string `json:"type"`
-				Text        string `json:"text"`
-				PartialJSON string `json:"partial_json"`
-				StopReason  string `json:"stop_reason"`
+				Citation    json.RawMessage `json:"citation"`
+				Thinking    string          `json:"thinking"`
+				Signature   string          `json:"signature"`
+				Type        string          `json:"type"`
+				Text        string          `json:"text"`
+				PartialJSON string          `json:"partial_json"`
+				StopReason  string          `json:"stop_reason"`
 			} `json:"delta"`
 			Usage *anthropicUsage `json:"usage"`
 		}
@@ -417,6 +469,7 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 			if block == nil || block.closed || deltaSeen || item.Delta == nil {
 				return &CallError{Category: "protocol", Message: "content block delta has no block"}
 			}
+			block.changed = true
 			switch item.Delta.Type {
 			case "text_delta":
 				if block.block.Type != "text" {
@@ -428,7 +481,7 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 				}
 				emitSafe(item.Delta.Text, false)
 			case "input_json_delta":
-				if block.block.Type != "tool_use" {
+				if block.block.Type != "tool_use" && block.block.Type != "server_tool_use" {
 					return &CallError{Category: "protocol", Message: "tool delta for non-tool block"}
 				}
 				block.input.WriteString(item.Delta.PartialJSON)
@@ -451,6 +504,11 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 				if len(block.block.Signature) > 1<<20 {
 					return &CallError{Category: "protocol", Message: "thinking signature exceeded limits"}
 				}
+			case "citations_delta":
+				if block.block.Type != "text" || len(item.Delta.Citation) == 0 || !json.Valid(item.Delta.Citation) || len(block.block.Citations) >= 32 {
+					return &CallError{Category: "protocol", Message: "invalid native citation delta"}
+				}
+				block.block.Citations = append(block.block.Citations, append(json.RawMessage(nil), item.Delta.Citation...))
 			default:
 				return &CallError{Category: "protocol", Message: "unsupported model stream delta"}
 			}
@@ -472,6 +530,9 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 					envelope.Usage = &anthropicUsage{}
 				}
 				envelope.Usage.OutputTokens = item.Usage.OutputTokens
+				if item.Usage.ServerToolUse != nil {
+					envelope.Usage.ServerToolUse = item.Usage.ServerToolUse
+				}
 			}
 		case "message_stop":
 			if !started || !deltaSeen {
@@ -510,13 +571,34 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 		if block == nil {
 			return ModelResponse{}, &CallError{Category: "protocol", Message: "non-contiguous content blocks"}
 		}
-		if block.block.Type == "tool_use" {
+		if block.block.Type == "tool_use" || block.block.Type == "server_tool_use" {
 			if block.input.Len() != 0 {
 				block.block.Input = json.RawMessage(block.input.String())
 			}
 			if !json.Valid(block.block.Input) {
 				block.block.Input = json.RawMessage(`null`)
 			}
+		}
+		if block.changed {
+			// Apply assembled fields to the original snapshot so opaque
+			// provider metadata survives deltas as well as complete blocks.
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(block.block.Raw, &fields) != nil || fields == nil {
+				return ModelResponse{}, &CallError{Category: "protocol", Message: "invalid stream block snapshot"}
+			}
+			switch block.block.Type {
+			case "text":
+				fields["text"] = mustJSON(block.block.Text)
+				if len(block.block.Citations) > 0 {
+					fields["citations"] = mustJSON(block.block.Citations)
+				}
+			case "thinking":
+				fields["thinking"] = mustJSON(block.block.Thinking)
+				fields["signature"] = mustJSON(block.block.Signature)
+			case "tool_use", "server_tool_use":
+				fields["input"] = block.block.Input
+			}
+			block.block.Raw = mustJSON(fields)
 		}
 		envelope.Content = append(envelope.Content, block.block)
 	}
@@ -525,10 +607,21 @@ func decodeAnthropicStream(reader io.Reader, key string, emit func(string)) (Mod
 
 func finalizeAnthropicOutput(blocks []anthropicResponseBlock, finish string, envelope anthropicEnvelope, streamed bool, key string) (ModelResponse, error) {
 	result := ModelResponse{}
+	searchCalls := map[string]ProviderWebSearchCall{}
+	var searchOrder []string
 	for index, block := range blocks {
 		switch block.Type {
 		case "text":
 			result.Content += redact(block.Text, key)
+			seen := map[string]bool{}
+			for _, raw := range block.Citations {
+				var citation struct{ Type, URL, Title string }
+				if json.Unmarshal(raw, &citation) != nil || citation.Type != "web_search_result_location" || seen[citation.URL] || len(seen) >= 10 {
+					continue
+				}
+				seen[citation.URL] = true
+				result.Content += nativeCitationLink(citation.URL, citation.Title, key)
+			}
 		case "tool_use":
 			if block.ID == "" || block.Name == "" || len(block.ID) > 256 || len(block.Name) > 128 {
 				return ModelResponse{}, &CallError{Category: "protocol", Message: "invalid Anthropic tool call"}
@@ -540,6 +633,30 @@ func finalizeAnthropicOutput(blocks []anthropicResponseBlock, finish string, env
 			result.ToolCalls = append(result.ToolCalls, ToolCall{ID: redact(block.ID, key), Name: redact(block.Name, key), Arguments: input,
 				Provider: &ProviderToolItem{Index: index, Type: "function"}})
 		case "thinking", "redacted_thinking":
+		case "server_tool_use":
+			if block.ID == "" || len(block.ID) > 256 || len(block.Input) > 64<<10 {
+				return ModelResponse{}, &CallError{Category: "protocol", Message: "invalid server tool activity"}
+			}
+			if block.Name == "web_search" || block.Name == "web_fetch" {
+				if _, exists := searchCalls[block.ID]; exists {
+					return ModelResponse{}, &CallError{Category: "protocol", Message: "duplicate server tool activity"}
+				}
+				var input struct{ Query, URL string }
+				_ = json.Unmarshal(block.Input, &input)
+				searchCalls[block.ID] = ProviderWebSearchCall{ID: redact(block.ID, key), Status: "started", Action: block.Name, Query: redact(truncateUTF8Bytes(input.Query, 1024), key), URL: redact(truncateUTF8Bytes(input.URL, 4096), key)}
+				searchOrder = append(searchOrder, block.ID)
+			}
+		case "web_search_tool_result", "web_fetch_tool_result":
+			call, exists := searchCalls[block.ToolUseID]
+			if !exists {
+				return ModelResponse{}, &CallError{Category: "protocol", Message: "server result has no matching activity"}
+			}
+			call.Status = "completed"
+			var failure struct{ Type string }
+			if json.Unmarshal(block.Content, &failure) == nil && strings.HasSuffix(failure.Type, "_error") {
+				call.Status = "failed"
+			}
+			searchCalls[block.ToolUseID] = call
 		default:
 			return ModelResponse{}, &CallError{Category: "protocol", Message: "unsupported Anthropic content block"}
 		}
@@ -550,6 +667,9 @@ func finalizeAnthropicOutput(blocks []anthropicResponseBlock, finish string, env
 	}
 	meta := &ProviderResponse{Protocol: "chat", ID: redact(envelope.ID, key), Model: redact(envelope.Model, key),
 		Streamed: streamed, RawFinishReason: redact(finish, key), UsageStatus: "missing"}
+	for _, id := range searchOrder {
+		meta.WebSearchCalls = append(meta.WebSearchCalls, searchCalls[id])
+	}
 	switch finish {
 	case "end_turn", "stop_sequence":
 		meta.FinishReason = "stop"
@@ -559,6 +679,8 @@ func finalizeAnthropicOutput(blocks []anthropicResponseBlock, finish string, env
 		meta.FinishReason = "length"
 	case "refusal":
 		meta.FinishReason = "refusal"
+	case "pause_turn":
+		meta.FinishReason = "paused"
 	default:
 		meta.FinishReason = "unsupported"
 	}
@@ -572,13 +694,15 @@ func finalizeAnthropicOutput(blocks []anthropicResponseBlock, finish string, env
 	var native []json.RawMessage
 	hasThinking := false
 	for _, block := range blocks {
-		raw := mustJSON(anthropicBlock{Type: block.Type, Text: block.Text, Thinking: block.Thinking,
-			Signature: block.Signature, Data: block.Data, ID: block.ID, Name: block.Name, Input: block.Input})
+		raw := block.Raw
+		if len(raw) == 0 {
+			raw = mustJSON(block)
+		}
 		if key != "" && bytes.Contains(raw, []byte(key)) {
 			return ModelResponse{}, &CallError{Category: "protocol", Message: "secret-bearing Messages continuation"}
 		}
 		native = append(native, raw)
-		hasThinking = hasThinking || block.Type == "thinking" || block.Type == "redacted_thinking"
+		hasThinking = hasThinking || block.Type == "thinking" || block.Type == "redacted_thinking" || block.Type == "server_tool_use" || block.Type == "web_search_tool_result" || block.Type == "web_fetch_tool_result"
 	}
 	if hasThinking {
 		saved := &ChatContinuation{Source: strings.Repeat("0", 64), Blocks: native}
@@ -589,6 +713,9 @@ func finalizeAnthropicOutput(blocks []anthropicResponseBlock, finish string, env
 	}
 	if meta.FinishReason == "length" {
 		return result, &CallError{Certain: true, Category: "output_limit", Message: "model returned max_tokens; partial output is not a completed answer"}
+	}
+	if meta.FinishReason == "paused" {
+		return result, &CallError{Certain: true, Category: "provider_pause", Message: "provider paused its server-side tool turn; native blocks retained, no automatic replay or false completion"}
 	}
 	if meta.FinishReason == "refusal" {
 		return result, &CallError{Certain: true, Category: "refusal", Message: "model refused this request; no tool was dispatched"}
@@ -625,7 +752,14 @@ func anthropicUsageValue(usage *anthropicUsage) (*ModelUsage, error) {
 	if input < usage.InputTokens || total < input || total > 1<<50 {
 		return nil, &CallError{Category: "protocol", Message: "invalid model usage"}
 	}
-	return &ModelUsage{InputTokens: input, OutputTokens: usage.OutputTokens, TotalTokens: total, CacheCreatedTokens: usage.CacheCreationInputTokens, CacheReadTokens: usage.CacheReadInputTokens}, nil
+	result := &ModelUsage{InputTokens: input, OutputTokens: usage.OutputTokens, TotalTokens: total, CacheCreatedTokens: usage.CacheCreationInputTokens, CacheReadTokens: usage.CacheReadInputTokens}
+	if usage.ServerToolUse != nil {
+		result.ServerTools = &ServerToolUsage{SearchRequests: usage.ServerToolUse.Search, FetchRequests: usage.ServerToolUse.Fetch}
+		if e := validateServerToolUsage(result.ServerTools); e != nil {
+			return nil, e
+		}
+	}
+	return result, nil
 }
 
 func normalizeAnthropicError(status int, raw []byte, key string) *CallError {

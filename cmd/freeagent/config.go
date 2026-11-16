@@ -276,6 +276,7 @@ func writeConfigResult(stdout io.Writer, path string, config harness.Config, res
 		"auto": config.Auto, "enabled_mcp_servers": enabled, "instructions": config.Instructions,
 		"model_capabilities": capabilities,
 		"commands":           config.Commands, "http": config.HTTP,
+		"web_search":    config.WebSearch,
 		"collaboration": config.Collaboration,
 		"memory":        config.Memory,
 		"limits": map[string]int{

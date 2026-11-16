@@ -38,8 +38,9 @@ func TestControlCatalogCoversPersistentConfigFields(t *testing.T) {
 		seen[entry.ResourceFamily] = true
 	}
 	fieldFamilies := map[string]string{
-		"delivery": "config.delivery",
-		"models":   "config.models", "default_model": "config.models", "default_selection": "config.models",
+		"delivery":   "config.delivery",
+		"web_search": "config.web_search",
+		"models":     "config.models", "default_model": "config.models", "default_selection": "config.models",
 		"auto": "config.auto", "workspace": "config.workspace",
 		"history_page_size": "config.limits", "max_context_bytes": "config.limits",
 		"max_output_tokens": "config.limits", "max_tool_result_bytes": "config.limits",

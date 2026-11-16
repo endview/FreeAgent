@@ -92,6 +92,7 @@ func (tasks *TaskService) CapabilityCatalog() CapabilityCatalog {
 // CapabilitySelection is a compact, turn-local selection. It is stored inside
 // the existing run snapshot rather than becoming another persisted object.
 type CapabilitySelection struct {
+	Search     string                       `json:"search,omitempty"`
 	Skills     []string                     `json:"skills,omitempty"`
 	MCPServers []string                     `json:"mcp_servers,omitempty"`
 	Extensions []string                     `json:"extensions,omitempty"`
@@ -116,6 +117,9 @@ func (selection CapabilitySelection) normalize() CapabilitySelection {
 
 func (selection CapabilitySelection) validate(config Config) error {
 	selection = selection.normalize()
+	if selection.Search != "" && selection.Search != "off" && selection.Search != "auto" && selection.Search != "api" && selection.Search != "native" {
+		return errors.New("harness: invalid search selection")
+	}
 	if len(selection.Skills) > 256 || len(selection.MCPServers) > 16 || len(selection.Extensions) > 256 {
 		return errors.New("harness: too many enabled turn capabilities")
 	}

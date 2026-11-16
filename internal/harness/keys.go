@@ -34,6 +34,7 @@ const (
 	KeyProtocolTelegram         = "telegram"
 	KeyProtocolLark             = "lark"
 	KeyProtocolQQ               = "qq"
+	KeyProtocolSearch           = "search"
 )
 
 const (
@@ -364,7 +365,7 @@ func normalizeKeyProtocol(protocol string) string {
 
 func validKeyProtocol(protocol string) bool {
 	protocol = normalizeKeyProtocol(protocol)
-	return protocol == KeyProtocolOpenAICompatible || protocol == KeyProtocolAnthropic || IsChannelKeyProtocol(protocol)
+	return protocol == KeyProtocolOpenAICompatible || protocol == KeyProtocolAnthropic || protocol == KeyProtocolSearch || IsChannelKeyProtocol(protocol)
 }
 
 func IsChannelKeyProtocol(protocol string) bool {

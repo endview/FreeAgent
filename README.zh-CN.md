@@ -14,7 +14,9 @@ TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
 此前 **v8.8.0-dev.10**：新增会话「⋯」菜单、空间内容整理、冻结清单批量操作和 7 天回收站；支持恢复、永久清理、CLI 和经确认的 AI 提案，并修复空闲回收维护短暂阻塞前台整理的问题。升级旧库前先阅读[操作与离线升级指南](docs/CONVERSATION_MANAGEMENT.md)。
 
-当前版本 **v8.8.0-dev.11** 已发布并部署 Hytron。设置分为工作台设置、能力管理、连接与数据、空间管理四个可折叠分组，项目配统一图标；空间内容、回收站和保留执行记录收进空间管理，主侧栏仅保留设置。会话「⋯」在桌面悬停或键盘聚焦时显示，触屏直接显示。实际检查见[导航与菜单验收](docs/VALIDATION_MENU_HOVER_2026-11-16.md)。
+当前开发工作树为 **v8.9.0-dev.1**：新增搜索 API 连接、公共网页读取、会话搜索选择、设置保存与引用。[使用说明](docs/WEB_SEARCH.md)、[实施与测试记录](docs/WEB_CAPABILITIES_IMPLEMENTATION_2026-11-17.md)。浏览器和 Computer Use 扩展继续分批开发。
+
+**v8.8.0-dev.11** 已发布并部署 Hytron。设置分为工作台设置、能力管理、连接与数据、空间管理四个可折叠分组，项目配统一图标；空间内容、回收站和保留执行记录收进空间管理，主侧栏仅保留设置。会话「⋯」在桌面悬停或键盘聚焦时显示，触屏直接显示。实际检查见[导航与菜单验收](docs/VALIDATION_MENU_HOVER_2026-11-16.md)。
 
 上下文管理沿用授权投影、有界工具预览、独立窗口/HTTP 字节/摘要额度与恢复机制，见[上下文管理](docs/CONTEXT_MANAGEMENT.md)、[记录来源](docs/CONTEXT_RECORD_SOURCES.md)和[Web 交互说明](docs/WEB_INTERACTION_CLARITY_2026-11-15.md)。Core 不增加扩展业务职责。
 

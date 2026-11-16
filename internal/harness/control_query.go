@@ -97,7 +97,7 @@ func (tools *controlTools) readState(ctx context.Context, query controlStateQuer
 	case "models":
 		values = map[string]any{"models": config.Models, "default_model": config.DefaultModel, "auto": config.Auto}
 	case "tools":
-		values = map[string]any{"enabled_tools": config.EnabledTools, "commands": config.Commands, "http": config.HTTP, "network_mode": config.NetworkMode, "file_scope": config.FileScope}
+		values = map[string]any{"enabled_tools": config.EnabledTools, "commands": config.Commands, "http": config.HTTP, "web_search": config.WebSearch, "network_mode": config.NetworkMode, "file_scope": config.FileScope}
 	case "extensions":
 		values = map[string]any{"enabled_extensions": config.EnabledExts, "enabled_skills": config.EnabledSkills, "enabled_mcp_servers": config.EnabledMCP}
 	}

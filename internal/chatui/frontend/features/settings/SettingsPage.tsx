@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ChevronDown, Moon, Search, Sun, X } from "lucide-react";
 import Providers from "./Providers";
+import SearchSettings from "./SearchSettings";
 import RuntimeSettings from "./RuntimeSettings";
 import {
   MCPSettings,
@@ -22,6 +23,10 @@ import { settingsGroups as groups } from "./navigation";
 import type { ViewPreferences } from "@/lib/platform";
 const scopes: Record<string, [string, string]> = {
   general: ["当前客户端", "外观与布局即时保存，仅影响当前客户端。"],
+  search: [
+    "后续任务",
+    "搜索方式、连接和预算保存后生效；正在执行的任务保留原快照。",
+  ],
   spaces: ["所选空间", "管理空间和会话。授权与当前选中的空间分别保存。"],
   "space-content": [
     "空间与会话",
@@ -62,6 +67,7 @@ const keywords: Record<string, string> = {
   extensions: "affectweave 人物 插件",
   public: "登录 密码 cookie ip 黑名单 白名单",
   channels: "telegram tg lark qq bot",
+  search: "联网 搜索 search fetch tavily brave deepseek 网页 来源",
   data: "postgresql pg 备份 恢复",
   memory: "记忆 固定 上下文",
   delivery: "主动 跟进 发送",
@@ -322,6 +328,8 @@ export default function SettingsPage({
                 space={space}
                 onOpenChat={onOpenChat}
               />
+            ) : section === "search" ? (
+              <SearchSettings />
             ) : section === "channels" ? (
               <ChannelSettings />
             ) : section === "delivery" ? (
