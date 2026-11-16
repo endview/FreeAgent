@@ -956,6 +956,17 @@ func (store *Store) expireConversations(ctx context.Context, now time.Time) erro
 	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
 		return err
 	}
+	if len(ids) == 0 {
+		var pendingFiles bool
+		if err = store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key LIKE 'conversation/file-cleanup/%')`).Scan(&pendingFiles); err != nil {
+			return err
+		}
+		// Most sweeps have no work. Do not briefly exclude foreground work
+		// merely to discover that both the trash and file retry queue are empty.
+		if !pendingFiles {
+			return nil
+		}
+	}
 	if !store.runMu.TryLock() {
 		return nil
 	}

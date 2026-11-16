@@ -2,9 +2,9 @@
 
 - 日期：2026-11-16（Asia/Shanghai）
 - 审计基线：FreeAgent `153de60`；当前程序版本 `v8.8.0-dev.8`。
-- 状态：用户已批准实施；P0–P2 已在本地开发并验证。本文件取代前面聊天中的方案草稿；第 1–17 节保留审计依据与实施契约，实际结果与未执行设备检查见第 18 节。
+- 状态：P0–P2 已完成，v8.8.0-dev.9 已推送 GitHub、发布开发预发行版并升级 Hytron。本文件取代前面聊天中的方案草稿；第 1–17 节保留审计依据与实施契约，实际结果与未执行设备检查见第 18 节。
 - 目标版本：v8.8.0-dev.9，存储 schema 2。
-- 实施范围：本地代码、独立数据库和合成数据测试、操作/升级文档；生产数据和线上配置未改动。
+- 实施范围：代码、独立数据库和合成数据测试、操作/升级文档，以及用户授权的发布与 Hytron schema 2 迁移；原会话、凭据和扩展数据保留。
 
 ## 1. 目标与已确认选择
 
@@ -607,7 +607,11 @@ P0–P2 已实施：生命周期与存储迁移、真实写入门禁、统一菜
 
 当前代码通过完整 Go 回归；最后收尾另完成渠道/扩展/控制专项与 race 验证。真实旧 dev.8 程序拒绝 schema 2、旧格式备份恢复、Owner 确认后自整理、公网登录/CSRF、265 条会话分页与冻结批量、文件失败重试/分支副本、恢复与清理竞争均有测试。
 
-操作和迁移用法见[管理指南](CONVERSATION_MANAGEMENT.md)；具体结果、设备边界与未执行项见[验收记录](VALIDATION_CONVERSATION_MANAGEMENT_2026-11-16.md)。用户已追加授权推送 GitHub、发布 Release 和升级 Hytron；实际结果单独追加，不把授权当作部署成功。
+Windows/Linux 归档各重复构建两次且字节一致，原生 Windows 桌面与 Hytron 独立非 root Linux 运行验收通过。程序源码与发行标签为 `515c1c5d9b2f4ca3dbb7f305991cdaf0d8580748`，已发布 [v8.8.0-dev.9](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.9)。
+
+Hytron 已备份并迁移到 schema 2，Core/渠道正常、TG 重连、公网资源匹配新 Owner。7 个会话、114 个 Run、692 条消息、526 条 Attempt 和独立 AffectWeave 数据核对保留；获准结束一条旧 stopped Run，两条排队输入仍保留并暂停。升级没有自动回收任何生产会话，TG 明确未选中 AffectWeave 的状态保持。
+
+操作和迁移用法见[管理指南](CONVERSATION_MANAGEMENT.md)；归档哈希、具体结果、CI 状态与未执行设备检查见[验收记录](VALIDATION_CONVERSATION_MANAGEMENT_2026-11-16.md)。
 
 ## 附录 A. 源码依据
 

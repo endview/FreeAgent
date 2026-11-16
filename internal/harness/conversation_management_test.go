@@ -329,7 +329,7 @@ func TestConversationPurgeAttachmentRetryAndIndependentBranch(t *testing.T) {
 	if err = os.Rename(held, file); err != nil {
 		t.Fatal(err)
 	}
-	if err = tasks.core.Store.cleanupRetiredFiles(ctx); err != nil {
+	if err = tasks.core.Store.expireConversations(ctx, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = os.Stat(file); !errors.Is(err, os.ErrNotExist) {
