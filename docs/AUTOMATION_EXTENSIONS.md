@@ -1,6 +1,6 @@
 # 浏览器与 Windows Computer Use 预览版
 
-版本：扩展各为 0.1.0，最低宿主 v8.9.0-dev.2。源代码和安装说明见[扩展 README](https://github.com/endview/FreeAgent/tree/main/extensions/automation)。下载对应平台扩展包并解压，在“设置 → 能力管理 → 扩展”导入其中的 `cc.endview.*` 文件夹。
+版本：Browser 0.1.1 / Computer Use 0.1.0，最低宿主 v8.9.0-dev.2。源代码和安装说明见[扩展 README](https://github.com/endview/FreeAgent/tree/main/extensions/automation)。下载对应平台扩展包并解压，在“设置 → 能力管理 → 扩展”导入其中的 `cc.endview.*` 文件夹。
 
 ## 归属与使用
 

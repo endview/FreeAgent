@@ -5,8 +5,8 @@
 ## 已发布内容
 
 - [v8.9.0-dev.1](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.1)：搜索版，源码 `5eb018801c5abf64d68df0726dc511c2f88a08d5`；Windows/Linux 普通与 race 四组 CI 全通过。
-- [v8.9.0-dev.2](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.2)：最终源码、标签、归档及 Hytron 均为 `5eb180020d6a2a187ba46047e0d12f7e91b0cd85`。
-- dev.2 包含两个 Core 便携包、Browser 0.1.0 Windows/Linux 两个扩展包、Computer Use 0.1.0 Windows 扩展包，以及源码清单、构建记录和校验和，共八个附件。附件 API 摘要与本地原值一致。
+- [v8.9.0-dev.2](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.2)：宿主源码、标签、归档及 Hytron 均为 `5eb180020d6a2a187ba46047e0d12f7e91b0cd85`。
+- dev.2 包含两个 Core 便携包、Browser 0.1.1 Windows/Linux 两个扩展包、Computer Use 0.1.0 Windows 扩展包，以及源码清单、构建记录和校验和，共八个附件。Browser 0.1.1 为后续独立扩展修正，源提交记录在扩展 BUILD_INFO 中，宿主和 Computer Use 不受影响。附件 API 摘要与本地原值一致。
 - Core 两个平台双次构建一致；扩展包记录来源提交和校验和，不宣称它们可重复构建。发行包不包含凭据、用户数据、浏览器 profile 或截图。
 
 ## 实测

@@ -1,4 +1,4 @@
-# 可选自动化扩展 0.1.0
+# 可选自动化扩展：Browser 0.1.1 / Computer Use 0.1.0
 
 最低宿主：FreeAgent v8.9.0-dev.2（`tool_scope` / `tool_artifacts`）。扩展协议仍为 `freeagent-ext/1`。搜索版 v8.9.0-dev.1 不具备图像产物契约，启用检查会说明缺少能力。
 

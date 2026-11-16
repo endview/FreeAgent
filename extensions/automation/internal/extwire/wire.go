@@ -63,7 +63,7 @@ type Extension interface {
 type UnknownError struct{ Message string }
 
 func (e *UnknownError) Error() string { return e.Message }
-func Serve(id string, extension Extension) error {
+func Serve(id, version string, extension Extension) error {
 	defer extension.Close()
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 4096), 16<<20)
@@ -142,7 +142,7 @@ func Serve(id string, extension Extension) error {
 				err = extension.Initialize(p)
 				initialized = err == nil
 			}
-			reply(map[string]any{"id": id, "version": "0.1.0", "provides": []string{"tools"}}, err)
+			reply(map[string]any{"id": id, "version": version, "provides": []string{"tools"}}, err)
 		case "tools/list":
 			if !initialized {
 				reply(nil, errors.New("not initialized"))

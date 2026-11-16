@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	if err := extwire.Serve("cc.endview.browser", &browser.Extension{}); err != nil {
+	if err := extwire.Serve("cc.endview.browser", "0.1.1", &browser.Extension{}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -1,7 +1,7 @@
 {
   "protocol": "freeagent-ext/1",
   "id": "cc.endview.browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "name": "浏览器 Browser",
   "description": "独立 Chromium/Edge profile；网页观察、操作、截图、下载与人工接管。浏览器运行在 Owner 机器，按需启动。",
   "run": {
