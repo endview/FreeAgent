@@ -44,6 +44,11 @@ func (service *ControlService) applyAttachmentDelete(ctx context.Context, record
 		return err
 	}
 	store := service.core.Store
+	release, err := store.runMu.acquire(args.Conversation, false)
+	if err != nil {
+		return err
+	}
+	defer release()
 	store.attachmentMu.Lock()
 	defer store.attachmentMu.Unlock()
 	r, err := loadAttachment(ctx, store.db, args.ID)
@@ -57,6 +62,13 @@ func (service *ControlService) applyAttachmentDelete(ctx context.Context, record
 	if active > 0 {
 		return ErrActiveRun
 	}
+	var pendingDelivery bool
+	if err := store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key LIKE 'channel/operation/%' AND document->>'conversation_id'=$1 AND document->>'attachment_id'=$2 AND document->>'state' IN ('pending','paused','scheduled','held','reviewing','dispatching'))`, r.Conversation, args.ID).Scan(&pendingDelivery); err != nil {
+		return err
+	}
+	if pendingDelivery {
+		return errors.New("harness: attachment has a queued or dispatching delivery; cancel or settle that delivery first")
+	}
 	root, err := attachmentRoot(store.dataDir, false)
 	if err != nil {
 		return err
@@ -65,12 +77,26 @@ func (service *ControlService) applyAttachmentDelete(ctx context.Context, record
 	// Revoke visibility first. A failed OS removal cannot leak bytes via a
 	// still-valid reference, and physical quota accounting includes remnants.
 	r.Deleted = true
-	if _, err := store.db.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+args.ID); err != nil {
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(r)), attachmentPrefix+args.ID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT DO NOTHING`, "conversation/file-cleanup/"+args.ID, string(mustJSON(map[string]string{"id": args.ID, "conversation": r.Conversation}))); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return errors.Join(ErrUnknownResult, err)
 	}
 	_ = root.Chmod(args.ID, 0600)
 	if err := root.Remove(args.ID); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return errors.New("harness: reference revoked; file removal failed, inspect local storage")
+	}
+	if _, err = store.db.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "conversation/file-cleanup/"+args.ID); err != nil {
+		return err
 	}
 	return nil
 }

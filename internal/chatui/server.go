@@ -319,6 +319,9 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	if server.spacesAPI(writer, request) {
 		return
 	}
+	if server.managementAPI(writer, request) {
+		return
+	}
 	if server.conversationsAPI(writer, request) {
 		return
 	}
@@ -365,7 +368,7 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 				}
 				return ""
 			}(),
-			"workspace": config.Workspace, "environment": server.tasks.EnvironmentID(),
+			"workspace": config.Workspace, "environment": server.tasks.EnvironmentID(), "server_version": buildinfo.Version,
 			"models": models, "auto": config.Auto.Enabled, "default_model": config.DefaultModel,
 			"providers":        config.Providers,
 			"permission_modes": []harness.PermissionMode{harness.PermissionNone, harness.PermissionAsk, harness.PermissionWorkspace, harness.PermissionFull},
@@ -1007,6 +1010,10 @@ func userError(err error) (string, string) {
 		return "host_requires_full", "宿主命令需要 Full 权限，请检查空间与本次执行权限。"
 	case errors.Is(err, harness.ErrSummaryStale):
 		return "context_stale", "摘要来源已变化。请检查后重新生成或清除摘要；原始记录保留。"
+	case errors.Is(err, harness.ErrConversationRetired):
+		return "conversation_retired", "此会话已移到回收站或永久删除，请在回收站查看。"
+	case errors.Is(err, harness.ErrManagementStale):
+		return "management_stale", "会话或投递状态已变化，请更新预览后确认。"
 	case errors.Is(err, harness.ErrUnknownResult):
 		return "unknown", "结果未知。可能已有作用；请核对记录，不要直接重试。"
 	case errors.Is(err, harness.ErrApprovalChanged):

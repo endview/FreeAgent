@@ -13,6 +13,10 @@ var controlInputSchemas = buildControlInputSchemas()
 
 func buildControlInputSchemas() map[string]json.RawMessage {
 	schemas := map[string]json.RawMessage{}
+	schemas[ControlManageConversations] = controlTypeSchema[struct {
+		Command   ManagementCommand `json:"command"`
+		PreviewID string            `json:"preview_id,omitempty"`
+	}]("command")
 	schemas[ControlBranchConversation] = controlTypeSchema[branchControlArgs]("conversation_id", "message_id", "mode")
 	schemas[ControlChangeExtensionState] = controlTypeSchema[struct {
 		ID               string              `json:"id"`

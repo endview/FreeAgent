@@ -13,6 +13,10 @@ type controlStateQuery struct {
 	Operation   string `json:"operation,omitempty"`
 	ModelID     string `json:"model_id,omitempty"`
 	ExtensionID string `json:"extension_id,omitempty"`
+	SpaceID     string `json:"space_id,omitempty"`
+	Query       string `json:"q,omitempty"`
+	Cursor      string `json:"cursor,omitempty"`
+	View        string `json:"view,omitempty"`
 }
 
 // Read only the requested domain. A normal settings inquiry must never fetch
@@ -21,7 +25,7 @@ func (tools *controlTools) readState(ctx context.Context, query controlStateQuer
 	if query.Domain == "" {
 		query.Domain = controlDomainForKind(query.Operation)
 	}
-	if !slices.Contains([]string{"overview", "runtime", "models", "tools", "extensions"}, query.Domain) {
+	if !slices.Contains([]string{"overview", "runtime", "models", "tools", "extensions", "conversations"}, query.Domain) {
 		return ToolResult{}, errors.New("harness: unknown control state domain")
 	}
 	state, err := tools.control.ReadControlStateForModel(ctx)
@@ -29,6 +33,19 @@ func (tools *controlTools) readState(ctx context.Context, query controlStateQuer
 		return ToolResult{}, err
 	}
 	output := map[string]any{}
+	if query.Domain == "conversations" || query.Operation == ControlManageConversations {
+		if tools.service.scopedHistory() {
+			return ToolResult{}, ErrPermissionDenied
+		}
+		if query.View != "" && query.View != "active" && query.View != "trash" {
+			return ToolResult{}, ErrPermissionDenied
+		}
+		page, e := NewTaskService(tools.service).ManageConversations(ctx, ManagementQuery{View: query.View, SpaceID: query.SpaceID, Query: query.Query, Cursor: query.Cursor, Limit: 30})
+		if e != nil {
+			return ToolResult{}, e
+		}
+		output["conversations"] = page
+	}
 	if query.Operation != "" {
 		operation, ok := catalogEntry(query.Operation)
 		if !ok {

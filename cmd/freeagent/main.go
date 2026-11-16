@@ -101,6 +101,10 @@ ext logs [--data-dir <directory>] [--json] <id>
 run [--session <id>] [--model <id>] [--permission <ask|workspace|full>] [--confirm-full-access] [--request <key>] [--template <file>] [--json] [--interactive] <task>
 continue --run <id> [--model <id>] [--interactive] [--json]
 sessions [--show <id>]
+conversations list [--view active|trash|retained --space <id> --query <title> --cursor <id> --limit 60]
+conversations preview --action <rename|pin|unpin|move|trash|restore|purge|delete_space> [--session <id,...> --space <id> --title <text> --replacement new --cancel-pending --keep-conversations]
+conversations <apply|finish|result> --operation <preview-id> [--yes]
+  Review exact IDs first; apply and finish require --yes. Delete-space defaults to trash; --keep-conversations keeps them in local.
 inspect --run <id>
 preview --run <id> [--json]
 confirm --run <id> --digest <digest> [--approve] [--json]
@@ -120,6 +124,8 @@ unresolved <list|ignore|confirm-applied|confirm-not-applied> --session <id> [--a
 backup --out <new-directory>
 backup-verify --source <backup-directory>
 restore --source <backup-directory> --data-dir <new-directory>
+store-upgrade --data-dir <directory> --backup <new-backup-directory> --confirm
+  Stop Owner and channel processes first. Schema 2 requires restoring the pre-upgrade backup to roll back.
 --version
 
 Public Web (Linux, default off): public status|configure|disable|password|clear-locks.
@@ -132,6 +138,10 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return err
 	case "init":
 		return runInit(ctx, args[1:], stdout, stderr)
+	case "conversations":
+		return runConversationManagement(ctx, args[1:], stdout, stderr)
+	case "store-upgrade":
+		return runStoreUpgrade(ctx, args[1:], stdout, stderr)
 	case "key":
 		return runKey(ctx, args[1:], stdin, stdout, stderr)
 	case "config":
@@ -196,7 +206,7 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 }
 
 func usageError() error {
-	return usageErr("usage: freeagent <init|key|config|control|memory|analyze|channel|chat|web|ext|public|attachments|owner|run|continue|sessions|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore> [flags]; use --help")
+	return usageErr("usage: freeagent <init|key|config|control|memory|analyze|channel|chat|web|ext|public|attachments|owner|run|continue|sessions|conversations|inspect|preview|confirm|abandon|tools|collab|doctor|backup|backup-verify|restore|store-upgrade> [flags]; use --help")
 }
 
 func runInit(ctx context.Context, args []string, stdout, stderr io.Writer) error {

@@ -14,10 +14,11 @@ import (
 const maxExtensionReplyParts = 3
 
 type extensionReplyParts struct {
-	Extension string   `json:"extension"`
-	Version   string   `json:"version"`
-	Hash      string   `json:"source_hash"`
-	Parts     []string `json:"parts"`
+	Conversation string   `json:"conversation_id,omitempty"`
+	Extension    string   `json:"extension"`
+	Version      string   `json:"version"`
+	Hash         string   `json:"source_hash"`
+	Parts        []string `json:"parts"`
 }
 
 func validExtensionReplyParts(parts []string, source string) bool {
@@ -39,7 +40,7 @@ func (service *Service) saveExtensionReplyParts(ctx context.Context, run Run, ma
 		!service.currentConfig().Extensions.Enabled[manifest.ID] || !validExtensionReplyParts(parts, run.Output) {
 		return errors.New("harness: extension reply parts require a completed reply and must preserve its exact output")
 	}
-	plan := extensionReplyParts{Extension: manifest.ID, Version: manifest.Version, Hash: contentHash([]byte(run.Output)), Parts: parts}
+	plan := extensionReplyParts{Conversation: run.ConversationID, Extension: manifest.ID, Version: manifest.Version, Hash: contentHash([]byte(run.Output)), Parts: parts}
 	key := "channel/reply-parts/" + run.ID
 	raw := string(mustJSON(plan))
 	if _, err := service.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, raw); err != nil {

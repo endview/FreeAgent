@@ -4,19 +4,21 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-已发布 **v8.3.0-dev.2 开发候选**，包含 React/TypeScript 工作台、排障工具、长历史访问和可选独立 Go AffectWeave 扩展接口。实际检查及设备边界见[验收报告](docs/FREEAGENT_V8_3_ACCEPTANCE_2026-11-07.md)，实施过程见[记录](docs/FREEAGENT_V8_0_1_TO_V8_3_IMPLEMENTATION_PROGRESS.md)。
-[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.3.0-dev.2)
+已发布 **v8.8.0-dev.8 开发候选**。实际验收、发布和部署结果见[记录](docs/VALIDATION_CONTINUATION_2026-11-16.md)。
+[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.8)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 
 本地开发候选已推进到 **v8.5.0-dev.1**：TG 富文本、输入状态、贴纸与表情、模型思考控制、独立可选经验总结，以及有序回复和经授权的一次性跟进。实际验证见[本批记录](docs/VALIDATION_V8_5_2026-11-08.md)，用法见[回复交付](docs/REPLY_DELIVERY.md)和[经验总结](docs/EXPERIENCE_SUMMARY.md)。上面的 GitHub 已发布版本链接继续指向原发行版；升级不会自动开启主动发送。
 
 本批按 [v8.3.1–v8.5 实施计划](docs/FREEAGENT_V8_3_1_TO_V8_5_CHANNEL_REASONING_EXPERIENCE_PLAN_2026-11-07.md) 推进。
 
-当前工作区为 **v8.8.0-dev.3**：对话、摘要和历史回读共用授权投影，渠道回执不再重复注入回答；大工具结果采用可回读的有界预览。模型窗口、HTTP 字节和摘要目标分别管理，自动压缩开关与自动/手动目标独立。已有 Provider、思考设置和确认规则继续复用，Core 不增加扩展业务职责。本版同时整理设置布局、人物状态与保存反馈，见[Web 交互修正](docs/WEB_INTERACTION_CLARITY_2026-11-15.md)。见[上下文管理](docs/CONTEXT_MANAGEMENT.md)和[记录来源](docs/CONTEXT_RECORD_SOURCES.md)；此前的原生 Provider 验收边界保留在[v8.8 记录](docs/VALIDATION_V8_8_2026-11-09.md)。GitHub 下载链接仍指向已发布版本。
+当前工作区为 **v8.8.0-dev.9**：新增会话「⋯」菜单、空间内容整理、冻结清单批量操作和 7 天回收站；支持恢复、永久清理、CLI 和经确认的 AI 提案。升级旧库前先阅读[操作与离线升级指南](docs/CONVERSATION_MANAGEMENT.md)。本工作区版本尚未发布，上面的下载链接指向 dev.8。
+
+上下文管理沿用授权投影、有界工具预览、独立窗口/HTTP 字节/摘要额度与恢复机制，见[上下文管理](docs/CONTEXT_MANAGEMENT.md)、[记录来源](docs/CONTEXT_RECORD_SOURCES.md)和[Web 交互说明](docs/WEB_INTERACTION_CLARITY_2026-11-15.md)。Core 不增加扩展业务职责。
 
 v8.6 的轻内核整改保持：经验方法使用可选来源分析 Skill；扩展状态采用中性信封、明确作用域和声明 schema；Telegram 格式与平台动作由独立渠道程序提供。开发继续遵循[扩展原则](docs/EXTENSION_DEVELOPMENT_PRINCIPLES.md)。
 
-[AffectWeave Go 可选包](https://github.com/endview/affectweave/releases/tag/v1.0.0-dev.1)独立发行，默认关闭；普通 Core 不因此启动人物进程或创建扩展库。
+[AffectWeave Go 可选包](https://github.com/endview/affectweave/releases/tag/v1.6.0-dev.3)独立发行，默认关闭；普通 Core 不因此启动人物进程或创建扩展库。
 
 v8.0 统一使用随包 PostgreSQL 15.19；增加有限执行恢复、未知工具结果只读核查、
 可选渠道进程、固定 Memory 与二级设置。旧历史只留备份，不导入新库。

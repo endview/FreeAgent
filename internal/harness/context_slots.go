@@ -71,6 +71,9 @@ func (store *Store) contextVisibility(ctx context.Context, chat, scope string) (
 }
 
 func (tasks *TaskService) contextReader(ctx context.Context, chat string) (*Service, error) {
+	if err := tasks.core.Store.checkLiveConversation(ctx, chat); err != nil {
+		return nil, err
+	}
 	core := tasks.core.runCopy()
 	core.Config = tasks.Config()
 	// Model tools already have an exact actor/permission selection. Preserve it;

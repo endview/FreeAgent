@@ -81,7 +81,11 @@ func (store *Store) backupSnapshot(ctx context.Context, target string, check fun
 	if err := writeNewFile(filepath.Join(stage, "attachment-refs.json"), mustJSON(refs)); err != nil {
 		return err
 	}
-	if err := writeNewFile(filepath.Join(stage, "identity.json"), mustJSON(backupIdentity{c.CoreID, storeSchemaVersion})); err != nil {
+	var backupSchema int
+	if err := tx.QueryRowContext(backupCtx, `SELECT value::integer FROM fa.meta WHERE key='schema/version'`).Scan(&backupSchema); err != nil {
+		return err
+	}
+	if err := writeNewFile(filepath.Join(stage, "identity.json"), mustJSON(backupIdentity{c.CoreID, backupSchema})); err != nil {
 		return err
 	}
 	cmd, err := postgres.Command(backupCtx, c, "pg_dump", "--format=custom", "--schema=fa", "--no-owner", "--no-privileges", "--snapshot="+snapshot, "--file="+filepath.Join(stage, "state.pgdump"))
@@ -142,7 +146,7 @@ func Restore(ctx context.Context, source, target string) (returnErr error) {
 		return err
 	}
 	var identity backupIdentity
-	if json.Unmarshal(identityRaw, &identity) != nil || !memoryID(identity.CoreID) || identity.Schema != storeSchemaVersion {
+	if json.Unmarshal(identityRaw, &identity) != nil || !memoryID(identity.CoreID) || (identity.Schema != storeSchemaVersion && identity.Schema != 1) {
 		return ErrStoreFormat
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
@@ -186,7 +190,7 @@ func Restore(ctx context.Context, source, target string) (returnErr error) {
 	if err := postgres.Write(filepath.Join(stage, postgres.ConfigFile), c); err != nil {
 		return err
 	}
-	if err := verifyPostgres(ctx, admin, c.CoreID); err != nil {
+	if err := verifyPostgresFormat(ctx, admin, c.CoreID, true); err != nil {
 		return err
 	}
 	if err := copyRegularFile(filepath.Join(source, "config.json"), filepath.Join(stage, "config.json")); err != nil {

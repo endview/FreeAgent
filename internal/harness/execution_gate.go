@@ -62,6 +62,11 @@ func (gate *executionGate) acquire(chat string, execution bool) (func(), error) 
 }
 
 func (service *Service) acquireConversation(chat string) (func(), error) {
+	if chat != "" {
+		if err := service.Store.checkLiveConversation(context.Background(), chat); err != nil {
+			return nil, err
+		}
+	}
 	if service.ownsLease {
 		return func() {}, nil
 	}

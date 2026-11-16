@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, headers, remote } from "@/lib/api/client";
+import { api, headers, remote, APIError } from "@/lib/api/client";
 import type {
   ChatSnapshot,
   Conversation,
@@ -7,7 +7,12 @@ import type {
   Environment,
   Space,
 } from "@/lib/api/types";
-import { prepareClientDrafts } from "@/lib/drafts";
+import {
+  prepareClientDrafts,
+  conversationDraftIDs,
+  clearConversationDraft,
+  savePendingSend,
+} from "@/lib/drafts";
 import { decodeSnapshot, decodeEvent } from "@/lib/api/decode";
 import { policyFor } from "@/lib/events/policy";
 
@@ -30,6 +35,7 @@ export interface RuntimeState {
   navCursor: string;
   navMore: boolean;
   navLoading: boolean;
+  retired: boolean;
 }
 const initial: RuntimeState = {
   ready: false,
@@ -53,6 +59,7 @@ const initial: RuntimeState = {
   navCursor: "",
   navMore: false,
   navLoading: false,
+  retired: false,
 };
 let state: RuntimeState = initial;
 const listeners = new Set<() => void>();
@@ -83,6 +90,11 @@ let serverVersion = "",
   lastSeq = 0;
 let navigationDirty = false,
   environmentDirty = false;
+if (typeof window !== "undefined")
+  window.addEventListener("freeagent-management-changed", () => {
+    navigationDirty = true;
+    scheduleRefresh();
+  });
 
 export function notify(notice: string) {
   clearTimeout(noticeTimer);
@@ -98,6 +110,17 @@ export async function loadEnvironment() {
   const environment = await api<Environment>("environment");
   if (session !== epoch) return;
   await prepareClientDrafts(environment.environment);
+  const ids = conversationDraftIDs();
+  if (ids.length) {
+    const status = await api<Record<string, { state: string }>>(
+      "conversation-management?status=" + encodeURIComponent(ids.join(",")),
+    ).catch(() => null);
+    if (status)
+      for (const [id, life] of Object.entries(status)) {
+        if (life.state === "purged") clearConversationDraft(id);
+        else if (life.state === "trashed") savePendingSend(id, null);
+      }
+  }
   if (session === epoch) update({ environment });
 }
 interface NavigationPage {
@@ -163,7 +186,7 @@ export async function selectConversation(id: string) {
   snapshotBuffer = [];
   snapshotLoading = false;
   bufferOverflow = false;
-  update({ selected: id, snapshot: null, loading: false });
+  update({ selected: id, snapshot: null, loading: false, retired: false });
   if (id) await loadSnapshot(id);
 }
 function observeVersion(value?: string) {
@@ -191,7 +214,11 @@ export async function loadSnapshot(id = state.selected) {
       generation = snapshot.generation;
       lastSeq = snapshot.snapshot_seq || 0;
     }
-    update({ snapshot });
+    update({ snapshot, retired: false });
+  } catch (error) {
+    if (error instanceof APIError && error.code === "conversation_retired") {
+      update({ snapshot: null, retired: true });
+    } else throw error;
   } finally {
     if (version === loadVersion) {
       snapshotLoading = false;

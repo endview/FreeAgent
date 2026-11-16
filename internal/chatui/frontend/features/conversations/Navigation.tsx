@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { MessageSquare, Pin } from "lucide-react";
 import type { Conversation } from "@/lib/api/types";
+import { ConversationMenu, saveConversationMetadata } from "./Management";
 
 // Fixed-height, single-line navigation only. Message history stays native so
 // browser selection, find and pagination keep their normal semantics.
@@ -14,6 +15,11 @@ export function Navigation({
   onOpen: (id: string) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState("");
+  const [title, setTitle] = useState("");
+  const [originalTitle, setOriginalTitle] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [top, setTop] = useState(0),
     [height, setHeight] = useState(600);
   const rowHeight = 46,
@@ -30,6 +36,12 @@ export function Navigation({
         setHeight(event.currentTarget.clientHeight);
       }}
       onKeyDown={(event) => {
+        if (
+          (event.target as HTMLElement).closest(
+            "input,[role=menu],[role=menuitem],[contenteditable=true]",
+          )
+        )
+          return;
         if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key))
           return;
         const current = Number(
@@ -87,14 +99,90 @@ export function Navigation({
               height: rowHeight,
             }}
           >
-            <button
-              className={`conversation ${selected === chat.id ? "active" : ""}`}
-              onClick={() => onOpen(chat.id)}
-            >
-              <MessageSquare size={16} />
-              <span>{chat.title}</span>
-              {chat.pinned && <Pin size={12} />}
-            </button>
+            {editing === chat.id ? (
+              <form
+                className="conversation-inline-edit"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!title.trim()) {
+                    setRenameError("请输入会话名称。");
+                    return;
+                  }
+                  if (saving) return;
+                  setSaving(true);
+                  setRenameError("");
+                  void saveConversationMetadata({
+                    action: "rename",
+                    ids: [chat.id],
+                    title,
+                    expected_title: originalTitle,
+                  })
+                    .then(() => setEditing(""))
+                    .catch((e) =>
+                      setRenameError(
+                        e instanceof Error ? e.message : String(e),
+                      ),
+                    )
+                    .finally(() => setSaving(false));
+                }}
+              >
+                <input
+                  autoFocus
+                  aria-label="会话名称"
+                  value={title}
+                  maxLength={80}
+                  aria-invalid={!!renameError}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setEditing("");
+                    if (
+                      e.key === "Enter" &&
+                      (e.nativeEvent.isComposing || e.keyCode === 229)
+                    )
+                      e.preventDefault();
+                  }}
+                />
+                <button
+                  type="submit"
+                  aria-label="保存会话名称"
+                  disabled={saving}
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  aria-label="取消重命名"
+                  disabled={saving}
+                  onClick={() => setEditing("")}
+                >
+                  取消
+                </button>
+                {renameError && (
+                  <p className="conversation-rename-error" role="alert">
+                    {renameError}
+                  </p>
+                )}
+              </form>
+            ) : (
+              <ConversationMenu
+                chat={chat}
+                onRename={() => {
+                  setEditing(chat.id);
+                  setTitle(chat.title);
+                  setOriginalTitle(chat.title);
+                  setRenameError("");
+                }}
+              >
+                <button
+                  className={`conversation ${selected === chat.id ? "active" : ""}`}
+                  onClick={() => onOpen(chat.id)}
+                >
+                  <MessageSquare size={16} />
+                  <span>{chat.title}</span>
+                  {chat.pinned && <Pin size={12} />}
+                </button>
+              </ConversationMenu>
+            )}
           </div>
         ))}
       </div>

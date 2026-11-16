@@ -24,7 +24,7 @@ func (service *Service) extensionDeliveryContext(run Run, id string) *ExtensionD
 	}
 	policy := service.currentConfig().Delivery.effective()
 	result := &ExtensionDeliveryContext{Reply: true, RuleIDs: []string{}, MaxTextParts: maxExtensionReplyParts, MaxStickers: policy.StickerLimit}
-	if policy.Enabled {
+	if policy.Enabled && !service.Store.conversationDeliveryRevoked(context.Background(), run.ConversationID) {
 		for _, rule := range policy.Rules {
 			if rule.Extension == id && rule.Enabled && rule.Generation && rule.ConversationID == run.ConversationID && policy.GenerationEnabled[id] {
 				result.WakeRuleIDs = append(result.WakeRuleIDs, rule.ID)

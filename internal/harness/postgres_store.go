@@ -18,6 +18,9 @@ import (
 //go:embed postgres_schema.sql
 var postgresSchema string
 
+//go:embed conversation_lifecycle.sql
+var conversationLifecycleSchema string
+
 // SQL remains ordinary, statically written PostgreSQL. This wrapper only bounds
 // pool acquisition/transactions; it never rewrites queries or retries effects.
 type pgDatabase struct {
@@ -77,13 +80,23 @@ type pgOwner struct {
 	done           chan struct{}
 	lost           atomic.Bool
 	once           sync.Once
+	cleanupDone    chan struct{}
 }
 
 func (o *pgOwner) close() error {
 	if o == nil {
 		return nil
 	}
-	o.once.Do(func() { close(o.stop); <-o.done })
+	o.once.Do(func() {
+		if o.cancel != nil {
+			o.cancel()
+		}
+		close(o.stop)
+		<-o.done
+		if o.cleanupDone != nil {
+			<-o.cleanupDone
+		}
+	})
 	if o.cancel != nil {
 		o.cancel()
 	}
@@ -151,7 +164,7 @@ func initPostgresStore(ctx context.Context, dataDir string) (returnErr error) {
 	if _, err := admin.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES('core/id',$1),('format',$2),('schema/version',$3)`, c.CoreID, StoreFormat, fmt.Sprint(storeSchemaVersion)); err != nil {
 		return err
 	}
-	if _, err := admin.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES('schema/source',$1)`, contentHash([]byte(postgresSchema))); err != nil {
+	if _, err := admin.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES('schema/source',$1)`, contentHash([]byte(postgresSchema+conversationLifecycleSchema))); err != nil {
 		return err
 	}
 	if err := seedLocalSpace(ctx, admin); err != nil {
@@ -182,6 +195,9 @@ func createSchema(ctx context.Context, db *sql.DB) error {
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, postgresSchema); err != nil {
 		return fmt.Errorf("harness: initialize PostgreSQL schema: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, conversationLifecycleSchema); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -227,7 +243,7 @@ func openPostgresStore(ctx context.Context, dataDir string, readOnly bool) (_ *S
 			_ = db.Close()
 		}
 	}()
-	if err := verifyPostgres(ctx, db, c.CoreID); err != nil {
+	if err := verifyPostgresFormat(ctx, db, c.CoreID, readOnly); err != nil {
 		return nil, err
 	}
 	store := &Store{dataDir: dataDir, db: &pgDatabase{DB: db}, owner: fileOwner, runtimeRelease: release}
@@ -253,31 +269,40 @@ func openPostgresStore(ctx context.Context, dataDir string, readOnly bool) (_ *S
 		_ = connection.Close()
 		return nil, err
 	}
-	o := &pgOwner{connection: connection, db: db, releaseRuntime: release, stop: make(chan struct{}), done: make(chan struct{})}
+	o := &pgOwner{connection: connection, db: db, releaseRuntime: release, stop: make(chan struct{}), done: make(chan struct{}), cleanupDone: make(chan struct{})}
 	o.ctx, o.cancel = context.WithCancel(context.Background())
 	store.db = &pgDatabase{DB: pool, lost: &o.lost}
 	store.pgOwner = o
 	store.runtimeRelease = nil
 	go store.watchPGOwner(o)
 	if err := store.recover(ctx); err != nil {
+		close(o.cleanupDone)
 		_ = pool.Close()
 		_ = o.close()
 		return nil, err
 	}
+	go store.maintainConversationTrash(o)
 	return store, nil
 }
 func verifyPostgres(ctx context.Context, db *sql.DB, coreID string) error {
+	return verifyPostgresFormat(ctx, db, coreID, false)
+}
+func verifyPostgresFormat(ctx context.Context, db *sql.DB, coreID string, legacyRead bool) error {
 	var id, format, version, identity string
 	for key, target := range map[string]*string{"core/id": &id, "format": &format, "schema/version": &version, "schema/identity": &identity} {
 		if err := db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, key).Scan(target); err != nil {
 			return errors.Join(ErrStoreFormat, err)
 		}
 	}
-	if id == "" || id != coreID || format != StoreFormat || version != fmt.Sprint(storeSchemaVersion) {
+	if id == "" || id != coreID || format != StoreFormat || (version != fmt.Sprint(storeSchemaVersion) && version != "1") {
 		return ErrStoreFormat
 	}
 	var source string
-	if err := db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='schema/source'`).Scan(&source); err != nil || source != contentHash([]byte(postgresSchema)) {
+	expectedSource := contentHash([]byte(postgresSchema + conversationLifecycleSchema))
+	if version == "1" {
+		expectedSource = contentHash([]byte(postgresSchema))
+	}
+	if err := db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='schema/source'`).Scan(&source); err != nil || source != expectedSource {
 		return errors.Join(ErrStoreFormat, err)
 	}
 	actual, err := schemaIdentity(ctx, db)
@@ -288,9 +313,17 @@ func verifyPostgres(ctx context.Context, db *sql.DB, coreID string) error {
 	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='pg_trgm')`).Scan(&extension); err != nil || !extension {
 		return errors.Join(errors.New("harness: required pg_trgm extension unavailable"), err)
 	}
+	if version == "1" && !legacyRead {
+		return errors.Join(ErrStoreFormat, errors.New("harness: offline store upgrade required; stop Owner, then use freeagent store-upgrade --data-dir DATA --backup NEW_BACKUP --confirm"))
+	}
 	return nil
 }
 func schemaIdentity(ctx context.Context, db *sql.DB) (string, error) {
+	return schemaIdentityReader(ctx, db)
+}
+func schemaIdentityReader(ctx context.Context, db interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}) (string, error) {
 	// Reconstruct the actual catalog, not a client-side version-only promise.
 	rows, err := db.QueryContext(ctx, `SELECT definition FROM (
  SELECT 'column:'||c.relname||':'||a.attnum||':'||a.attname||':'||format_type(a.atttypid,a.atttypmod)||':'||a.attnotnull||':'||COALESCE(pg_get_expr(d.adbin,d.adrelid),'') AS definition

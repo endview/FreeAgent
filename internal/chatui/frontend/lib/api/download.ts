@@ -8,9 +8,13 @@ export function saveBlob(blob: Blob, name: string) {
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
-export async function downloadAttachment(chat: string, ref: Attachment) {
+export async function downloadAttachment(
+  chat: string,
+  ref: Attachment,
+  trash = false,
+) {
   const response = await fetch(
-    `/api/attachments/${encodeURIComponent(ref.id)}?conversation_id=${encodeURIComponent(chat)}`,
+    `/api/attachments/${encodeURIComponent(ref.id)}?conversation_id=${encodeURIComponent(chat)}${trash ? "&trash=1" : ""}`,
     { headers: headers(), credentials: "same-origin", cache: "no-store" },
   );
   if (!response.ok) throw new Error("附件下载失败，请检查访问身份和记录。");

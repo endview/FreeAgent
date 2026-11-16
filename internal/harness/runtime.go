@@ -148,5 +148,9 @@ func OpenTasks(ctx context.Context, dataDir string, adapters Adapters) (*TaskSer
 	tasks := NewTaskService(core)
 	tasks.SetApproval(adapters.Approve)
 	tasks.SetEvents(adapters.Emit)
+	if err := tasks.recoverDeferredManagement(ctx); err != nil {
+		closeAll()
+		return nil, func() {}, err
+	}
 	return tasks, closeAll, nil
 }

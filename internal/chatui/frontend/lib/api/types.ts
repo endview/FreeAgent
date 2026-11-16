@@ -204,6 +204,7 @@ export interface ReasoningModelInfo {
   checked_at: string;
 }
 export interface Environment {
+  server_version?: string;
   enabled_tools?: Record<string, boolean>;
   delivery_available?: boolean;
   workspace: string;

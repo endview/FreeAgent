@@ -180,6 +180,7 @@
     "commands.set_policy": "commands",
     "config.set_workspace": "general",
     "conversation.branch": "conversation",
+    "conversation.manage": "conversation",
     "conversation.rename": "conversation",
     "conversation.set_capabilities": "conversation",
     "conversation.set_model": "conversation",

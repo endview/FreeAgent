@@ -241,6 +241,9 @@ func (b *ChannelBridge) queueCandidateWithWake(ctx context.Context, run Run, ext
 // candidateEligibility is checked again immediately before each transport
 // claim. It never calls an extension while the outbox mutex is held.
 func (b *ChannelBridge) candidateEligibility(ctx context.Context, op channelwire.Operation, now time.Time) (int64, string, error) {
+	if b.tasks.core.Store.conversationDeliveryRevoked(ctx, op.ConversationID) {
+		return 0, "conversation_delivery_revoked", nil
+	}
 	if !op.Proactive {
 		return 0, "", nil
 	}

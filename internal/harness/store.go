@@ -30,7 +30,7 @@ var (
 )
 
 const (
-	storeSchemaVersion = 1
+	storeSchemaVersion = 2
 )
 
 type Store struct {
@@ -211,7 +211,15 @@ func (store *Store) RenameConversation(ctx context.Context, id, title string) er
 	if title == "" || len([]rune(title)) > 80 || strings.ContainsAny(title, "\r\n") || hasControl(title) {
 		return ErrInvalidConversationTitle
 	}
-	result, err := store.db.ExecContext(ctx, `UPDATE fa.conversations SET title=$1 WHERE id=$2`, title, id)
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = lockLiveConversationTx(ctx, tx, id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE fa.conversations SET title=$1 WHERE id=$2`, title, id)
 	if err != nil {
 		return err
 	}
@@ -219,10 +227,13 @@ func (store *Store) RenameConversation(ctx context.Context, id, title string) er
 	if err != nil || changed != 1 {
 		return fmt.Errorf("harness: conversation %q not found", id)
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (store *Store) GetConversation(ctx context.Context, id string) (Conversation, error) {
+	if err := store.checkLiveConversation(ctx, id); err != nil {
+		return Conversation{}, err
+	}
 	var result Conversation
 	err := store.db.QueryRowContext(ctx,
 		`SELECT c.id, c.title, c.workspace, c.space_id, c.created_at, c.updated_at, coalesce(pin.value,'')
@@ -253,11 +264,11 @@ func (store *Store) listConversations(ctx context.Context, spaceID string) ([]Co
 		`SELECT c.id,c.title,c.workspace,c.space_id,c.created_at,c.updated_at,coalesce(model.value,''),pin.value
 		 FROM fa.conversations c JOIN fa.meta pin ON pin.key='chat/pin/'||c.id
 		 LEFT JOIN fa.meta model ON model.key='chat/model/'||c.id
-		 WHERE ($1='' OR c.space_id=$2) AND pin.value<>'' ORDER BY pin.value DESC,c.updated_at DESC LIMIT 50`,
+		 WHERE ($1='' OR c.space_id=$2) AND fa.conversation_live(c.id) AND pin.value<>'' ORDER BY pin.value DESC,c.updated_at DESC LIMIT 50`,
 		`SELECT c.id,c.title,c.workspace,c.space_id,c.created_at,c.updated_at,coalesce(model.value,''),''
 		 FROM fa.conversations c LEFT JOIN fa.meta pin ON pin.key='chat/pin/'||c.id
 		 LEFT JOIN fa.meta model ON model.key='chat/model/'||c.id
-		 WHERE ($1='' OR c.space_id=$2) AND (pin.key IS NULL OR pin.value='') ORDER BY c.updated_at DESC LIMIT 200`,
+		 WHERE ($1='' OR c.space_id=$2) AND fa.conversation_live(c.id) AND (pin.key IS NULL OR pin.value='') ORDER BY c.updated_at DESC LIMIT 200`,
 	} {
 		rows, err := store.db.QueryContext(ctx, query, spaceID, spaceID)
 		if err != nil {
@@ -296,6 +307,9 @@ func (store *Store) PinConversation(ctx context.Context, id string, pinned bool)
 		return err
 	}
 	defer tx.Rollback()
+	if err = lockLiveConversationTx(ctx, tx, id); err != nil {
+		return err
+	}
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM fa.conversations WHERE id=$1`, id).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -305,8 +319,11 @@ func (store *Store) PinConversation(ctx context.Context, id string, pinned bool)
 	}
 	key := "chat/pin/" + id
 	if pinned {
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('conversation/pin-limit',0))`); err != nil {
+			return err
+		}
 		var count int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta WHERE key LIKE 'chat/pin/%' AND value<>''`).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM fa.meta p JOIN fa.conversations c ON p.key='chat/pin/'||c.id WHERE p.value<>'' AND fa.conversation_live(c.id)`).Scan(&count); err != nil {
 			return err
 		}
 		var already bool
@@ -329,6 +346,9 @@ func (store *Store) PinConversation(ctx context.Context, id string, pinned bool)
 }
 
 func (store *Store) ListMessages(ctx context.Context, conversationID string) ([]Message, error) {
+	if err := store.checkLiveConversation(ctx, conversationID); err != nil {
+		return nil, err
+	}
 	return readConversationRecords(ctx, store.db, conversationID)
 }
 

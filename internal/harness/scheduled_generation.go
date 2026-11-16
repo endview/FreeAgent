@@ -84,6 +84,9 @@ func (tasks *TaskService) wakeAuthorized(ctx context.Context, o WakeOpportunity,
 // The outbox already holds the Telegram dispatch/revocation lock and verifies
 // the grant at its existing boundary. Do not recursively acquire that lock.
 func (tasks *TaskService) wakeCurrent(ctx context.Context, o WakeOpportunity, now time.Time) error {
+	if tasks.core.Store.conversationDeliveryRevoked(ctx, o.Rule.ConversationID) {
+		return ErrPermissionDenied
+	}
 	cfg := tasks.core.currentConfig()
 	if !cfg.Delivery.Enabled || !cfg.Delivery.GenerationEnabled[o.Rule.Extension] || !cfg.Extensions.Enabled[o.Rule.Extension] {
 		return ErrPermissionDenied

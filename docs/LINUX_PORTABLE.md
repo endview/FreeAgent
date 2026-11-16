@@ -1,8 +1,15 @@
 # FreeAgent Linux portable preview
 
-Candidate: v8.3.0-dev.1, Linux amd64. CLI plus an embedded loopback Web UI;
+Candidate: v8.8.0-dev.9, Linux amd64. CLI plus an embedded loopback Web UI;
 the native Windows desktop/WebView2 executable is not included. Go, Node,
 Python and a system web server are not needed to run this package.
+
+Existing schema 1 stores need an explicit offline upgrade before startup:
+stop Owner/channel processes, then run `./bin/freeagent store-upgrade --data-dir DATA
+--backup NEW_BACKUP --confirm` on one line. The command creates and verifies a
+complete backup before migration. Rollback requires the old program and the
+pre-upgrade backup. See `docs/CONVERSATION_MANAGEMENT.md` for cleanup, recovery,
+channel routing and retained execution evidence.
 
 ## Start
 
@@ -10,8 +17,8 @@ Verify the outer SHA256SUMS.txt, extract the complete archive into a writable
 directory, then start:
 
 ```sh
-tar -xzf FreeAgent-v8.3.0-dev.1-linux-amd64-portable.tar.gz
-cd FreeAgent-v8.3.0-dev.1-linux-amd64-portable
+tar -xzf FreeAgent-v8.8.0-dev.9-linux-amd64-portable.tar.gz
+cd FreeAgent-v8.8.0-dev.9-linux-amd64-portable
 ./FreeAgent
 ```
 

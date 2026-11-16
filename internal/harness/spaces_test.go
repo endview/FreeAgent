@@ -392,18 +392,36 @@ func TestExternalSingleConversationRoutingIsExplicitAndLocalReferencesAreCleared
 		t.Fatal("single mode did not return to default")
 	}
 	chat := conversation(t, service)
-	for _, prefix := range []string{"chat/memory/", capabilityMetaPrefix, summaryMetaPrefix} {
+	for _, prefix := range []string{"chat/memory/", summaryMetaPrefix} {
 		if _, err := store.db.Exec(`INSERT INTO fa.meta(key,value) VALUES($1,$2)`, prefix+chat, `{"private":"local-only"}`); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if _, err := store.db.Exec(`INSERT INTO fa.meta(key,value) VALUES($1,$2)`, capabilityMetaPrefix+chat, `{"skills":["private-method"],"extensions":[]}`); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.MoveConversation(t.Context(), chat, space.ID); err != nil {
 		t.Fatal(err)
 	}
-	for _, prefix := range []string{"chat/memory/", capabilityMetaPrefix, summaryMetaPrefix} {
+	for _, prefix := range []string{"chat/memory/", summaryMetaPrefix} {
 		var count int
 		if err := store.db.QueryRow(`SELECT count(*) FROM fa.meta WHERE key=$1`, prefix+chat).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("local input reference retained: %s %v", prefix, err)
 		}
+	}
+	var selected string
+	if err := store.db.QueryRow(`SELECT value FROM fa.meta WHERE key=$1`, capabilityMetaPrefix+chat).Scan(&selected); err != nil || selected != "{}" {
+		t.Fatal("restricted move lost explicit exclusion", selected, err)
+	}
+	if err := store.MoveConversation(t.Context(), chat, LocalSpaceID); err != nil {
+		t.Fatal(err)
+	}
+	if service.Config.Skills.Enabled == nil {
+		service.Config.Skills.Enabled = map[string]bool{}
+	}
+	service.Config.Skills.Enabled["private-method"] = true
+	selection, err := NewTaskService(service).SelectedCapabilities(t.Context(), chat)
+	if err != nil || len(selection.Skills) != 0 {
+		t.Fatal("return to Owner view re-enabled global defaults", selection, err)
 	}
 }

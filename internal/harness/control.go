@@ -695,6 +695,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlPersonPermission, ResourceFamily: "people", Risk: ControlRiskAuthority, Description: "Change a platform person's permission across connected spaces; local confirmation only.", ModelProposable: true},
 		{Kind: ControlBranchConversation, ResourceFamily: "conversation.branch", Risk: ControlRiskOrdinary, Description: "Create an independent conversation branch at a verified user or completed assistant message. No filesystem rollback and no automatic branch execution.", ModelProposable: true},
 		{Kind: ControlRenameConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Rename one conversation.", ModelProposable: true, Reversible: true},
+		{Kind: ControlManageConversations, ResourceFamily: "conversation.management", Risk: ControlRiskDestructive, Description: "Read domain=conversations (view=active or trash) first. Propose exact IDs to rename, pin, unpin, move, trash (7-day recycle bin) or restore. delete_space requires space_id and an explicit trash_conversations boolean. move/restore may specify space_id; routed chats require replacement=new or another same-space ID. cancel_pending must be explicit. The Owner must confirm even in Full. Cannot permanently purge, guess IDs or erase execution evidence. For the proposing conversation, confirmation durably ends this Run before managing its history; no more model request follows.", ModelProposable: true},
 		{Kind: ControlPinConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Pin or unpin one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetConversationCapabilities, ResourceFamily: "conversation.capabilities", Risk: ControlRiskAuthority, Description: "Select the Skills, MCP servers and Extensions available to one conversation.", ModelProposable: true, Reversible: true},
 		{Kind: ControlSetMemoryPin, ResourceFamily: "memory.pin", Risk: ControlRiskAuthority, Description: "Pin or unpin an exact retained Memory revision and explicit scope; confirmation is always required.", ModelProposable: true, Reversible: false},
@@ -1897,6 +1898,9 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 	if err := service.validatePublicOperation(ctx, *record); err != nil {
 		return err
 	}
+	if record.Operation.Kind == ControlManageConversations {
+		return service.applyManagementControl(ctx, record)
+	}
 	if record.Operation.Kind == ControlScheduleDelivery {
 		return service.applyScheduledDelivery(ctx, record)
 	}
@@ -1985,6 +1989,16 @@ func (service *ControlService) applyRecordLocked(ctx context.Context, record *co
 			return NewTaskService(service.core).stopPublicCommands(ctx)
 		}
 		if record.Operation.Kind == ControlSetDeliveryPolicy {
+			var declared map[string]json.RawMessage
+			if json.Unmarshal(record.Arguments, &declared) == nil && declared["rules"] != nil {
+				for _, rule := range candidate.Delivery.Rules {
+					if rule.Enabled {
+						if _, err := service.core.Store.db.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "conversation/delivery-revoked/"+rule.ConversationID); err != nil {
+							return err
+						}
+					}
+				}
+			}
 			return errors.Join(NewTaskService(service.core).cancelRevokedCandidates(ctx), NewTaskService(service.core).cancelRevokedWakes(ctx))
 		}
 		return nil
@@ -2347,6 +2361,28 @@ func (service *ControlService) buildRecordLocked(ctx context.Context, request Co
 		}
 	} else if request.Kind == ControlChangeExtensionState || request.Kind == ControlInitExtensionStorage {
 		if err := service.buildExtensionState(ctx, &record, request.originRunID); err != nil {
+			return controlRecord{}, err
+		}
+	} else if request.Kind == ControlManageConversations {
+		if request.Authorization == ControlModelProposed {
+			if request.originRunID == "" {
+				return controlRecord{}, ErrPermissionDenied
+			}
+			run, e := service.core.Store.GetRun(ctx, request.originRunID)
+			if e != nil {
+				return controlRecord{}, e
+			}
+			snap, e := decodeRunSnapshot(run.ConfigJSON)
+			if e != nil {
+				return controlRecord{}, e
+			}
+			actor := service.core.runCopy()
+			actor.permission = snap.Permission
+			if actor.permission == nil || actor.scopedHistory() {
+				return controlRecord{}, ErrPermissionDenied
+			}
+		}
+		if err := service.buildManagementControl(ctx, &record, request.originRunID); err != nil {
 			return controlRecord{}, err
 		}
 	} else if request.Kind == ControlBranchConversation {

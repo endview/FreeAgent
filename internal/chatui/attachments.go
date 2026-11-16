@@ -123,6 +123,9 @@ func (server *Server) attachmentsAPI(w http.ResponseWriter, r *http.Request) boo
 	if strings.HasPrefix(path, "/api/attachments/") && r.Method == http.MethodGet {
 		id := strings.TrimPrefix(path, "/api/attachments/")
 		ref, raw, err := server.tasks.Attachment(r.Context(), chat, id)
+		if r.URL.Query().Get("trash") == "1" {
+			ref, raw, err = server.tasks.ManagedAttachment(r.Context(), chat, id)
+		}
 		if err != nil {
 			server.writeError(w, http.StatusNotFound, "attachment_unavailable", "附件不存在、已删除或不属于此对话。")
 			return true

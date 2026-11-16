@@ -4,6 +4,7 @@ import { saveBlob } from "@/lib/api/download";
 import { Button } from "@/components/ui/button";
 import { Field, Loading, Result, useResource } from "./shared";
 import OperationHistory from "./OperationHistory";
+import { useManagement } from "@/features/conversations/Management";
 
 interface Database {
   version: string;
@@ -30,6 +31,7 @@ export default function DataSettings({
 }: {
   diagnosis?: boolean;
 }) {
+  const management = useManagement();
   const database = useResource<Database>("settings/database"),
     server = useResource<ServerInfo>("server");
   const [error, setError] = useState(""),
@@ -83,6 +85,35 @@ export default function DataSettings({
   }
   return (
     <>
+      {!diagnosis && (
+        <section className="settings-section">
+          <h2>会话与存储整理</h2>
+          <p className="form-hint">
+            移到回收站后保留 7 天。必要执行证据单独保留；独立 Memory、Skill
+            和扩展数据在各自页面管理。
+          </p>
+          <div className="provider-actions">
+            <Button
+              variant="outline"
+              onClick={() => management.navigate("manage")}
+            >
+              管理空间内容
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => management.navigate("trash")}
+            >
+              回收站
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => management.navigate("retained")}
+            >
+              保留的执行记录
+            </Button>
+          </div>
+        </section>
+      )}
       {database.value ? (
         <section>
           <h2>PostgreSQL</h2>

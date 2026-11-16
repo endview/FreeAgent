@@ -1,0 +1,334 @@
+.conversation-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+}
+.conversation-row .conversation {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.conversation-more {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+}
+.conversation-more:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.conversation-actions-menu {
+  z-index: 90;
+  min-width: 192px;
+}
+.conversation-actions-menu .choice-item {
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.destructive-text {
+  color: var(--destructive);
+}
+.management-page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 32px clamp(16px, 4vw, 48px) calc(24px + env(safe-area-inset-bottom));
+}
+.management-page button,
+.management-dialog button {
+  min-height: 44px;
+}
+.management-page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.management-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.management-location {
+  margin-block: 0 20px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.management-location summary {
+  cursor: pointer;
+  min-height: 32px;
+}
+.management-location p {
+  overflow-wrap: anywhere;
+}
+.management-page h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.management-target,
+.management-new-space {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.management-page p,
+.management-stats,
+.management-meta {
+  color: var(--muted-foreground);
+}
+.management-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.management-filter-toggle {
+  display: none;
+}
+.management-search {
+  flex: 1;
+  min-width: 180px;
+}
+.management-search input,
+.management-dialog input:not([type="checkbox"]) {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: var(--background);
+}
+.management-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-block: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.management-stats button {
+  min-height: 44px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.management-list {
+  border-top: 1px solid var(--border);
+}
+.management-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 84px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.management-select {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  min-height: 44px;
+}
+.management-select input,
+.management-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--primary);
+}
+.management-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.management-title {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  min-height: 44px;
+}
+.management-title strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.management-title span {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.management-meta {
+  flex: 0 1 220px;
+  font-size: 13px;
+}
+.management-meta small {
+  display: block;
+  margin-top: 4px;
+}
+.management-empty {
+  padding: 48px 12px;
+  text-align: center;
+}
+.management-batch {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+.management-batch span {
+  margin-right: auto;
+}
+.management-dialog {
+  max-height: min(85dvh, 840px);
+  max-width: 620px !important;
+  overflow: auto;
+}
+.management-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.management-dialog .management-check {
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+}
+.management-dialog-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.management-review {
+  padding: 16px;
+  background: var(--subtle);
+  border-radius: 8px;
+}
+.management-review ul,
+.management-result ul {
+  max-height: 240px;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+}
+.management-review li,
+.management-result li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.management-review span,
+.management-review small,
+.management-result small {
+  display: block;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.management-error {
+  padding: 12px;
+  border: 1px solid var(--destructive);
+  border-radius: 6px;
+  color: var(--destructive) !important;
+}
+.management-readonly {
+  overflow: auto;
+  max-height: 50dvh;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.conversation-inline-edit {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  gap: 4px;
+}
+.conversation-rename-error {
+  position: absolute;
+  top: 100%;
+  inset-inline: 0;
+  z-index: 10;
+  padding: 8px;
+  background: var(--background);
+  color: var(--destructive);
+  border: 1px solid var(--destructive);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.conversation-inline-edit input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--input);
+}
+.conversation-inline-edit button {
+  flex: 0 0 44px;
+  min-height: 44px;
+}
+@media (hover: hover) {
+  .conversation-row:not(:hover):not(:focus-within) .conversation-more {
+    opacity: 0.55;
+  }
+}
+@media (max-width: 600px) {
+  .management-filter-toggle {
+    display: inline-flex;
+  }
+  .management-toolbar[data-expanded="false"] .management-extra {
+    display: none;
+  }
+  .management-search {
+    order: -1;
+    flex-basis: 100%;
+  }
+  .management-page {
+    padding-top: 20px;
+  }
+  .management-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .management-title {
+    flex-basis: calc(100% - 112px);
+  }
+  .management-meta {
+    flex-basis: 100%;
+    padding-left: 52px;
+    order: 3;
+  }
+  .management-row > .conversation-more,
+  .management-row > button:not(.management-title) {
+    order: 2;
+  }
+  .management-dialog-actions > * {
+    flex: 1;
+    min-height: 44px;
+  }
+  .management-batch {
+    gap: 8px;
+    padding: 12px;
+  }
+  .management-batch > span {
+    flex-basis: 100%;
+  }
+  .management-toolbar input {
+    font-size: 16px;
+  }
+}

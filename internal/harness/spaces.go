@@ -217,6 +217,9 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 		return err
 	}
 	defer tx.Rollback()
+	if err = lockLiveConversationTx(ctx, tx, conversationID); err != nil {
+		return err
+	}
 	var sourceSpace string
 	if err := tx.QueryRowContext(ctx, `SELECT space_id FROM fa.conversations WHERE id=$1`, conversationID).Scan(&sourceSpace); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -253,7 +256,7 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 		}
 		// Local selections and summaries must never travel implicitly to
 		// another publication scope. Original messages/Attempts are retained.
-		for _, prefix := range []string{"chat/memory/", capabilityMetaPrefix, summaryMetaPrefix} {
+		for _, prefix := range []string{"chat/memory/", summaryMetaPrefix} {
 			if prefix == summaryMetaPrefix {
 				if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 OR starts_with(key,$2)`, prefix+conversationID, prefix+conversationID+"/"); err != nil {
 					return err
@@ -282,20 +285,20 @@ func refreshSpacePointersTx(ctx context.Context, tx *sql.Tx, spaceID string) err
 	if err := tx.QueryRowContext(ctx, `SELECT default_conversation_id,active_conversation_id FROM fa.spaces WHERE id=$1`, spaceID).Scan(&currentDefault, &currentActive); err != nil {
 		return err
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM fa.conversations WHERE space_id=$1 ORDER BY updated_at DESC,id LIMIT 1`, spaceID).Scan(&first); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM fa.conversations WHERE space_id=$1 AND fa.conversation_live(id) ORDER BY updated_at DESC,id LIMIT 1`, spaceID).Scan(&first); errors.Is(err, sql.ErrNoRows) {
 		first = ""
 	} else if err != nil {
 		return err
 	}
 	if currentDefault != "" {
 		var belongs string
-		if err := tx.QueryRowContext(ctx, `SELECT coalesce(space_id,'') FROM fa.conversations WHERE id=$1`, currentDefault).Scan(&belongs); err != nil || belongs != spaceID {
+		if err := tx.QueryRowContext(ctx, `SELECT coalesce(space_id,'') FROM fa.conversations WHERE id=$1 AND fa.conversation_live(id)`, currentDefault).Scan(&belongs); err != nil || belongs != spaceID {
 			currentDefault = ""
 		}
 	}
 	if currentActive != "" {
 		var belongs string
-		if err := tx.QueryRowContext(ctx, `SELECT coalesce(space_id,'') FROM fa.conversations WHERE id=$1`, currentActive).Scan(&belongs); err != nil || belongs != spaceID {
+		if err := tx.QueryRowContext(ctx, `SELECT coalesce(space_id,'') FROM fa.conversations WHERE id=$1 AND fa.conversation_live(id)`, currentActive).Scan(&belongs); err != nil || belongs != spaceID {
 			currentActive = ""
 		}
 	}
@@ -392,6 +395,9 @@ func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) err
 	if err != nil {
 		return err
 	}
+	if err := protectMovedCapabilities(ctx, tx, chat, spaceID); err != nil {
+		return err
+	}
 	target, ok := channelTarget(space)
 	if !ok {
 		return nil
@@ -403,7 +409,7 @@ func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) err
 	}
 	var cursor int64
 	for {
-		rows, err := tx.QueryContext(ctx, `SELECT m.id,m.body_json FROM fa.messages m JOIN fa.runs r ON r.id=m.run_id WHERE m.conversation_id=$1 AND m.id>$2 AND COALESCE((r.config_doc #>> '{Permission,entry}'),'local')='local' AND NOT EXISTS(SELECT 1 FROM fa.meta WHERE key='command/direct/'||r.id) ORDER BY m.id LIMIT 32`, chat, cursor)
+		rows, err := tx.QueryContext(ctx, `SELECT m.id,m.body_json FROM fa.messages m LEFT JOIN fa.runs r ON r.id=m.run_id WHERE m.conversation_id=$1 AND m.id>$2 AND ((COALESCE((r.config_doc #>> '{Permission,entry}'),'local')='local' AND NOT EXISTS(SELECT 1 FROM fa.meta WHERE key='command/direct/'||r.id)) OR m.body_json->>'Public'='true') ORDER BY m.id LIMIT 32`, chat, cursor)
 		if err != nil {
 			return err
 		}
@@ -421,7 +427,8 @@ func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) err
 				rows.Close()
 				return ErrStoreFormat
 			}
-			if !m.Public && m.Channel == nil && (m.Role == "user" || m.Role == "assistant") && m.Content != "" {
+			publishable := !m.Public && m.Channel == nil || m.Public && m.Channel != nil && (m.Channel.Purpose == "request" || m.Channel.Purpose == "background" || m.Channel.Purpose == "published") && m.Channel.ChannelTarget != target
+			if publishable && (m.Role == "user" || m.Role == "assistant") && m.Content != "" {
 				text = append(text, item{cursor, m})
 			}
 		}
@@ -429,7 +436,7 @@ func publishMovedText(ctx context.Context, tx *sql.Tx, chat, spaceID string) err
 			return err
 		}
 		for _, entry := range text {
-			key := "channel/publication/" + chat + "/" + strconv.FormatInt(entry.id, 10)
+			key := "channel/publication/" + chat + "/" + strconv.FormatInt(entry.id, 10) + "/" + contentHash(mustJSON(target))
 			source := &ChannelMessageSource{ChannelTarget: target, MessageID: "published-" + strconv.FormatInt(entry.id, 10), Purpose: "published"}
 			refs := append([]AttachmentRef(nil), entry.message.Attachments...)
 			for i := range refs {

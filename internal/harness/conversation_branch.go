@@ -57,6 +57,9 @@ func (tasks *TaskService) BranchConversation(ctx context.Context, chat string, c
 	if ctx == nil || tasks == nil || tasks.core == nil || tasks.core.Store == nil {
 		return result, errors.New("harness: task service and context are required")
 	}
+	if err := tasks.core.Store.checkLiveConversation(ctx, chat); err != nil {
+		return result, err
+	}
 	if command.RequestKey == "" || len(command.RequestKey) > 128 || command.MessageID < 1 || (command.Mode != "rerun" && command.Mode != "continue") {
 		return result, ErrRequestKey
 	}

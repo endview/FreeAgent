@@ -2,9 +2,16 @@
 
 For the separate Linux amd64 CLI/Web archive, see [Linux portable](https://github.com/endview/FreeAgent/blob/main/docs/LINUX_PORTABLE.md).
 
-Current candidate: `v8.3.0-dev.1`, Windows amd64. This is an unsigned
+Current candidate: `v8.8.0-dev.9`, Windows amd64. This is an unsigned
 development preview, not an installer or a certified release. Go and Node are
 not required to run it. The Chat UI and KaTeX assets are bundled with the engine.
+
+This version adds conversation menus, space management and a seven-day recycle
+bin. Before opening a schema 1 store, stop Owner and channel processes, then run
+`bin\freeagent.exe store-upgrade --data-dir DATA --backup NEW_BACKUP --confirm`.
+The new backup directory must not exist. The command verifies a complete backup
+before changing the store. Rollback requires the old program and that backup.
+See `docs\CONVERSATION_MANAGEMENT.md` for exact cleanup and evidence rules.
 
 Settings includes optional Telegram, Lark/Feishu and official QQ connections.
 Save channel credentials under Settings → Connections → Channels, select the matching account,

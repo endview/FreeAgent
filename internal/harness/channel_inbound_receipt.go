@@ -49,6 +49,15 @@ func (b *ChannelBridge) acceptInbound(ctx context.Context, c *channelConnection,
 		if state.State != "pending" {
 			return nil
 		}
+		if state.ConversationID != "" {
+			if err := b.tasks.core.Store.checkLiveConversation(ctx, state.ConversationID); errors.Is(err, ErrConversationRetired) {
+				state.State = "rejected"
+				_, err = b.tasks.core.Store.db.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(state)), key)
+				return err
+			} else if err != nil {
+				return err
+			}
+		}
 		// A Run association is the durable adoption fact even if the receipt
 		// or the final journal update was lost. Never dispatch it again.
 		var adopted string

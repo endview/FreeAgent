@@ -206,6 +206,22 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	}
 	defer tx.Rollback()
 	var received ChannelReceived
+	var retiredRaw string
+	if e := tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, "channel/retired-input/"+contentHash([]byte(source.requestKey()))).Scan(&retiredRaw); e == nil {
+		var retired struct {
+			Conversation string `json:"conversation_id"`
+			Message      int64  `json:"message_id"`
+		}
+		if json.Unmarshal([]byte(retiredRaw), &retired) != nil {
+			return received, ErrStoreFormat
+		}
+		received.ConversationID = retired.Conversation
+		received.MessageID = retired.Message
+		received.Duplicate = true
+		return received, nil
+	} else if !errors.Is(e, sql.ErrNoRows) {
+		return received, e
+	}
 	err = tx.QueryRowContext(ctx, `SELECT id,conversation_id,COALESCE(run_id,'') FROM `+conversationRecords+` WHERE request_key=$1`, source.requestKey()).
 		Scan(&received.MessageID, &received.ConversationID, &received.RunID)
 	if err == nil {

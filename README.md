@@ -4,12 +4,10 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The current release is **v8.3.0-dev.2**, with the React/TypeScript workbench,
-server-paged conversations/history, installation/update diagnostics and an
-optional independent Go AffectWeave extension.
-[Download Windows / Linux](https://github.com/endview/FreeAgent/releases/tag/v8.3.0-dev.2)
-and read the [actual acceptance and device boundaries](docs/FREEAGENT_V8_3_ACCEPTANCE_2026-11-07.md).
-The [AffectWeave Go package](https://github.com/endview/affectweave/releases/tag/v1.0.0-dev.1)
+The published release is **v8.8.0-dev.8**. See the
+[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v8.8.0-dev.8)
+and [validation and deployment record](docs/VALIDATION_CONTINUATION_2026-11-16.md).
+The [AffectWeave Go package](https://github.com/endview/affectweave/releases/tag/v1.6.0-dev.3)
 is distributed separately and disabled by default.
 [简体中文](README.zh-CN.md).
 
@@ -21,7 +19,11 @@ one-time follow-ups. See [current validation](docs/VALIDATION_V8_5_2026-11-08.md
 [experience summary](docs/EXPERIENCE_SUMMARY.md). The published release link
 above remains unchanged; upgrading does not enable autonomous sending.
 
-The current workspace is **v8.8.0-dev.3**. Conversation records, summaries and
+The current workspace is **v8.8.0-dev.9**, adding visible conversation menus,
+space management, frozen batch selections and a seven-day recycle bin.
+Read the [management and offline schema-upgrade guide](docs/CONVERSATION_MANAGEMENT.md)
+before upgrading a schema 1 store. This workspace version is not yet published.
+Conversation records, summaries and
 history reads share one authorized projection. Channel receipts no longer
 duplicate model replies; large tool results have bounded previews with exact
 history readback. Model windows, HTTP bytes and summary targets are separate,

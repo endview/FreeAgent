@@ -149,12 +149,13 @@ func validPreparedResource(value string) bool {
 }
 
 type pendingChannelReply struct {
-	CreatedAt   string `json:"created_at"`
-	RunID       string `json:"run_id"`
-	Answer      string `json:"answer"`
-	Status      string `json:"status"`
-	Correlation string `json:"correlation,omitempty"`
-	Maintenance bool   `json:"maintenance,omitempty"`
+	ConversationID string `json:"conversation_id,omitempty"`
+	CreatedAt      string `json:"created_at"`
+	RunID          string `json:"run_id"`
+	Answer         string `json:"answer"`
+	Status         string `json:"status"`
+	Correlation    string `json:"correlation,omitempty"`
+	Maintenance    bool   `json:"maintenance,omitempty"`
 }
 
 func (s *channelSession) pendingReply(ctx context.Context, group string, result RunResult, status string) (string, error) {
@@ -163,7 +164,7 @@ func (s *channelSession) pendingReply(ctx context.Context, group string, result 
 	if len(result.Answer) > 1<<20 {
 		return "", ErrContextLimit
 	}
-	record := pendingChannelReply{CreatedAt: result.Run.UpdatedAt, RunID: result.Run.ID, Answer: result.Answer, Status: status, Correlation: correlation, Maintenance: result.Maintenance}
+	record := pendingChannelReply{ConversationID: result.Run.ConversationID, CreatedAt: result.Run.UpdatedAt, RunID: result.Run.ID, Answer: result.Answer, Status: status, Correlation: correlation, Maintenance: result.Maintenance}
 	_, err := s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, string(mustJSON(record)))
 	return key, err
 }

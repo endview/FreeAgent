@@ -96,6 +96,11 @@ func (b *ChannelBridge) Outbox(ctx context.Context, id string) ([]channelwire.Op
 	targets := map[channelwire.Target]bool{}
 	for _, i := range items {
 		op := i.op
+		if err := b.tasks.core.Store.checkLiveConversation(ctx, op.ConversationID); errors.Is(err, ErrConversationRetired) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
 		if op.State == "sent" {
 			if err := b.projectDelivery(ctx, op); err != nil {
 				return nil, err
@@ -364,6 +369,11 @@ func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Re
 		return err
 	}
 	if op.State == "sent" {
+		if err := b.tasks.core.Store.checkLiveConversation(ctx, op.ConversationID); errors.Is(err, ErrConversationRetired) {
+			return nil
+		} else if err != nil {
+			return err
+		}
 		return b.projectDelivery(ctx, op)
 	}
 	if op.State == "failed" || op.State == "unknown" {
@@ -373,6 +383,11 @@ func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Re
 }
 
 func (b *ChannelBridge) recordUnsent(ctx context.Context, op channelwire.Operation) error {
+	if err := b.tasks.core.Store.checkLiveConversation(ctx, op.ConversationID); errors.Is(err, ErrConversationRetired) {
+		return nil
+	} else if err != nil {
+		return err
+	}
 	if err := b.projectWakeReceipt(ctx, op); err != nil {
 		return err
 	}

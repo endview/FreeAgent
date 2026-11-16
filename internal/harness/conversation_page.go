@@ -43,7 +43,7 @@ func (store *Store) ListConversationPage(ctx context.Context, query Conversation
 			return page, errors.New("harness: conversation cursor does not match the current filter")
 		}
 	}
-	where := ` WHERE ($1='' OR c.workspace=$1) AND ($2='' OR c.space_id=$2)`
+	where := ` WHERE fa.conversation_live(c.id) AND ($1='' OR c.workspace=$1) AND ($2='' OR c.space_id=$2)`
 	args := []any{query.Workspace, query.SpaceID}
 	if query.Query != "" {
 		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(query.Query)+"%")

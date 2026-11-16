@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Choice } from "@/components/Choice";
 import { Field, Result } from "./shared";
 import type { Space } from "@/lib/api/types";
+import { useManagement } from "@/features/conversations/Management";
 
 export default function SpacesSettings() {
   const state = useRuntime();
@@ -76,6 +77,7 @@ function SpaceEditor({
   busy: boolean;
   onChange: (kind: string, args: Record<string, unknown>) => Promise<boolean>;
 }) {
+  const management = useManagement();
   const [title, setTitle] = useState(space.title),
     [mode, setMode] = useState<string>(space.permission || "none");
   return (
@@ -94,6 +96,12 @@ function SpaceEditor({
       <div className="provider-actions">
         <Button
           variant="outline"
+          onClick={() => management.navigate("manage", space.id)}
+        >
+          管理内容
+        </Button>
+        <Button
+          variant="outline"
           disabled={busy || !title.trim()}
           onClick={() =>
             onChange("space.rename", { space_id: space.id, title })
@@ -105,14 +113,13 @@ function SpaceEditor({
           <Button
             variant="ghost"
             disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  "删除空间并把对话移回本地？外部聊天会解除关联，历史保留。",
-                )
-              )
-                void onChange("space.delete", { space_id: space.id });
-            }}
+            onClick={() =>
+              management.open({
+                action: "delete_space",
+                space_id: space.id,
+                trash_conversations: true,
+              })
+            }
           >
             删除空间
           </Button>
@@ -197,17 +204,13 @@ function SpaceEditor({
           <Button
             variant="ghost"
             disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `把当前对话移动到“${space.title}”？${space.source !== "local" ? "外部空间内可访问此对话的人员将能看到内容。" : ""}`,
-                )
-              )
-                void onChange("space.move_conversation", {
-                  space_id: space.id,
-                  conversation_id: chat,
-                });
-            }}
+            onClick={() =>
+              management.open({
+                action: "move",
+                space_id: space.id,
+                ids: [chat],
+              })
+            }
           >
             把当前对话移入此空间
           </Button>

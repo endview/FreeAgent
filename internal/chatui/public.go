@@ -113,7 +113,8 @@ func publicRoute(path, method string) (string, bool) {
 		return "", false
 	}
 	allowed := map[string]string{
-		"/api/connect": "POST", "/api/client/detach": "POST", "/api/environment": "GET", "/api/events": "GET", "/api/chats": "GET POST", "/api/spaces": "GET POST", "/api/permissions": "GET",
+		"/api/conversation-management": "GET POST",
+		"/api/connect":                 "POST", "/api/client/detach": "POST", "/api/environment": "GET", "/api/events": "GET", "/api/chats": "GET POST", "/api/spaces": "GET POST", "/api/permissions": "GET",
 		"/api/public-settings":       "GET PUT",
 		"/api/permissions/selection": "PUT", "/api/permissions/files": "PUT", "/api/permissions/profile": "PUT", "/api/commands": "GET PUT", "/api/commands/rules": "PUT",
 		"/api/settings": "GET", "/api/settings/permissions": "PATCH", "/api/settings/file-access": "PATCH", "/api/settings/tools": "PATCH", "/api/settings/command-run": "PATCH", "/api/settings/context": "PATCH", "/api/runtime-tools": "GET",

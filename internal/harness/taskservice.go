@@ -851,6 +851,11 @@ func (tasks *TaskService) SubmitWithOptions(ctx context.Context, conversationID,
 }
 
 func (tasks *TaskService) submitWithOptions(ctx context.Context, conversationID, requestKey, prompt string, options RunOptions) (RunResult, error) {
+	if conversationID != "" {
+		if err := tasks.core.Store.checkLiveConversation(ctx, conversationID); err != nil {
+			return RunResult{}, err
+		}
+	}
 	if strings.TrimSpace(prompt) == "" {
 		return RunResult{}, errors.New("harness: task prompt is required")
 	}
@@ -1409,7 +1414,7 @@ func (tasks *TaskService) ConfirmControl(ctx context.Context, runID string, deci
 	if err := tasks.core.validatePublicConfirmation(ctx, decision); err != nil {
 		return RunResult{}, err
 	}
-	return tasks.executeRun(ctx, runID, func(ctx context.Context, core *Service) (RunResult, error) {
+	result, callErr := tasks.executeRun(ctx, runID, func(ctx context.Context, core *Service) (RunResult, error) {
 		run, err := core.Store.GetRun(ctx, runID)
 		if err != nil {
 			return RunResult{}, err
@@ -1459,6 +1464,12 @@ func (tasks *TaskService) ConfirmControl(ctx context.Context, runID string, deci
 		}
 		return core.Continue(ctx, runID)
 	})
+	if callErr == nil && approved {
+		if err := tasks.completeDeferredManagement(ctx, runID); err != nil {
+			return result, err
+		}
+	}
+	return result, callErr
 }
 
 func (tasks *TaskService) Inspect(ctx context.Context, runID string) (Run, []Attempt, Evidence, error) {

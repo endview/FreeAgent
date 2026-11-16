@@ -85,6 +85,9 @@ export function DesktopMenu({ children }: { children: ReactNode }) {
         <div
           className="native-shell"
           onContextMenuCapture={(event) => {
+            const element = event.target as Element;
+            if (element.closest("[data-chat]") && !editableTarget(element))
+              return;
             setTarget(event.target as Element);
             setSelection(window.getSelection()?.toString() || "");
           }}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/endview/freeagent/internal/channelwire"
 )
@@ -15,8 +16,9 @@ import (
 // change the parts of an already-started logical reply.
 func (s *channelSession) freezeReplyText(ctx context.Context, group, text string) ([]channelwire.TextPart, string, error) {
 	var frozen struct {
-		Parts  []channelwire.TextPart `json:"parts"`
-		Format string                 `json:"format"`
+		Conversation string                 `json:"conversation_id,omitempty"`
+		Parts        []channelwire.TextPart `json:"parts"`
+		Format       string                 `json:"format"`
 	}
 	key := "channel/render/" + s.source + "/" + s.application + "/" + group
 	var raw string
@@ -29,6 +31,22 @@ func (s *channelSession) freezeReplyText(ctx context.Context, group, text string
 			return nil, "", ErrStoreFormat
 		}
 		return frozen.Parts, frozen.Format, nil
+	}
+	if fields := strings.Split(group, "/"); len(fields) > 1 && fields[0] == "reply" {
+		run, e := s.tasks.core.Store.GetRun(ctx, fields[1])
+		if e == nil {
+			frozen.Conversation = run.ConversationID
+		} else if !errors.Is(e, sql.ErrNoRows) {
+			return nil, "", e
+		} else {
+			var cancelled bool
+			if e = s.tasks.core.Store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE key=$1)`, "channel/run-cancelled/"+fields[1]).Scan(&cancelled); e != nil {
+				return nil, "", e
+			}
+			if cancelled {
+				return nil, "", ErrConversationRetired
+			}
+		}
 	}
 	parts, err := s.extensionReplyParts(ctx, group, text)
 	if err != nil {

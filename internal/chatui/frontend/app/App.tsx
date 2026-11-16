@@ -11,8 +11,6 @@ import {
   Folder,
   ChevronRight,
   Search,
-  Pin,
-  Pencil,
   Plus,
   Moon,
   Sun,
@@ -20,6 +18,8 @@ import {
   Menu,
   X,
   RefreshCw,
+  Trash2,
+  ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,14 +51,26 @@ import {
   viewCommand,
   type ViewPreferences,
 } from "@/lib/platform";
-import { clearDrafts } from "@/lib/drafts";
+import { clearDrafts, messageDraft } from "@/lib/drafts";
 import ConversationPage from "@/features/conversations/ConversationPage";
 import { Choice } from "@/components/Choice";
 import { Navigation } from "@/features/conversations/Navigation";
 import { LoginPage } from "@/features/auth/LoginPage";
+import ManagementPage, {
+  ManagementProvider,
+  ConversationMenu,
+  SpaceMenu,
+} from "@/features/conversations/Management";
 const SettingsPage = lazy(() => import("@/features/settings/SettingsPage"));
 
 export default function App() {
+  return (
+    <ManagementProvider>
+      <WorkspaceApp />
+    </ManagementProvider>
+  );
+}
+function WorkspaceApp() {
   const state = useRuntime();
   const [authenticated, setAuthenticated] = useState(!remote);
   const [password, setPassword] = useState("");
@@ -89,16 +101,44 @@ export default function App() {
   const [reading, setReading] = useState(846);
   const [composerMax, setComposerMax] = useState(190);
   const [query, setQuery] = useState("");
+  const [managementSpace, setManagementSpace] = useState(
+    new URLSearchParams(location.search).get("space") || "",
+  );
+  const [managementSelected, setManagementSelected] = useState("");
+  useEffect(() => {
+    const fn = (event: Event) => {
+      const d = (
+        event as CustomEvent<{ view: string; space: string; selected: string }>
+      ).detail;
+      setManagementSpace(d.space);
+      setManagementSelected(d.selected);
+      if (d.view === "chat") void openChat(d.selected);
+      else
+        route(
+          d.view,
+          d.view === "settings" ? d.space : section,
+          state.selected,
+          d.space,
+        );
+    };
+    window.addEventListener("freeagent-management-navigate", fn);
+    return () =>
+      window.removeEventListener("freeagent-management-navigate", fn);
+  });
   function route(
     nextView: string,
     nextSection = section,
     chat = state.selected,
+    space = managementSpace,
   ) {
     const params = new URLSearchParams(location.search);
     if (nextView === "chat") params.delete("view");
     else params.set("view", nextView);
     if (nextView === "settings") params.set("section", nextSection);
     else params.delete("section");
+    if (["manage", "trash", "retained"].includes(nextView) && space)
+      params.set("space", space);
+    else params.delete("space");
     if (chat) params.set("chat", chat);
     else params.delete("chat");
     history.pushState(
@@ -114,6 +154,7 @@ export default function App() {
     const params = new URLSearchParams(location.search);
     params.delete("view");
     params.delete("section");
+    params.delete("space");
     if (chat) params.set("chat", chat);
     else params.delete("chat");
     history.pushState(
@@ -129,6 +170,7 @@ export default function App() {
     const pop = () => {
       const params = new URLSearchParams(location.search);
       setView(params.get("view") || "chat");
+      setManagementSpace(params.get("space") || "");
       setSection(params.get("section") || "providers");
       void selectConversation(params.get("chat") || "").catch(report);
     };
@@ -259,7 +301,9 @@ export default function App() {
         </div>
         <strong>FreeAgent</strong>
         <span className="brand-version">
-          {state.snapshot?.server_version?.replace(/^v/, "") || "8.3"}
+          {(
+            state.environment?.server_version || state.snapshot?.server_version
+          )?.replace(/^v/, "") || ""}
         </span>
       </div>
       <Button
@@ -302,6 +346,7 @@ export default function App() {
             searchNavigation(query, id === "__all" ? "" : id).catch(report)
           }
         />
+        <SpaceMenu spaceID={state.navSpace || ""} />
       </div>
       <Navigation
         chats={chats}
@@ -324,6 +369,38 @@ export default function App() {
         </button>
       )}
       <div className="sidebar-footer">
+        <button
+          className="nav-settings"
+          onClick={() => {
+            setManagementSpace(state.navSpace || "");
+            setManagementSelected("");
+            route("manage", section, state.selected, state.navSpace || "");
+          }}
+        >
+          <ListChecks size={17} />
+          管理空间内容
+        </button>
+        <button
+          className="nav-settings"
+          onClick={() => {
+            setManagementSpace("");
+            setManagementSelected("");
+            route("trash", section, state.selected, "");
+          }}
+        >
+          <Trash2 size={17} />
+          回收站
+        </button>
+        <button
+          className="nav-settings"
+          onClick={() => {
+            setManagementSpace("");
+            setManagementSelected("");
+            route("retained", section, state.selected, "");
+          }}
+        >
+          保留的执行记录
+        </button>
         <span className="connection-label">
           <span className={state.connected ? "online-dot" : "offline-dot"} />
           {remote ? "远程 Core" : "本地 Core"}
@@ -431,7 +508,15 @@ export default function App() {
             </span>
             <ChevronRight size={13} />
             <strong>
-              {view === "settings" ? "设置" : selected?.title || "新对话"}
+              {view === "settings"
+                ? "设置"
+                : view === "trash"
+                  ? "回收站"
+                  : view === "manage"
+                    ? "空间内容"
+                    : view === "retained"
+                      ? "保留的执行记录"
+                      : selected?.title || "新对话"}
             </strong>
           </div>
           <div className="header-actions">
@@ -454,36 +539,7 @@ export default function App() {
               </button>
             )}
             {selected && view === "chat" && (
-              <button
-                aria-label="重命名会话"
-                onClick={async () => {
-                  const title = window.prompt("会话名称", selected.title || "");
-                  if (title === null || !title.trim()) return;
-                  try {
-                    await api(`chats/${selected.id}/title`, {
-                      title: title.trim(),
-                    });
-                    await loadNavigation();
-                    await loadSnapshot();
-                  } catch (error) {
-                    report(error);
-                  }
-                }}
-              >
-                <Pencil size={16} />
-              </button>
-            )}
-            {selected && view === "chat" && (
-              <button
-                aria-label={selected.pinned ? "取消置顶" : "置顶对话"}
-                onClick={() =>
-                  api(`chats/${selected.id}/pin`, { pinned: !selected.pinned })
-                    .then(loadNavigation)
-                    .catch(report)
-                }
-              >
-                <Pin size={16} />
-              </button>
+              <ConversationMenu chat={selected} />
             )}
             <button
               aria-label="刷新记录"
@@ -523,7 +579,14 @@ export default function App() {
             </button>
           </div>
         )}
-        {view === "settings" ? (
+        {["manage", "trash", "retained"].includes(view) ? (
+          <ManagementPage
+            view={view}
+            space={managementSpace}
+            initialSelected={managementSelected}
+            onOpenChat={(id) => void openChat(id)}
+          />
+        ) : view === "settings" ? (
           <Suspense fallback={<p className="loading-label">正在读取设置…</p>}>
             <SettingsPage
               section={section}
@@ -537,6 +600,30 @@ export default function App() {
               onPreferences={setPreferences}
             />
           </Suspense>
+        ) : state.retired ? (
+          <section className="management-page">
+            <h1>该会话已移到回收站或永久删除</h1>
+            <p>
+              已停止向它发送消息。可以从回收站查看或恢复，必要执行记录仍可核验。
+            </p>
+            {messageDraft(state.selected) && (
+              <label>
+                本窗口未发送的文字（可复制）
+                <textarea readOnly value={messageDraft(state.selected)} />
+              </label>
+            )}
+            <Button
+              onClick={() => {
+                setManagementSpace("");
+                route("trash", section, state.selected, "");
+              }}
+            >
+              打开回收站
+            </Button>
+            <Button variant="outline" onClick={() => void openChat("")}>
+              新对话
+            </Button>
+          </section>
         ) : (
           <ConversationPage
             reading={reading}

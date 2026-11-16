@@ -200,6 +200,20 @@ export function clearBranchRequest(chat: string) {
   branches.delete(chat);
   persist();
 }
+export function clearConversationDraft(chat: string) {
+  messages.delete(chat);
+  requests.delete(chat);
+  attachments.delete(chat);
+  branches.delete(chat);
+  persist();
+}
+export function conversationDraftIDs() {
+  return [
+    ...new Set([...messages.keys(), ...requests.keys(), ...attachments.keys()]),
+  ]
+    .filter(Boolean)
+    .slice(0, 100);
+}
 // Consume only the submitted text and attachments. New edits made while the
 // request was in flight, including edits in a different chat, remain intact.
 export function consumeSentDraft(chat: string, request: PendingSend) {
