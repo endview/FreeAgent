@@ -41,6 +41,11 @@ func TestOneShotOnlineAbandonAndBackup(t *testing.T) {
 			t.Fatalf("waiting %s %v", raw, err)
 		}
 		runs = append(runs, result)
+		// The persisted approval state can precede the owner's worker cleanup.
+		// Maintenance starts only after that conversation has released its work.
+		if err := waitAttachedIdle(t.Context(), client, result.Run.ConversationID); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for range 2 {
 		if _, _, err := invoke(t, "", "abandon", "--data-dir", data, "--run", runs[0].Run.ID); err != nil {
