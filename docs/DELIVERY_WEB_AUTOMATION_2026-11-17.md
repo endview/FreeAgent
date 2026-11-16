@@ -6,7 +6,7 @@
 
 - [v8.9.0-dev.1](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.1)：搜索版，源码 `5eb018801c5abf64d68df0726dc511c2f88a08d5`；Windows/Linux 普通与 race 四组 CI 全通过。
 - [v8.9.0-dev.2](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.2)：宿主源码、标签、归档及 Hytron 均为 `5eb180020d6a2a187ba46047e0d12f7e91b0cd85`。
-- dev.2 包含两个 Core 便携包、Browser 0.1.1 Windows/Linux 两个扩展包、Computer Use 0.1.0 Windows 扩展包，以及源码清单、构建记录和校验和，共八个附件。Browser 0.1.1 为后续独立扩展修正，源提交记录在扩展 BUILD_INFO 中，宿主和 Computer Use 不受影响。附件 API 摘要与本地原值一致。
+- dev.2 包含两个 Core 便携包、Browser 0.1.1 Windows/Linux 两个扩展包、Computer Use 0.1.0 Windows 扩展包，以及源码清单、构建记录和校验和，共八个附件。Browser 0.1.1 为后续独立扩展修正，源标签 [browser-v0.1.1](https://github.com/endview/FreeAgent/tree/browser-v0.1.1) 对应 `b64de43c89d530d0b699cf38a66ccf46bbceb101`；扩展 BUILD_INFO 分别记录来源，宿主和 Computer Use 不受影响。附件 API 摘要与本地原值一致；八个公开下载地址返回 200，新浏览器包匿名完整下载的 SHA256 也匹配。
 - Core 两个平台双次构建一致；扩展包记录来源提交和校验和，不宣称它们可重复构建。发行包不包含凭据、用户数据、浏览器 profile 或截图。
 
 ## 实测
@@ -15,7 +15,9 @@
 
 最终 dev.2 Linux 归档通过独立非 root 验收：便携启动、搜索与 Provider 回归、Browser 源代码 race / 强制退出清理、实际 Linux 扩展包通过 Core 打开网页和回传截图全部通过。Windows 最终便携启动通过，最终桌面扩展包实际完成中文输入与保存结果核对。相关上下文/附件/扩展 race 回归、116 项前端测试、四种宽度保存/刷新回读和静态检查通过。
 
-[最终扩展构建 CI](https://github.com/endview/FreeAgent/actions/runs/43960255349) Windows/Linux 通过。[最终 Core 全量 CI](https://github.com/endview/FreeAgent/actions/runs/43960255533) 发布时仍在运行；不把本地定向回归写成该 CI 已完成。
+[Browser 0.1.1 最终扩展构建 CI](https://github.com/endview/FreeAgent/actions/runs/43963167796) Windows/Linux 通过。[最终 Core 全量 CI](https://github.com/endview/FreeAgent/actions/runs/43960255533) 四组全部通过：Windows/Linux 的普通测试与 race 均为 success；该 CI 对应上述宿主发布提交 `5eb180020d6a`。
+
+另修正旧的在线维护测试同步：审批状态落库后等待 Owner 释放对应会话，再测试 abandon/backup，避免测试抢在后台清理前触发 409 busy。该测试在 Windows 连续 20 次 race 验证通过（44.9 秒），只调整测试等待，不改变已发布程序。
 
 ## Hytron
 

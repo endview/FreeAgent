@@ -9,3 +9,7 @@
 - 扩展设置页支持 schema 中字符串、布尔和字符串列表的普通控件，沿用保存/回读/草稿/冲突流程。
 
 安装、限制与停用见[自动化扩展](AUTOMATION_EXTENSIONS.md)，结果见[验收记录](VALIDATION_AUTOMATION_2026-11-17.md)。更新宿主不会自动安装、开启扩展或更改 AffectWeave。
+
+Browser 0.1.1 独立修正 Windows 启动失败清理，源标签：[browser-v0.1.1](https://github.com/endview/FreeAgent/tree/browser-v0.1.1)。Core 与 Computer Use 的原归档及来源提交保持不变。
+
+验证：[Core 全量 CI](https://github.com/endview/FreeAgent/actions/runs/43960255533) Windows/Linux 普通与 race 四组全部通过；[Browser 0.1.1 扩展 CI](https://github.com/endview/FreeAgent/actions/runs/43963167796) 两个平台通过。八个发行附件的 API 摘要核对、公开下载检查和新浏览器包匿名下载哈希核对通过。
