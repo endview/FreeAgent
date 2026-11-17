@@ -4,9 +4,9 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The published release is **v8.9.0-dev.2**. See the
-[Windows / Linux and extension downloads](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.2)
-and [delivery record](docs/DELIVERY_WEB_AUTOMATION_2026-11-17.md).
+The current candidate is **v8.9.0-dev.3**. See the
+[Windows / Linux and extension downloads](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.3)
+and [public search UI fix](docs/VALIDATION_SEARCH_PUBLIC_UI_2026-11-17.md).
 It includes the search release and optional
 [Browser and Windows Computer Use previews](docs/AUTOMATION_EXTENSIONS.md),
 distributed as separate extensions without browser/desktop runtime dependencies
@@ -23,11 +23,11 @@ one-time follow-ups. See [current validation](docs/VALIDATION_V8_5_2026-11-08.md
 [experience summary](docs/EXPERIENCE_SUMMARY.md). The published release link
 above remains unchanged; upgrading does not enable autonomous sending.
 
-The current workspace is **v8.9.0-dev.1**, adding optional search API connections,
+The v8.9 work adds optional search API connections,
 bounded public-page reading, per-conversation search selection, and saved search
 settings shared with the control API. See the [search guide](docs/WEB_SEARCH.md)
 and [implementation status](docs/WEB_CAPABILITIES_IMPLEMENTATION_2026-11-17.md).
-Browser and computer-use extensions remain later phases of the plan.
+Browser and Windows computer-use extensions are available as independent previews.
 
 The v8.8 work includes conversation menus,
 space management, frozen batch selections and a seven-day recycle bin.

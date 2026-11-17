@@ -42,17 +42,52 @@ interface Key {
   needs_reentry?: boolean;
 }
 
-export default function SearchSettings() {
+export default function SearchSettings({
+  onManage,
+}: {
+  onManage: (section: string) => void;
+}) {
   const resource = useResource<Data>("settings/web-search");
   const keys = useResource<{ profiles: Key[] }>("keys");
-  if (!resource.value || !keys.value)
-    return <Loading error={resource.error || keys.error} />;
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+  async function retry() {
+    setRetrying(true);
+    setRetryError("");
+    try {
+      await Promise.all([resource.reload(), keys.reload()]);
+    } catch (error) {
+      setRetryError((error as Error).message);
+    } finally {
+      setRetrying(false);
+    }
+  }
+  if (!resource.value || !keys.value) {
+    const error = retryError || resource.error || keys.error;
+    return error ? (
+      <section className="settings-section">
+        <h2>搜索设置暂时无法加载</h2>
+        <p className="inline-error" role="alert">
+          {error}
+        </p>
+        <p className="form-hint">
+          已保存的设置没有改变。重新加载后可继续配置。
+        </p>
+        <Button type="button" disabled={retrying} onClick={() => void retry()}>
+          {retrying ? "正在重新加载…" : "重新加载搜索设置"}
+        </Button>
+      </section>
+    ) : (
+      <Loading />
+    );
+  }
   return (
     <Editor
       initial={resource.value}
       profiles={keys.value.profiles}
       onSaved={resource.reload}
       reloadKeys={keys.reload}
+      onManage={onManage}
     />
   );
 }
@@ -62,11 +97,13 @@ function Editor({
   profiles,
   onSaved,
   reloadKeys,
+  onManage,
 }: {
   initial: Data;
   profiles: Key[];
   onSaved: () => Promise<Data>;
   reloadKeys: () => Promise<unknown>;
+  onManage: (section: string) => void;
 }) {
   const [form, change] = useFormDraft<Policy>("web-search", {
     ...initial.config,
@@ -132,10 +169,19 @@ function Editor({
         </p>
       )}
       {!initial.network_enabled && (
-        <p className="inline-error" role="status">
-          内置网络工具当前关闭。请在“能力管理 →
-          内置工具”开启网络工具；连接仍可先保存。
-        </p>
+        <section className="settings-section" aria-label="网络工具未开启">
+          <h2>网络工具未开启</h2>
+          <p className="form-hint">
+            可先保存搜索连接。要在对话中使用搜索，请开启内置网络工具。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onManage("tools")}
+          >
+            设置网络工具
+          </Button>
+        </section>
       )}
       <form
         onSubmit={(e) => {

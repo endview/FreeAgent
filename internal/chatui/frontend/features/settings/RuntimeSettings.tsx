@@ -400,7 +400,7 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
             ))}
             <Field
               label="允许的网络来源（每行一个）"
-              hint="填写完整 http(s)://host[:port]，不含路径或查询。网络工具至少需要一个允许来源。"
+              hint="仅使用联网搜索时可以留空。普通 HTTP 工具需填写完整 http(s)://host[:port]，不含路径或查询。"
             >
               <textarea
                 rows={5}

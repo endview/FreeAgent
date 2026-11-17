@@ -329,7 +329,7 @@ export default function SettingsPage({
                 onOpenChat={onOpenChat}
               />
             ) : section === "search" ? (
-              <SearchSettings />
+              <SearchSettings onManage={onSection} />
             ) : section === "channels" ? (
               <ChannelSettings />
             ) : section === "delivery" ? (

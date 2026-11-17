@@ -58,19 +58,29 @@ export async function api<T = Record<string, unknown>>(
     signal,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = await response
-    .json()
-    .catch(() => ({ error: "服务器没有返回有效响应。" }));
-  if (!response.ok) {
-    if (remote && response.status === 401 && path !== "public/login") {
-      setCSRF("");
-      window.dispatchEvent(new Event("freeagent-auth-required"));
-    }
+  if (remote && response.status === 401 && path !== "public/login") {
+    setCSRF("");
+    window.dispatchEvent(new Event("freeagent-auth-required"));
+  }
+  let data;
+  try {
+    data = await response.json();
+  } catch {
     throw new APIError(
-      data.error || "请求未完成。",
+      response.status === 404
+        ? "此接口不可用（HTTP 404），请确认已更新服务器版本后刷新页面。"
+        : `服务器响应无法读取（HTTP ${response.status}），请重试。`,
       response.status,
-      data.code || "request",
-      data,
+      "invalid_response",
+    );
+  }
+  if (!response.ok) {
+    const failure = data && typeof data === "object" ? data : {};
+    throw new APIError(
+      failure.error || `请求未完成（HTTP ${response.status}）。`,
+      response.status,
+      failure.code || "request",
+      failure,
     );
   }
   return data as T;

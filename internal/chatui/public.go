@@ -118,10 +118,12 @@ func publicRoute(path, method string) (string, bool) {
 		"/api/public-settings":       "GET PUT",
 		"/api/permissions/selection": "PUT", "/api/permissions/files": "PUT", "/api/permissions/profile": "PUT", "/api/commands": "GET PUT", "/api/commands/rules": "PUT",
 		"/api/settings": "GET", "/api/settings/permissions": "PATCH", "/api/settings/file-access": "PATCH", "/api/settings/tools": "PATCH", "/api/settings/command-run": "PATCH", "/api/settings/context": "PATCH", "/api/runtime-tools": "GET",
-		"/api/settings/database": "GET",
-		"/api/settings/prompt":   "GET",
-		"/api/settings/delivery": "GET",
-		"/api/server":            "GET PUT", "/api/providers": "PUT", "/api/attachment-policy": "GET PUT", "/api/attachments": "GET POST", "/api/attachments/reply": "POST", "/api/attachments/delete": "POST",
+		"/api/settings/database":        "GET",
+		"/api/settings/prompt":          "GET",
+		"/api/settings/delivery":        "GET",
+		"/api/settings/web-search":      "GET PATCH",
+		"/api/settings/web-search/test": "POST",
+		"/api/server":                   "GET PUT", "/api/providers": "PUT", "/api/attachment-policy": "GET PUT", "/api/attachments": "GET POST", "/api/attachments/reply": "POST", "/api/attachments/delete": "POST",
 		"/api/keys": "GET POST", "/api/keys/test": "POST", "/api/models/enable": "POST", "/api/models/enable-batch": "POST", "/api/models/default": "POST", "/api/models/vision": "POST", "/api/models/context": "POST",
 		"/api/channels": "GET PATCH", "/api/mcp": "GET POST", "/api/skills": "GET POST", "/api/extensions": "GET POST", "/api/commands/catalog": "GET",
 		"/api/mcp/import": "POST", "/api/mcp/restart": "POST", "/api/skills/trust": "POST", "/api/extensions/trust": "POST", "/api/control/reconcile-extension": "POST",
@@ -295,7 +297,7 @@ func (p *PublicServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	path, allowed := publicRoute(r.URL.Path, r.Method)
 	if !allowed {
-		http.NotFound(w, r)
+		p.local.writeError(w, http.StatusNotFound, "not_found", "此接口不可用，请确认已更新服务器版本后刷新页面。")
 		return
 	}
 	// Admitted mutations settle under the Owner lifetime. Revoking their

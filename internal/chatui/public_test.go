@@ -32,6 +32,10 @@ type publicFixture struct {
 }
 
 func newPublicFixture(t *testing.T, model harness.ModelClient) *publicFixture {
+	return newPublicFixtureAt(t, model, "https://agent.example.test")
+}
+
+func newPublicFixtureAt(t *testing.T, model harness.ModelClient, origin string) *publicFixture {
 	t.Helper()
 	root := t.TempDir()
 	data, work := filepath.Join(root, "data"), filepath.Join(root, "work")
@@ -46,7 +50,7 @@ func newPublicFixture(t *testing.T, model harness.ModelClient) *publicFixture {
 	c.DefaultModel = "echo"
 	c.PublicWeb = harness.DefaultPublicWebConfig()
 	c.PublicWeb.Enabled = true
-	c.PublicWeb.Origin = "https://agent.example.test"
+	c.PublicWeb.Origin = origin
 	ui := setupUIWithConfig(t, model, data, work, c)
 	if err := publicweb.SetPassword(data, []byte("public fixture only password")); err != nil {
 		t.Fatal(err)

@@ -27,7 +27,9 @@ export function Choice({
         aria-invalid={invalid}
         className="choice"
       >
-        <Select.Value>
+        <Select.Value
+          placeholder={options.find(([id]) => id === value)?.[1] || label}
+        >
           {prefix
             ? prefix + (options.find(([id]) => id === value)?.[1] || value)
             : undefined}
