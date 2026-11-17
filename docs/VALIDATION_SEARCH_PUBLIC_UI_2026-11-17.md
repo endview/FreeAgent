@@ -39,4 +39,14 @@ Remove-Item Env:FREEAGENT_BROWSER_CHANNEL
 
 ## 发布与 Hytron
 
-程序发布、便携包及 Hytron 升级在本地验证完成后执行；完成后的版本、数据核对与公网回归结果另在此节补记。
+已推送并发布 [v8.9.0-dev.3](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.3)，程序/标签/归档/Hytron 对应提交 `6004486a70da09cf7c52fa4f21b6ba4a533a900f`。Windows/Linux 各两次干净构建的归档和源码清单相同，八个附件的 API 摘要与本地原值一致、匿名下载地址全部返回 200。Browser 0.1.1 与 Computer Use 0.1.0 使用上版完全相同的独立扩展包，来源提交分别保留。
+
+Windows 最终便携归档启动、版本、数据初始化、Key、Web/CLI 和子进程退出检查通过；本次未重测原生桌面窗口启闭。Debian 12 以独立非 root 用户验证最终 Linux 归档，并完成 Public/Search/设置覆盖 race 回归，64.4 秒通过，没有使用生产 Owner 或模型凭据。
+
+Hytron 更新前已验证备份，检查无活跃任务后执行不取消任务的平滑交接；切换与核对耗时 5.86 秒。schema 2 无迁移。8 个会话、115 个 Run、694 条消息、527 个 Attempt 及原配置/凭据逐项保持；两条旧输入仍暂停，AffectWeave 1.6.0-dev.3 程序、业务记录和明确能力选择均保持。
+
+Core/渠道 active、NRestarts=0，doctor 通过、TG connected。公网 HTTPS/CSP/匿名登录态正常，入口资源与 Owner 完全相同；线上设置资源 `SettingsPage-YJH3-sCd.js` 含搜索表单、保存、失败重试与网络设置入口。没有替用户开启网络或搜索、添加真实 Key、发送真人 TG 测试消息。
+
+[全量 CI](https://github.com/endview/FreeAgent/actions/runs/44035461230) 收尾时仍在运行；不将本次已通过的定向回归与归档验收表述为全量 CI 已通过。
+
+本机证据在忽略目录 `output/search-ui-fix-20261117/`；远端独立验证在 `/var/tmp/freeagent-search-ui-release-20261117/`，生产核对在 `/var/tmp/freeagent-search-ui-production-20261117/`。备份位置和恢复说明记录在本机私有维护文档，不公开凭据。
