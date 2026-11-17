@@ -4,7 +4,7 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-当前候选为 **v8.9.0-dev.4**：修复搜索开启后的审批恢复，验证和部署结果见[修复记录](docs/VALIDATION_SEARCH_APPROVAL_2026-11-17.md)。
+已发布 **v8.9.0-dev.4** 并更新 Hytron；修复搜索开启后的审批恢复，验证和部署结果见[修复记录](docs/VALIDATION_SEARCH_APPROVAL_2026-11-17.md)。
 [下载 Windows / Linux 便携包与扩展](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.4)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 

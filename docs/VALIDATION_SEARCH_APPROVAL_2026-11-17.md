@@ -30,4 +30,14 @@
 
 ## 发布与部署
 
-最终归档检查、GitHub Release 和 Hytron 保留原待确认操作的升级结果在完成后补记。维护不自动结束待确认任务，不改变暂停队列、搜索配置和扩展选择。
+已推送并发布 [v8.9.0-dev.4](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.4)，程序、标签、两平台归档与 Hytron 对应提交 `14156833eb1deb9b6749ee08f409d8b0a55c3cff`。Windows/Linux 各两次干净构建的归档和源码清单相同，八个附件的 API 摘要与本地一致，匿名下载地址均返回 200。Browser 0.1.1、Computer Use 0.1.0 沿用上版独立原包，来源提交记录在 BUILD_VERIFICATION.json。
+
+Windows 最终便携归档完整性、版本、初始化、Key、Web/CLI 与进程退出检查通过；原生桌面窗口启闭本次未重测。Debian 12 在独立非 root 用户、数据与端口下验证最终 Linux 归档，并完成 Public/Search/审批回归 `-race`，111.38 秒通过；不使用生产模型或 TG 凭据。
+
+Hytron 更新前验证 Core 与 AffectWeave 备份；无活跃执行后平滑交接，升级与连续性核对耗时 5.722 秒，schema 2 无迁移。8 个会话、121 个 Run、726 条消息、554 个 Attempt、原配置、凭据、扩展业务记录及能力选择均保持。原待确认 Run 和八个 Attempt 逐项不变；升级后读取原操作预览从 HTTP 409 恢复为 **200**，仍等待用户决定，没有批准、拒绝、重放或结束它。两条旧排队输入仍暂停。
+
+Core/渠道 active、doctor 通过、TG connected；公网 HTTPS/CSP/匿名登录态正常，入口 JS/CSS 与 Owner 一致。AffectWeave 1.6.0-dev.3 程序、配置与存储保持。本次没有发送真人 TG 测试消息。
+
+[全量 CI](https://github.com/endview/FreeAgent/actions/runs/44044632588)仍在运行；已完成的定向回归和归档检查不代表全量 CI 已通过。
+
+本机证据保存在忽略目录 `output/approval-snapshot-20261117/`，服务器独立验证和维护结果分别保存在 `/var/tmp/freeagent-approval-snapshot-release-20261117/` 与 `/var/tmp/freeagent-approval-snapshot-production-20261117/`。具体备份与回退说明记录在私有维护文档。
