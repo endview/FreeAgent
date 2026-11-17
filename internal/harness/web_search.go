@@ -204,7 +204,7 @@ func (service *Service) prepareSearch(request ModelRequest) (ModelRequest, error
 	enabled := false
 	request.WebSearch = &enabled
 	request.SearchDecision = &SearchDecision{Mode: policy.Mode, Route: "off", Reason: "search disabled by policy, selection, permission, or auxiliary purpose"}
-	if request.Purpose != "" && request.Purpose != "chat" || request.DenyOperations || policy.Mode == "off" || !effectiveBuiltinToolSettings(service.Config).Network {
+	if request.Purpose != "" && request.Purpose != "chat" || request.DenyOperations || policy.Mode == "off" || !service.activeToolPolicy().EnabledTools.Network {
 		request.Tools = withoutWebTools(request.Tools)
 		return request, nil
 	}

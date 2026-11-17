@@ -130,11 +130,14 @@ function ApprovalCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
+  const [previewRetry, setPreviewRetry] = useState(0);
+  const [previewLoading, setPreviewLoading] = useState(true);
   useEffect(() => {
     let disposed = false;
     setPreview(turn.confirmation || null);
     setError("");
     setCode("");
+    setPreviewLoading(true);
     api<Confirmation>(
       `chats/${chat}/preview?run_id=${encodeURIComponent(turn.key)}`,
       {},
@@ -159,12 +162,19 @@ function ApprovalCard({
         }
       })
       .catch((error) => {
-        if (!disposed) setError(error.message);
+        if (!disposed) {
+          setPreview(null);
+          setCode("");
+          setError(error.message);
+        }
+      })
+      .finally(() => {
+        if (!disposed) setPreviewLoading(false);
       });
     return () => {
       disposed = true;
     };
-  }, [chat, turn.key, turn.confirmation?.digest]);
+  }, [chat, turn.key, turn.confirmation?.digest, previewRetry]);
   async function decide(approved: boolean) {
     if (!preview) return;
     setBusy(true);
@@ -187,13 +197,29 @@ function ApprovalCard({
       setBusy(false);
     }
   }
+  async function endTask() {
+    if (!window.confirm("结束当前任务并保留已有作用和 UNKNOWN 记录？")) return;
+    setBusy(true);
+    try {
+      await api(`chats/${chat}/end?run_id=${encodeURIComponent(turn.key)}`, {
+        acknowledge: true,
+      });
+      onDone();
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <ApprovalView
       preview={preview}
-      busy={busy}
+      busy={busy || previewLoading}
       error={error}
-      ready={!preview?.control_operation_id || Boolean(code)}
+      ready={!error && (!preview?.control_operation_id || Boolean(code))}
       onDecide={(approved) => void decide(approved)}
+      onRetry={() => setPreviewRetry((value) => value + 1)}
+      onEnd={turn.can_end ? () => void endTask() : undefined}
     />
   );
 }

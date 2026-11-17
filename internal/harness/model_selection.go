@@ -459,7 +459,10 @@ func (service *Service) forRun(run Run) (*Service, error) {
 		}
 	}
 	copy.toolPolicy = ToolPolicy{EnabledTools: snapshot.EnabledTools, Generation: snapshot.ToolGeneration, Commands: snapshot.CommandPolicy, File: snapshot.FilePolicy,
-		HTTP: snapshot.HTTPPolicy, Profile: snapshot.ExecutionProfile}
+		HTTP: snapshot.HTTPPolicy, Profile: snapshot.ExecutionProfile,
+		// Search is already persisted in Config. Rebuild its bounded frozen
+		// policy before comparing definitions, including per-conversation off.
+		WebSearch: toolPolicyForProfile(snapshot.Config, snapshot.ExecutionProfile).WebSearch}
 	if copy.toolManager != nil {
 		copy.toolView = copy.toolManager.build(copy.toolPolicy)
 		copy.Tools = copy.toolView

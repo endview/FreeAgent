@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -12,6 +13,129 @@ import (
 
 	"github.com/endview/freeagent/internal/webaccess"
 )
+
+func TestSearchPolicySurvivesSavedApprovalAndRestart(t *testing.T) {
+	for _, mode := range []string{"legacy", "off", "auto", "api", "native"} {
+		for _, selection := range []string{"", "off"} {
+			t.Run(mode+"/"+selection, func(t *testing.T) {
+				calls := 0
+				var searchBefore []byte
+				model := modelFunc(func(_ context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
+					calls++
+					if calls == 1 {
+						searchBefore = mustJSON(request.SearchDecision)
+						return ModelResponse{ToolCalls: []ToolCall{makeCall("create", "file_create", map[string]string{"path": "approval.txt", "content": "approved once"})}}, nil
+					}
+					if string(searchBefore) != string(mustJSON(request.SearchDecision)) {
+						t.Fatalf("approval changed the frozen search route: before=%s after=%s", searchBefore, mustJSON(request.SearchDecision))
+					}
+					return ModelResponse{Content: "Done."}, nil
+				})
+				service, files, workspace := testHarness(t, model)
+				service.Config.Tools.Network = true
+				keys := NewKeyStore(filepath.Join(t.TempDir(), "keys.json"))
+				key, err := keys.Add(KeyInput{Name: "approval fixture", Protocol: KeyProtocolSearch, BaseURL: "http://127.0.0.1:19999", Source: KeySourceNone})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if mode != "legacy" {
+					policy := webaccess.DefaultConfig()
+					policy.Mode = mode
+					if mode == "api" {
+						policy.DefaultConnection = "fixture"
+						policy.Connections = map[string]webaccess.Connection{"fixture": {Provider: "searxng", Key: key.ID}}
+					}
+					service.Config.WebSearch = &policy
+				}
+				service.Keys = keys
+				if mode == "native" {
+					modelKey, err := keys.Add(KeyInput{Name: "model fixture", Protocol: KeyProtocolOpenAICompatible, BaseURL: "http://127.0.0.1:19998", Source: KeySourceNone})
+					if err != nil {
+						t.Fatal(err)
+					}
+					service.Config.Models[service.Config.DefaultModel] = ModelConfig{Provider: "openai-compatible", Model: "fixture", Key: modelKey.ID,
+						Capabilities: ModelCapabilities{Protocol: "responses", WebSearch: "supported"}}
+					enableTestProviders(&service.Config)
+				}
+				runtime := NewRuntimeTools(files)
+				runtime.SetKeyStore(keys)
+				service.toolManager = NewToolRuntimeManager(runtime, service.Config)
+				service.Tools = service.toolManager
+				tasks := NewTaskService(service)
+				waiting, err := tasks.SubmitWithOptions(t.Context(), "", "search-approval", "Create one file", RunOptions{Capabilities: &CapabilitySelection{Search: selection}})
+				if err != nil || waiting.Run.Status != "waiting_confirmation" || calls != 1 {
+					t.Fatalf("waiting=%+v calls=%d error=%v", waiting.Run, calls, err)
+				}
+				decision, err := tasks.Preview(t.Context(), waiting.Run.ID)
+				if err != nil || decision.Tool != "file_create" {
+					t.Fatalf("saved search policy cannot preview: %v", err)
+				}
+				if _, err := os.Stat(filepath.Join(workspace, "approval.txt")); !os.IsNotExist(err) {
+					t.Fatal("preview dispatched the pending write")
+				}
+				if _, err := tasks.ConfigureRuntimePolicy(t.Context(), "", func(config *Config) error {
+					config.WebSearch = cloneWebConfig(service.Config.WebSearch)
+					if config.WebSearch != nil {
+						config.WebSearch.Mode = "off"
+					}
+					return nil
+				}); err != nil {
+					t.Fatal("future-only search update", err)
+				}
+				// Rebuild the service as an Owner restart does, preserving the Run.
+				freshService := NewService(service.Store, service.Config, Adapters{Model: model, Keys: keys})
+				freshService.toolManager = NewToolRuntimeManager(runtime, service.Config)
+				freshService.Tools = freshService.toolManager
+				restarted := NewTaskService(freshService)
+				fresh, err := restarted.Preview(t.Context(), waiting.Run.ID)
+				if err != nil || fresh.Digest != decision.Digest || calls != 1 {
+					t.Fatalf("restart changed approval: %v calls=%d", err, calls)
+				}
+				finished, err := restarted.Confirm(t.Context(), waiting.Run.ID, fresh, true)
+				if err != nil || finished.Run.Status != "completed" || calls != 2 {
+					t.Fatalf("confirmation=%+v calls=%d error=%v", finished.Run, calls, err)
+				}
+				raw, err := os.ReadFile(filepath.Join(workspace, "approval.txt"))
+				if err != nil || string(raw) != "approved once" {
+					t.Fatalf("approved write=%q error=%v", raw, err)
+				}
+			})
+		}
+	}
+}
+
+func TestSearchPageApprovalCanBeDeclinedWithoutRequest(t *testing.T) {
+	calls := 0
+	service, files, _ := testHarness(t, modelFunc(func(context.Context, ModelRequest, func(string)) (ModelResponse, error) {
+		calls++
+		if calls == 1 {
+			return ModelResponse{ToolCalls: []ToolCall{makeCall("fetch", "web_fetch", map[string]string{"url": "https://example.org/source"})}}, nil
+		}
+		return ModelResponse{Content: "Declined; no page read."}, nil
+	}))
+	policy := webaccess.DefaultConfig()
+	policy.Mode = "auto"
+	service.Config.WebSearch, service.Config.Tools.Network = &policy, true
+	service.toolManager = NewToolRuntimeManager(NewRuntimeTools(files), service.Config)
+	service.Tools = service.toolManager
+	tasks := NewTaskService(service)
+	waiting, err := tasks.Submit(t.Context(), "", "page-approval", "Read a public page")
+	if err != nil || waiting.Run.Status != "waiting_confirmation" {
+		t.Fatalf("waiting status=%s error=%v", waiting.Run.Status, err)
+	}
+	preview, err := tasks.Preview(t.Context(), waiting.Run.ID)
+	if err != nil || preview.Tool != "web_fetch" || !strings.Contains(preview.Preview, "https://example.org/source") {
+		t.Fatalf("preview=%+v error=%v", preview, err)
+	}
+	finished, err := tasks.Confirm(t.Context(), waiting.Run.ID, preview, false)
+	if err != nil || finished.Run.Status != "completed" || calls != 2 || len(finished.Evidence.HTTP) != 0 {
+		t.Fatalf("decline status=%s calls=%d evidence=%+v error=%v", finished.Run.Status, calls, finished.Evidence.HTTP, err)
+	}
+	attempts, err := service.Store.ListAttempts(t.Context(), waiting.Run.ID)
+	if err != nil || len(attempts) != 3 || attempts[1].Status != "finished" || !strings.Contains(attempts[1].ResponseJSON, "user declined this operation") {
+		t.Fatalf("declined tool result missing: %v", err)
+	}
+}
 
 func TestSearchThroughActualCoreAndExplicitConversationExclusion(t *testing.T) {
 	for _, status := range []int{200, 429} {

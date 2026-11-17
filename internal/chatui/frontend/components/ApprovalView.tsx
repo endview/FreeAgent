@@ -9,12 +9,16 @@ export function ApprovalView({
   error = "",
   ready = true,
   onDecide,
+  onRetry,
+  onEnd,
 }: {
   preview: Confirmation | null;
   busy?: boolean;
   error?: string;
   ready?: boolean;
   onDecide: (approved: boolean) => void;
+  onRetry?: () => void;
+  onEnd?: () => void;
 }) {
   return (
     <section className="approval-card" aria-label="待确认操作">
@@ -30,10 +34,15 @@ export function ApprovalView({
           </strong>
           <p>批准仅绑定下方内容与当前版本</p>
         </div>
-        <span className="risk-label">{preview?.tool || "等待预览"}</span>
+        <span className="risk-label">
+          {preview?.tool || (error ? "预览未就绪" : "等待预览")}
+        </span>
       </div>
       <pre className="approval-preview">
-        {preview?.preview || "正在读取精确变更…"}
+        {preview?.preview ||
+          (error
+            ? "未能取得操作预览，尚未执行本次待确认操作。"
+            : "正在读取精确变更…")}
       </pre>
       {preview?.items?.map((item, index) => (
         <details className="approval-item" key={index} open={index === 0}>
@@ -65,6 +74,16 @@ export function ApprovalView({
           <ShieldCheck size={14} />
           内容变化后重新确认
         </span>
+        {error && onRetry && (
+          <Button variant="outline" disabled={busy} onClick={onRetry}>
+            重新读取预览
+          </Button>
+        )}
+        {error && onEnd && (
+          <Button variant="ghost" disabled={busy} onClick={onEnd}>
+            结束任务
+          </Button>
+        )}
         <Button
           variant="ghost"
           disabled={busy || !preview}

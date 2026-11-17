@@ -4,9 +4,9 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The published release is **v8.9.0-dev.3**. See the
-[Windows / Linux and extension downloads](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.3)
-and [public search UI fix](docs/VALIDATION_SEARCH_PUBLIC_UI_2026-11-17.md).
+The current candidate is **v8.9.0-dev.4**. See the
+[Windows / Linux and extension downloads](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.4)
+and [search approval recovery](docs/VALIDATION_SEARCH_APPROVAL_2026-11-17.md).
 It includes the search release and optional
 [Browser and Windows Computer Use previews](docs/AUTOMATION_EXTENSIONS.md),
 distributed as separate extensions without browser/desktop runtime dependencies

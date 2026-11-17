@@ -704,6 +704,7 @@ button svg {
 }
 .approval-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 12px 16px;
