@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-labelledby="title desc" lang="zh-CN">
+  <title id="title">FreeAgent 运行架构：一个 Owner，多个入口</title>
+  <desc id="desc">Web、桌面与 CLI 通过产品接口访问 Owner。Telegram、飞书和 QQ 通过独立渠道进程访问同一个 Owner 的桥接接口。两条路径共用会话、上下文、模型与工具循环、权限和执行证据。橙色标出仍在 harness 中的渠道业务。模型适配、工具后端、Skill 与扩展宿主向下调用各自的运行时。Core 的 PostgreSQL 和本机文件与扩展私有数据分别管理。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1.2 1.4 8.3 5 1.2 8.6" fill="none" stroke="#516b70" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      text{font-family:"Microsoft YaHei","PingFang SC","Noto Sans CJK SC",Arial,sans-serif;fill:#172e32}
+      .title{font-size:40px;font-weight:700}.tag{font-size:17px;font-weight:600;fill:#496169}
+      .subtitle{font-size:18px;fill:#465e64}.name{font-size:22px;font-weight:650}
+      .label{font-size:19px;font-weight:600}.copy{font-size:16px;fill:#394f55}
+      .small{font-size:15px;fill:#486269}.code{font-family:Consolas,"SFMono-Regular",monospace;font-size:16px;fill:#435e64}
+      .arrow{fill:none;stroke:#516b70;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#arrow)}
+      .both{marker-start:url(#arrow)}.box{fill:#fff;stroke:#a7b9b9;stroke-width:1.5}
+      .coreTitle{font-size:25px;font-weight:700;fill:#fff}.coreCode{font-family:Consolas,monospace;font-size:16px;fill:#def2ef}
+      .coreLabel{font-size:19px;font-weight:650;fill:#fff}.coreCopy{font-size:16px;fill:#e1f0ee}
+      .amber{fill:#714914}.foot{font-size:17px;fill:#344f54}
+    </style>
+  </defs>
+  <rect width="1080" height="1080" fill="#fbfcfc"/>
+  <text class="title" x="60" y="61">FreeAgent 运行架构</text>
+  <text class="tag" x="1020" y="56" text-anchor="end">v8.9.0-dev.4 · 当前实现</text>
+  <text class="subtitle" x="61" y="93">同一 Core 数据目录只有一个写入 Owner。不同入口共享会话、授权判断和执行记录。</text>
+  <path d="M60 111 H1020" stroke="#c8d5d5" stroke-width="1.4"/>
+
+  <g data-box="client">
+    <rect class="box" x="60" y="134" width="419" height="83" rx="7"/>
+    <text class="name" x="81" y="166">Web、Windows 桌面、CLI</text>
+    <text class="copy" x="81" y="194">桌面用 WebView2；CLI 可启动或附着 Owner。</text>
+  </g>
+  <g data-box="platform">
+    <rect class="box" x="509" y="134" width="168" height="83" rx="7"/>
+    <text class="name" x="527" y="166">聊天平台</text>
+    <text class="copy" x="527" y="194">TG · 飞书 · QQ</text>
+  </g>
+  <g data-box="connector">
+    <rect class="box" x="725" y="134" width="295" height="83" rx="7"/>
+    <text class="name" x="745" y="166">渠道连接器进程</text>
+    <text class="code" x="745" y="194">freeagent-channel</text>
+  </g>
+  <path class="arrow both" d="M682 175 H719"/>
+
+  <rect x="30" y="268" width="1020" height="451" rx="12" fill="#edf4f3" stroke="#65928b" stroke-width="1.8"/>
+  <text class="name" x="61" y="300">Owner 进程</text>
+  <text class="code" x="540" y="298" text-anchor="middle">bin/freeagent</text>
+  <path class="arrow both" d="M269 222 V314"/>
+  <text class="small" x="282" y="247">HTTP / SSE、CLI attach</text>
+  <path class="arrow both" d="M871 222 V314"/>
+  <text class="small" x="857" y="247" text-anchor="end">受限本机 HTTP · 入站 / 待投递 / 回执</text>
+
+  <g data-box="api">
+    <rect class="box" x="76" y="319" width="419" height="80" rx="7"/>
+    <text class="name" x="95" y="351">产品接口</text>
+    <text class="copy" x="95" y="379">本机工作台、CLI；公网经反向代理和登录校验。</text>
+  </g>
+  <g data-box="bridge">
+    <rect x="550" y="319" width="454" height="80" rx="7" fill="#fff4df" stroke="#af7930" stroke-width="1.5"/>
+    <text class="name amber" x="570" y="351">渠道宿主桥接</text>
+    <text class="code amber" x="984" y="349" text-anchor="end">ChannelBridge</text>
+    <text class="copy amber" x="570" y="379">TG 准入、群命令和贴纸规则仍在 harness 包内。</text>
+  </g>
+  <path class="arrow both" d="M276 404 V436"/>
+  <path class="arrow both" d="M776 404 V436"/>
+
+  <g data-box="core">
+    <rect x="76" y="442" width="928" height="123" rx="8" fill="#195954"/>
+    <text class="coreTitle" x="99" y="475">共享执行内核</text>
+    <text class="coreCode" x="980" y="474" text-anchor="end">TaskService · Service · ControlService</text>
+    <path d="M99 490 H981 M393 503 V545 M685 503 V545" fill="none" stroke="#6d9993" stroke-width="1"/>
+    <text class="coreLabel" x="99" y="518">会话与上下文</text>
+    <text class="coreCopy" x="99" y="545">空间、输入队列、历史与压缩</text>
+    <text class="coreLabel" x="414" y="518">模型与工具循环</text>
+    <text class="coreCopy" x="414" y="545">Run、Attempt、预算与恢复</text>
+    <text class="coreLabel" x="706" y="518">授权与确认</text>
+    <text class="coreCopy" x="706" y="545">受众、精确提案、执行证据</text>
+  </g>
+  <path class="arrow both" d="M220 570 V602"/>
+  <path class="arrow both" d="M540 570 V602"/>
+  <path class="arrow both" d="M860 570 V602"/>
+  <g data-box="provider">
+    <rect class="box" x="76" y="607" width="288" height="91" rx="7"/>
+    <text class="label" x="94" y="636">Provider 适配</text>
+    <text class="copy" x="94" y="662">请求协议、流式输出与思考</text>
+    <text class="copy" x="94" y="684">模型原生搜索走这条路径</text>
+  </g>
+  <g data-box="tools">
+    <rect class="box" x="396" y="607" width="288" height="91" rx="7"/>
+    <text class="label" x="414" y="636">内置工具与 MCP 客户端</text>
+    <text class="copy" x="414" y="662">文件、命令、HTTP、独立搜索</text>
+    <text class="copy" x="414" y="684">按本轮授权调用工具</text>
+  </g>
+  <g data-box="ext-host">
+    <rect class="box" x="716" y="607" width="288" height="91" rx="7"/>
+    <text class="label" x="734" y="636">Skill 与扩展宿主</text>
+    <text class="copy" x="734" y="662">Skill 提供方法，无独立进程</text>
+    <text class="copy" x="734" y="684">业务扩展通过协议按需调用</text>
+  </g>
+
+  <path class="arrow both" d="M220 703 V768"/>
+  <text class="small" x="233" y="749">模型 API</text>
+  <path class="arrow both" d="M540 703 V768"/>
+  <text class="small" x="553" y="749">本机调用、HTTP 或 stdio</text>
+  <path class="arrow both" d="M860 703 V768"/>
+  <text class="small" x="873" y="749">freeagent-ext/1 · stdio</text>
+  <g data-box="models">
+    <rect class="box" x="76" y="773" width="288" height="96" rx="7"/>
+    <text class="label" x="94" y="803">模型服务</text>
+    <text class="copy" x="94" y="829">Chat Completions / Responses</text>
+    <text class="copy" x="94" y="852">Anthropic Messages</text>
+  </g>
+  <g data-box="backends">
+    <rect class="box" x="396" y="773" width="288" height="96" rx="7"/>
+    <text class="label" x="414" y="803">工具后端</text>
+    <text class="copy" x="414" y="829">工作区、本机进程、MCP 服务</text>
+    <text class="copy" x="414" y="852">独立搜索 API、公共网页</text>
+  </g>
+  <g data-box="extensions">
+    <rect class="box" x="716" y="773" width="288" height="96" rx="7"/>
+    <text class="label" x="734" y="803">独立扩展进程</text>
+    <text class="copy" x="734" y="829">AffectWeave、Browser</text>
+    <text class="copy" x="734" y="852">Computer Use（本机 Windows）</text>
+  </g>
+
+  <path class="arrow both" d="M71 511 H47 V965 H71"/>
+  <text class="small" x="62" y="909">宿主持久化</text>
+  <path class="arrow both" d="M860 874 V919"/>
+  <text class="small" x="873" y="902">各自的数据域</text>
+  <g data-box="owner-data">
+    <rect x="76" y="925" width="608" height="96" rx="7" fill="#f1f4f5" stroke="#98aeb2" stroke-width="1.5"/>
+    <text class="label" x="94" y="957">Owner 管理的数据</text>
+    <text class="copy" x="94" y="982">PostgreSQL：会话、消息、执行记录、Memory、投递与回执</text>
+    <text class="copy" x="94" y="1005">本机文件：配置、凭据、控制日志、附件</text>
+  </g>
+  <g data-box="extension-data">
+    <rect x="716" y="925" width="288" height="96" rx="7" fill="#f1f4f5" stroke="#98aeb2" stroke-width="1.5"/>
+    <text class="label" x="734" y="957">扩展私有数据</text>
+    <text class="copy" x="734" y="982">AffectWeave：独立 PG 库与账号</text>
+    <text class="copy" x="734" y="1005">浏览器：隔离的 profile</text>
+  </g>
+  <path d="M60 1040 H1020" stroke="#c8d5d5" stroke-width="1.4"/>
+  <text class="foot" x="61" y="1066">边界原则：平台规则归连接器，执行事实归 Core，人物与表达策略归扩展。</text>
+</svg>

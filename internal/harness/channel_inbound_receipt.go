@@ -233,6 +233,13 @@ func (b *ChannelBridge) completeInbound(connection, event string, result RunResu
 	_, err = tx.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2 AND value=$3`, string(mustJSON(intent)), key, raw)
 	if err == nil {
 		_ = tx.Commit()
+		stage := "run_finished"
+		if callErr != nil {
+			stage = "run_failed"
+		}
+		if result.Run.ID != "" {
+			b.observe(connection, intent.Event.Target.ChatID, stage, 1)
+		}
 	}
 }
 

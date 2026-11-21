@@ -2,7 +2,7 @@ name: Repeatable portable candidates
 on:
   workflow_dispatch:
   push:
-    tags: ['v8.*']
+    tags: ['v8.*', 'v9.*']
 permissions:
   contents: read
 jobs:

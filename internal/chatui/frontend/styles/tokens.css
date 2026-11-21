@@ -2238,6 +2238,23 @@ select {
 .context-metrics {
   font-size: 12px;
 }
+.channel-diagnostics {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.channel-diagnostics > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.channel-diagnostics dt {
+  color: var(--muted-foreground);
+}
+.channel-diagnostics dd {
+  margin: 0;
+}
 .context-metrics > div {
   display: flex;
   justify-content: space-between;

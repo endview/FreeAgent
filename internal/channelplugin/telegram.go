@@ -28,6 +28,9 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 	if err := c.RegisterCapabilities(parent); err != nil {
 		return err
 	}
+	if err := c.Observe(parent, channelwire.Observation{Stage: "connected", Count: 1, CanReadAll: &bot.CanReadGroupMessages}); err != nil {
+		return err
+	}
 	position, err := loadCursor(path, c.Bootstrap)
 	if err != nil {
 		return err
@@ -88,18 +91,31 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 		}
 		updates, err := api.Poll(ctx, position.Last+1, 20)
 		if err != nil {
+			_ = c.Observe(ctx, channelwire.Observation{Stage: "poll_failed", Count: 1})
 			if !wait(ctx, time.Second) {
 				break
 			}
 			continue
+		}
+		if err := c.Observe(ctx, channelwire.Observation{Stage: "poll_ok", Count: len(updates)}); err != nil {
+			return err
 		}
 		for _, u := range updates {
 			if u.ID <= position.Last {
 				continue
 			}
 			e, ok := channels.TelegramEventFromUpdate(u, bot)
+			target := channelwire.Target{}
+			if e.ChatID != 0 {
+				target = channelwire.Target{Source: "telegram", ApplicationID: e.ApplicationID, ChatID: messageID(e.ChatID)}
+			}
+			if err := c.Observe(ctx, channelwire.Observation{Target: target, Stage: "received", Count: 1}); err != nil {
+				return err
+			}
+			filtered := "filtered"
 			if cutoff > 0 && e.Date <= cutoff {
 				ok = false
+				filtered = "backlog_ignored"
 			}
 			if ok {
 				words := strings.Fields(e.Text)
@@ -107,6 +123,7 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 					parts := strings.SplitN(words[0], "@", 2)
 					if strings.HasPrefix(parts[0], "/") && len(parts) == 2 && !strings.EqualFold(parts[1], bot.Username) {
 						ok = false
+						filtered = "other_bot_command"
 					}
 				}
 			}
@@ -131,6 +148,10 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 				}
 				if e.CallbackID != "" {
 					_ = api.AnswerCallback(ctx, e.CallbackID, "已收到。")
+				}
+			} else {
+				if err := c.Observe(ctx, channelwire.Observation{Target: target, Stage: filtered, Count: 1}); err != nil {
+					return err
 				}
 			}
 			// Only Core's durable acceptance permits this platform cursor to move.

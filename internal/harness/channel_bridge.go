@@ -28,6 +28,7 @@ type ChannelBridge struct {
 	dispatch                   ChannelDispatch
 }
 type channelConnection struct {
+	diagnostic   channelDiagnostic
 	capabilities channelwire.Capabilities
 	inboundMu    sync.Mutex
 	flightMu     sync.Mutex
@@ -87,7 +88,7 @@ func (b *ChannelBridge) Configure() error {
 		if profile.Protocol != c.Source {
 			return ErrPermissionDenied
 		}
-		conn := &channelConnection{config: c, token: newID() + newID(), flights: map[string]bool{}}
+		conn := &channelConnection{config: c, token: newID() + newID(), flights: map[string]bool{}, diagnostic: newChannelDiagnostic()}
 		conn.session = newChannelSession(b.tasks, c.Source, func(ctx context.Context, target ChannelTarget, reply, text string, buttons []channelButton) (string, error) {
 			op := channelwire.Operation{Kind: "text", Target: channelwire.Target(target), Reply: reply, Text: text}
 			for _, button := range buttons {
@@ -212,8 +213,14 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 	}
 	if event.Target.Source == SpaceSourceTelegram {
 		if grant, err := b.tasks.CheckTelegramAccess(ctx, ChannelTarget(event.Target), event.Person); err == nil {
+			b.observe(id, event.Target.ChatID, "admitted", 1)
 			ctx = context.WithValue(ctx, telegramFileAuthorityKey{}, telegramFileAuthority{Target: ChannelTarget(event.Target), Person: event.Person, Revision: grant.Revision})
 		} else {
+			if !errors.Is(err, ErrPermissionDenied) {
+				b.observe(id, event.Target.ChatID, "admission_failed", 1)
+				return err
+			}
+			b.observe(id, event.Target.ChatID, "not_admitted", 1)
 			ctx = context.WithValue(ctx, channelAdmissionKey{}, true)
 		}
 	}
@@ -230,6 +237,14 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 	if event.Reaction != nil {
 		return b.recordReaction(ctx, id, event)
 	}
+	// Discard unrequested group text before the full inbound intent or media
+	// can be persisted. Retention is an explicit per-group policy, not implied
+	// by Telegram privacy mode or by admission.
+	if event.Kind == "group" && !event.Trigger && event.Callback == "" {
+		b.observe(id, event.Target.ChatID, "background_ignored", 1)
+		return nil
+	}
+	b.observe(id, event.Target.ChatID, "triggered", 1)
 	return b.acceptInbound(ctx, conn, id, event, e)
 }
 
@@ -297,7 +312,11 @@ func (b *ChannelBridge) Status(source string) any {
 	var states []map[string]any
 	for id, c := range b.connections {
 		if source == "" || c.config.Source == source {
-			states = append(states, map[string]any{"id": id, "source": c.config.Source, "application_id": c.config.ApplicationID, "enabled": true, "running": !c.lastSeen.IsZero() && time.Since(c.lastSeen) < 30*time.Second})
+			// Copy through JSON while locked: callers serialize after this lock
+			// is released and observations may arrive concurrently.
+			var diagnostic any
+			_ = json.Unmarshal(mustJSON(c.diagnostic), &diagnostic)
+			states = append(states, map[string]any{"id": id, "source": c.config.Source, "application_id": c.config.ApplicationID, "enabled": true, "running": !c.lastSeen.IsZero() && time.Since(c.lastSeen) < 30*time.Second, "diagnostic": diagnostic})
 		}
 	}
 	return map[string]any{"connections": states, "config": b.tasks.Config().Channels, "protocol_version": channelwire.Version}

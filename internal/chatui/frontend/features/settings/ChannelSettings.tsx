@@ -28,7 +28,92 @@ interface Connection {
 interface Channels {
   expected_revisions: Record<string, number>;
   config: { connections: Connection[] };
-  connections?: { id: string; running: boolean }[];
+  connections?: { id: string; running: boolean; diagnostic?: Diagnostic }[];
+}
+interface Diagnostic {
+  since: string;
+  updated: string;
+  can_read_all?: boolean;
+  counts: Record<string, number>;
+  groups: Record<string, Record<string, number>>;
+}
+
+const diagnosticLabels: Record<string, string> = {
+  received: "收到平台更新",
+  filtered: "适配器过滤",
+  other_bot_command: "发给其他 Bot 的命令",
+  backlog_ignored: "忽略过期更新",
+  poll_failed: "平台轮询失败",
+  admitted: "已准入",
+  not_admitted: "未准入或身份无法核实",
+  admission_failed: "准入核查暂时失败，未确认接收",
+  background_ignored: "未唤起，未保存正文",
+  triggered: "已唤起",
+  run_finished: "执行轮次已结束",
+  run_failed: "执行出错",
+  delivery_sent: "确认已送达",
+  delivery_failed: "投递明确失败",
+  delivery_unknown: "投递结果未知",
+};
+
+// Keep diagnostics inside the existing connection section: same type, spacing,
+// surfaces and controls; counters are facts, never a success badge for a Run.
+function ReceptionDiagnostic({
+  value,
+  reload,
+}: {
+  value?: Diagnostic;
+  reload: () => void;
+}) {
+  return (
+    <details className="settings-section">
+      <summary>接收与投递诊断</summary>
+      <p className="form-hint">
+        {value?.since
+          ? `本次连接的观测起点：${new Date(value.since).toLocaleString()}`
+          : "尚无观测。未收到更新不代表模型或群权限有错。"}
+      </p>
+      <p className="form-hint">
+        全局隐私模式：
+        {value?.can_read_all === undefined
+          ? "未知，等待平台身份核实"
+          : value.can_read_all
+            ? "已关闭"
+            : "已开启"}
+        。Bot
+        成为某个群的管理员后，可见范围会扩大；这不会授予工具权限或开启背景保存。
+      </p>
+      <Button type="button" variant="outline" onClick={reload}>
+        刷新诊断
+      </Button>
+      <dl className="channel-diagnostics">
+        {Object.entries(diagnosticLabels).map(([key, label]) => (
+          <div key={key}>
+            <dt>{label}</dt>
+            <dd>{value?.counts?.[key] || 0}</dd>
+          </div>
+        ))}
+      </dl>
+      {Object.entries(value?.groups || {}).map(([chat, counts]) => (
+        <details key={chat}>
+          <summary>聊天 {chat}</summary>
+          <p className="form-hint">
+            仅列此聊天实际观测到的事实；其他聊天的流量不能证明这里已收到消息。
+          </p>
+          <dl className="channel-diagnostics">
+            {Object.entries(counts)
+              .filter(([key]) => diagnosticLabels[key])
+              .map(([key, count]) => (
+                <div key={key}>
+                  <dt>{diagnosticLabels[key]}</dt>
+                  <dd>{count}</dd>
+                </div>
+              ))}
+          </dl>
+        </details>
+      ))}
+    </details>
+  );
 }
 interface Credential {
   id: string;
@@ -140,6 +225,18 @@ export default function ChannelSettings() {
               <p className="form-hint">
                 {item.source} · {item.application_id}
               </p>
+              <ReceptionDiagnostic
+                value={
+                  resource.value!.connections?.find(
+                    (state) => state.id === item.id,
+                  )?.diagnostic
+                }
+                reload={() =>
+                  void resource
+                    .reload()
+                    .catch((error) => setError((error as Error).message))
+                }
+              />
               {item.source === "telegram" && (
                 <fieldset className="channel-options" disabled={busy}>
                   <legend>消息与互动</legend>

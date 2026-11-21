@@ -8,11 +8,11 @@ TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 [下载 Windows / Linux 便携包与扩展](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.4)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 
+下一正式版目标为 **v9.0.0**：[渠道聊天 Bot 实施计划与验收](docs/FREEAGENT_V9_0_CHANNEL_CHATBOT_PLAN_2026-11-22.md)。先发 TG 群诊断，再发私聊确认；每个工作包对应一个开发版并更新 Hytron。私聊、群聊、话题、授权工具和群内设置确认全部通过后才发正式版。目前仍是计划。
+
 本版提供联网搜索和[浏览器与 Windows Computer Use 预览](docs/AUTOMATION_EXTENSIONS.md)，后两者以独立扩展包安装。普通 Core 不携带浏览器/桌面运行时，启用和本轮选择保持分离。
 
-本地开发候选已推进到 **v8.5.0-dev.1**：TG 富文本、输入状态、贴纸与表情、模型思考控制、独立可选经验总结，以及有序回复和经授权的一次性跟进。实际验证见[本批记录](docs/VALIDATION_V8_5_2026-11-08.md)，用法见[回复交付](docs/REPLY_DELIVERY.md)和[经验总结](docs/EXPERIENCE_SUMMARY.md)。上面的 GitHub 已发布版本链接继续指向原发行版；升级不会自动开启主动发送。
-
-本批按 [v8.3.1–v8.5 实施计划](docs/FREEAGENT_V8_3_1_TO_V8_5_CHANNEL_REASONING_EXPERIENCE_PLAN_2026-11-07.md) 推进。
+此前 **v8.5.0-dev.1** 按 [v8.3.1–v8.5 实施计划](docs/FREEAGENT_V8_3_1_TO_V8_5_CHANNEL_REASONING_EXPERIENCE_PLAN_2026-11-07.md) 交付 TG 富文本、输入状态、贴纸与表情、模型思考控制、独立可选经验总结，以及有序回复和经授权的一次性跟进。实际验证见[该批记录](docs/VALIDATION_V8_5_2026-11-08.md)，用法见[回复交付](docs/REPLY_DELIVERY.md)和[经验总结](docs/EXPERIENCE_SUMMARY.md)。升级不会自动开启主动发送。
 
 此前 **v8.8.0-dev.10**：新增会话「⋯」菜单、空间内容整理、冻结清单批量操作和 7 天回收站；支持恢复、永久清理、CLI 和经确认的 AI 提案，并修复空闲回收维护短暂阻塞前台整理的问题。升级旧库前先阅读[操作与离线升级指南](docs/CONVERSATION_MANAGEMENT.md)。
 

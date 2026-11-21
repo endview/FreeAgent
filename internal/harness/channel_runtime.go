@@ -180,7 +180,21 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 			}
 			request, notify, err := s.tasks.requestTelegramAccess(e, time.Now().UTC())
 			if err != nil {
-				_, sendErr := s.send(ctx, e.Target, e.Message, "申请未创建：请求已满或身份不可验证，请稍后重试。", nil)
+				text := "申请未创建：暂时无法处理，请管理员检查渠道诊断。"
+				switch {
+				case errors.Is(err, errTelegramRequestCapacity):
+					text = "申请未创建：待处理申请已满。请管理员处理已有申请，或等申请到期后重试。"
+				case errors.Is(err, errTelegramBotUnbound):
+					text = "申请未创建：Bot 身份尚未绑定，请管理员重新连接渠道。"
+				case errors.Is(err, ErrPermissionDenied):
+					text = "申请未创建：无法核实个人身份。请使用本人账号发送；匿名群身份不能申请。"
+				}
+				_, sendErr := s.send(ctx, e.Target, e.Message, text, nil)
+				// A classified refusal has been handled, so it must not pin the
+				// polling cursor and starve every later group/private update.
+				if errors.Is(err, errTelegramRequestCapacity) || errors.Is(err, errTelegramBotUnbound) || errors.Is(err, ErrPermissionDenied) {
+					return sendErr
+				}
 				return errors.Join(err, sendErr)
 			}
 			if !notify {

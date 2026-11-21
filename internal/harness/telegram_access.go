@@ -19,6 +19,9 @@ const telegramRequestTTL = time.Hour
 const telegramRequestCapacity = 32
 const telegramRequestNoticeInterval = time.Minute
 
+var errTelegramRequestCapacity = errors.New("telegram: access request capacity reached")
+var errTelegramBotUnbound = errors.New("telegram: Bot identity not registered")
+
 type TelegramAccessRequest struct {
 	ID          string        `json:"id"`
 	Code        string        `json:"code"`
@@ -113,7 +116,7 @@ func (tasks *TaskService) requestTelegramAccess(e channelEvent, now time.Time) (
 	store.telegramMu.Lock()
 	defer store.telegramMu.Unlock()
 	if !store.telegramBots[e.Target.ApplicationID] {
-		return TelegramAccessRequest{}, false, ErrPermissionDenied
+		return TelegramAccessRequest{}, false, errTelegramBotUnbound
 	}
 	store.expireTelegramRequests(now)
 	for id, request := range store.telegramRequests {
@@ -127,7 +130,7 @@ func (tasks *TaskService) requestTelegramAccess(e channelEvent, now time.Time) (
 		}
 	}
 	if len(store.telegramRequests) >= telegramRequestCapacity {
-		return TelegramAccessRequest{}, false, errors.New("telegram: access request capacity reached; try again after an application expires")
+		return TelegramAccessRequest{}, false, errTelegramRequestCapacity
 	}
 	const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 	code := ""

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -47,7 +48,10 @@ func ReadBootstrap(path string) (channelwire.Bootstrap, error) {
 	if !validPart(b.Connection.ID) || !validPart(b.CoreID) || !validPart(b.Generation) || !validPart(b.Connection.ApplicationID) || !strings.Contains("|telegram|lark|qq|", "|"+b.Connection.Source+"|") {
 		return b, errors.New("channel: invalid connection binding")
 	}
-	if ip == nil || !ip.IsLoopback() || b.Version != channelwire.Version || b.CoreID == "" || b.Generation == "" || len(b.Token) != 64 || b.Connection.ID == "" || b.Connection.ApplicationID == "" {
+	if b.Version != channelwire.Version {
+		return b, fmt.Errorf("channel: protocol version %d; require %d; update Core and channel together", b.Version, channelwire.Version)
+	}
+	if ip == nil || !ip.IsLoopback() || b.CoreID == "" || b.Generation == "" || len(b.Token) != 64 || b.Connection.ID == "" || b.Connection.ApplicationID == "" {
 		return b, errors.New("channel: unsupported or incomplete Core bootstrap")
 	}
 	return b, nil
@@ -105,6 +109,9 @@ func (c *Client) Credential(ctx context.Context) (channelwire.Credential, error)
 }
 func (c *Client) Inbound(ctx context.Context, event channelwire.Event) error {
 	return c.request(ctx, http.MethodPost, "inbound", event, nil)
+}
+func (c *Client) Observe(ctx context.Context, observation channelwire.Observation) error {
+	return c.request(ctx, http.MethodPost, "observation", observation, nil)
 }
 func (c *Client) Outbox(ctx context.Context) ([]channelwire.Operation, error) {
 	var out []channelwire.Operation

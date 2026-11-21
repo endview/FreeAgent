@@ -15,6 +15,8 @@ The [AffectWeave Go package](https://github.com/endview/affectweave/releases/tag
 is distributed separately and disabled by default.
 [简体中文](README.zh-CN.md).
 
+The next planned major release is **v9.0.0**. The [channel chatbot plan and release gates (Chinese)](docs/FREEAGENT_V9_0_CHANNEL_CHATBOT_PLAN_2026-11-22.md) deliver a development release to Hytron per work package, starting with Telegram group diagnostics, then DM settings confirmation. The final release requires working DMs, groups, forum topics and authorized tools on the same Core. This is a roadmap, not a release announcement.
+
 The **v8.5.0-dev.1 development candidate** adds Telegram native rich text,
 typing, scoped stickers/reactions, per-model reasoning controls, an optional
 experience-summary Skill, and ordered replies with explicitly authorized

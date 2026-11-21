@@ -4,7 +4,16 @@ package channelwire
 
 import "time"
 
-const Version = 3
+const Version = 4
+
+// Observation contains only bounded transport facts, never message bodies or
+// credentials. Target is optional when a filtered update cannot be attributed.
+type Observation struct {
+	Target     Target `json:"target,omitempty"`
+	Stage      string `json:"stage"`
+	Count      int    `json:"count"`
+	CanReadAll *bool  `json:"can_read_all,omitempty"`
+}
 
 // TextEntity uses UTF-16 offsets, matching the platform wire convention.
 // Only the transport formatter creates entities; model text is never trusted

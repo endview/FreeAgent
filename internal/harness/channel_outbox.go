@@ -252,7 +252,14 @@ func (b *ChannelBridge) Outbox(ctx context.Context, id string) ([]channelwire.Op
 	return result, nil
 }
 
-func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Receipt) error {
+func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Receipt) (returnErr error) {
+	var diagnosticChat string
+	var changed bool
+	defer func() {
+		if returnErr == nil && changed {
+			b.observe(id, diagnosticChat, "delivery_"+r.State, 1)
+		}
+	}()
 	if !validChannelPart(r.ID) || !validChannelPart(r.Dispatch) || r.RetryAfterMS < 0 || r.RetryAfterMS > 86400000 {
 		return ErrPermissionDenied
 	}
@@ -293,6 +300,7 @@ func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Re
 	if op.Connection != id || index < 0 {
 		return ErrPermissionDenied
 	}
+	diagnosticChat, changed = op.Target.ChatID, op.Dispatches[index].State != r.State
 	if r.PlainTextFallback && op.Kind != "text" {
 		return ErrRequestKey
 	}

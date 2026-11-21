@@ -43,6 +43,16 @@ func (server *Server) channelPluginAPI(w http.ResponseWriter, r *http.Request) b
 		return true
 	}
 	switch {
+	case path == "observation" && r.Method == http.MethodPost:
+		var observation channelwire.Observation
+		if !read(&observation) {
+			return true
+		}
+		if err := bridge.Observe(id, observation); err != nil {
+			server.writeError(w, 400, "observation", "Invalid bounded observation.")
+		} else {
+			server.writeJSON(w, 200, map[string]bool{"recorded": true})
+		}
 	case path == "capabilities" && r.Method == http.MethodPost:
 		var capabilities channelwire.Capabilities
 		if !read(&capabilities) {
