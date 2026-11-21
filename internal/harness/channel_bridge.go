@@ -225,6 +225,9 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 		}
 	}
 	if admission, _ := ctx.Value(channelAdmissionKey{}).(bool); admission {
+		if event.Callback != "" {
+			channelFeedback(ctx, "当前账号未获准处理这张确认卡。")
+		}
 		if !event.Trigger || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(event.Text)), "/start") {
 			return nil
 		}

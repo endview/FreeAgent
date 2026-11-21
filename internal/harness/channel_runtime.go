@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/endview/freeagent/internal/channelwire"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -29,16 +28,19 @@ type channelEvent struct {
 	Callback, CallbackMessage         string
 }
 type channelApproval struct {
-	Confirmation    Confirmation
-	Target          ChannelTarget
-	Person, Message string
-	Approved        bool
-	Expires         time.Time
+	Generation       string
+	SettingsRevision int64
+	Confirmation     Confirmation
+	Target           ChannelTarget
+	Person, Message  string
+	Approved         bool
+	Expires          time.Time
 }
 
 // channelSession contains only volatile transport capabilities. All durable
 // authority, messages and execution receipts live in the existing Harness.
 type channelSession struct {
+	generation          string
 	deliveryMu          sync.Mutex
 	renderText          func(string) ([]channelwire.TextPart, error)
 	formatVersion       string
@@ -124,6 +126,7 @@ func (s *channelSession) PairCode() (string, time.Time, error) {
 }
 func (s *channelSession) reset(application string) {
 	s.mu.Lock()
+	s.generation = newID()
 	s.application = application
 	s.callbacks = map[string]channelApproval{}
 	s.busy = map[ChannelTarget]string{}
@@ -201,6 +204,11 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 				return nil
 			}
 			_, err = s.send(ctx, e.Target, e.Message, "接入申请已提交，等待管理员批准。申请码："+request.Code+"（1 小时有效；仅用于身份核对，不能兑换权限）。", nil)
+			return err
+		}
+	}
+	if s.source == SpaceSourceTelegram {
+		if err := s.tasks.expireChannelSettingCards(ctx, e.Target, s.sessionGeneration()); err != nil {
 			return err
 		}
 	}
@@ -589,13 +597,20 @@ func (s *channelSession) callback(ctx context.Context, e channelEvent) error {
 		}
 	}
 	if !ok || item.Message == "" || item.Message != e.CallbackMessage || item.Target != e.Target || item.Person != e.Person || time.Now().After(item.Expires) {
+		if ok && time.Now().After(item.Expires) {
+			channelFeedback(ctx, "确认已过期，请重新提出。")
+		}
 		return ErrPermissionDenied
+	}
+	if item.Confirmation.ControlOperationID != "" && item.Generation != s.sessionGeneration() {
+		channelFeedback(ctx, "连接已更新，这张旧卡已失效；请重新提出。")
+		return ErrPermissionDenied
+	}
+	if item.Confirmation.ControlOperationID != "" {
+		return s.confirmSetting(ctx, e, item)
 	}
 	if _, err := s.tasks.CheckChannelRunAction(ctx, e.Target, e.Person, item.Confirmation.RunID, "approve"); err != nil {
 		return err
-	}
-	if item.Confirmation.ControlOperationID != "" {
-		return ErrPermissionDenied
 	}
 	s.mu.Lock()
 	current, ok := s.callbacks[e.Callback]
@@ -676,6 +691,7 @@ func (s *channelSession) button(item channelApproval) (string, error) {
 	token := "fa_" + hex.EncodeToString(raw[:])
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	item.Generation = s.generation
 	for k, v := range s.callbacks {
 		if time.Now().After(v.Expires) {
 			delete(s.callbacks, k)
@@ -742,12 +758,9 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 	if run.Status == "waiting_confirmation" {
 		confirmation, err := s.tasks.Preview(ctx, run.ID)
 		if err == nil && confirmation.ControlOperationID != "" {
-			text = "设置变更等待你确认，尚未应用：\n" + confirmation.Preview
-			web := s.tasks.Config().PublicWeb.Effective()
-			if web.Enabled && web.Origin != "" {
-				text += "\n登录 Web 后，在此会话的确认卡批准或拒绝：\n" + strings.TrimRight(web.Origin, "/") + "/?chat=" + url.QueryEscape(run.ConversationID) + "&run=" + url.QueryEscape(run.ID)
-			} else {
-				text += "\n请在 GUI 或 CLI 打开此会话的设置确认卡。"
+			text, buttons, err = s.settingCard(ctx, run, confirmation)
+			if err != nil {
+				return err
 			}
 			revision += "/" + confirmation.Digest
 		} else if err != nil || run.Permission == nil || run.Permission.PersonID == "" {

@@ -43,6 +43,7 @@ type Activity struct {
 type Acceptance struct {
 	Received    bool   `json:"received"`
 	Disposition string `json:"disposition"`
+	Feedback    string `json:"feedback,omitempty"`
 }
 
 type MediaRef struct {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/endview/freeagent/internal/channelwire"
+	"github.com/endview/freeagent/internal/harness"
 )
 
 // This route accepts only a connection-scoped plugin token. GUI, attach and
@@ -95,10 +96,11 @@ func (server *Server) channelPluginAPI(w http.ResponseWriter, r *http.Request) b
 		if !read(&event) {
 			return true
 		}
-		if err := bridge.Inbound(r.Context(), id, event); err != nil {
+		feedback := ""
+		if err := bridge.Inbound(harness.WithChannelFeedback(r.Context(), &feedback), id, event); err != nil {
 			server.writeError(w, 409, "inbound", "Input was not accepted; retain the platform cursor.")
 		} else {
-			server.writeJSON(w, 202, channelwire.Acceptance{Received: true, Disposition: bridge.InputReceipt(r.Context(), id, event.ID)})
+			server.writeJSON(w, 202, channelwire.Acceptance{Received: true, Disposition: bridge.InputReceipt(r.Context(), id, event.ID), Feedback: feedback})
 		}
 	case path == "receipt" && r.Method == http.MethodPost:
 		var receipt channelwire.Receipt

@@ -134,8 +134,9 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 				}
 				event := channelwire.Event{ID: strconv.FormatInt(u.ID, 10), Target: channelwire.Target{Source: "telegram", ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10)}, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: kind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo}
 				event.Sticker, event.Reaction = e.Sticker, e.Reaction
+				var acceptance channelwire.Acceptance
 				for {
-					err = c.Inbound(ctx, event)
+					acceptance, err = c.InboundAccepted(ctx, event)
 					if err == nil {
 						break
 					}
@@ -147,7 +148,11 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 					}
 				}
 				if e.CallbackID != "" {
-					_ = api.AnswerCallback(ctx, e.CallbackID, "已收到。")
+					feedback := acceptance.Feedback
+					if feedback == "" || len([]rune(feedback)) > 180 {
+						feedback = "已收到。"
+					}
+					_ = api.AnswerCallback(ctx, e.CallbackID, feedback)
 				}
 			} else {
 				if err := c.Observe(ctx, channelwire.Observation{Target: target, Stage: filtered, Count: 1}); err != nil {

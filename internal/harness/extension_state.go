@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/endview/freeagent/internal/statemodule"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,12 +17,7 @@ func extensionStoragePath(data, id string) string {
 	return filepath.Join(data, "extension-storage", id, "postgres.json")
 }
 
-type ExtensionStateScope struct {
-	CoreID   string `json:"core_id"`
-	SpaceID  string `json:"space_id"`
-	Resource string `json:"resource,omitempty"`
-	ActorID  string `json:"actor_id"`
-}
+type ExtensionStateScope = statemodule.Scope
 type ExtensionStateChange struct {
 	ID               string                `json:"id"`
 	Scope            ExtensionStateScope   `json:"scope"`
@@ -33,18 +29,8 @@ type ExtensionStateChange struct {
 	Origin           *ExtensionStateOrigin `json:"origin,omitempty"`
 }
 
-type extensionStatePreview struct {
-	Revision int64           `json:"revision"`
-	Before   json.RawMessage `json:"before"`
-	After    json.RawMessage `json:"after"`
-	Summary  string          `json:"summary"`
-}
-type extensionStateResult struct {
-	Found       bool   `json:"found"`
-	OperationID string `json:"operation_id"`
-	Digest      string `json:"digest"`
-	Revision    int64  `json:"revision"`
-}
+type extensionStatePreview = statemodule.Preview
+type extensionStateResult = statemodule.Result
 
 func (service *ControlService) validateExtensionSettings(raw json.RawMessage, modelOnly bool) error {
 	var args struct {

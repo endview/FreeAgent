@@ -12,6 +12,12 @@ const (
 	controlPlanTool = "control_plan_change"
 )
 
+// A trusted entry may end a management flow with a durable explanation instead
+// of making a proposal that it cannot confirm. This is not a tool permission.
+type controlFlowNotice struct{ text string }
+
+func (e *controlFlowNotice) Error() string { return e.text }
+
 func isControlToolName(name string) bool {
 	return name == controlReadTool || name == controlPlanTool
 }
@@ -108,6 +114,11 @@ func (tools *controlTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 		run, err := tools.service.Store.GetRun(ctx, tools.runID)
 		if err != nil {
 			return PreparedTool{}, err
+		}
+		if scope := tools.service.controlProposalScope; scope != nil {
+			if err := scope(ctx, run, args.Kind, args.Arguments); err != nil {
+				return PreparedTool{}, err
+			}
 		}
 		operation, err := tools.control.PlanControlChange(ctx, ControlPlanRequest{Kind: args.Kind, Arguments: args.Arguments,
 			Authorization: ControlModelProposed, ConversationID: run.ConversationID, originRunID: run.ID, ExpectedRevisions: args.ExpectedRevisions})

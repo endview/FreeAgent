@@ -108,7 +108,16 @@ func (c *Client) Credential(ctx context.Context) (channelwire.Credential, error)
 	return out, err
 }
 func (c *Client) Inbound(ctx context.Context, event channelwire.Event) error {
-	return c.request(ctx, http.MethodPost, "inbound", event, nil)
+	_, err := c.InboundAccepted(ctx, event)
+	return err
+}
+func (c *Client) InboundAccepted(ctx context.Context, event channelwire.Event) (channelwire.Acceptance, error) {
+	var accepted channelwire.Acceptance
+	err := c.request(ctx, http.MethodPost, "inbound", event, &accepted)
+	if err == nil && !accepted.Received {
+		err = errors.New("channel: Core did not acknowledge this input")
+	}
+	return accepted, err
 }
 func (c *Client) Observe(ctx context.Context, observation channelwire.Observation) error {
 	return c.request(ctx, http.MethodPost, "observation", observation, nil)

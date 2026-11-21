@@ -472,7 +472,12 @@ export default function ChannelSettings() {
           </form>
           {(resource.value.config.connections || []).some(
             (item) => item.source === "telegram" && item.enabled,
-          ) && <TelegramAccess />}
+          ) && (
+            <>
+              <TelegramAccess />
+              <TelegramConfirmers />
+            </>
+          )}
         </>
       ) : (
         <Loading error={resource.error} />
@@ -605,6 +610,152 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
       </form>
       <Result error={error || resource.error} />
     </section>
+  );
+}
+
+interface ConfirmersState {
+  revision: number;
+  members: string[];
+}
+function confirmerLines(state: ConfirmersState) {
+  return state.members
+    .map((id) => id.replace(/^telegram:user:/, ""))
+    .join("\n");
+}
+interface ConfirmersPage {
+  bots: { application_id: string; name: string; state: ConfirmersState }[];
+}
+
+function TelegramConfirmers() {
+  const resource = useResource<ConfirmersPage>("channels/telegram/confirmers");
+  return (
+    <section className="settings-section">
+      <h2>设置确认人员</h2>
+      <p className="form-hint">
+        每个 Bot
+        一份名单，默认空。仅允许确认支持的会话设置，不改变聊天准入和工具权限，不能替别人审批命令。当前开发版仅支持私聊。
+      </p>
+      {resource.value ? (
+        resource.value.bots.map((bot) => (
+          <ConfirmersForm
+            key={bot.application_id}
+            bot={bot}
+            reload={resource.reload}
+          />
+        ))
+      ) : (
+        <Loading error={resource.error} />
+      )}
+    </section>
+  );
+}
+
+function ConfirmersForm({
+  bot,
+  reload,
+}: {
+  bot: ConfirmersPage["bots"][number];
+  reload: () => Promise<unknown>;
+}) {
+  const draftID = "telegram-confirmers:" + bot.application_id;
+  const [form, change] = useFormDraft(draftID, {
+    members: confirmerLines(bot.state),
+    revision: bot.state.revision,
+  });
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [result, setResult] = useState("");
+  function accept(state: ConfirmersState) {
+    change({ members: confirmerLines(state), revision: state.revision });
+    clearFormDraft(draftID);
+  }
+  async function save() {
+    setBusy(true);
+    setError("");
+    setResult("");
+    try {
+      const members = lines(form.members);
+      const bytes = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(
+          JSON.stringify([bot.application_id, form.revision, members]),
+        ),
+      );
+      const operation_id = Array.from(new Uint8Array(bytes), (n) =>
+        n.toString(16).padStart(2, "0"),
+      ).join("");
+      const saved = await api<{ state: ConfirmersState }>(
+        "channels/telegram/confirmers",
+        {
+          bot: bot.application_id,
+          members,
+          expected_revision: form.revision,
+          operation_id,
+        },
+      );
+      accept(saved.state);
+      await reload();
+      setResult("确认名单已保存；聊天准入、工具权限及其他 Bot 保持原值。");
+    } catch (e) {
+      setError((e as Error).message);
+      await reload().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function readSaved() {
+    setBusy(true);
+    setError("");
+    try {
+      const page = await api<ConfirmersPage>("channels/telegram/confirmers");
+      const latest = page.bots.find(
+        (item) => item.application_id === bot.application_id,
+      );
+      if (latest) accept(latest.state);
+      await reload();
+      setResult("已读取保存的名单。");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form
+      className="settings-section"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      <h3>{bot.name}</h3>
+      <p className="form-hint">
+        Bot {bot.application_id} · 名单修订 {form.revision}
+        。移除人员后，旧确认卡不会因重新加入而恢复。
+      </p>
+      <Field label="设置确认人员（每行一个 TG 数字用户 ID）">
+        <textarea
+          value={form.members}
+          rows={4}
+          onChange={(e) => change({ ...form, members: e.target.value })}
+          spellCheck={false}
+        />
+      </Field>
+      <div className="provider-actions">
+        <Button type="submit" disabled={busy}>
+          保存确认名单
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy}
+          onClick={() => void readSaved()}
+        >
+          放弃草稿并读取当前名单
+        </Button>
+      </div>
+      <Result error={error} text={result} />
+    </form>
   );
 }
 

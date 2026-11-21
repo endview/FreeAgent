@@ -1459,6 +1459,8 @@ func (store *Store) markUnknown(ctx context.Context, attempt Attempt, reason str
 // an external effect. Applied changes complete the proposing Run; a rejection
 // leaves it running so the existing continuation path can produce the next
 // model response.
+// terminal may supply a status and a trusted host reply. These commit together
+// with the tool result so a terminal management notice survives outer reloads.
 func (store *Store) settleControlProposal(ctx context.Context, run Run, attempt Attempt, result ToolResult, completed bool, reason string, terminal ...string) error {
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1495,6 +1497,11 @@ func (store *Store) settleControlProposal(ctx context.Context, run Run, attempt 
 	}
 	if len(terminal) > 0 {
 		nextStatus, stopReason = terminal[0], reason
+	}
+	if len(terminal) > 1 {
+		if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET output=$1 WHERE id=$2`, terminal[1], run.ID); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE fa.runs SET status=$1,stop_reason=$2,updated_at=$3 WHERE id=$4 AND status IN ('waiting_confirmation','stopped','running')`, nextStatus, stopReason, nowText(), run.ID); err != nil {
 		return err

@@ -239,7 +239,7 @@ func TestNonSecretProfileControlsReuseConfirmationAndRejectSecretFields(t *testi
 	}
 }
 
-func TestTelegramSettingsProposalLinksToAuthenticatedWebAndReportsApply(t *testing.T) {
+func TestTelegramGlobalSettingHandsOffWithoutPendingRunAndRetainsActor(t *testing.T) {
 	calls := 0
 	r, tasks, _, _, sent := telegramRuntimeFixture(t, modelFunc(func(_ context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
 		calls++
@@ -276,41 +276,24 @@ func TestTelegramSettingsProposalLinksToAuthenticatedWebAndReportsApply(t *testi
 		t.Fatal(err)
 	}
 	run, err := tasks.Latest(t.Context(), space.DefaultConversationID)
-	if err != nil || run.Status != "waiting_confirmation" {
-		t.Fatal("proposal status", run.Status, err)
+	if err != nil || run.Status != "completed" || run.StopReason != "control_not_available" {
+		t.Fatal("unsupported global setting did not release the conversation", run.Status, err)
 	}
 	message := (*sent)[len(*sent)-1]
-	if len(message.Callback) != 0 || !strings.Contains(message.Text, "https://fixture.example.test/?chat="+run.ConversationID) || !strings.Contains(message.Text, "run="+run.ID) {
-		t.Fatalf("no exact Web handoff: %+v", message)
+	if len(message.Callback) != 0 || !strings.Contains(message.Text, "https://fixture.example.test") {
+		t.Fatalf("no safe management handoff: %+v", message)
 	}
-	if tasks.Config().TaskSummaryBytes == 8192 {
-		t.Fatal("TG proposal applied without interactive approval")
+	if tasks.Config().TaskSummaryBytes == 8192 || calls != 2 {
+		t.Fatal("TG changed global limits or called model after host handoff", calls)
 	}
-	ctx := WithPublicEntry(t.Context(), "public:settings-fixture", "192.0.2.20")
-	preview, err := tasks.Preview(ctx, run.ID)
+	attempts, err := tasks.core.Store.ListAttempts(t.Context(), run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	control, err := tasks.Control()
-	if err != nil {
-		t.Fatal(err)
-	}
-	principal := InteractivePrincipal(ctx, "fixture")
-	cap, err := control.IssueInteractiveCapability(ctx, run.ConversationID, principal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	confirmation, err := control.RenderConfirmation(ctx, preview.ControlOperationID, run.ConversationID, principal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := tasks.ConfirmControl(ctx, run.ID, preview, controlAuth(cap, run.ConversationID, principal, confirmation.Code), true)
-	if err != nil || result.Run.Status != "completed" || tasks.Config().TaskSummaryBytes != 8192 {
-		t.Fatal("authenticated confirmation failed", err)
-	}
-	before := len(*sent)
-	if err := r.Deliver(t.Context(), result); err != nil || len(*sent) != before+1 {
-		t.Fatal("applied result did not return to channel", err)
+	for _, attempt := range attempts {
+		if attempt.Status == "pending" {
+			t.Fatal("handoff left a pending tool")
+		}
 	}
 	snapshot, err := tasks.core.snapshot()
 	if err != nil {

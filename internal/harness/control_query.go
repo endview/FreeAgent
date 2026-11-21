@@ -83,6 +83,23 @@ func (tools *controlTools) readState(ctx context.Context, query controlStateQuer
 				EnabledTools: tools.service.activeToolPolicy().EnabledTools}
 		}
 		state.Pending = slices.DeleteFunc(state.Pending, func(op ControlOperation) bool { return op.ConversationID != run.ConversationID })
+		if scope := tools.service.controlProposalScope; scope != nil {
+			allowed := []string{}
+			if scope(ctx, run, ControlSetConversationModel, mustJSON(map[string]string{"model_id": run.ModelID})) == nil {
+				allowed = []string{ControlSetConversationModel, ControlSetConversationCapabilities}
+				choices := []map[string]string{}
+				for id := range tools.service.currentConfig().Models {
+					if _, e := tools.service.newBinding(tools.service.currentConfig(), id); e == nil {
+						choices = append(choices, map[string]string{"id": id, "label": id})
+					}
+				}
+				output["conversation_model_choices"] = choices
+			}
+			output["available_operations"] = allowed
+			if query.Operation != "" {
+				output["operation_supported_here"] = slices.Contains(allowed, query.Operation)
+			}
+		}
 	}
 	if query.ModelID != "" {
 		state.Config.Models = slices.DeleteFunc(state.Config.Models, func(model ControlModelState) bool { return model.ID != query.ModelID })

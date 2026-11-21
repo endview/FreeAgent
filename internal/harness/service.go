@@ -41,6 +41,8 @@ type Event struct {
 }
 
 type Service struct {
+	controlProposalScope func(context.Context, Run, string, json.RawMessage) error
+
 	extensionTrigger *ExtensionTrigger
 	analysisOnly     bool
 	analysisSource   json.RawMessage
@@ -754,6 +756,16 @@ func (service *Service) process(parent context.Context, run Run) (result RunResu
 					if errors.Is(err, errControlChangeApplied) {
 						return result, nil
 					}
+					var notice *controlFlowNotice
+					if errors.As(err, &notice) {
+						updated, loadErr := service.Store.GetRun(parent, run.ID)
+						if loadErr != nil {
+							return result, loadErr
+						}
+						result.Run = updated
+						result.Answer = notice.text
+						return result, nil
+					}
 					if errors.Is(err, errAwaitingApproval) {
 						return result, nil
 					}
@@ -1232,6 +1244,14 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		return ctx.Err()
 	}
 	if err != nil {
+		var notice *controlFlowNotice
+		if errors.As(err, &notice) {
+			result := ToolResult{Content: notice.text, IsError: true}
+			if saveErr := service.Store.settleControlProposal(ctx, run, attempt, result, false, "control_not_available", "completed", notice.text); saveErr != nil {
+				return saveErr
+			}
+			return notice
+		}
 		result := ToolResult{Content: "tool validation error: " + safeError(err), IsError: true}
 		if recordMessage {
 			return service.Store.saveTool(ctx, run, attempt, call, result)

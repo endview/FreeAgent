@@ -84,6 +84,9 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 	if source == "telegram/access" {
 		return server.telegramAccessAPI(w, r)
 	}
+	if source == "telegram/confirmers" {
+		return server.telegramConfirmersAPI(w, r)
+	}
 	if path == "channels" {
 		source = ""
 	}

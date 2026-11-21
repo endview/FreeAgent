@@ -124,6 +124,9 @@ func (b *ChannelBridge) acceptInbound(ctx context.Context, c *channelConnection,
 	if !inFlight {
 		err = c.session.handle(ctx, e)
 	}
+	if event.Callback != "" && err != nil {
+		channelFeedbackFallback(ctx, "未授权或此确认已失效，请核对原卡。")
+	}
 	if state.ConversationID == "" {
 		source := ChannelMessageSource{ChannelTarget: e.Target, MessageID: e.Message}
 		var chat string

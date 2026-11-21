@@ -148,6 +148,7 @@ type ControlCatalogEntry struct {
 }
 
 type ControlOperation struct {
+	DecidedBy         string                     `json:"decided_by,omitempty"`
 	RemotePrincipal   string                     `json:"remote_principal,omitempty"`
 	ID                string                     `json:"operation_id"`
 	AttemptID         string                     `json:"attempt_id,omitempty"`
@@ -225,11 +226,14 @@ type InteractiveControlCapability struct {
 }
 
 type ControlAuthorization struct {
-	Source         ControlAuthorizationSource
-	ConversationID string
-	Principal      string
-	Code           string
-	Capability     InteractiveControlCapability
+	finishWithoutModel bool
+	acceptSatisfied    bool
+	revalidate         func(context.Context) error
+	Source             ControlAuthorizationSource
+	ConversationID     string
+	Principal          string
+	Code               string
+	Capability         InteractiveControlCapability
 }
 
 type ControlConfirmation struct {
@@ -1479,6 +1483,12 @@ func replaceKeyView(views []KeyProfileView, id string, replacement KeyProfileVie
 }
 
 func (service *ControlService) RenderConfirmation(ctx context.Context, operationID, conversationID, principal string) (ControlConfirmation, error) {
+	return service.renderConfirmation(ctx, operationID, conversationID, principal, false)
+}
+
+// Only a host entry that already bound an exact decision may defer the stale
+// check to decideControlChange, where an equal full target can end as a no-op.
+func (service *ControlService) renderConfirmation(ctx context.Context, operationID, conversationID, principal string, boundDecision bool) (ControlConfirmation, error) {
 	if service == nil {
 		return ControlConfirmation{}, errors.New("harness: control service is not configured")
 	}
@@ -1532,7 +1542,7 @@ func (service *ControlService) RenderConfirmation(ctx context.Context, operation
 		return ControlConfirmation{}, ErrControlAlreadyUsed
 	}
 	for resource, expected := range record.Operation.ExpectedRevisions {
-		if service.revisionLocked(resource) != expected {
+		if service.revisionLocked(resource) != expected && !boundDecision {
 			if err := service.invalidateProposalLocked(ctx, &record, "stale_revision"); err != nil {
 				return ControlConfirmation{}, err
 			}
@@ -1629,6 +1639,7 @@ func (service *ControlService) rejectControlChange(ctx context.Context, operatio
 		return ControlResult{Operation: cloneControlOperation(record.Operation)}, ErrControlUserInteractionRequired
 	}
 	record.Operation.Status = ControlRejected
+	record.Operation.DecidedBy = auth.Principal
 	record.Operation.ErrorCode = "rejected"
 	service.operations[operationID] = record
 	if err := service.appendLocked("rejected", record); err != nil {
@@ -1731,8 +1742,30 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 	if !apply {
 		return result, nil
 	}
+	if auth.revalidate != nil {
+		if err := auth.revalidate(ctx); err != nil {
+			return result, err
+		}
+	}
 	for resource, expected := range record.Operation.ExpectedRevisions {
 		if current := service.revisionLocked(resource); current != expected {
+			if auth.acceptSatisfied && (record.Operation.Kind == ControlSetConversationModel || record.Operation.Kind == ControlSetConversationCapabilities) {
+				fresh, e := service.buildRecordLocked(ctx, ControlPlanRequest{Kind: record.Operation.Kind, Arguments: record.Arguments, ConversationID: record.Operation.ConversationID, Authorization: record.Operation.Authorization})
+				same := e == nil && len(fresh.Before) == len(record.After)
+				for key, value := range record.After {
+					same = same && bytes.Equal(value, fresh.Before[key])
+				}
+				if same {
+					record.Operation.DecidedBy = auth.Principal
+					record.Operation.Status, record.Operation.ErrorCode = ControlStale, "target_already_satisfied"
+					if err := service.appendLocked("stale", record); err != nil {
+						return result, err
+					}
+					service.operations[record.Operation.ID] = record
+					delete(service.confirmations, record.Operation.ID)
+					return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "target_already_satisfied"}, nil
+				}
+			}
 			if err := service.invalidateProposalLocked(ctx, &record, "stale_revision"); err != nil {
 				return result, err
 			}
@@ -1789,6 +1822,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 		}
 		defer service.gate.endControl()
 	}
+	record.Operation.DecidedBy = auth.Principal
 	if err := service.applyRecordLocked(ctx, &record); err != nil {
 		if errors.Is(err, ErrControlMCPReentryRequired) {
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "mcp_reentry_required"}, err

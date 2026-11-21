@@ -1,10 +1,27 @@
 package harness
 
 import (
+	"context"
 	"time"
 
 	"github.com/endview/freeagent/internal/channelwire"
 )
+
+type callbackFeedbackKey struct{}
+
+func WithChannelFeedback(ctx context.Context, feedback *string) context.Context {
+	return context.WithValue(ctx, callbackFeedbackKey{}, feedback)
+}
+func channelFeedback(ctx context.Context, text string) {
+	if dest, ok := ctx.Value(callbackFeedbackKey{}).(*string); ok {
+		*dest = text
+	}
+}
+func channelFeedbackFallback(ctx context.Context, text string) {
+	if dest, ok := ctx.Value(callbackFeedbackKey{}).(*string); ok && *dest == "" {
+		*dest = text
+	}
+}
 
 // Diagnostics are a bounded, generation-local view. Durable execution and
 // delivery evidence continues to live in the existing journals.

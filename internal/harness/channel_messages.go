@@ -324,6 +324,10 @@ func (tasks *TaskService) SubmitChannel(ctx context.Context, input ChannelReceiv
 }
 
 func (service *Service) bindChannel(ctx context.Context, chat string, origin *ChannelRunOrigin) error {
+	service.controlProposalScope = nil
+	if origin != nil {
+		service.controlProposalScope = NewTaskService(service).channelSettingEligible
+	}
 	conversation, err := service.Store.GetConversation(ctx, chat)
 	if err != nil {
 		return err

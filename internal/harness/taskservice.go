@@ -1450,17 +1450,46 @@ func (tasks *TaskService) ConfirmControl(ctx context.Context, runID string, deci
 		if result.Applied {
 			content = "control change applied; it takes effect in the next Run"
 		}
-		toolResult := ToolResult{Content: content, IsError: !result.Applied}
-		if err := core.Store.settleControlProposal(ctx, run, attempt, toolResult, result.Applied, "control_change_applied_next_run"); err != nil {
+		reason := "control_change_applied_next_run"
+		if auth.finishWithoutModel && !result.Applied {
+			reason = "control_rejected"
+		}
+		if result.ErrorCode == "target_already_satisfied" {
+			content = "target already satisfied by another change; this proposal did not write"
+			reason = "target_already_satisfied"
+		}
+		toolResult := ToolResult{Content: content, IsError: !result.Applied && result.ErrorCode != "target_already_satisfied"}
+		terminal := []string{}
+		if auth.finishWithoutModel {
+			answer := "已拒绝，设置未更改。"
+			if result.Applied {
+				answer = "已保存，下一轮生效。"
+			}
+			if result.ErrorCode == "target_already_satisfied" {
+				answer = "已由另一笔修改完成，本提案没有再次写入。"
+			}
+			terminal = []string{"completed", answer}
+		}
+		if err := core.Store.settleControlProposal(ctx, run, attempt, toolResult, result.Applied || auth.finishWithoutModel, reason, terminal...); err != nil {
 			return RunResult{}, err
 		}
-		if result.Applied {
+		if result.Applied || auth.finishWithoutModel {
 			updated, loadErr := core.Store.GetRun(ctx, runID)
 			if loadErr != nil {
 				return RunResult{}, loadErr
 			}
 			evidence, evidenceErr := core.Store.Evidence(ctx, runID)
-			return RunResult{Run: updated, Answer: updated.Output, Evidence: evidence}, evidenceErr
+			answer := updated.Output
+			if auth.finishWithoutModel {
+				answer = "已拒绝，设置未更改。"
+				if result.Applied {
+					answer = "已保存，下一轮生效。"
+				}
+				if result.ErrorCode == "target_already_satisfied" {
+					answer = "已由另一笔修改完成，本提案没有再次写入。"
+				}
+			}
+			return RunResult{Run: updated, Answer: answer, Evidence: evidence}, evidenceErr
 		}
 		return core.Continue(ctx, runID)
 	})
