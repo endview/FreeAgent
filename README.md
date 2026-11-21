@@ -4,9 +4,9 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The published release is **v8.9.0-dev.4**. See the
-[Windows / Linux and extension downloads](https://github.com/endview/FreeAgent/releases/tag/v8.9.0-dev.4)
-and [search approval recovery](docs/VALIDATION_SEARCH_APPROVAL_2026-11-17.md).
+The published development release is **v9.0.0-dev.1**, deployed to Hytron. See the
+[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.1)
+and [W1 validation](docs/VALIDATION_V9_W1_2026-11-22.md). It adds channel reception diagnostics and discards unsolicited group background before persistence; Core and the channel program must both use wire v4. Forum topics and settings confirmation remain in progress.
 It includes the search release and optional
 [Browser and Windows Computer Use previews](docs/AUTOMATION_EXTENSIONS.md),
 distributed as separate extensions without browser/desktop runtime dependencies

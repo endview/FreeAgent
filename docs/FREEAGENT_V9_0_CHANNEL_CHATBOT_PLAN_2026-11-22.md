@@ -1,6 +1,6 @@
 # FreeAgent v9.0 实施计划：接上渠道，就是聊天 Bot
 
-2026-11-22 审计修订。已发布基线：`v8.9.0-dev.4`。目标正式版：`v9.0.0`。**状态：计划；下表的开发版、部署和验收均未执行。**
+2026-11-22 审计修订。原基线：`v8.9.0-dev.4`。目标正式版：`v9.0.0`。**状态：W1 已发布 v9.0.0-dev.1 并部署 Hytron；W2 实施中，W3–W5 尚未交付。** [W1 验收](VALIDATION_V9_W1_2026-11-22.md)与正式版的群聊真人门槛分开记录。
 
 ## 1. 正式版交付什么
 
@@ -37,7 +37,7 @@
 | 有没有群 Memory | [schema](../internal/harness/postgres_schema.sql) 和 [memory.go](../internal/harness/memory.go) 只有 private、shared、knowledge；[固定资料](../internal/harness/memory_pins.go)另有按会话/授权选取的机制。 | shared 不等于某个 TG 群。仅回归合法的既有显式资料选择和私有隔离，不建立群库，也不自动总结发言。 |
 | 线协议和授权键 | [v3 Target](../internal/channelwire/protocol.go) 仅 Source、ApplicationID、ChatID；Event 另有 Person、Message、Trigger、ReplyTo 等，没有话题。[授权前缀](../internal/harness/telegram_access.go)与 [target.key()](../internal/harness/channel_messages.go) 组成 `fa.meta: telegram/access/<BotID>/<ChatID>`，待准入申请目前在带期限的内存表。 | 群级授权不改成逐话题名单；v4 在目标、事件、卡片、队列、投递与恢复贯通可选线程引用。Bot 标识不依赖昵称或可轮换 token。 |
 | 状态存储 | 扩展已有 [state.read/preview/apply/result](../internal/harness/extension_state.go)，作用域、预期修订和原操作回执有明确语义；[扩展数据库供应](../internal/postgres/extension.go)不是给任意连接器读写 Core 库的通用 KV。 | 复用状态契约和宿主事务，命名空间与允许的调用方见第 6 节。不得引入第二份授权真相。 |
-| 架构图是否已提交 | [系统总图 SVG](diagrams/freeagent-system-overview.svg) 本地 9,002 字节，可解析为 SVG；`git ls-tree HEAD` 没有该路径，工作树为 `??`。 | 是“已导出、尚未提交”，不是缺图。W1 随文档纳入版本控制，并在干净检出中检查 README、方案和图的链接。 |
+| 架构图是否已提交 | [系统总图 SVG](diagrams/freeagent-system-overview.svg) 本地 9,002 字节，可解析为 SVG；审计时未提交。 | 已随 W1 的 eec9665 纳入版本控制，并进入干净构建的源码清单；不是缺图。 |
 
 ## 4. Telegram 平台与诊断
 
