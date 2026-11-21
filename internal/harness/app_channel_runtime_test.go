@@ -69,7 +69,7 @@ func TestLarkRuntimeTenantPairingNoneAndWrongCardMessage(t *testing.T) {
 	if err := r.HandleLark(ctx, event); err != nil || sends.Load() != 2 {
 		t.Fatalf("duplicate=%v %d", err, sends.Load())
 	}
-	target := ChannelTarget{SpaceSourceLark, "app:t1", "chat"}
+	target := ChannelTarget{Source: SpaceSourceLark, ApplicationID: "app:t1", ChatID: "chat"}
 	space, err := tasks.ChannelSpace(ctx, target)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestLarkRuntimeTenantPairingNoneAndWrongCardMessage(t *testing.T) {
 	if run.Permission.Mode != PermissionNone || run.Permission.PersonID != event.Person {
 		t.Fatalf("permission=%+v", run.Permission)
 	}
-	if _, err := tasks.ChannelSpace(ctx, ChannelTarget{SpaceSourceLark, "app:t2", "chat"}); err == nil {
+	if _, err := tasks.ChannelSpace(ctx, ChannelTarget{Source: SpaceSourceLark, ApplicationID: "app:t2", ChatID: "chat"}); err == nil {
 		t.Fatal("tenants merged")
 	}
 	if _, err := tasks.CheckChannelRunAction(ctx, target, event.Person, run.ID, "stop"); err != nil {
@@ -111,7 +111,7 @@ func TestQQRuntimeLocalApprovalWindowAndSavedStatus(t *testing.T) {
 	if err := r.HandleQQ(t.Context(), e); err != nil {
 		t.Fatal(err)
 	}
-	target := ChannelTarget{SpaceSourceQQ, "app", e.Chat}
+	target := ChannelTarget{Source: SpaceSourceQQ, ApplicationID: "app", ChatID: e.Chat}
 	space, _ := tasks.ChannelSpace(t.Context(), target)
 	tasks.SetSpacePermission(t.Context(), space.ID, PermissionAsk, false)
 	tasks.SetPersonPermission(t.Context(), e.Person, "user", PermissionAsk, false)
@@ -174,7 +174,7 @@ func TestChannelApprovalWrongTargetRequesterMessageAndDuplicateAreDenied(t *test
 	code, _, _ := r.PairCode()
 	e := channels.LarkEvent{App: "app", Tenant: "t", Chat: "chat", Person: "lark:app:t:open:user", Message: "pair", Kind: "private", Trigger: true, Text: "/pair " + code}
 	r.HandleLark(t.Context(), e)
-	space, _ := tasks.ChannelSpace(t.Context(), ChannelTarget{SpaceSourceLark, "app:t", "chat"})
+	space, _ := tasks.ChannelSpace(t.Context(), ChannelTarget{Source: SpaceSourceLark, ApplicationID: "app:t", ChatID: "chat"})
 	tasks.SetSpacePermission(t.Context(), space.ID, PermissionAsk, false)
 	tasks.SetPersonPermission(t.Context(), e.Person, "User", PermissionAsk, false)
 	e.Message = "request"
@@ -221,7 +221,7 @@ func TestChannelApprovalWrongTargetRequesterMessageAndDuplicateAreDenied(t *test
 func TestChannelSendClaimSurvivesUncertainDeliveryWithoutReplay(t *testing.T) {
 	core, _, _ := testHarness(t, EchoModel{})
 	tasks := NewTaskService(core)
-	target := ChannelTarget{SpaceSourceTelegram, "1", "90"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"}
 	tasks.PairChannel(t.Context(), target, "private", "receipt")
 	grantTelegramFixture(t, tasks, TelegramAccessChange{Target: target, Kind: "private", Members: []string{"telegram:user:7"}, Enabled: true})
 	input, err := tasks.ReceiveChannelText(t.Context(), ChannelMessageSource{ChannelTarget: target, PersonID: "telegram:user:7", MessageID: "m1", Purpose: "request"}, "hello")
@@ -271,7 +271,7 @@ func TestChannelNoOpCompactRepliesWithoutSyntheticRun(t *testing.T) {
 	if err := r.HandleLark(t.Context(), e); err != nil {
 		t.Fatal(err)
 	}
-	space, err := tasks.ChannelSpace(t.Context(), ChannelTarget{SpaceSourceLark, "app:t", "chat"})
+	space, err := tasks.ChannelSpace(t.Context(), ChannelTarget{Source: SpaceSourceLark, ApplicationID: "app:t", ChatID: "chat"})
 	if err != nil {
 		t.Fatal(err)
 	}

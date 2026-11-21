@@ -20,6 +20,11 @@ type contextSourceGroup struct {
 }
 
 func contextVisible(message Message, scope, activeRun string, execution bool) ([]Message, error) {
+	// Legacy unsolicited group text is excluded even in owner projections.
+	// New background is an expiring connector reference, never transcript.
+	if message.Channel != nil && message.Channel.Purpose == "background" {
+		return nil, nil
+	}
 	if execution && activeRun != "" && message.RunID != activeRun && message.Role == "tool" {
 		refs := make([]AttachmentRef, 0, len(message.Attachments))
 		for _, ref := range message.Attachments {

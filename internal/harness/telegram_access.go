@@ -109,6 +109,7 @@ func (store *Store) expireTelegramRequests(now time.Time) {
 }
 
 func (tasks *TaskService) requestTelegramAccess(e channelEvent, now time.Time) (TelegramAccessRequest, bool, error) {
+	e.Target = e.Target.group()
 	if !validTelegramTarget(e.Target) || !validTelegramPerson(e.Person) || e.Kind != "private" && e.Kind != "group" {
 		return TelegramAccessRequest{}, false, ErrPermissionDenied
 	}
@@ -193,6 +194,7 @@ func (tasks *TaskService) TelegramRequest(code string) (TelegramAccessRequest, e
 func telegramAccessRaw(ctx context.Context, db interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, target ChannelTarget) (TelegramAccess, string, error) {
+	target = target.group()
 	var raw string
 	err := db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, telegramAccessKey(target)).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -211,6 +213,12 @@ func (tasks *TaskService) CheckTelegramAccess(ctx context.Context, target Channe
 	}
 	if !validTelegramTarget(target) || !validTelegramPerson(person) {
 		return TelegramAccess{}, ErrPermissionDenied
+	}
+	if err := tasks.telegramTargetAvailable(ctx, target); err != nil {
+		if errors.Is(err, ErrPermissionRevoked) {
+			return TelegramAccess{}, ErrPermissionDenied
+		}
+		return TelegramAccess{}, err
 	}
 	grant, _, err := telegramAccessRaw(ctx, tasks.core.Store.db, target)
 	if err != nil {
@@ -316,7 +324,7 @@ func (service *ControlService) buildTelegramAccess(ctx context.Context, record *
 			args.Members = append(args.Members, request.PersonID)
 		}
 	}
-	if !validTelegramTarget(args.Target) || !store.telegramBots[args.Target.ApplicationID] || args.Kind != "private" && args.Kind != "group" || len(args.Members) > 128 || args.Kind == "private" && args.WholeGroup {
+	if !validTelegramTarget(args.Target) || args.Target.ThreadID != "" || !store.telegramBots[args.Target.ApplicationID] || args.Kind != "private" && args.Kind != "group" || len(args.Members) > 128 || args.Kind == "private" && args.WholeGroup {
 		return ErrPermissionDenied
 	}
 	slices.Sort(args.Members)
@@ -600,6 +608,9 @@ func (s *channelSession) withTelegramFileAccess(ctx context.Context, target Chan
 // A local Owner may continue a channel conversation without impersonating a
 // platform person. Publication still requires its current enabled space grant.
 func (tasks *TaskService) telegramDeliveryGrant(ctx context.Context, target ChannelTarget, person string, local bool) (TelegramAccess, error) {
+	if err := tasks.telegramTargetAvailable(ctx, target); err != nil {
+		return TelegramAccess{}, err
+	}
 	if !local {
 		return tasks.CheckTelegramAccess(ctx, target, person)
 	}

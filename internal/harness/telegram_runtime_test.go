@@ -184,7 +184,7 @@ func TestTelegramRuntimeApprovalKeepsExactRequesterAndRejectsOtherUser(t *testin
 	}
 }
 
-func TestTelegramRuntimeGroupBackgroundWaitsForExplicitWake(t *testing.T) {
+func TestTelegramRuntimeGroupBackgroundIsDiscardedUntilOptIn(t *testing.T) {
 	var requests []ModelRequest
 	model := modelFunc(func(_ context.Context, request ModelRequest, _ func(string)) (ModelResponse, error) {
 		requests = append(requests, request)
@@ -218,8 +218,8 @@ func TestTelegramRuntimeGroupBackgroundWaitsForExplicitWake(t *testing.T) {
 			seenBackground = true
 		}
 	}
-	if !seenBackground {
-		t.Fatalf("public group background missing from request: %+v", requests[0].Messages)
+	if seenBackground {
+		t.Fatal("unsolicited group background reached the model")
 	}
 	run, err := store.GetLatestRun(t.Context(), space.DefaultConversationID)
 	if err != nil || run.Status != "completed" {

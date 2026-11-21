@@ -11,7 +11,7 @@ import (
 // CreateActiveConversation commits routing and creation together. A retried
 // platform request returns its original result without routing a later chat
 // back to an older selection.
-func (store *Store) CreateActiveConversation(ctx context.Context, spaceID, title, workspace, request string) (Conversation, error) {
+func (store *Store) CreateActiveConversation(ctx context.Context, spaceID, title, workspace, request string, targets ...ChannelTarget) (Conversation, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "新对话"
@@ -59,13 +59,42 @@ func (store *Store) CreateActiveConversation(ctx context.Context, spaceID, title
 	if _, err = tx.ExecContext(ctx, `INSERT INTO fa.conversations(id,title,workspace,space_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)`, c.ID, c.Title, c.Workspace, c.SpaceID, c.CreatedAt, c.UpdatedAt); err != nil {
 		return Conversation{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET active_conversation_id=$1,default_conversation_id=CASE WHEN default_conversation_id='' THEN $1 ELSE default_conversation_id END,updated_at=$2 WHERE id=$3`, c.ID, c.UpdatedAt, spaceID); err != nil {
+	if len(targets) > 0 && targets[0].ThreadID != "" {
+		target := targets[0]
+		bound, ok := channelTarget(space)
+		if !ok || bound != target.group() {
+			return Conversation{}, ErrConversationSpace
+		}
+		var raw string
+		if err = tx.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, channelRouteKey(target)).Scan(&raw); err != nil {
+			return Conversation{}, err
+		}
+		var route channelRoute
+		if json.Unmarshal([]byte(raw), &route) != nil || route.Target != target {
+			return Conversation{}, ErrStoreFormat
+		}
+		route.Active = c.ID
+		if _, err = tx.ExecContext(ctx, `UPDATE fa.meta SET value=$1 WHERE key=$2`, string(mustJSON(route)), channelRouteKey(target)); err != nil {
+			return Conversation{}, err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "channel/conversation-target/"+c.ID, string(mustJSON(target))); err != nil {
+			return Conversation{}, err
+		}
+	} else if _, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET active_conversation_id=$1,default_conversation_id=CASE WHEN default_conversation_id='' THEN $1 ELSE default_conversation_id END,updated_at=$2 WHERE id=$3`, c.ID, c.UpdatedAt, spaceID); err != nil {
 		return Conversation{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, key, string(mustJSON(map[string]any{"fingerprint": fingerprint, "conversation": c}))); err != nil {
 		return Conversation{}, err
 	}
 	return c, tx.Commit()
+}
+
+func (tasks *TaskService) newChannelConversation(ctx context.Context, target ChannelTarget, title, request string) (Conversation, error) {
+	space, err := tasks.ChannelSpace(ctx, target)
+	if err != nil {
+		return Conversation{}, err
+	}
+	return tasks.core.Store.CreateActiveConversation(ctx, space.ID, title, tasks.Config().Workspace, request, target)
 }
 
 func (tasks *TaskService) NewActiveConversationInSpace(ctx context.Context, spaceID, title, request string) (Conversation, error) {

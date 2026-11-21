@@ -278,9 +278,9 @@ func (s *channelSession) handle(ctx context.Context, e channelEvent) error {
 		purpose = "command"
 	}
 	if e.Sticker != nil {
-		chat := space.DefaultConversationID
-		if space.MultiConversation {
-			chat = space.ActiveConversationID
+		chat, err := s.tasks.ChannelConversation(ctx, e.Target)
+		if err != nil {
+			return err
 		}
 		if intent, ok := ctx.Value(channelReplayKey{}).(channelInputIntent); ok && intent.ConversationID != "" {
 			chat = intent.ConversationID
@@ -408,6 +408,9 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 		text += "\n可用 /compact 手动压缩；已开启多对话时可用 /new。修改模型窗口与辅助思考请打开设置。"
 		return s.plain(ctx, e, text)
 	case "/analyze":
+		if space.ChatKind == "group" {
+			return s.plain(ctx, e, "群会话不做经验总结或将成员发言写入 Memory。请在管理端选择已获授权的独立资料。")
+		}
 		return s.sourceAnalysisCommand(ctx, e, chat, args)
 	case "/save-reply":
 		return s.saveReplyFile(ctx, e, chat)
@@ -498,6 +501,10 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 			}
 			var out strings.Builder
 			for _, c := range chats {
+				target, routeErr := channelConversationTarget(ctx, s.tasks.core.Store.db, c.ID, e.Target)
+				if routeErr != nil || target != e.Target {
+					continue
+				}
 				if out.Len() > 12000 {
 					break
 				}
@@ -521,7 +528,7 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 			title := strings.Join(args, " ")
 			var c Conversation
 			request := string(mustJSON([]any{e.Target, e.Message}))
-			c, err = s.tasks.NewActiveConversationInSpace(ctx, space.ID, title, request)
+			c, err = s.tasks.newChannelConversation(ctx, e.Target, title, request)
 			if err == nil {
 				return s.plain(ctx, e, "已创建并切换到："+c.Title+"\n"+c.ID)
 			}
@@ -537,9 +544,9 @@ func (s *channelSession) command(ctx context.Context, e channelEvent, space Spac
 				return s.plain(ctx, e, "请提供完整对话 ID。")
 			}
 			if cmd == "/switch" {
-				err = s.tasks.SetSpaceActiveConversation(ctx, space.ID, args[0])
+				err = s.tasks.setChannelConversation(ctx, e.Target, args[0], false)
 			} else {
-				err = s.tasks.SetSpaceDefaultConversation(ctx, space.ID, args[0])
+				err = s.tasks.setChannelConversation(ctx, e.Target, args[0], true)
 			}
 		}
 		if err != nil {

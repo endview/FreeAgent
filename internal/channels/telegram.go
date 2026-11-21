@@ -133,16 +133,38 @@ type TelegramUser struct {
 	CanReadGroupMessages bool   `json:"can_read_all_group_messages"`
 }
 type TelegramChat struct {
-	ID    int64  `json:"id"`
-	Type  string `json:"type"`
-	Title string `json:"title"`
+	ID          int64                `json:"id"`
+	Type        string               `json:"type"`
+	Title       string               `json:"title"`
+	Forum       bool                 `json:"is_forum"`
+	Permissions *TelegramPermissions `json:"permissions"`
 }
+
+type TelegramPermissions struct {
+	CanSend bool `json:"can_send_messages"`
+}
+
+func (api *TelegramAPI) GroupCanSend(ctx context.Context, chat int64) (bool, error) {
+	var result TelegramChat
+	if err := api.call(ctx, "getChat", map[string]int64{"chat_id": chat}, &result, false); err != nil {
+		return false, err
+	}
+	if result.ID != chat || result.Permissions == nil {
+		return false, errors.New("telegram: current group permissions unavailable")
+	}
+	return result.Permissions.CanSend, nil
+}
+
 type TelegramEntity struct {
 	Type   string `json:"type"`
 	Offset int    `json:"offset"`
 	Length int    `json:"length"`
 }
 type TelegramMessage struct {
+	ThreadID        int64             `json:"message_thread_id"`
+	Topic           bool              `json:"is_topic_message"`
+	MigrateTo       int64             `json:"migrate_to_chat_id"`
+	MigrateFrom     int64             `json:"migrate_from_chat_id"`
 	Sticker         *TelegramSticker  `json:"sticker"`
 	Document        *TelegramDocument `json:"document"`
 	Photo           []TelegramPhoto   `json:"photo"`
@@ -164,11 +186,23 @@ type TelegramCallback struct {
 	Data    string           `json:"data"`
 }
 type TelegramUpdate struct {
+	MyMember      *TelegramMemberUpdate  `json:"my_chat_member"`
 	ReactionCount *TelegramReactionCount `json:"message_reaction_count"`
 	Reaction      *TelegramReaction      `json:"message_reaction"`
 	ID            int64                  `json:"update_id"`
 	Message       *TelegramMessage       `json:"message"`
 	Callback      *TelegramCallback      `json:"callback_query"`
+}
+
+type TelegramMember struct {
+	Status  string `json:"status"`
+	CanSend bool   `json:"can_send_messages"`
+	Member  bool   `json:"is_member"`
+}
+type TelegramMemberUpdate struct {
+	Chat TelegramChat   `json:"chat"`
+	Date int64          `json:"date"`
+	New  TelegramMember `json:"new_chat_member"`
 }
 type TelegramButton struct {
 	Text string `json:"text"`
@@ -207,7 +241,7 @@ func (api *TelegramAPI) Poll(ctx context.Context, offset int64, waitSeconds int)
 		Limit   int      `json:"limit"`
 		Timeout int      `json:"timeout"`
 		Allowed []string `json:"allowed_updates"`
-	}{offset, 100, waitSeconds, []string{"message", "callback_query", "message_reaction", "message_reaction_count"}}, &updates, false)
+	}{offset, 100, waitSeconds, []string{"message", "callback_query", "message_reaction", "message_reaction_count", "my_chat_member"}}, &updates, false)
 	if err == nil && len(updates) > 100 {
 		return nil, errors.New("telegram: update batch exceeds bound")
 	}
@@ -249,20 +283,20 @@ func (api *TelegramAPI) Send(ctx context.Context, chatID, replyTo int64, text st
 // SendFormatted only retries a confirmed formatting rejection, with the same
 // visible text. Unknown delivery, invalid destinations and forbidden sends
 // never trigger a second platform request.
-func (api *TelegramAPI) SendFormatted(ctx context.Context, chatID, replyTo int64, text string, entities []channelwire.TextEntity, keyboard *TelegramKeyboard) (int64, bool, error) {
+func (api *TelegramAPI) SendFormatted(ctx context.Context, chatID, replyTo int64, text string, entities []channelwire.TextEntity, keyboard *TelegramKeyboard, thread ...string) (int64, bool, error) {
 	if err := validateTelegramEntities(text, entities); err != nil {
 		return 0, false, err
 	}
-	id, err := api.send(ctx, chatID, replyTo, text, entities, keyboard)
+	id, err := api.send(ctx, chatID, replyTo, text, entities, keyboard, thread...)
 	var upstream *TelegramError
 	if len(entities) > 0 && errors.As(err, &upstream) && upstream.Formatting && !upstream.Uncertain {
-		id, err = api.send(ctx, chatID, replyTo, text, nil, keyboard)
+		id, err = api.send(ctx, chatID, replyTo, text, nil, keyboard, thread...)
 		return id, true, err
 	}
 	return id, false, err
 }
 
-func (api *TelegramAPI) send(ctx context.Context, chatID, replyTo int64, text string, entities []channelwire.TextEntity, keyboard *TelegramKeyboard) (int64, error) {
+func (api *TelegramAPI) send(ctx context.Context, chatID, replyTo int64, text string, entities []channelwire.TextEntity, keyboard *TelegramKeyboard, thread ...string) (int64, error) {
 	if chatID == 0 || !validTelegramText(text, 4096) {
 		return 0, errors.New("telegram: invalid text or target")
 	}
@@ -270,6 +304,9 @@ func (api *TelegramAPI) send(ctx context.Context, chatID, replyTo int64, text st
 		return 0, err
 	}
 	input := map[string]any{"chat_id": chatID, "text": text, "link_preview_options": map[string]bool{"is_disabled": true}}
+	if err := telegramThread(input, thread); err != nil {
+		return 0, err
+	}
 	if len(entities) != 0 {
 		input["entities"] = entities
 	}
@@ -325,12 +362,16 @@ func SplitTelegramText(text string) []string {
 	return result
 }
 
-func (api *TelegramAPI) ChatAction(ctx context.Context, chatID int64, action string) error {
+func (api *TelegramAPI) ChatAction(ctx context.Context, chatID int64, action string, thread ...string) error {
 	if chatID == 0 || action != "typing" && action != "upload_document" && action != "choose_sticker" {
 		return errors.New("telegram: invalid activity")
 	}
 	var ok bool
-	if err := api.call(ctx, "sendChatAction", map[string]any{"chat_id": chatID, "action": action}, &ok, false); err != nil {
+	input := map[string]any{"chat_id": chatID, "action": action}
+	if err := telegramThread(input, thread); err != nil {
+		return err
+	}
+	if err := api.call(ctx, "sendChatAction", input, &ok, false); err != nil {
 		return err
 	}
 	if !ok {
@@ -380,6 +421,8 @@ type TelegramPhoto struct {
 }
 
 type TelegramEvent struct {
+	ThreadID      string
+	Lifecycle     *channelwire.Lifecycle
 	Sticker       *channelwire.Sticker
 	Reaction      *channelwire.Reaction
 	Media         []MediaRef
@@ -403,6 +446,28 @@ func TelegramEventFromUpdate(update TelegramUpdate, bot TelegramUser) (TelegramE
 	if bot.ID <= 0 || !bot.IsBot || bot.Username == "" {
 		return event, false
 	}
+	if member := update.MyMember; member != nil {
+		if member.Chat.ID == 0 || member.Chat.Type != "group" && member.Chat.Type != "supergroup" {
+			return event, false
+		}
+		state := member.New
+		canSend := state.Status == "administrator" || state.Status == "creator" || state.Status == "member" || state.Status == "restricted" && state.Member && state.CanSend
+		event.ChatID, event.ChatKind, event.Date = member.Chat.ID, member.Chat.Type, member.Date
+		event.Lifecycle = &channelwire.Lifecycle{Kind: "membership", Status: state.Status, CanSend: canSend, Forum: member.Chat.Forum}
+		return event, true
+	}
+	if m := update.Message; m != nil && (m.MigrateTo != 0 || m.MigrateFrom != 0) {
+		oldID, newID := m.Chat.ID, m.MigrateTo
+		if m.MigrateFrom != 0 {
+			oldID, newID = m.MigrateFrom, m.Chat.ID
+		}
+		if oldID >= 0 || newID >= 0 || oldID == newID {
+			return event, false
+		}
+		event.ChatID, event.Date, event.ChatKind = oldID, m.Date, "group"
+		event.Lifecycle = &channelwire.Lifecycle{Kind: "migration", NewChatID: strconv.FormatInt(newID, 10)}
+		return event, true
+	}
 	if update.Reaction != nil {
 		return telegramReactionEvent(update, bot)
 	}
@@ -418,6 +483,7 @@ func TelegramEventFromUpdate(update TelegramUpdate, bot TelegramUser) (TelegramE
 			return event, false
 		}
 		event.ChatID, event.ChatKind, event.MessageID = c.Message.Chat.ID, c.Message.Chat.Type, c.Message.ID
+		event.ThreadID = telegramTopic(c.Message)
 		event.PersonID = "telegram:user:" + strconv.FormatInt(c.From.ID, 10)
 		event.CallbackID, event.CallbackData = c.ID, c.Data
 		event.Date = c.Message.Date
@@ -469,6 +535,7 @@ func TelegramEventFromUpdate(update TelegramUpdate, bot TelegramUser) (TelegramE
 		return event, false
 	}
 	event.ChatID, event.ChatKind, event.MessageID, event.Text, event.Date = m.Chat.ID, m.Chat.Type, m.ID, m.Text, m.Date
+	event.ThreadID = telegramTopic(m)
 	if m.From != nil && m.From.ID > 0 && m.SenderChat == nil {
 		event.PersonID = "telegram:user:" + strconv.FormatInt(m.From.ID, 10)
 		event.DisplayName = strings.TrimSpace(m.From.FirstName + " " + m.From.LastName)

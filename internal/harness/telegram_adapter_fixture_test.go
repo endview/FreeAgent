@@ -52,7 +52,7 @@ func NewTelegramRuntime(tasks *TaskService) *TelegramRuntime {
 			}
 			keyboard = &channels.TelegramKeyboard{Rows: [][]channels.TelegramButton{row}}
 		}
-		id, err := api.Send(ctx, chat, replyID, text, keyboard)
+		id, _, err := api.SendFormatted(ctx, chat, replyID, text, nil, keyboard, target.ThreadID)
 		if id <= 0 {
 			return "", err
 		}
@@ -82,9 +82,12 @@ func (r *TelegramRuntime) HandleUpdate(ctx context.Context, u channels.TelegramU
 			return nil
 		}
 	}
-	event := channelEvent{Target: ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10)}, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: e.ChatKind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo}
+	event := channelEvent{Target: ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10), ThreadID: e.ThreadID}, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: e.ChatKind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo}
 	if event.Kind != "private" {
 		event.Kind = "group"
+	}
+	if event.Kind == "group" && !event.Trigger && event.Callback == "" {
+		return nil
 	}
 	err := r.session.handle(ctx, event)
 	if e.CallbackID != "" && api != nil {

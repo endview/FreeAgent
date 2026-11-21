@@ -14,6 +14,9 @@ import (
 )
 
 func (b *ChannelBridge) Outbox(ctx context.Context, id string) ([]channelwire.Operation, error) {
+	if err := b.cleanupConnectorRetention(ctx); err != nil {
+		return nil, err
+	}
 	if err := b.recoverPreparedReplies(ctx, id); err != nil {
 		return nil, err
 	}
@@ -181,6 +184,14 @@ func (b *ChannelBridge) Outbox(ctx context.Context, id string) ([]channelwire.Op
 		}
 		if op.Target.Source != c.config.Source || op.Target.ApplicationID != c.config.ApplicationID {
 			return nil, ErrPermissionDenied
+		}
+		if op.Target.Source == SpaceSourceTelegram {
+			if err := b.tasks.telegramTargetAvailable(ctx, ChannelTarget(op.Target)); err != nil {
+				if errors.Is(err, ErrPermissionRevoked) {
+					continue
+				}
+				return nil, err
+			}
 		}
 		if op.Target.Source == SpaceSourceTelegram && !op.Admission {
 			grant, err := b.tasks.telegramDeliveryGrant(ctx, ChannelTarget(op.Target), op.Person, op.LocalOwner)

@@ -57,8 +57,10 @@ type Target struct {
 	Source        string `json:"source"`
 	ApplicationID string `json:"application_id"`
 	ChatID        string `json:"chat_id"`
+	ThreadID      string `json:"thread_id,omitempty"`
 }
 type Event struct {
+	Lifecycle       *Lifecycle `json:"lifecycle,omitempty"`
 	Sticker         *Sticker   `json:"sticker,omitempty"`
 	Reaction        *Reaction  `json:"reaction,omitempty"`
 	ID              string     `json:"id"`
@@ -73,6 +75,15 @@ type Event struct {
 	CallbackMessage string     `json:"callback_message,omitempty"`
 	Media           []MediaRef `json:"media,omitempty"`
 	ReplyTo         string     `json:"reply_to,omitempty"`
+}
+
+// Lifecycle is a verified transport fact, never a chat request or authority.
+type Lifecycle struct {
+	Kind      string `json:"kind"`
+	NewChatID string `json:"new_chat_id,omitempty"`
+	Status    string `json:"status,omitempty"`
+	CanSend   bool   `json:"can_send"`
+	Forum     bool   `json:"forum,omitempty"`
 }
 type Button struct {
 	Text  string `json:"text"`

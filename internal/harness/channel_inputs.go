@@ -18,6 +18,9 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 		}
 		item, err := s.tasks.acceptInput(WithAttachmentIdentity(ctx, "channel:"+e.Person), input.ConversationID, command, RunOptions{channel: input.origin, personID: e.Person})
 		if err != nil {
+			if errors.Is(err, ErrInputQueueFull) {
+				return errors.Join(errChannelInputRejected, ErrInputQueueFull)
+			}
 			return s.plain(ctx, e, "输入未采用，原文仍保留："+safeError(err))
 		}
 		text := "已排队，将在当前任务正常完成后处理。"
@@ -57,13 +60,6 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 		if active.Permission != nil && active.Permission.PersonID == e.Person {
 			action = "steer"
 		}
-		if e.Target.Source == SpaceSourceTelegram && action == "queue" {
-			notice := s.plain(ctx, e, "当前任务由其他成员发起，请等它结束后再发送。")
-			if s.remote {
-				return errors.Join(errChannelInputRejected, notice)
-			}
-			return notice
-		}
 		return queue(active, action)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -77,13 +73,6 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 	s.mu.Unlock()
 	if dispatch != nil {
 		if err := dispatch(input.ConversationID, call); errors.Is(err, ErrActiveRun) {
-			if e.Target.Source == SpaceSourceTelegram {
-				notice := s.plain(ctx, e, "上一条消息还在启动，请稍后补充。")
-				if s.remote {
-					return errors.Join(errChannelInputRejected, notice)
-				}
-				return notice
-			}
 			return queue(Run{}, "queue")
 		} else {
 			return err
@@ -91,9 +80,6 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 	}
 	result, err := call(ctx)
 	if errors.Is(err, ErrActiveRun) {
-		if e.Target.Source == SpaceSourceTelegram {
-			return s.plain(ctx, e, "当前任务正在切换，请稍后补充。")
-		}
 		return queue(Run{}, "queue")
 	}
 	if result.Run.ID != "" {
@@ -103,8 +89,8 @@ func (s *channelSession) launchInput(ctx context.Context, e channelEvent, input 
 }
 
 func (s *channelSession) inputCommand(ctx context.Context, e channelEvent, space Space, chat, cmd string, args []string, effective PermissionMode) (bool, error) {
-	if e.Target.Source == SpaceSourceTelegram && (cmd == "/queue" || strings.HasPrefix(cmd, "/queue-")) {
-		return true, s.plain(ctx, e, "TG 不使用排队。运行时直接发送补充即可；新任务请等本轮结束后再发送。")
+	if e.Target.Source == SpaceSourceTelegram && space.ChatKind == "private" && (cmd == "/queue" || strings.HasPrefix(cmd, "/queue-")) {
+		return true, s.plain(ctx, e, "私聊运行中直接发送补充；新任务请等本轮结束。")
 	}
 	switch cmd {
 	case "/inputs", "/queue":
@@ -120,7 +106,7 @@ func (s *channelSession) inputCommand(ctx context.Context, e channelEvent, space
 				fmt.Fprintf(&text, "队列暂停=%v\n", state.Paused)
 			}
 			for _, i := range state.Entries {
-				if i.Principal == "channel:"+e.Person && (e.Target.Source != SpaceSourceTelegram || i.Action == "steer") {
+				if i.Principal == "channel:"+e.Person {
 					fmt.Fprintf(&text, "%s %s %s\n", i.Key, i.Action, i.Status)
 				}
 			}
@@ -201,7 +187,7 @@ func (s *channelSession) inputCommand(ctx context.Context, e channelEvent, space
 		}
 		var text strings.Builder
 		for _, m := range messages {
-			if m.Public && !m.Deferred && (m.Role == "user" || m.Role == "assistant") && text.Len() < 10000 {
+			if m.Public && !m.Deferred && (m.Channel == nil || m.Channel.Purpose != "background") && (m.Role == "user" || m.Role == "assistant") && text.Len() < 10000 {
 				fmt.Fprintf(&text, "[%d] %s: %s\n", m.ID, m.Role, truncateUTF8Bytes(m.Content, 400))
 			}
 		}
@@ -230,7 +216,13 @@ func (s *channelSession) inputCommand(ctx context.Context, e channelEvent, space
 		if err != nil {
 			return true, s.plain(ctx, e, "未创建分支："+safeError(err))
 		}
-		if err := s.tasks.SetSpaceActiveConversation(ctx, space.ID, branch.Conversation.ID); err != nil {
+		if e.Target.ThreadID != "" {
+			_, err = s.tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "channel/conversation-target/"+branch.Conversation.ID, string(mustJSON(e.Target)))
+			if err != nil {
+				return true, err
+			}
+		}
+		if err := s.tasks.setChannelConversation(ctx, e.Target, branch.Conversation.ID, false); err != nil {
 			return true, err
 		}
 		if branch.Prompt == "" {

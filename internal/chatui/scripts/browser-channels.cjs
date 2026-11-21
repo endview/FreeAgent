@@ -77,6 +77,18 @@ const fs = require("node:fs"),
     count: 2,
     target: { source: "telegram", application_id: "1", chat_id: "-100" },
   });
+  const groupTarget = {
+    source: "telegram",
+    application_id: "1",
+    chat_id: "-100",
+  };
+  await api("channels/telegram/access", {
+    target: groupTarget,
+    kind: "group",
+    enabled: true,
+    members: ["telegram:user:7"],
+    whole_group: false,
+  });
   const browser = await chromium.launch({
     headless: true,
     ...(process.env.FREEAGENT_BROWSER_CHANNEL
@@ -151,6 +163,58 @@ const fs = require("node:fs"),
       .filter({ hasText: "已读取保存的名单" })
       .waitFor();
     assert.equal(await confirmers.inputValue(), "7");
+    await page.getByText("群回复与背景", { exact: true }).click();
+    const groupPanel = page
+      .locator("details")
+      .filter({
+        has: page.locator("summary").getByText("群回复与背景", { exact: true }),
+      });
+    const replyAll = groupPanel.getByRole("checkbox").nth(0),
+      background = groupPanel.getByRole("checkbox").nth(1);
+    assert.equal(await replyAll.isChecked(), false);
+    assert.equal(await background.isChecked(), false);
+    await replyAll.check();
+    await background.check();
+    await groupPanel
+      .getByRole("button", { name: "保存群设置", exact: true })
+      .click();
+    await groupPanel
+      .getByRole("status")
+      .filter({ hasText: "群设置已保存" })
+      .waitFor();
+    const groupRoute = "channels/telegram/groups?bot=1&chat=-100";
+    let groupState = (await api(groupRoute)).state;
+    assert.equal(groupState.reply_all, true);
+    assert.equal(groupState.save_background, true);
+    await background.uncheck();
+    await api("channels/telegram/groups", {
+      target: groupTarget,
+      action: "save",
+      reply_all: false,
+      save_background: true,
+      expected_revision: groupState.revision,
+      operation_id: "concurrent-group-change",
+    });
+    const groupConflict = page.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname === "/api/channels/telegram/groups" &&
+        r.request().method() === "POST",
+    );
+    await groupPanel
+      .getByRole("button", { name: "保存群设置", exact: true })
+      .click();
+    assert.equal((await groupConflict).status(), 409);
+    assert.equal(await background.isChecked(), false);
+    assert.equal(await replyAll.isChecked(), true);
+    await groupPanel
+      .getByRole("button", { name: "放弃草稿并读取当前值", exact: true })
+      .click();
+    await groupPanel
+      .getByRole("status")
+      .filter({ hasText: "已读取当前群设置" })
+      .waitFor();
+    assert.equal(await replyAll.isChecked(), false);
+    assert.equal(await background.isChecked(), true);
     for (const [width, height] of [
       [1440, 1024],
       [768, 1024],
@@ -168,11 +232,13 @@ const fs = require("node:fs"),
         path: path.join(artifacts, "channels-" + width + ".png"),
         fullPage: true,
       });
-      await confirmers
-        .locator("xpath=ancestor::form[1]")
-        .screenshot({
-          path: path.join(artifacts, "confirmers-" + width + ".png"),
-        });
+      await confirmers.locator("xpath=ancestor::form[1]").screenshot({
+        path: path.join(artifacts, "confirmers-" + width + ".png"),
+      });
+      await groupPanel.scrollIntoViewIfNeeded();
+      await groupPanel.screenshot({
+        path: path.join(artifacts, "group-policy-" + width + ".png"),
+      });
     }
     assert.equal(errors.length, 0);
     console.log(
@@ -183,6 +249,7 @@ const fs = require("node:fs"),
         confirmers_save: true,
         conflict_preserves_draft: true,
         explicit_readback: true,
+        group_policy_save_conflict_readback: true,
         widths: [1440, 768, 390],
         errors,
       }),

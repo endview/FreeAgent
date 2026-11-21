@@ -217,7 +217,7 @@ func managedConversation(ctx context.Context, r managementReader, id string) (Ma
 		item.Blockers = append(item.Blockers, "dispatching")
 	}
 	var routed bool
-	if err = r.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.spaces WHERE source<>'local' AND (active_conversation_id=$1 OR default_conversation_id=$1))`, id).Scan(&routed); err != nil {
+	if err = r.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.spaces WHERE source<>'local' AND (active_conversation_id=$1 OR default_conversation_id=$1)) OR EXISTS(SELECT 1 FROM fa.meta WHERE starts_with(key,'connector/') AND key LIKE '%/topic/%' AND (document->>'active'=$1 OR document->>'default'=$1))`, id).Scan(&routed); err != nil {
 		return item, err
 	}
 	if routed {
@@ -235,7 +235,8 @@ func managedConversation(ctx context.Context, r managementReader, id string) (Ma
  (SELECT coalesce(jsonb_agg(jsonb_build_array(a.id,a.status,encode(sha256(convert_to(a.response_json,'UTF8')),'hex')) ORDER BY a.id),'[]') FROM fa.attempts a JOIN fa.runs r ON r.id=a.run_id WHERE r.conversation_id=$1 AND a.status IN ('pending','dispatched','unknown')),
  (SELECT coalesce(jsonb_agg(jsonb_build_array(key,value) ORDER BY key),'[]') FROM fa.meta WHERE key=$2 OR key IN ('chat/pin/'||$1,'chat/model/'||$1,'chat/capabilities/'||$1) OR starts_with(key,'input/'||$1||'/') OR key LIKE 'attachment/%' AND document->>'conversation'=$1 OR key LIKE 'channel/operation/%' AND document->>'conversation_id'=$1 OR key LIKE 'command/process/%' AND document->>'conversation_id'=$1),
  (SELECT jsonb_build_array(s.id,s.source,s.chat_kind,s.external_chat,s.source<>'local' AND s.active_conversation_id=$1,s.source<>'local' AND s.default_conversation_id=$1,s.multi_conversation_enabled) FROM fa.spaces s WHERE id=(SELECT space_id FROM fa.conversations WHERE id=$1)),
- (SELECT coalesce(jsonb_agg(jsonb_build_array(key,value) ORDER BY key),'[]') FROM fa.meta WHERE key='space/permission/'||(SELECT space_id FROM fa.conversations WHERE id=$1) OR key LIKE 'telegram/access/%' AND document->>'space_id'=(SELECT space_id FROM fa.conversations WHERE id=$1))
+ (SELECT coalesce(jsonb_agg(jsonb_build_array(key,value) ORDER BY key),'[]') FROM fa.meta WHERE key='space/permission/'||(SELECT space_id FROM fa.conversations WHERE id=$1) OR key LIKE 'telegram/access/%' AND document->>'space_id'=(SELECT space_id FROM fa.conversations WHERE id=$1)),
+ (SELECT coalesce(jsonb_agg(jsonb_build_array(key,value) ORDER BY key),'[]') FROM fa.meta WHERE key='channel/conversation-target/'||$1 OR starts_with(key,'connector/') AND key LIKE '%/topic/%' AND (document->>'active'=$1 OR document->>'default'=$1))
  )::text`, id, lifecyclePrefix+id).Scan(&raw)
 	item.Revision = contentHash([]byte(raw))
 	return item, err
@@ -684,6 +685,11 @@ func (tasks *TaskService) mutateManagedItem(ctx context.Context, tx *sql.Tx, p M
 				return "", err
 			}
 		}
+		if target != item.Lifecycle.OriginalSpace {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "channel/conversation-target/"+item.ID); err != nil {
+				return "", err
+			}
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE fa.conversations SET space_id=$1 WHERE id=$2`, target, item.ID); err != nil {
 			return "", err
 		}
@@ -737,6 +743,9 @@ func (tasks *TaskService) mutateManagedItem(ctx context.Context, tx *sql.Tx, p M
 				return "", err
 			}
 		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "channel/conversation-target/"+item.ID); err != nil {
+			return "", err
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE fa.conversations SET space_id=$1 WHERE id=$2`, target.ID, item.ID); err != nil {
 			return "", err
 		}
@@ -771,6 +780,12 @@ func (tasks *TaskService) replaceManagedRoute(ctx context.Context, tx *sql.Tx, i
 	if replacement == "" {
 		return "", errors.New("harness: choose a replacement conversation or explicitly select new")
 	}
+	group, _ := channelTarget(space)
+	originalTarget, err := channelConversationTarget(ctx, tx, item.ID, group)
+	if err != nil {
+		return "", err
+	}
+	fresh := replacement == "new"
 	if replacement == "new" {
 		replacement = newID()
 		now := nowText()
@@ -789,6 +804,20 @@ func (tasks *TaskService) replaceManagedRoute(ctx context.Context, tx *sql.Tx, i
 		}
 		if belongs != space.ID || replacement == item.ID {
 			return "", ErrConversationSpace
+		}
+		actual, e := channelConversationTarget(ctx, tx, replacement, group)
+		if e != nil || actual != originalTarget {
+			return "", ErrConversationSpace
+		}
+	}
+	if originalTarget.ThreadID != "" {
+		if fresh {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "channel/conversation-target/"+replacement, string(mustJSON(originalTarget))); err != nil {
+				return "", err
+			}
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE fa.meta SET value=(document||jsonb_build_object('active',CASE WHEN document->>'active'=$1 THEN $2 ELSE document->>'active' END,'default',CASE WHEN document->>'default'=$1 THEN $2 ELSE document->>'default' END))::text WHERE starts_with(key,'connector/') AND key LIKE '%/topic/%' AND (document->>'active'=$1 OR document->>'default'=$1)`, item.ID, replacement); err != nil {
+			return "", err
 		}
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET default_conversation_id=CASE WHEN default_conversation_id=$1 THEN $2 ELSE default_conversation_id END,active_conversation_id=CASE WHEN active_conversation_id=$1 THEN $2 ELSE active_conversation_id END WHERE id=$3`, item.ID, replacement, space.ID)
@@ -1081,6 +1110,9 @@ func (tasks *TaskService) applyManagedSpaceDeletion(ctx context.Context, p Manag
 				}
 			}
 		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "channel/conversation-target/"+cur.ID); err != nil {
+			return result, err
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE fa.conversations SET space_id=$1 WHERE id=$2`, LocalSpaceID, cur.ID); err != nil {
 			return result, err
 		}
@@ -1088,6 +1120,9 @@ func (tasks *TaskService) applyManagedSpaceDeletion(ctx context.Context, p Manag
 			return result, err
 		}
 		result.Items = append(result.Items, ManagementItemResult{ID: cur.ID, Status: "completed", Message: "空间删除：会话已按确认方式处理"})
+	}
+	if err = cleanupChannelSpaceTx(ctx, tx, deletedSpace); err != nil {
+		return result, err
 	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 OR starts_with(key,$2) OR key LIKE 'telegram/access/%' AND document->>'space_id'=$3`, "space/permission/"+p.Command.SpaceID, "space/people/"+p.Command.SpaceID+"/", p.Command.SpaceID); err != nil {
 		return result, err

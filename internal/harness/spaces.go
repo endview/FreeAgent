@@ -180,6 +180,12 @@ func (store *Store) setSpaceConversation(ctx context.Context, spaceID, conversat
 	if belongs != spaceID {
 		return ErrConversationSpace
 	}
+	if target, ok := channelTarget(space); ok {
+		actual, e := channelConversationTarget(ctx, tx, conversationID, target)
+		if e != nil || actual.ThreadID != "" && actual.ThreadID != "general" {
+			return ErrConversationSpace
+		}
+	}
 	if !defaultConversation && space.Source != "local" && !space.MultiConversation && conversationID != space.DefaultConversationID {
 		return errors.New("harness: enable multiple conversations before changing channel routing")
 	}
@@ -243,6 +249,18 @@ func (store *Store) MoveConversation(ctx context.Context, conversationID, target
 	if err := checkConversationCommandsTx(ctx, tx, conversationID); err != nil {
 		return err
 	}
+	var topicRouted bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.meta WHERE starts_with(key,'connector/') AND key LIKE '%/topic/%' AND (document->>'active'=$1 OR document->>'default'=$1))`, conversationID).Scan(&topicRouted); err != nil {
+		return err
+	}
+	if topicRouted {
+		return ErrConversationSpace
+	}
+	if sourceSpace != targetSpaceID {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "channel/conversation-target/"+conversationID); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE fa.conversations SET space_id=$1,updated_at=$2 WHERE id=$3`, targetSpaceID, nowText(), conversationID); err != nil {
 		return err
 	}
@@ -285,7 +303,7 @@ func refreshSpacePointersTx(ctx context.Context, tx *sql.Tx, spaceID string) err
 	if err := tx.QueryRowContext(ctx, `SELECT default_conversation_id,active_conversation_id FROM fa.spaces WHERE id=$1`, spaceID).Scan(&currentDefault, &currentActive); err != nil {
 		return err
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM fa.conversations WHERE space_id=$1 AND fa.conversation_live(id) ORDER BY updated_at DESC,id LIMIT 1`, spaceID).Scan(&first); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT c.id FROM fa.conversations c LEFT JOIN fa.meta route ON route.key='channel/conversation-target/'||c.id WHERE c.space_id=$1 AND fa.conversation_live(c.id) AND coalesce(route.document->>'thread_id','') IN ('','general') ORDER BY c.updated_at DESC,c.id LIMIT 1`, spaceID).Scan(&first); errors.Is(err, sql.ErrNoRows) {
 		first = ""
 	} else if err != nil {
 		return err
@@ -352,6 +370,13 @@ func (store *Store) DeleteSpace(ctx context.Context, id string) error {
 	}
 	if activeCommands != 0 {
 		return ErrCommandBusy
+	}
+	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE id=$1 FOR UPDATE`, id))
+	if err != nil {
+		return err
+	}
+	if err = cleanupChannelSpaceTx(ctx, tx, space); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE fa.meta SET value=(jsonb_set(document,'{space}',to_jsonb($1::text),true))::text WHERE key LIKE 'attachment/%' AND (document #>> '{space}')=$2`, LocalSpaceID, id); err != nil {
 		return err

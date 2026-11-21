@@ -16,6 +16,7 @@ type ChannelTarget struct {
 	Source        string `json:"source"`
 	ApplicationID string `json:"application_id"`
 	ChatID        string `json:"chat_id"`
+	ThreadID      string `json:"thread_id,omitempty"`
 }
 
 func validChannelPart(value string) bool {
@@ -27,8 +28,13 @@ func (target ChannelTarget) validate() error {
 		!validChannelPart(target.ApplicationID) || !validChannelPart(target.ChatID) {
 		return ErrInvalidSpace
 	}
+	if target.ThreadID != "" && (target.Source != SpaceSourceTelegram || !validChannelPart(target.ThreadID) || target.ThreadID != "general" && !telegramNumeric(target.ThreadID, true)) {
+		return ErrInvalidSpace
+	}
 	return nil
 }
+
+func (target ChannelTarget) group() ChannelTarget { target.ThreadID = ""; return target }
 
 func (target ChannelTarget) key() string { return target.ApplicationID + "/" + target.ChatID }
 
@@ -37,7 +43,7 @@ func channelTarget(space Space) (ChannelTarget, bool) {
 	if len(parts) != 2 {
 		return ChannelTarget{}, false
 	}
-	target := ChannelTarget{space.Source, parts[0], parts[1]}
+	target := ChannelTarget{Source: space.Source, ApplicationID: parts[0], ChatID: parts[1]}
 	return target, target.validate() == nil
 }
 
@@ -231,13 +237,17 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	if !errors.Is(err, sql.ErrNoRows) {
 		return received, err
 	}
-	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE source=$1 AND external_chat=$2`, source.Source, source.key()))
+	space, err := scanSpace(tx.QueryRowContext(ctx, `SELECT `+spaceColumns+` FROM fa.spaces WHERE source=$1 AND external_chat=$2 FOR UPDATE`, source.Source, source.key()))
 	if err != nil {
 		return received, err
 	}
-	chat := space.DefaultConversationID
+	route, err := tasks.channelRouteTx(ctx, tx, space, source.ChannelTarget)
+	if err != nil {
+		return received, err
+	}
+	chat := route.Default
 	if space.MultiConversation {
-		chat = space.ActiveConversationID
+		chat = route.Active
 	}
 	if intent, ok := ctx.Value(channelReplayKey{}).(channelInputIntent); ok && intent.ConversationID != "" {
 		var bound string
@@ -267,7 +277,7 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 	if source.ReplyTo != "" {
 		_ = tx.QueryRowContext(ctx, `SELECT request_key FROM `+conversationRecords+` WHERE conversation_id=$1 AND body_json->>'Role'='assistant' AND body_json->>'Public'='true' AND body_json#>>'{Channel,message_id}'=$2 AND body_json#>>'{Channel,source}'=$3 AND body_json#>>'{Channel,application_id}'=$4 AND body_json#>>'{Channel,chat_id}'=$5 AND request_key LIKE 'channel/delivery/%' ORDER BY id DESC LIMIT 1`, received.ConversationID, source.ReplyTo, source.Source, source.ApplicationID, source.ChatID).Scan(&feedbackSource)
 	}
-	body := ModelMessage{Kind: messageUser, Role: "user", Content: text, Channel: &source, Public: true, FeedbackSource: feedbackSource}
+	body := ModelMessage{Kind: messageUser, Role: "user", Content: text, Channel: &source, Public: true, FeedbackSource: feedbackSource, Deferred: source.Purpose == "request"}
 	if source.Purpose == "command" {
 		body.Kind = messageNotice
 	}
@@ -325,8 +335,10 @@ func (tasks *TaskService) SubmitChannel(ctx context.Context, input ChannelReceiv
 
 func (service *Service) bindChannel(ctx context.Context, chat string, origin *ChannelRunOrigin) error {
 	service.controlProposalScope = nil
+	service.requestReferences = nil
 	if origin != nil {
 		service.controlProposalScope = NewTaskService(service).channelSettingEligible
+		service.requestReferences = NewTaskService(service).channelBackgroundMessages
 	}
 	conversation, err := service.Store.GetConversation(ctx, chat)
 	if err != nil {
@@ -344,7 +356,8 @@ func (service *Service) bindChannel(ctx context.Context, chat string, origin *Ch
 		return nil
 	}
 	if origin != nil {
-		if origin.ChannelTarget != target || origin.InputMessageID < 1 || origin.RequestKey == "" {
+		actual, routeErr := channelConversationTarget(ctx, service.Store.db, chat, target)
+		if routeErr != nil || origin.ChannelTarget.group() != target || origin.ChannelTarget != actual || origin.InputMessageID < 1 || origin.RequestKey == "" {
 			return ErrConversationSpace
 		}
 		copy := *origin
@@ -363,6 +376,10 @@ func (service *Service) bindChannel(ctx context.Context, chat string, origin *Ch
 	}
 	var through int64
 	if err := service.Store.db.QueryRowContext(ctx, `SELECT COALESCE(max(id),0) FROM `+conversationRecords+` WHERE conversation_id=$1`, chat).Scan(&through); err != nil {
+		return err
+	}
+	target, err = channelConversationTarget(ctx, service.Store.db, chat, target)
+	if err != nil {
 		return err
 	}
 	service.channel = &ChannelRunOrigin{ChannelTarget: target, HistoryThrough: through}

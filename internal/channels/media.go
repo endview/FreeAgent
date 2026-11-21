@@ -75,11 +75,18 @@ func (api *TelegramAPI) DownloadMedia(ctx context.Context, ref MediaRef, limit i
 	}
 	return raw, nil
 }
-func (api *TelegramAPI) SendDocument(ctx context.Context, chat, reply int64, name string, raw []byte) (int64, error) {
+func (api *TelegramAPI) SendDocument(ctx context.Context, chat, reply int64, name string, raw []byte, thread ...string) (int64, error) {
 	if chat == 0 {
 		return 0, errors.New("telegram: invalid file target")
 	}
 	fields := map[string]string{"chat_id": strconv.FormatInt(chat, 10)}
+	topic := map[string]any{}
+	if err := telegramThread(topic, thread); err != nil {
+		return 0, err
+	}
+	if id, ok := topic["message_thread_id"].(int64); ok {
+		fields["message_thread_id"] = strconv.FormatInt(id, 10)
+	}
 	if reply > 0 {
 		r, _ := json.Marshal(map[string]int64{"message_id": reply})
 		fields["reply_parameters"] = string(r)

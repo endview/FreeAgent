@@ -61,13 +61,14 @@ reply receipts remain in Core. Never run the same Bot in two polling processes.
 v8.0 uses a fresh PG database. Old histories are archived without import; approve
 the numeric Bot/chat/person identities again before exposing the new Bot.
 
-## v7.13 running inputs
+## Running inputs (v9)
 
-Running-task steering uses plain Telegram messages; `/inputs` shows received
-supplements. Telegram does not offer a FIFO queue: another member waits until
-the current request ends. GUI/CLI keep FIFO inputs with explicit promotion to
-current-task guidance. Input adoption and `/history` message branches use the
-same TaskService.
+Running-task steering uses plain Telegram messages; `/inputs` shows the caller's
+inputs. In groups, another admitted member's explicit request uses the existing
+20-entry FIFO queue with its own identity/permissions, rather than steering the
+first member's Run. A full queue rejects new work and records a diagnostic.
+Unadopted inputs do not enter model history. GUI/CLI and channels use the same
+TaskService and adoption sequence. Private Telegram steering remains unchanged.
 See [continuous execution and context](CONTEXT_AND_CONTINUOUS_EXECUTION.md).
 TG multi-account/group changes in this version are simulated, not new live
 platform acceptance.
@@ -81,11 +82,26 @@ compact their current public conversation. Approval/continue/abandon retain the
 original requester; stop permits that requester and currently operational
 members. GUI/CLI can continue the same saved Run without changing its requester.
 
-Received group text is public background and creates no Run until explicitly
-woken. The trigger fixes its background cutoff. Display names, forwards,
-quotations and summaries cannot supply identity or approval. GUI shows recent
-unassociated background separately from execution turns. Replies stay bound to
-the original app, tenant/chat and Run when clients change selected conversations.
+Untriggered group text is discarded before full inbound persistence by default.
+Authenticated management can opt a group into 24-hour bounded text-only
+background; it is a per-topic ephemeral reference, not transcript, summary or
+Memory. Its body is omitted from persistent model Attempt requests. Turning
+retention off clears temporary background. Older stored background is excluded
+from context and can be explicitly cleared in group settings. Backups follow
+their existing retention; already published replies remain ordinary records.
+The separate opt-in “reply all” treats admitted member messages as normal
+requests and does not enable background retention.
+
+Forum topics use verified is_forum/is_topic_message facts; an ordinary reply
+chain's thread ID does not create a topic. General sends omit thread ID.
+Conversations, commands, approvals and deliveries retain the originating topic.
+Bot/group authorization remains group-scoped. Group-readable resources may be
+disclosed to every member; topic context separation is not a privacy boundary.
+Migration retains the group space/history; only never-dispatched output with
+verifiable references may change target. Old cards/references pause; dispatched
+or UNKNOWN operations remain associated with their original target. Member
+status updates stop forbidden sends and recheck ordinary-member speaking rights.
+Display names, forwards, quotations and summaries are never identity or approval.
 
 Moving a local conversation into an external space requires the existing local
 publication confirmation. Visible local text is mirrored once into the public
@@ -93,8 +109,11 @@ scope in bounded batches; private tool bodies and synthetic command prompts
 remain excluded. Original records are retained.
 
 Callbacks verify the exact confirmation, original requester, target, bot/card
-message, current grants, expiry and pending state. Product settings are confirmed
-locally. Reconnecting invalidates volatile buttons; GUI/CLI can handle the
+message, current grants, expiry and pending state. A per-Bot numeric confirmer
+roster, managed only through authenticated settings, permits private confirmation
+of a configured model or one already-selected extension option. It grants no
+chat/tool permission. Other settings still use management. Confirmation performs
+no extra model request and takes effect next Run. Reconnecting invalidates old buttons; GUI/CLI can handle the
 existing pending operation. There are no chat confirmation codes.
 
 ## Platform matrix

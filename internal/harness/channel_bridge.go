@@ -26,6 +26,7 @@ type ChannelBridge struct {
 	connections                map[string]*channelConnection
 	coreID, generation, origin string
 	dispatch                   ChannelDispatch
+	lastRetention              time.Time
 }
 type channelConnection struct {
 	diagnostic   channelDiagnostic
@@ -134,7 +135,12 @@ func (b *ChannelBridge) Configure() error {
 			if err != nil {
 				return "", err
 			}
-			op := channelwire.Operation{Kind: "file", Target: channelwire.Target(target), Reply: reply, Name: ref.Name, AttachmentID: ref.ID, ConversationID: space.ActiveConversationID}
+			_ = space
+			chat, err := b.tasks.ChannelConversation(ctx, target)
+			if err != nil {
+				return "", err
+			}
+			op := channelwire.Operation{Kind: "file", Target: channelwire.Target(target), Reply: reply, Name: ref.Name, AttachmentID: ref.ID, ConversationID: chat}
 			result, err := b.perform(ctx, c.ID, op)
 			if isChannelQueued(err) {
 				return result.ID, err
@@ -201,6 +207,9 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 	}
 	conn.inboundMu.Lock()
 	defer conn.inboundMu.Unlock()
+	if event.Lifecycle != nil {
+		return b.telegramLifecycle(ctx, id, event)
+	}
 	conn.flightMu.Lock()
 	conn.currentEvent = event.ID
 	conn.flightMu.Unlock()
@@ -240,12 +249,35 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 	if event.Reaction != nil {
 		return b.recordReaction(ctx, id, event)
 	}
+	if event.Target.Source == SpaceSourceTelegram {
+		if err := b.tasks.retireChannelWaits(ctx, e.Target); err != nil {
+			return err
+		}
+	}
 	// Discard unrequested group text before the full inbound intent or media
 	// can be persisted. Retention is an explicit per-group policy, not implied
 	// by Telegram privacy mode or by admission.
 	if event.Kind == "group" && !event.Trigger && event.Callback == "" {
-		b.observe(id, event.Target.ChatID, "background_ignored", 1)
-		return nil
+		if event.Target.Source != SpaceSourceTelegram {
+			b.observe(id, event.Target.ChatID, "background_ignored", 1)
+			return nil
+		}
+		policy, err := b.tasks.TelegramGroup(ctx, e.Target)
+		if err != nil {
+			return err
+		}
+		if policy.ReplyAll && validTelegramPerson(e.Person) {
+			e.Trigger, event.Trigger = true, true
+		} else if policy.SaveBackground {
+			if err = b.tasks.saveTelegramBackground(ctx, e, event.ID); err != nil {
+				return err
+			}
+			b.observe(id, event.Target.ChatID, "background_saved", 1)
+			return nil
+		} else {
+			b.observe(id, event.Target.ChatID, "background_ignored", 1)
+			return nil
+		}
 	}
 	b.observe(id, event.Target.ChatID, "triggered", 1)
 	return b.acceptInbound(ctx, conn, id, event, e)

@@ -14,14 +14,15 @@ import (
 // ContextSource is Core provenance, never a Provider message field. References
 // are local to a conversation and exposed only after input adoption.
 type ContextSource struct {
-	Through  string `json:"through,omitempty"`
-	Count    int    `json:"count,omitempty"`
-	Ref      string `json:"ref,omitempty"`
-	Revision string `json:"revision,omitempty"`
-	Part     string `json:"part"`
-	RunID    string `json:"run_id,omitempty"`
-	Bytes    int    `json:"source_bytes,omitempty"`
-	Folded   bool   `json:"folded,omitempty"`
+	Ephemeral bool   `json:"ephemeral,omitempty"`
+	Through   string `json:"through,omitempty"`
+	Count     int    `json:"count,omitempty"`
+	Ref       string `json:"ref,omitempty"`
+	Revision  string `json:"revision,omitempty"`
+	Part      string `json:"part"`
+	RunID     string `json:"run_id,omitempty"`
+	Bytes     int    `json:"source_bytes,omitempty"`
+	Folded    bool   `json:"folded,omitempty"`
 }
 
 func (service *Service) legacyToolEvidence(ctx context.Context, run string, message *ModelMessage) error {

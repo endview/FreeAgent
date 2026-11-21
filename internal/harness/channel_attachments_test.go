@@ -11,7 +11,7 @@ import (
 
 func TestChannelFilesNoneBackgroundSelectionAndReplyExport(t *testing.T) {
 	tasks, _, _, _ := attachmentFixture(t, nil, nil)
-	target := ChannelTarget{SpaceSourceTelegram, "1", "-90"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "-90"}
 	space, err := tasks.PairChannel(t.Context(), target, "group", "files")
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestChannelFilesNoneBackgroundSelectionAndReplyExport(t *testing.T) {
 }
 func TestChannelFileUnknownNeverResendsAndDoesNotPublish(t *testing.T) {
 	tasks, _, _, _ := attachmentFixture(t, nil, nil)
-	target := ChannelTarget{SpaceSourceTelegram, "1", "90"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"}
 	space, err := tasks.PairChannel(t.Context(), target, "private", "files")
 	if err != nil {
 		t.Fatal(err)

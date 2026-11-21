@@ -42,6 +42,7 @@ type Event struct {
 
 type Service struct {
 	controlProposalScope func(context.Context, Run, string, json.RawMessage) error
+	requestReferences    func(context.Context, Run) ([]ModelMessage, error)
 
 	extensionTrigger *ExtensionTrigger
 	analysisOnly     bool

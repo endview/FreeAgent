@@ -14,6 +14,13 @@ func (service *Service) prepareContextRequest(ctx context.Context, run Run, requ
 	if err != nil {
 		return request, err
 	}
+	if service.requestReferences != nil {
+		references, err := service.requestReferences(ctx, run)
+		if err != nil {
+			return request, err
+		}
+		prepared.Messages = append(prepared.Messages, references...)
+	}
 	additions := append([]ModelMessage(nil), prepared.Messages[baseCount:]...)
 	uses := prepared.Extensions
 	rawMessages := append([]ModelMessage(nil), prepared.Messages...)

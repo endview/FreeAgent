@@ -70,7 +70,7 @@ func TestTelegramAccessIdentityScopeExpiryAndRevocation(t *testing.T) {
 		t.Fatal("stranger created space")
 	}
 	admitTelegramFixture(t, r, 90, 7, "private")
-	target := ChannelTarget{SpaceSourceTelegram, "1", "90"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"}
 	if _, err := tasks.CheckTelegramAccess(ctx, target, "telegram:user:8"); !errors.Is(err, ErrPermissionDenied) {
 		t.Fatal("same name/other person admitted", err)
 	}
@@ -99,7 +99,7 @@ func TestTelegramRequestsBoundedDeduplicatedAndNotBearer(t *testing.T) {
 	tasks := NewTaskService(service)
 	service.Store.telegramIdentity("1")
 	now := time.Now().UTC()
-	e := channelEvent{Target: ChannelTarget{SpaceSourceTelegram, "1", "90"}, Person: "telegram:user:7", Kind: "private", Name: "same"}
+	e := channelEvent{Target: ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"}, Person: "telegram:user:7", Kind: "private", Name: "same"}
 	r, notify, err := tasks.requestTelegramAccess(e, now)
 	if err != nil || !notify || len(r.Code) != 8 {
 		t.Fatal(r, notify, err)
@@ -143,7 +143,7 @@ func TestTelegramRequestsBoundedDeduplicatedAndNotBearer(t *testing.T) {
 func TestTelegramGroupAdmissionPrecedesHistoryMediaAndDoesNotGrantTools(t *testing.T) {
 	r, tasks, store, _, _ := telegramRuntimeFixture(t, EchoModel{})
 	admitTelegramFixture(t, r, -100, 7, "supergroup")
-	target := ChannelTarget{SpaceSourceTelegram, "1", "-100"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "-100"}
 	space, _ := tasks.ChannelSpace(t.Context(), target)
 	denied := telegramMessageUpdate(2, 11, -100, 8, "UNADMITTED_BODY", "supergroup")
 	if err := r.HandleUpdate(t.Context(), denied); err != nil {
@@ -196,7 +196,7 @@ func TestTelegramRevocationCancelsOriginalTaskServiceAndBlocksOutput(t *testing.
 	case <-time.After(2 * time.Second):
 		t.Fatal("model never started")
 	}
-	grantTelegramFixture(t, tasks, TelegramAccessChange{Target: ChannelTarget{SpaceSourceTelegram, "1", "90"}, Kind: "private", Enabled: false, Members: []string{"telegram:user:7"}})
+	grantTelegramFixture(t, tasks, TelegramAccessChange{Target: ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"}, Kind: "private", Enabled: false, Members: []string{"telegram:user:7"}})
 	select {
 	case <-cancelled:
 	case <-time.After(2 * time.Second):
@@ -224,7 +224,7 @@ func TestTelegramNoneManualCompactionUsesOnlyPublicHistoryAndIsNoopWhenRepeated(
 		return ModelResponse{Content: strings.Repeat("public chat fact; ", 40)}, nil
 	}))
 	admitTelegramFixture(t, r, 90, 7, "private")
-	space, _ := tasks.ChannelSpace(t.Context(), ChannelTarget{SpaceSourceTelegram, "1", "90"})
+	space, _ := tasks.ChannelSpace(t.Context(), ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"})
 	snapshot, _ := tasks.core.snapshot()
 	admin, _, err := store.CreateRun(t.Context(), space.DefaultConversationID, "admin-private", "PRIVATE_ADMIN_PROMPT", snapshot)
 	if err != nil {
@@ -264,7 +264,7 @@ func TestTelegramCompactionResultRetainsTheActualGroupRequester(t *testing.T) {
 		return ModelResponse{Content: "public reply"}, nil
 	}))
 	tasks := NewTaskService(service)
-	target := ChannelTarget{SpaceSourceTelegram, "1", "-100"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "-100"}
 	grant := grantTelegramFixture(t, tasks, TelegramAccessChange{Target: target, Kind: "group", Enabled: true, Members: []string{"telegram:user:7", "telegram:user:8"}})
 	for i := range 3 {
 		input, err := tasks.ReceiveChannelText(t.Context(), ChannelMessageSource{ChannelTarget: target, PersonID: "telegram:user:7", MessageID: fmt.Sprint(i + 1), Purpose: "request"}, strings.Repeat("public group fact; ", 50))
@@ -293,7 +293,7 @@ func TestTelegramInvisibleCommandsDoNotConsumeEffectiveContextOrTriggerSummary(t
 	}))
 	service.Config.HistoryPageSize = 4
 	tasks := NewTaskService(service)
-	target := ChannelTarget{SpaceSourceTelegram, "1", "90"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "1", ChatID: "90"}
 	grantTelegramFixture(t, tasks, TelegramAccessChange{Target: target, Kind: "private", Enabled: true, Members: []string{"telegram:user:7"}})
 	for i := range 50 {
 		_, err := tasks.ReceiveChannelText(t.Context(), ChannelMessageSource{ChannelTarget: target, PersonID: "telegram:user:7", MessageID: fmt.Sprint(i + 1), Purpose: "command"}, "/status")

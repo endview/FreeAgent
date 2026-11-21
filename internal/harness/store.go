@@ -554,7 +554,7 @@ func (store *Store) createRunWithTool(ctx context.Context, conversationID, reque
 		}
 		// Receipt and Run association commit atomically. The received message
 		// already exists; never append a second trigger or execute a duplicate.
-		updated, err := tx.ExecContext(ctx, `UPDATE fa.messages SET run_id=$1 WHERE id=$2 AND conversation_id=$3 AND request_key=$4 AND run_id IS NULL`,
+		updated, err := tx.ExecContext(ctx, `UPDATE fa.messages SET run_id=$1,body_json=jsonb_set(body_json,'{Deferred}','false'::jsonb,true) WHERE id=$2 AND conversation_id=$3 AND request_key=$4 AND run_id IS NULL`,
 			result.ID, origin.InputMessageID, conversationID, requestKey)
 		if err != nil {
 			return Run{}, false, err
@@ -1094,6 +1094,15 @@ func (store *Store) startGuardedModel(ctx context.Context, run Run, request stri
 		}
 	}
 	attempt.ModelID, attempt.ModelRevision = modelRequest.ModelID, modelRequest.ModelRevision
+	for i, m := range modelRequest.Messages {
+		if m.ContextSource != nil && m.ContextSource.Ephemeral {
+			modelRequest.Messages[i].Content = "[Ephemeral reference omitted from durable attempt; reacquire through the active authorized source.]"
+			modelRequest.Messages[i].Attachments = nil
+			modelRequest.Messages[i].Images = nil
+			request = string(mustJSON(modelRequest))
+		}
+	}
+	attempt.RequestJSON = request
 	if guard != nil {
 		if err := guard.Reserve(ctx, tx, attempt); err != nil {
 			return Attempt{}, err

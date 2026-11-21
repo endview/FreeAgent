@@ -163,7 +163,7 @@ func TestChannelLocalContinuationPublishesPromptWithoutPrivateToolHistory(t *tes
 		return ModelResponse{Content: "public answer"}, nil
 	}))
 	tasks := NewTaskService(core)
-	target := ChannelTarget{SpaceSourceTelegram, "bot", "chat"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "bot", ChatID: "chat"}
 	space, err := tasks.PairChannel(t.Context(), target, "private", "external")
 	if err != nil {
 		t.Fatal(err)
@@ -294,7 +294,7 @@ func TestMovePublishesConfirmedLocalTextWithoutToolBodiesOrDuplicates(t *testing
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	target := ChannelTarget{SpaceSourceTelegram, "bot", "chat"}
+	target := ChannelTarget{Source: SpaceSourceTelegram, ApplicationID: "bot", ChatID: "chat"}
 	space, err := tasks.PairChannel(t.Context(), target, "group", "published")
 	if err != nil {
 		t.Fatal(err)

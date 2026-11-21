@@ -82,10 +82,10 @@ func (tasks *TaskService) stickerSets(ctx context.Context, target ChannelTarget,
 	if err != nil {
 		return StickerSets{}, err
 	}
-	if actual != target {
+	if actual != target.group() {
 		return StickerSets{}, ErrPermissionDenied
 	}
-	return readStickerSets(ctx, tasks.core.Store.db, space.ID, target)
+	return readStickerSets(ctx, tasks.core.Store.db, space.ID, target.group())
 }
 
 func (service *ControlService) buildStickerSets(ctx context.Context, record *controlRecord) error {

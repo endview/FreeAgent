@@ -280,7 +280,7 @@ func validReactionMessage(id string) bool {
 func (tasks *TaskService) reactionTarget(ctx context.Context, connection string, target ChannelTarget, chat, ref string) (ReactionTarget, error) {
 	result := ReactionTarget{Ref: ref}
 	_, actual, err := tasks.stickerSpace(ctx, chat)
-	if err != nil || actual != target {
+	if err != nil || actual != target.group() {
 		return result, ErrPermissionDenied
 	}
 	kind, id, ok := strings.Cut(ref, ":")

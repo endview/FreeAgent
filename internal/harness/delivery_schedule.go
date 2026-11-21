@@ -93,6 +93,12 @@ func (tasks *TaskService) checkChannelRunDestination(ctx context.Context, run Ru
 		return err
 	}
 	current, ok := channelTarget(space)
+	if ok {
+		current, err = channelConversationTarget(ctx, tasks.core.Store.db, run.ConversationID, current)
+		if err != nil {
+			return err
+		}
+	}
 	if !ok || current != target {
 		return ErrConversationSpace
 	}

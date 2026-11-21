@@ -10,6 +10,7 @@ import (
 )
 
 var ErrInputTargetEnded = errors.New("harness: steering target has ended; input retained, no new task started")
+var ErrInputQueueFull = errors.New("harness: at most 20 pending inputs per conversation; input was not accepted")
 var ErrInputPending = errors.New("harness: user steering must be adopted before dispatch")
 var ErrQueuePaused = errors.New("harness: input queue is paused; inspect and resume explicitly")
 var ErrInputNotPending = errors.New("harness: input has already been sent or cancelled; inspect its saved state")
@@ -233,7 +234,7 @@ func (tasks *TaskService) acceptInput(ctx context.Context, chat string, command 
 		return input, err
 	}
 	if count >= 20 {
-		return input, errors.New("harness: at most 20 pending inputs per conversation; input was not accepted")
+		return input, ErrInputQueueFull
 	}
 	message := ModelMessage{Kind: messageUser, Role: "user", Content: command.Prompt, Attachments: refs, Deferred: true, Public: options.channel != nil}
 	if options.channel != nil {

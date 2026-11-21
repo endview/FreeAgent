@@ -4,9 +4,9 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The published development release is **v9.0.0-dev.1**, deployed to Hytron. See the
-[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.1)
-and [W1 validation](docs/VALIDATION_V9_W1_2026-11-22.md). It adds channel reception diagnostics and discards unsolicited group background before persistence; Core and the channel program must both use wire v4. Forum topics and settings confirmation remain in progress.
+The published development release is **v9.0.0-dev.2**, deployed to Hytron. See the
+[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.2)
+and [W2 validation](docs/VALIDATION_V9_W2_2026-11-22.md). It adds scoped private Telegram settings confirmation and a per-Bot confirmer roster, with no extra model request on approval. W1 reception diagnostics and background privacy remain. Core and the channel program both use wire v4; group/topic work continues toward v9.
 It includes the search release and optional
 [Browser and Windows Computer Use previews](docs/AUTOMATION_EXTENSIONS.md),
 distributed as separate extensions without browser/desktop runtime dependencies

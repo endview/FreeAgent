@@ -4,6 +4,7 @@ import { clearFormDraft } from "@/lib/drafts";
 import { loadNavigation } from "@/lib/store/runtime";
 import { Button } from "@/components/ui/button";
 import { Choice } from "@/components/Choice";
+import { TelegramGroupPolicy } from "./TelegramGroupPolicy";
 import {
   Field,
   Loading,
@@ -54,6 +55,8 @@ const diagnosticLabels: Record<string, string> = {
   delivery_sent: "确认已送达",
   delivery_failed: "投递明确失败",
   delivery_unknown: "投递结果未知",
+  queue_full: "队列已满，输入未采用",
+  background_saved: "临时背景已保存（24 小时）",
 };
 
 // Keep diagnostics inside the existing connection section: same type, spacing,
@@ -908,6 +911,7 @@ function AccessGrant({
         {grant.enabled ? "已允许" : "已停用"}
       </h3>
       <p className="form-hint">空间权限：{grant.space_permission || "none"}</p>
+      {grant.kind === "group" && <TelegramGroupPolicy target={grant.target} />}
       <Field label="允许的人员 ID（每行 telegram:user:数字）">
         <textarea
           rows={3}

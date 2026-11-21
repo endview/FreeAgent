@@ -105,9 +105,16 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 				continue
 			}
 			e, ok := channels.TelegramEventFromUpdate(u, bot)
+			if ok && e.Lifecycle != nil && e.Lifecycle.Kind == "membership" && (e.Lifecycle.Status == "member" || e.Lifecycle.Status == "restricted") {
+				allowed, readErr := api.GroupCanSend(ctx, e.ChatID)
+				if readErr != nil {
+					return errors.New("channel: current group speaking permission could not be verified")
+				}
+				e.Lifecycle.CanSend = e.Lifecycle.CanSend && allowed
+			}
 			target := channelwire.Target{}
 			if e.ChatID != 0 {
-				target = channelwire.Target{Source: "telegram", ApplicationID: e.ApplicationID, ChatID: messageID(e.ChatID)}
+				target = channelwire.Target{Source: "telegram", ApplicationID: e.ApplicationID, ChatID: messageID(e.ChatID), ThreadID: e.ThreadID}
 			}
 			if err := c.Observe(ctx, channelwire.Observation{Target: target, Stage: "received", Count: 1}); err != nil {
 				return err
@@ -132,7 +139,7 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 				if e.ChatKind == "private" {
 					kind = "private"
 				}
-				event := channelwire.Event{ID: strconv.FormatInt(u.ID, 10), Target: channelwire.Target{Source: "telegram", ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10)}, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: kind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo}
+				event := channelwire.Event{ID: strconv.FormatInt(u.ID, 10), Target: target, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: kind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo, Lifecycle: e.Lifecycle}
 				event.Sticker, event.Reaction = e.Sticker, e.Reaction
 				var acceptance channelwire.Acceptance
 				for {
@@ -180,7 +187,7 @@ func telegramSend(ctx context.Context, api *channels.TelegramAPI, op channelwire
 		if op.Sticker == nil {
 			return channelwire.Receipt{State: "failed"}
 		}
-		id, err := api.SendSticker(ctx, chat, reply, op.Sticker.FileID)
+		id, err := api.SendSticker(ctx, chat, reply, op.Sticker.FileID, op.Target.ThreadID)
 		r := receiptForError(err)
 		r.MessageID = messageID(id)
 		return r
@@ -209,13 +216,13 @@ func telegramSend(ctx context.Context, api *channels.TelegramAPI, op channelwire
 			}
 			keyboard = &channels.TelegramKeyboard{Rows: [][]channels.TelegramButton{row}}
 		}
-		id, fallback, err := api.SendFormatted(ctx, chat, reply, op.Text, op.Entities, keyboard)
+		id, fallback, err := api.SendFormatted(ctx, chat, reply, op.Text, op.Entities, keyboard, op.Target.ThreadID)
 		r := receiptForError(err)
 		r.PlainTextFallback = fallback
 		r.MessageID = messageID(id)
 		return r
 	case "file":
-		id, err := api.SendDocument(ctx, chat, reply, op.Name, op.Data)
+		id, err := api.SendDocument(ctx, chat, reply, op.Name, op.Data, op.Target.ThreadID)
 		r := receiptForError(err)
 		r.MessageID = messageID(id)
 		return r

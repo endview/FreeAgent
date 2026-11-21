@@ -67,7 +67,15 @@ func (store *Store) contextVisibility(ctx context.Context, chat, scope string) (
 	if err != nil {
 		return "", err
 	}
-	return contentHash(mustJSON([]any{"context-visibility", contextProjectionVersion, chat, c.SpaceID, scope})), nil
+	values := []any{"context-visibility", contextProjectionVersion, chat, c.SpaceID, scope}
+	var legacyBackground bool
+	if err = store.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM fa.messages WHERE conversation_id=$1 AND body_json#>>'{Channel,purpose}'='background')`, chat).Scan(&legacyBackground); err != nil {
+		return "", err
+	}
+	if legacyBackground {
+		values = append(values, "exclude-legacy-background/v9")
+	}
+	return contentHash(mustJSON(values)), nil
 }
 
 func (tasks *TaskService) contextReader(ctx context.Context, chat string) (*Service, error) {

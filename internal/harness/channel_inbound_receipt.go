@@ -89,11 +89,12 @@ func (b *ChannelBridge) acceptInbound(ctx context.Context, c *channelConnection,
 		}
 		space, err := b.tasks.ChannelSpace(ctx, e.Target)
 		if err == nil {
-			state.ConversationID = space.ActiveConversationID
-			if !space.MultiConversation {
-				state.ConversationID = space.DefaultConversationID
+			_ = space
+			state.ConversationID, err = b.tasks.ChannelConversation(ctx, e.Target)
+			if err != nil {
+				return err
 			}
-			run, err := scanRun(b.tasks.core.Store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1 AND `+activeRunPredicate+` LIMIT 1`, space.ActiveConversationID))
+			run, err := scanRun(b.tasks.core.Store.db.QueryRowContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE conversation_id=$1 AND `+activeRunPredicate+` LIMIT 1`, state.ConversationID))
 			if err == nil {
 				state.TargetRun = run.ID
 			} else if !errors.Is(err, sql.ErrNoRows) {
@@ -143,6 +144,9 @@ func (b *ChannelBridge) acceptInbound(ctx context.Context, c *channelConnection,
 		err = nil
 	}
 	if err != nil {
+		if errors.Is(err, ErrInputQueueFull) {
+			b.observe(id, event.Target.ChatID, "queue_full", 1)
+		}
 		if errors.Is(err, ErrActiveRun) || errors.Is(err, ErrPermissionDenied) || errors.Is(err, ErrPermissionRevoked) || errors.Is(err, ErrInvalidSpace) || errors.Is(err, errChannelInputRejected) || errors.Is(err, ErrInputTargetEnded) || errors.Is(err, ErrApprovalChanged) {
 			state.State = "rejected"
 		} else {

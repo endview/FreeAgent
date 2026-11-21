@@ -112,11 +112,14 @@ func (api *TelegramAPI) StickerSet(ctx context.Context, name string, offset, lim
 	return page, nil
 }
 
-func (api *TelegramAPI) SendSticker(ctx context.Context, chat, reply int64, fileID string) (int64, error) {
+func (api *TelegramAPI) SendSticker(ctx context.Context, chat, reply int64, fileID string, thread ...string) (int64, error) {
 	if chat == 0 || reply < 0 || !validID(fileID) {
 		return 0, errors.New("telegram: invalid sticker target or file")
 	}
 	input := map[string]any{"chat_id": chat, "sticker": fileID}
+	if err := telegramThread(input, thread); err != nil {
+		return 0, err
+	}
 	if reply > 0 {
 		input["reply_parameters"] = map[string]int64{"message_id": reply}
 	}
