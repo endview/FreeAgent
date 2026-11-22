@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -161,6 +162,7 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 		if binary := os.Getenv("FREEAGENT_TEST_CHANNEL_BINARY"); binary != "" {
 			command := exec.CommandContext(ctx, binary, "--bootstrap-file", bootstrap, "--state-dir", state)
 			go func() {
+				defer close(done)
 				err := command.Run()
 				if ctx.Err() != nil {
 					err = ctx.Err()
@@ -169,7 +171,10 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 			}()
 			return cancel, done
 		}
-		go func() { done <- channelplugin.RunAll(ctx, []string{bootstrap}, state) }()
+		go func() {
+			defer close(done)
+			done <- channelplugin.RunAll(ctx, []string{bootstrap}, state)
+		}()
 		return cancel, done
 	}
 	cancel, done := start()
@@ -250,7 +255,7 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 		t.Fatal("lost ACK reexecuted model", calls.Load())
 	}
 	cancel()
-	if err := <-done; err != nil && err != context.Canceled {
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	cancel, done = start()
@@ -339,7 +344,7 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 		t.Fatal("refusal receipt missing or retained input body", rejected, leaked, err)
 	}
 	cancel()
-	if err := <-done; err != nil && err != context.Canceled {
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	beforeRestart := heldAttempts.Load()
