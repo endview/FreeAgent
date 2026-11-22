@@ -235,6 +235,7 @@
     "space.set_active": "spaces",
     "space.set_default": "spaces",
     "space.set_multi": "spaces",
+    "space.set_capabilities": "spaces",
     "space.set_permission": "spaces",
     "telegram.set_access": "channels",
     "telegram.set_sticker_sets": "conversation",

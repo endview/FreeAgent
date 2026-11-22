@@ -27,6 +27,9 @@ func TestTelegramAccessRequiresInteractiveSurfaceAndUsesOwnerLifetime(t *testing
 	if bridge == nil {
 		t.Fatal("configured connection did not create a Core bridge")
 	}
+	if err := bridge.RegisterCapabilities(connection.ID, channelwire.Capabilities{Version: channelwire.Version, Format: "plain/1", Actions: []string{"prepare_text", "text"}, Buttons: true}); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan struct{})
