@@ -9,3 +9,9 @@
 - 最终提交的 Windows/Linux 各两次干净构建一致，两端便携包通过。隔离 Debian 12 最终渠道、网页读取、上下文压缩及未决行为竞态回归通过。第一次 Linux 候选的旧接入测试失败已保留记录，未使用第一次候选发布。Windows 桌面窗口实测未做。
 - GitHub 五份附件摘要与本地一致。Hytron 配对更新后两 unit、wire v4、Telegram 轮询、doctor 和公网 HTTPS/CSP 正常；对话、Run、消息、Attempt、权限元数据及受保护配置核对一致。没有改权限、能力选择或 AffectWeave 设置，也没有发送真人测试消息。
 - 真人私聊、群、论坛话题、双账号跨成员确认：NOT_RUN，正式 v9.0.0 未发布。
+
+## dev.6：Telegram 停收修复
+
+- Telegram 群更新携带负数 `chat_id`。连接器沿用了仅处理正数 `message_id` 的函数，导致该更新被 Core 拒绝，后面的群聊、私聊都无法推进。隔离 PG 和模拟 Telegram 复现旧版队首重试；修复后队首群状态落库，后续私聊通过，命名话题回复在原话题取得发送回执。保留丢失确认与重启后的去重检查。
+- Windows、Debian 发行包中实际连接器通过回归；各两次干净构建一致，便携包和隔离 Debian 竞态检查通过。[dev.6](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.6) 五份附件摘要已验证，Hytron 已更新到 `a763f6dcad5a`。
+- 生产先验证备份和旧数据一致，再启用新连接器。原游标正常推进，6 条平台积压从已有更新中处理完；确认新建私聊、群聊各 1 个已完成 Run，并分别有 Telegram 发送回执。没有另外发出测试消息、改准入或调整 AffectWeave。该结果只验证故障恢复，不计为真人话题、跨账号确认或完整工具验收。

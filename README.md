@@ -4,9 +4,9 @@ A small local harness for persistent conversations and model-driven file work.
 One CLI, one model/tool loop, one PostgreSQL store. Built-in file tools work without
 installing an MCP server. An optional loopback Chat uses the same TaskService.
 
-The published development release is **v9.0.0-dev.5**, deployed to Hytron. See the
-[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.5)
-and [W5 validation](docs/VALIDATION_V9_W5_2026-11-22.md). The paired Core and channel programs use wire v4. Telegram supports group topics and scoped settings confirmation. Public-page read failures no longer stop other reads, and confirmed Telegram rate limits survive restarts. Live group and two-account acceptance is still required for v9.0.0.
+The published development release is **v9.0.0-dev.6**, deployed to Hytron. See the
+[Windows / Linux downloads](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.6)
+and [W5 validation and Telegram hotfix](docs/VALIDATION_V9_W5_2026-11-22.md). The paired Core and channel programs use wire v4. The hotfix restores processing when a signed Telegram group ID is at the front of the Bot's update queue. Live topic and two-account acceptance is still required for v9.0.0.
 It includes the search release and optional
 [Browser and Windows Computer Use previews](docs/AUTOMATION_EXTENSIONS.md),
 distributed as separate extensions without browser/desktop runtime dependencies
