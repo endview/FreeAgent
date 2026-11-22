@@ -126,12 +126,14 @@ func publicRoute(path, method string) (string, bool) {
 		"/api/server":                   "GET PUT", "/api/providers": "PUT", "/api/attachment-policy": "GET PUT", "/api/attachments": "GET POST", "/api/attachments/reply": "POST", "/api/attachments/delete": "POST",
 		"/api/keys": "GET POST", "/api/keys/test": "POST", "/api/models/enable": "POST", "/api/models/enable-batch": "POST", "/api/models/default": "POST", "/api/models/vision": "POST", "/api/models/context": "POST",
 		"/api/channels": "GET PATCH", "/api/mcp": "GET POST", "/api/skills": "GET POST", "/api/extensions": "GET POST", "/api/commands/catalog": "GET",
-		"/api/mcp/import": "POST", "/api/mcp/restart": "POST", "/api/skills/trust": "POST", "/api/extensions/trust": "POST", "/api/control/reconcile-extension": "POST",
-		"/api/channels/telegram/access": "GET POST",
+		"/api/channels/credentials":      "GET POST",
+		"/api/channels/credentials/test": "POST",
+		"/api/mcp/import":                "POST", "/api/mcp/restart": "POST", "/api/skills/trust": "POST", "/api/extensions/trust": "POST", "/api/control/reconcile-extension": "POST",
+		"/api/channels/telegram/access":     "GET POST",
 		"/api/channels/telegram/confirmers": "GET POST",
-		"/api/channels/telegram/groups": "GET POST",
-		"/api/spaces/capabilities": "GET POST",
-		"/api/control/catalog":          "GET", "/api/control/config": "GET", "/api/control/state": "GET", "/api/control/operations": "GET", "/api/control/plan": "POST", "/api/control/confirmation": "GET", "/api/control/confirm": "POST", "/api/control/reject": "POST", "/api/control/revert-plan": "POST",
+		"/api/channels/telegram/groups":     "GET POST",
+		"/api/spaces/capabilities":          "GET POST",
+		"/api/control/catalog":              "GET", "/api/control/config": "GET", "/api/control/state": "GET", "/api/control/operations": "GET", "/api/control/plan": "POST", "/api/control/confirmation": "GET", "/api/control/confirm": "POST", "/api/control/reject": "POST", "/api/control/revert-plan": "POST",
 	}
 	if methods, ok := allowed[path]; ok {
 		return path, strings.Contains(" "+methods+" ", " "+method+" ")
@@ -245,6 +247,7 @@ func (p *PublicServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/api/public/login" && r.Method == "POST" {
 		var body struct {
+			Username string `json:"username"`
 			Password string `json:"password"`
 		}
 		if !readPublicBody(w, r, &body) {
@@ -253,7 +256,7 @@ func (p *PublicServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		secret := []byte(body.Password)
 		body.Password = ""
 		defer clear(secret)
-		value, session, err := p.auth.Login(r.Context(), source, r.UserAgent(), cookieValue(r, publicweb.DetectionCookie), secret)
+		value, session, err := p.auth.Login(r.Context(), source, r.UserAgent(), cookieValue(r, publicweb.DetectionCookie), body.Username, secret)
 		setPublicCookie(w, publicweb.DetectionCookie, "", -1)
 		if err != nil {
 			p.local.writeError(w, 401, "login_failed", "登录失败，请重新打开登录表单后重试。")
@@ -281,6 +284,59 @@ func (p *PublicServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.local.writeJSON(w, 200, p.auth.State())
 		return
 	}
+	if r.URL.Path == "/api/public/account" && r.Method == "GET" {
+		account, sessions := p.auth.AccountSessions(s)
+		p.local.writeJSON(w, 200, map[string]any{"account": account, "sessions": sessions})
+		return
+	}
+	if r.URL.Path == "/api/public/account" && r.Method == "PUT" {
+		var body struct {
+			Username string `json:"username"`
+		}
+		if !readPublicBody(w, r, &body) {
+			return
+		}
+		if err := p.auth.Rename(s, source, body.Username); err != nil {
+			p.local.adminDecisionFailure(w, err)
+			return
+		}
+		setPublicCookie(w, publicweb.SessionCookie, "", -1)
+		p.local.writeJSON(w, 200, map[string]bool{"saved": true, "reauthenticate": true})
+		return
+	}
+	if r.URL.Path == "/api/public/revoke-session" && r.Method == "POST" {
+		var body struct {
+			ID string `json:"id"`
+		}
+		if !readPublicBody(w, r, &body) {
+			return
+		}
+		if err := p.auth.RevokeSession(s, source, body.ID); err != nil {
+			p.local.adminDecisionFailure(w, err)
+			return
+		}
+		if body.ID == s.ID {
+			setPublicCookie(w, publicweb.SessionCookie, "", -1)
+		}
+		p.local.writeJSON(w, 200, map[string]bool{"revoked": true, "reauthenticate": body.ID == s.ID})
+		return
+	}
+	if r.URL.Path == "/api/public/reauthenticate" && r.Method == "POST" {
+		var body struct {
+			Password string `json:"password"`
+		}
+		if !readPublicBody(w, r, &body) {
+			return
+		}
+		password := []byte(body.Password)
+		defer clear(password)
+		if err := p.auth.Reauthenticate(s, source, password); err != nil {
+			p.local.writeError(w, 403, "verification_failed", "密码验证未通过。请核对密码或稍后重试。")
+			return
+		}
+		p.local.writeJSON(w, 200, map[string]bool{"verified": true})
+		return
+	}
 	if r.URL.Path == "/api/public/password" && r.Method == "POST" {
 		var body struct{ Current, Password string }
 		if !readPublicBody(w, r, &body) {
@@ -290,11 +346,11 @@ func (p *PublicServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body.Current, body.Password = "", ""
 		defer clear(current)
 		defer clear(next)
-		if err := p.auth.ChangePassword(current, next); err != nil {
+		if err := p.auth.ChangePassword(s, source, current, next); err != nil {
 			p.local.writeError(w, 400, "password", err.Error())
 			return
 		}
-		p.auth.Refresh()
+		setPublicCookie(w, publicweb.SessionCookie, "", -1)
 		p.local.writeJSON(w, 200, map[string]bool{"saved": true, "reauthenticate": true})
 		return
 	}
@@ -316,9 +372,13 @@ func (p *PublicServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		stop := context.AfterFunc(s.Context(), cancel)
 		defer stop()
 	}
-	ctx = context.WithValue(ctx, publicRequestKey{}, publicRequest{s, source})
-	ctx = harness.WithPublicEntry(ctx, "public:"+s.ID, source)
-	ctx = harness.WithAttachmentIdentity(ctx, "public:"+s.ID)
+	bind := func(parent context.Context) context.Context {
+		parent = harness.WithPublicAdministrator(parent, "public:"+s.ID, source, s.AccountID, func(recent bool) (func(), error) {
+			return p.auth.BeginDecision(s, source, recent)
+		})
+		return harness.WithAttachmentIdentity(parent, "public:"+s.ID)
+	}
+	ctx = context.WithValue(bind(ctx), publicRequestKey{}, publicRequest{s, source})
 	r = r.Clone(ctx)
 	u := *r.URL
 	u.Path = path
@@ -334,7 +394,7 @@ func (p *PublicServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		defer s.ReleaseRead()
 	}
-	writer := &publicWriter{ResponseWriter: w, session: s, execution: harness.WithAttachmentIdentity(harness.WithPublicEntry(p.local.ctx, "public:"+s.ID, source), "public:"+s.ID)}
+	writer := &publicWriter{ResponseWriter: w, session: s, execution: bind(p.local.ctx)}
 	deadlineStop := context.AfterFunc(s.Context(), func() {
 		controller := http.NewResponseController(w)
 		_ = controller.SetReadDeadline(time.Now())
@@ -358,6 +418,14 @@ func readPublicBody(w http.ResponseWriter, r *http.Request, out any) bool {
 		return false
 	}
 	return true
+}
+
+func (server *Server) adminDecisionFailure(w http.ResponseWriter, err error) {
+	if errors.Is(err, harness.ErrPublicReauthentication) {
+		server.writeError(w, 403, "reauthentication_required", "此操作需要重新验证当前密码。未保存设置。")
+		return
+	}
+	server.writeError(w, 400, "account", err.Error())
 }
 
 type publicWriter struct {
@@ -395,8 +463,12 @@ func (server *Server) executionContext(w http.ResponseWriter) context.Context {
 
 // The local recovery surface is never part of the public allowlist.
 func (server *Server) publicSettingsAPI(w http.ResponseWriter, r *http.Request) bool {
-	if r.URL.Path != "/api/public-settings" && r.URL.Path != "/api/public-recovery" && r.URL.Path != "/api/public-password" {
+	if r.URL.Path != "/api/public-settings" && r.URL.Path != "/api/public-recovery" && r.URL.Path != "/api/public-password" && r.URL.Path != "/api/admin-account" {
 		return false
+	}
+	if r.URL.Path == "/api/admin-account" && r.Method == "GET" {
+		server.writeJSON(w, 200, publicweb.InspectAccount(server.tasks.DataDir()))
+		return true
 	}
 	if _, remote := publicRequestFrom(r.Context()); remote && r.URL.Path != "/api/public-settings" {
 		server.writeError(w, 403, "local_required", "此操作需要服务器本机入口。")
@@ -439,8 +511,10 @@ func (server *Server) publicSettingsAPI(w http.ResponseWriter, r *http.Request) 
 		server.writeJSON(w, 200, map[string]any{"config": config, "expected_revisions": settingsRevision(revisions, "config.public_web"), "credential_ready": publicweb.CredentialReady(server.tasks.DataDir()), "listener_active": active, "restart_required": restart})
 		return true
 	}
-	if r.URL.Path == "/api/public-password" && r.Method == "POST" {
+	if (r.URL.Path == "/api/public-password" || r.URL.Path == "/api/admin-account") && r.Method == "POST" {
 		var body struct {
+			Action   string `json:"action,omitempty"`
+			Username string `json:"username,omitempty"`
 			Password string `json:"password"`
 		}
 		if !readPublicBody(w, r, &body) {
@@ -449,17 +523,43 @@ func (server *Server) publicSettingsAPI(w http.ResponseWriter, r *http.Request) 
 		secret := []byte(body.Password)
 		body.Password = ""
 		defer clear(secret)
-		if err := publicweb.SetPassword(server.tasks.DataDir(), secret); err != nil {
-			server.fail(w, err)
-			return true
+		data := server.tasks.DataDir()
+		update := func() error {
+			if r.URL.Path == "/api/public-password" {
+				return publicweb.SetPassword(data, secret)
+			}
+			switch body.Action {
+			case "init":
+				_, err := publicweb.InitAccount(data, body.Username, secret)
+				return err
+			case "reset-password":
+				return publicweb.ResetPassword(data, secret)
+			default:
+				return errors.New("invalid administrator account action")
+			}
 		}
-		server.writeJSON(w, 200, map[string]bool{"saved": true})
 		server.mu.Lock()
 		p := server.public
 		server.mu.Unlock()
+		var err error
 		if p != nil {
-			p.auth.Refresh()
+			err = p.auth.UpdateLocalAccount(update)
+		} else {
+			err = update()
 		}
+		if err != nil {
+			server.adminDecisionFailure(w, err)
+			return true
+		}
+		status := publicweb.InspectAccount(data)
+		if status.Account != nil {
+			_ = server.tasks.AppendPublicSecurityEvent(r.Context(), harness.PublicSecurityEvent{At: time.Now().UTC().Format(time.RFC3339Nano), Source: "local:" + status.Account.ID, Reason: "administrator_credential_saved"})
+		}
+		server.writeJSON(w, 200, map[string]any{"saved": true, "account": status.Account})
+		return true
+	}
+	if r.URL.Path != "/api/public-recovery" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
 		return true
 	}
 	server.mu.Lock()

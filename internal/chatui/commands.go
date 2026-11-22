@@ -322,6 +322,11 @@ func (server *Server) updateComputerRoots(writer http.ResponseWriter, request *h
 }
 
 func (server *Server) runtimePolicyFailure(writer http.ResponseWriter, err error) {
+	if errors.Is(err, harness.ErrPublicLocalConfirmation) || errors.Is(err, harness.ErrPublicReauthentication) {
+		code, message := userError(err)
+		server.writeError(writer, http.StatusForbidden, code, message)
+		return
+	}
 	code, message := "runtime_reload_failed", "权限运行时配置未保存。"
 	switch {
 	case errors.Is(err, harness.ErrGenerationConflict):

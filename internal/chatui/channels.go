@@ -77,7 +77,7 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	source := strings.TrimPrefix(path, "channels/")
-	if source == "credentials" {
+	if source == "credentials" || source == "credentials/test" {
 		server.channelCredentials(w, r)
 		return true
 	}

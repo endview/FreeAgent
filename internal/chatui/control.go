@@ -83,6 +83,9 @@ func (server *Server) applyDirectControl(ctx context.Context, generation, conver
 	if err != nil {
 		return harness.ControlResult{}, err
 	}
+	if operation.LocalApproval {
+		return harness.ControlResult{Operation: operation}, &harness.LocalSettingsApproval{OperationID: operation.ID, ConversationID: operation.ConversationID}
+	}
 	capability, err := control.IssueInteractiveCapability(ctx, conversationID, harness.InteractivePrincipal(ctx, controlPrincipal))
 	if err != nil {
 		return harness.ControlResult{}, err
@@ -178,6 +181,9 @@ func (server *Server) applyDirectMCPControl(ctx context.Context, request harness
 	operation, err := control.PlanMCPProfileChange(ctx, request)
 	if err != nil {
 		return harness.ControlResult{}, err
+	}
+	if operation.LocalApproval {
+		return harness.ControlResult{Operation: operation}, &harness.LocalSettingsApproval{OperationID: operation.ID, ConversationID: operation.ConversationID}
 	}
 	capability, err := control.IssueInteractiveCapability(ctx, "", harness.InteractivePrincipal(ctx, controlPrincipal))
 	if err != nil {

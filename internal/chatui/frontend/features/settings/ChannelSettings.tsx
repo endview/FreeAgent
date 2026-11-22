@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, remote } from "@/lib/api/client";
+import { api, APIError, remote } from "@/lib/api/client";
 import { clearFormDraft } from "@/lib/drafts";
 import { loadNavigation } from "@/lib/store/runtime";
 import { Button } from "@/components/ui/button";
@@ -462,30 +462,17 @@ export default function ChannelSettings() {
                   />
                 </Field>
               </div>
-              {!remote && (
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() =>
-                    void perform(async () =>
-                      setKeys(await api<Credential[]>("channels/credentials")),
-                    )
-                  }
-                >
-                  读取渠道凭据列表
-                </Button>
-              )}
-              {remote && (
-                <Field label="已在本机保存的凭据 ID">
-                  <input
-                    required
-                    value={form.credential}
-                    onChange={(event) =>
-                      change({ ...form, credential: event.target.value })
-                    }
-                  />
-                </Field>
-              )}
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() =>
+                  void perform(async () =>
+                    setKeys(await api<Credential[]>("channels/credentials")),
+                  )
+                }
+              >
+                读取渠道凭据列表
+              </Button>
               {form.source === "qq" && (
                 <Field label="QQ 本机回调地址">
                   <input
@@ -524,17 +511,11 @@ export default function ChannelSettings() {
       ) : (
         <Loading error={resource.error} />
       )}
-      {!remote ? (
-        <ChannelCredentials
-          onChanged={async () =>
-            setKeys(await api<Credential[]>("channels/credentials"))
-          }
-        />
-      ) : (
-        <p className="form-hint">
-          渠道秘密在服务器本机独立保存，公网不会读取或显示。
-        </p>
-      )}
+      <ChannelCredentials
+        onChanged={async () =>
+          setKeys(await api<Credential[]>("channels/credentials"))
+        }
+      />
       <Result error={error} text={result} />
       {error && (
         <p className="form-hint">
@@ -547,11 +528,14 @@ export default function ChannelSettings() {
 function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
   const resource = useResource<Credential[]>("channels/credentials");
   const [form, change] = useFormDraft("channel-credential", {
+    id: "",
     name: "",
     protocol: "telegram",
     base_url: origins.telegram,
-    secret: "",
   });
+  const [secret, setSecret] = useState("");
+  const [tested, setTested] = useState("");
+  const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function perform(action: () => Promise<void>) {
@@ -562,6 +546,11 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
       await resource.reload();
       await onChanged();
     } catch (error) {
+      if (
+        error instanceof APIError &&
+        error.code === "reauthentication_required"
+      )
+        setSecret("");
       setError((error as Error).message);
     } finally {
       setBusy(false);
@@ -578,29 +567,63 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
           <span>
             {item.name} · {item.protocol}
           </span>
-          <Button
-            variant="ghost"
-            disabled={busy}
-            onClick={() => {
-              if (window.confirm("删除此渠道凭据？被连接引用时会拒绝。"))
-                void perform(async () => {
-                  await api("channels/credentials", {
-                    id: item.id,
-                    remove: true,
-                  });
+          {item.protocol === "telegram" && (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                setSecret("");
+                setTested("");
+                setSaved("");
+                change({
+                  id: item.id,
+                  name: item.name,
+                  protocol: "telegram",
+                  base_url: origins.telegram,
                 });
-            }}
-          >
-            删除
-          </Button>
+              }}
+            >
+              替换 Token
+            </Button>
+          )}
+          {(!remote || item.protocol === "telegram") && (
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm("删除此渠道凭据？被连接引用时会拒绝。"))
+                  void perform(async () => {
+                    await api("channels/credentials", {
+                      id: item.id,
+                      remove: true,
+                    });
+                  });
+              }}
+            >
+              删除
+            </Button>
+          )}
         </div>
       ))}
       <form
         onSubmit={(event) => {
           event.preventDefault();
           void perform(async () => {
-            await api("channels/credentials", { ...form, source: "saved" });
-            change({ ...form, secret: "" });
+            setSaved("");
+            await api("channels/credentials", {
+              ...form,
+              secret,
+              source: "saved",
+            });
+            setSecret("");
+            setTested("");
+            setSaved(form.id ? "Token 已替换。" : "凭据已保存。");
+            change({
+              id: "",
+              name: "",
+              protocol: form.protocol,
+              base_url: form.base_url,
+            });
             clearFormDraft("channel-credential");
           });
         }}
@@ -616,21 +639,24 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
               }
             />
           </Field>
-          <Field label="凭据平台">
-            <Choice
-              label="凭据平台"
-              value={form.protocol}
-              options={platforms}
-              onChange={(protocol) =>
-                change({ ...form, protocol, base_url: origins[protocol] })
-              }
-            />
-          </Field>
+          {!form.id && !remote && (
+            <Field label="凭据平台">
+              <Choice
+                label="凭据平台"
+                value={form.protocol}
+                options={platforms}
+                onChange={(protocol) =>
+                  change({ ...form, protocol, base_url: origins[protocol] })
+                }
+              />
+            </Field>
+          )}
           <Field label="平台 API 地址">
             <input
               required
               type="url"
               value={form.base_url}
+              readOnly={remote || Boolean(form.id)}
               onChange={(event) =>
                 change({ ...form, base_url: event.target.value })
               }
@@ -641,16 +667,63 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
               required
               type="password"
               autoComplete="new-password"
-              value={form.secret}
-              onChange={(event) =>
-                change({ ...form, secret: event.target.value })
-              }
+              value={secret}
+              onChange={(event) => {
+                setTested("");
+                setSaved("");
+                setSecret(event.target.value);
+              }}
             />
           </Field>
-          <Button type="submit">保存渠道凭据</Button>
+          <div className="provider-actions">
+            {form.protocol === "telegram" && (
+              <Button
+                variant="outline"
+                type="button"
+                disabled={!secret}
+                onClick={() =>
+                  void perform(async () => {
+                    const bot = await api<{
+                      application_id: string;
+                      username: string;
+                    }>("channels/credentials/test", { token: secret });
+                    setTested(
+                      (bot.username ? "@" + bot.username + " · " : "") +
+                        "Bot ID " +
+                        bot.application_id +
+                        " · 未保存",
+                    );
+                  })
+                }
+              >
+                核对 Bot
+              </Button>
+            )}
+            <Button type="submit">
+              {form.id ? "保存新 Token" : "保存渠道凭据"}
+            </Button>
+            {form.id && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setSecret("");
+                  setTested("");
+                  change({
+                    id: "",
+                    name: "",
+                    protocol: "telegram",
+                    base_url: origins.telegram,
+                  });
+                }}
+              >
+                取消替换
+              </Button>
+            )}
+          </div>
         </fieldset>
       </form>
-      <Result error={error || resource.error} />
+      <Result error={error || resource.error} text={saved || tested} />
     </section>
   );
 }

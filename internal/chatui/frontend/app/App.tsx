@@ -54,6 +54,7 @@ import ConversationPage from "@/features/conversations/ConversationPage";
 import { Choice } from "@/components/Choice";
 import { Navigation } from "@/features/conversations/Navigation";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { Reauthenticate } from "@/features/auth/Reauthenticate";
 import {
   ManagementProvider,
   ConversationMenu,
@@ -76,6 +77,7 @@ function WorkspaceApp() {
   const state = useRuntime();
   const [authenticated, setAuthenticated] = useState(!remote);
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("admin");
   const [loginError, setLoginError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const loginInFlight = useRef(false);
@@ -294,7 +296,7 @@ function WorkspaceApp() {
     const value = password;
     setPassword("");
     try {
-      const info = await login(value);
+      const info = await login(username, value);
       if (!info.authenticated) throw new Error("登录未完成。");
       setAuthenticated(true);
     } catch (error) {
@@ -477,6 +479,8 @@ function WorkspaceApp() {
   if (!authenticated)
     return (
       <LoginPage
+        username={username}
+        onUsernameChange={setUsername}
         password={password}
         onPasswordChange={setPassword}
         error={loginError}
@@ -498,6 +502,7 @@ function WorkspaceApp() {
       <a className="skip-link" href="#workspace-content" data-internal>
         跳到主内容
       </a>
+      {remote && <Reauthenticate />}
       <aside className="sidebar">{nav}</aside>
       <div className="sidebar-divider">
         <Divider

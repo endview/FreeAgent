@@ -62,7 +62,9 @@ func TestPublicPolicyConfirmationRejectsRaiseSelfBlockAndOtherSession(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := WithPublicEntry(t.Context(), "public:first", "192.0.2.1")
+	ctx := WithPublicAdministrator(t.Context(), "public:first", "192.0.2.1", "fixture-account", func(bool) (func(), error) {
+		return func() {}, nil
+	})
 	next := tasks.Config().PublicWeb
 	next.MaxPermission = PermissionAsk
 	apply := func(ctx context.Context, operation ControlOperation) error {
@@ -118,6 +120,54 @@ func TestPublicPolicyConfirmationRejectsRaiseSelfBlockAndOtherSession(t *testing
 	}
 	if tasks.Config().PublicWeb.Security.AllowlistEnabled {
 		t.Fatal("rejected self-lock changed persisted configuration")
+	}
+}
+
+func TestPublicModelProposalCanFinishAndBeApprovedLocally(t *testing.T) {
+	target := t.TempDir()
+	calls := 0
+	tasks, chat, _ := publicCoreFixture(t, modelFunc(func(_ context.Context, _ ModelRequest, _ func(string)) (ModelResponse, error) {
+		calls++
+		if calls == 1 {
+			return ModelResponse{ToolCalls: []ToolCall{{ID: "workspace-handoff", Name: controlPlanTool, Arguments: mustJSON(map[string]any{
+				"kind": ControlSetWorkspace, "arguments": map[string]string{"workspace": target},
+			})}}}, nil
+		}
+		return ModelResponse{Content: "next message"}, nil
+	}))
+	ctx := WithPublicAdministrator(t.Context(), "public:fixture", "192.0.2.11", "fixture-account", func(bool) (func(), error) {
+		return func() {}, nil
+	})
+	run, err := tasks.Submit(ctx, chat, "proposal", "propose workspace change")
+	if err != nil || run.Run.Status != "completed" || run.Run.StopReason != detachedProposalReason || calls != 1 {
+		t.Fatalf("proposal did not finish its Run: status=%s reason=%s calls=%d err=%v", run.Run.Status, run.Run.StopReason, calls, err)
+	}
+	control, err := tasks.Control()
+	if err != nil {
+		t.Fatal(err)
+	}
+	operations, err := control.ListControlOperations(ctx)
+	if err != nil || len(operations) == 0 {
+		t.Fatal("proposal was not retained", err)
+	}
+	operation := operations[len(operations)-1]
+	if !operation.Detached || !operation.LocalApproval || operation.Status != ControlPending || tasks.Config().Workspace == target {
+		t.Fatal("proposal applied before local decision", operation.Status)
+	}
+	if _, err := tasks.Submit(ctx, chat, "next", "continue chatting"); err != nil {
+		t.Fatal("waiting local proposal blocked the next user message", err)
+	}
+	capability, err := control.IssueInteractiveCapability(t.Context(), chat, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmation, err := control.RenderConfirmation(t.Context(), operation.ID, chat, "cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := control.ConfirmControlChange(t.Context(), operation.ID, controlAuth(capability, chat, "cli", confirmation.Code))
+	if err != nil || !result.Applied || !samePath(tasks.Config().Workspace, target) || calls != 2 {
+		t.Fatalf("original operation was not applied exactly once: status=%s calls=%d err=%v", result.Operation.Status, calls, err)
 	}
 }
 

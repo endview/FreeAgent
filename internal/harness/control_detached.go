@@ -4,10 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
 const detachedProposalReason = "control_proposal_detached"
+
+func localWebHandoff(record controlRecord) bool {
+	return record.Operation.RequestEntry == "public_web" && record.Operation.LocalApproval
+}
 
 // A host can hand off a declarative proposal without retaining the execution
 // slot. The proposal remains pending, while its original tool call is closed.
@@ -16,7 +21,7 @@ func (service *ControlService) detachProposal(ctx context.Context, operation str
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	record, ok := service.operations[operation]
-	if !ok || record.Operation.Status != ControlPending || record.Operation.Kind != ControlSetConversationCapabilities {
+	if !ok || record.Operation.Status != ControlPending || record.Operation.Kind != ControlSetConversationCapabilities && !localWebHandoff(record) {
 		return ErrControlAlreadyUsed
 	}
 	if !record.Operation.Detached {
@@ -51,7 +56,12 @@ func (service *ControlService) settleDetachedProposal(ctx context.Context, recor
 		return nil
 	}
 	result := ToolResult{Content: "Proposal saved, setting not applied. Confirmation proceeds independently; this task has handed off the decision. Do not repeat the proposal."}
-	err = service.core.Store.settleControlProposal(ctx, run, attempt, result, true, detachedProposalReason, "completed", "设置提案已保存，等待确认；你可以继续聊天。设置尚未修改。")
+	output := "设置提案已保存，等待确认；你可以继续聊天。设置尚未修改。"
+	if localWebHandoff(record) {
+		output = fmt.Sprintf("提案已保存，设置尚未修改。需要在服务器本机批准：\n\n%s",
+			"freeagent control confirm --operation "+record.Operation.ID)
+	}
+	err = service.core.Store.settleControlProposal(ctx, run, attempt, result, true, detachedProposalReason, "completed", output)
 	if errors.Is(err, ErrControlAlreadyUsed) {
 		return nil
 	}
@@ -81,6 +91,20 @@ func (service *ControlService) checkDetachedDestination(ctx context.Context, rec
 		return errors.Join(ErrPermissionRevoked, err)
 	}
 	tasks := NewTaskService(service.core)
+	if localWebHandoff(record) {
+		if _, remote := PublicEntryFrom(ctx); remote {
+			return ErrPublicLocalConfirmation
+		}
+		run, err := service.core.Store.GetRun(ctx, attempt.RunID)
+		if err != nil || run.Status != "completed" || run.StopReason != detachedProposalReason || run.ConversationID != record.Operation.ConversationID {
+			return errors.Join(ErrPermissionRevoked, err)
+		}
+		chat, err := service.core.Store.GetConversation(ctx, run.ConversationID)
+		if err != nil || run.Permission == nil || chat.SpaceID != run.Permission.SpaceID {
+			return errors.Join(ErrPermissionRevoked, err)
+		}
+		return nil
+	}
 	run, origin, err := tasks.ChannelRun(ctx, attempt.RunID)
 	if err != nil || origin == nil || run.Status != "completed" || run.StopReason != detachedProposalReason {
 		return errors.Join(ErrPermissionRevoked, err)

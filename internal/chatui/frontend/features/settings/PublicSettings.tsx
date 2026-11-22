@@ -91,7 +91,7 @@ function Editor({ initial }: { initial: PublicInfo }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [result, setResult] = useState("");
-  const [passwords, changePasswords] = useFormDraft("public-passwords", {
+  const [passwords, changePasswords] = useState({
     current: "",
     next: "",
     repeat: "",
@@ -129,6 +129,7 @@ function Editor({ initial }: { initial: PublicInfo }) {
         {info.credential_ready ? "已设置" : "尚未设置"}
         {info.restart_required ? " · 需要重启 Owner" : ""}
       </p>
+      {remote && <AdminSessions />}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -346,7 +347,6 @@ function Editor({ initial }: { initial: PublicInfo }) {
           void perform(async () => {
             const value = { ...passwords };
             changePasswords({ current: "", next: "", repeat: "" });
-            clearFormDraft("public-passwords");
             await api(
               remote ? "public/password" : "public-password",
               remote
@@ -355,10 +355,7 @@ function Editor({ initial }: { initial: PublicInfo }) {
             );
             setResult("密码已修改，远程会话已撤销。");
             if (remote) {
-              setCSRF("");
-              clearDrafts();
-              resetRuntime();
-              window.dispatchEvent(new Event("freeagent-auth-required"));
+              requireLogin();
             }
           });
         }}
@@ -452,5 +449,114 @@ function Editor({ initial }: { initial: PublicInfo }) {
         </p>
       </section>
     </>
+  );
+}
+
+function requireLogin() {
+  setCSRF("");
+  clearDrafts();
+  resetRuntime();
+  window.dispatchEvent(new Event("freeagent-auth-required"));
+}
+
+type AdminSession = { id: string; active: string; current: boolean };
+function AdminSessions() {
+  const resource = useResource<{
+    account: { username: string };
+    sessions: AdminSession[];
+  }>("public/account");
+  const [draft, setDraft] = useState<string>();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!resource.value) return <Loading error={resource.error} />;
+  const { account, sessions } = resource.value;
+  async function perform(action: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="settings-section">
+      <h2>管理账号</h2>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (
+            !draft ||
+            draft === account.username ||
+            !window.confirm("保存用户名并撤销全部远程会话？")
+          )
+            return;
+          void perform(async () => {
+            await api("public/account", { username: draft }, "PUT");
+            requireLogin();
+          });
+        }}
+      >
+        <Field label="用户名">
+          <input
+            value={draft ?? account.username}
+            autoComplete="username"
+            maxLength={64}
+            spellCheck={false}
+            pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}"
+            required
+            disabled={busy}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </Field>
+        <Button
+          type="submit"
+          variant="outline"
+          disabled={busy || !draft || draft === account.username}
+        >
+          保存用户名
+        </Button>
+      </form>
+      <details>
+        <summary>活动登录会话（{sessions.length}）</summary>
+        <Button
+          variant="ghost"
+          disabled={busy}
+          onClick={() =>
+            void perform(async () => {
+              await resource.reload();
+            })
+          }
+        >
+          刷新
+        </Button>
+        {sessions.map((session) => (
+          <div className="setting-line" key={session.id}>
+            <span>
+              {session.current ? "当前会话" : "其他会话"} ·{" "}
+              {new Date(session.active).toLocaleString()}
+            </span>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                if (!window.confirm("撤销这个登录会话？已开始的任务仍会保留。"))
+                  return;
+                void perform(async () => {
+                  await api("public/revoke-session", { id: session.id });
+                  if (session.current) requireLogin();
+                  else await resource.reload();
+                });
+              }}
+            >
+              撤销
+            </Button>
+          </div>
+        ))}
+      </details>
+      <Result error={error} />
+    </section>
   );
 }

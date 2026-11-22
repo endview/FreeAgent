@@ -128,7 +128,8 @@ store-upgrade --data-dir <directory> --backup <new-backup-directory> --confirm
   Stop Owner and channel processes first. Schema 2 requires restoring the pre-upgrade backup to roll back.
 --version
 
-Public Web (Linux, default off): public status|configure|disable|password|clear-locks.
+Administrator: admin init [--username NAME] | admin status | admin reset-password.
+Public Web (Linux, default off): public enable --origin https://HOST | public status|configure|disable|password|clear-locks.
   Passwords use hidden input or --password-stdin; HTTPS proxy setup: docs/PUBLIC_WEB.md.
 
 Chat commands: /guide [number|key] /steer <text> /queue [text] /inputs /queue-pause /queue-resume /queue-cancel <key> /branch <message-id> [text] /branch-reply <message-id> /model [<id>] /collaboration /settings [advanced|memory] /memory /compact /context [inspect|refresh|clear] /capabilities /history /sessions /resume <number> /new /status /mode /continue /abandon /attach <local-path> /attachments /save-reply /file <path> /begin ... /end /exit
@@ -162,6 +163,8 @@ Exit codes: 0 completed, 1 failed, 2 usage or configuration error, 3 waiting for
 		return runAttachments(ctx, args[1:], stdout, stderr)
 	case "public":
 		return runPublic(ctx, args[1:], stdin, stdout, stderr)
+	case "admin":
+		return runAdmin(ctx, args[1:], stdin, stdout, stderr)
 	case "commands", "services":
 		return runCommands(ctx, args[1:], stdin, stdout, stderr)
 	case "sessions":

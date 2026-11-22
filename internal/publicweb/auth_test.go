@@ -48,7 +48,7 @@ func loginFixture(t *testing.T, a *Auth, password []byte, ip string) (string, *S
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, s, err := a.Login(t.Context(), ip, "fixture browser", detect, password)
+	token, s, err := a.Login(t.Context(), ip, "fixture browser", detect, DefaultUsername, password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,18 +57,18 @@ func loginFixture(t *testing.T, a *Auth, password []byte, ip string) (string, *S
 
 func TestLoginCookieDetectionIsOneUseAndSeparateFromBinding(t *testing.T) {
 	a, p, password := authFixture(t)
-	if _, _, err := a.Login(t.Context(), "192.0.2.4", "agent", "", password); err == nil {
+	if _, _, err := a.Login(t.Context(), "192.0.2.4", "agent", "", DefaultUsername, password); err == nil {
 		t.Fatal("missing detection cookie entered password validation")
 	}
 	detect, err := a.Challenge("192.0.2.4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, s, err := a.Login(t.Context(), "192.0.2.4", "agent", detect, password)
+	token, s, err := a.Login(t.Context(), "192.0.2.4", "agent", detect, DefaultUsername, password)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := a.Login(t.Context(), "192.0.2.4", "agent", detect, password); err == nil {
+	if _, _, err := a.Login(t.Context(), "192.0.2.4", "agent", detect, DefaultUsername, password); err == nil {
 		t.Fatal("detection cookie reused")
 	}
 	if a.Lookup(token, "192.0.2.5", "changed browser", false) != s {
@@ -84,7 +84,7 @@ func TestLoginCookieDetectionIsOneUseAndSeparateFromBinding(t *testing.T) {
 		t.Fatal("revocation did not cancel readers")
 	}
 	p.change(func(c *harness.PublicWebConfig) { c.Security.CookieCheck = false })
-	if _, _, err := a.Login(t.Context(), "192.0.2.6", "browser", "", password); err != nil {
+	if _, _, err := a.Login(t.Context(), "192.0.2.6", "browser", "", DefaultUsername, password); err != nil {
 		t.Fatal("cookie detection switch ineffective", err)
 	}
 }
@@ -95,7 +95,7 @@ func TestSourceLockPreservesAuthenticatedSessionAndCanRecoverLocally(t *testing.
 	p.change(func(c *harness.PublicWebConfig) { c.Security.FailureLimit = 2; c.Security.AutoBlacklist = false })
 	for range 2 {
 		detect, _ := a.Challenge("2001:db8::abcd")
-		_, _, err := a.Login(t.Context(), "2001:db8::abcd", "agent", detect, []byte("wrong fixture password"))
+		_, _, err := a.Login(t.Context(), "2001:db8::abcd", "agent", detect, DefaultUsername, []byte("wrong fixture password"))
 		if err == nil {
 			t.Fatal("wrong password accepted")
 		}
@@ -185,7 +185,7 @@ func TestPasswordAndSourceStateHaveHardBoundsAndNoSecretLog(t *testing.T) {
 	p.change(func(c *harness.PublicWebConfig) { c.Security.CookieCheck = false })
 	a.hashes <- struct{}{}
 	a.hashes <- struct{}{}
-	if _, _, err := a.Login(context.Background(), "192.0.2.8", "browser", "", password); err == nil {
+	if _, _, err := a.Login(context.Background(), "192.0.2.8", "browser", "", DefaultUsername, password); err == nil {
 		t.Fatal("unbounded hash concurrency")
 	}
 	<-a.hashes
@@ -198,7 +198,7 @@ func TestPasswordAndSourceStateHaveHardBoundsAndNoSecretLog(t *testing.T) {
 	if _, err := a.Challenge("198.51.100.1"); err == nil {
 		t.Fatal("unbounded login challenge state")
 	}
-	if _, _, err := a.Login(t.Context(), "192.0.2.11", "browser", "", password); err != nil {
+	if _, _, err := a.Login(t.Context(), "192.0.2.11", "browser", "", DefaultUsername, password); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := json.Marshal(a.Events())
@@ -227,12 +227,12 @@ func TestGlobalGuardAndAutomaticBlacklistAreIndependentOptionalPolicies(t *testi
 		c.Security.Allowlist = []string{"192.0.2.100"}
 	})
 	for _, ip := range []string{"192.0.2.1", "192.0.2.2"} {
-		_, _, _ = a.Login(t.Context(), ip, "browser", "", []byte("incorrect fixture password"))
+		_, _, _ = a.Login(t.Context(), ip, "browser", "", DefaultUsername, []byte("incorrect fixture password"))
 	}
-	if _, _, err := a.Login(t.Context(), "192.0.2.3", "browser", "", password); err == nil {
+	if _, _, err := a.Login(t.Context(), "192.0.2.3", "browser", "", DefaultUsername, password); err == nil {
 		t.Fatal("distributed failures did not pause password login")
 	}
-	if _, _, err := a.Login(t.Context(), "192.0.2.100", "browser", "", password); err != nil {
+	if _, _, err := a.Login(t.Context(), "192.0.2.100", "browser", "", DefaultUsername, password); err != nil {
 		t.Fatal("global guard blocked allowlist recovery", err)
 	}
 	a.ResetLocks()
@@ -243,11 +243,11 @@ func TestGlobalGuardAndAutomaticBlacklistAreIndependentOptionalPolicies(t *testi
 		c.Security.AutoBlacklist = true
 		c.Security.BlacklistAfterLocks = 1
 	})
-	_, s, err := a.Login(t.Context(), "192.0.2.4", "browser", "", password)
+	_, s, err := a.Login(t.Context(), "192.0.2.4", "browser", "", DefaultUsername, password)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, _ = a.Login(t.Context(), "192.0.2.4", "browser", "", []byte("incorrect fixture password"))
+	_, _, _ = a.Login(t.Context(), "192.0.2.4", "browser", "", DefaultUsername, []byte("incorrect fixture password"))
 	if a.Allowed("192.0.2.4", true) {
 		t.Fatal("automatic blacklist was not enforced on authenticated access")
 	}

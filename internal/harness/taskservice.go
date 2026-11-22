@@ -417,6 +417,9 @@ func (tasks *TaskService) TestMCP(ctx context.Context, name string, override *MC
 	if ctx == nil || tasks == nil || tasks.core == nil {
 		return MCPServerStatus{}, errors.New("harness: task service and context are required")
 	}
+	if _, remote := PublicEntryFrom(ctx); remote {
+		return MCPServerStatus{}, ErrPublicLocalConfirmation
+	}
 	config := tasks.Config()
 	server, ok := config.MCPServers[name]
 	if override != nil {

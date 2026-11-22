@@ -88,9 +88,8 @@ func startLocalOwnerMode(ctx context.Context, tasks *harness.TaskService, data s
 			if publicHandler != nil {
 				publicHandler.Close()
 			}
-			handler.Close()
-			published.Close()
-			return nil, err
+			publicHandler, publicSocket = nil, nil
+			fmt.Fprintf(os.Stderr, "FreeAgent: public Web unavailable; local and channel service remain available: %v\n", err)
 		}
 	}
 	defer func() {

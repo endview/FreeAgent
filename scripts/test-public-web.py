@@ -66,10 +66,10 @@ class Client:
             result = None
         return status, result, body, response_headers
 
-    def login(self, password, forged=False):
+    def login(self, password, forged=False, username='admin'):
         status, info, _, _ = self.request('GET', '/api/public/session')
         require(status == 200 and not info['authenticated'], 'login-page discovery failed')
-        status, info, _, headers = self.request('POST', '/api/public/login', {'password': password},
+        status, info, _, headers = self.request('POST', '/api/public/login', {'username': username, 'password': password},
             headers={'X-FreeAgent-Client-IP': '203.0.113.79'} if forged else None)
         require(status == 200 and info['authenticated'], 'administrator login failed')
         self.csrf = info['csrf']

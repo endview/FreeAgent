@@ -1295,6 +1295,17 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 		if err := pause(); err != nil {
 			return err
 		}
+		if control, err := service.controlService(); err == nil {
+			if op, ok := control.operationForAttempt(attempt.ID); ok && localWebHandoff(op) {
+				if err := service.Store.FinishRun(parent, run.ID, "waiting_confirmation", StopReasonControlProposal); err != nil {
+					return err
+				}
+				if err := control.detachProposal(parent, op.Operation.ID); err != nil {
+					return err
+				}
+				return errAwaitingApproval
+			}
+		}
 		service.event(Event{Kind: EventControlConfirmation, Tool: call.Name, Preview: prepared.Preview,
 			RunID: run.ID, ConversationID: run.ConversationID, AttemptID: attempt.ID})
 		if err := service.Store.FinishRun(parent, run.ID, "waiting_confirmation", StopReasonControlProposal); err != nil {

@@ -292,6 +292,34 @@ func (server *Server) importMCP(writer http.ResponseWriter, request *http.Reques
 		server.writeError(writer, http.StatusBadRequest, "input", "MCP 服务器列表无效。")
 		return
 	}
+	if _, remote := publicRequestFrom(request.Context()); remote {
+		if len(entries) != 1 {
+			server.writeError(writer, http.StatusForbidden, "local_confirmation_required", "多项 MCP 导入需要本机办理。候选进程未启动。")
+			return
+		}
+		for name, raw := range entries {
+			var config harness.MCPServerConfig
+			if !json.Valid(raw) || json.Unmarshal(raw, &config) != nil || config.Command == "" {
+				server.writeError(writer, http.StatusBadRequest, "input", "只支持具有命令的 stdio MCP 配置。")
+				return
+			}
+			if len(config.Env) > 0 {
+				server.writeError(writer, http.StatusForbidden, "local_confirmation_required", "有秘密环境值的 MCP 导入需要本机办理。候选进程未启动。")
+				return
+			}
+			config.Enabled = true
+			control, err := server.tasks.Control()
+			if err == nil {
+				var operation harness.ControlOperation
+				operation, err = control.PlanMCPProfileChange(request.Context(), harness.MCPControlRequest{ID: name, Config: config})
+				if err == nil {
+					err = &harness.LocalSettingsApproval{OperationID: operation.ID}
+				}
+			}
+			server.configFailure(writer, err)
+		}
+		return
+	}
 	type importResult struct {
 		ID      string `json:"id"`
 		Enabled bool   `json:"enabled"`

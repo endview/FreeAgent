@@ -8,6 +8,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os/user"
+	"runtime"
 
 	"github.com/endview/freeagent/internal/harness"
 	"github.com/endview/freeagent/internal/publicweb"
@@ -15,13 +17,17 @@ import (
 
 func runPublic(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return usageErr("public <status|configure|disable|password|clear-locks> [--data-dir DIR]")
+		return usageErr("public <enable|status|configure|disable|password|clear-locks> [--data-dir DIR]")
 	}
 	action := args[0]
 	flags := flag.NewFlagSet("public "+action, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	data := flags.String("data-dir", defaultDataDir(), "Owner data directory")
 	policy := flags.String("policy-json", "", "complete public Web policy (contains no credentials)")
+	origin := flags.String("origin", "", "HTTPS origin for public enable")
+	socket := flags.String("socket", "", "dedicated /run Unix socket for public enable (keeps existing value when omitted)")
+	group := flags.String("socket-group", "", "proxy group for public enable (keeps existing value when omitted)")
+	ceiling := flags.String("max-permission", "", "public permission ceiling (new entrances default to ask)")
 	passwordStdin := flags.Bool("password-stdin", false, "read one password line from stdin; never pass passwords as arguments")
 	if err := parseFlags(flags, args[1:]); err != nil {
 		return err
@@ -32,15 +38,43 @@ func runPublic(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	if err := resolveDataDir(data); err != nil {
 		return err
 	}
-	if action == "configure" || action == "disable" {
+	if action == "configure" || action == "disable" || action == "enable" {
 		var c harness.PublicWebConfig
-		if action == "disable" {
+		if action != "configure" {
 			config, err := harness.LoadConfig(*data)
 			if err != nil {
 				return err
 			}
 			c = config.PublicWeb.Effective()
-			c.Enabled = false
+			switch action {
+			case "disable":
+				c.Enabled = false
+			case "enable":
+				if runtime.GOOS != "linux" {
+					return errors.New("public enable: the restricted proxy entrance requires Linux")
+				}
+				if !publicweb.CredentialReady(*data) {
+					return publicweb.ErrCredential
+				}
+				if *origin != "" {
+					c.Origin = *origin
+				}
+				if *socket != "" {
+					c.Socket = *socket
+				}
+				if *group != "" {
+					c.SocketGroup = *group
+				}
+				if *ceiling != "" {
+					c.MaxPermission = harness.PermissionMode(*ceiling)
+				} else if config.PublicWeb.Effective().Origin == "" {
+					c.MaxPermission = harness.PermissionAsk
+				}
+				if _, err := user.LookupGroup(c.SocketGroup); err != nil {
+					return errors.New("public enable: prepare the dedicated proxy group and runtime directory first; see docs/PUBLIC_WEB.md")
+				}
+				c.Enabled = true
+			}
 		} else {
 			if err := json.Unmarshal([]byte(*policy), &c); err != nil {
 				return usageErr("public configure: --policy-json must contain a complete policy")
@@ -49,7 +83,11 @@ func runPublic(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		if err := c.Validate(); err != nil {
 			return err
 		}
-		return runControl(ctx, []string{"plan", "--data-dir", *data, "--kind", harness.ControlSetPublicWeb, "--arguments", string(mustPublicJSON(c))}, stdin, stdout, stderr)
+		err := runControl(ctx, []string{"plan", "--data-dir", *data, "--kind", harness.ControlSetPublicWeb, "--arguments", string(mustPublicJSON(c))}, stdin, stdout, stderr)
+		if err == nil && action == "enable" {
+			_, _ = fmt.Fprintln(stderr, "Public configuration saved. Check freeagent public status; if restart_required, restart the Owner and verify the HTTPS proxy.")
+		}
+		return err
 	}
 	store, err := harness.OpenStore(ctx, *data)
 	if errors.Is(err, harness.ErrOwnerActive) {

@@ -26,12 +26,16 @@ function LoginMark({ small = false }: { small?: boolean }) {
 }
 
 export function LoginPage({
+  username,
+  onUsernameChange,
   password,
   onPasswordChange,
   error,
   busy,
   onSubmit,
 }: {
+  username: string;
+  onUsernameChange: (value: string) => void;
   password: string;
   onPasswordChange: (value: string) => void;
   error: string;
@@ -99,8 +103,22 @@ export function LoginPage({
               <span translate="no">{window.location.host}</span>
             </div>
             <h1 id="login-title">登录工作台</h1>
-            <p className="login-entry-intro">使用此实例的管理员密码。</p>
+            <p className="login-entry-intro">使用此实例的管理账号登录。</p>
             <form onSubmit={onSubmit} aria-busy={busy}>
+              <label htmlFor="login-username">用户名</label>
+              <input
+                id="login-username"
+                className="login-username"
+                name="username"
+                autoComplete="username"
+                autoCapitalize="none"
+                maxLength={64}
+                spellCheck={false}
+                required
+                value={username}
+                onChange={(event) => onUsernameChange(event.target.value)}
+                readOnly={busy}
+              />
               <label htmlFor="login-password">管理员密码</label>
               <div className="login-password-wrap">
                 <input
@@ -164,7 +182,7 @@ export function LoginPage({
                 <ChevronDown size={14} aria-hidden="true" />
               </summary>
               <p>
-                请核对密码，并允许此站点使用
+                请核对用户名和密码，并允许此站点使用
                 Cookie。若多次失败触发访问限制，请稍后重试或联系此实例管理员。
               </p>
               <p>忘记密码，请联系此实例管理员。</p>

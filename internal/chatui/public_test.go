@@ -104,7 +104,7 @@ func (f *publicFixture) login(t *testing.T) {
 			f.detect = c
 		}
 	}
-	w = f.request(t, "POST", "/api/public/login", strings.NewReader(`{"password":"public fixture only password"}`), nil)
+	w = f.request(t, "POST", "/api/public/login", strings.NewReader(`{"username":"admin","password":"public fixture only password"}`), nil)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

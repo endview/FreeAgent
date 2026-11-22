@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, RefreshCw, Trash2, Zap } from "lucide-react";
-import { api } from "@/lib/api/client";
+import { api, APIError } from "@/lib/api/client";
 import type { Model, ReasoningCapabilities } from "@/lib/api/types";
 import {
   ReasoningChoice,
@@ -56,7 +56,6 @@ interface KeyForm extends Record<string, unknown> {
   base_url: string;
   protocol: string;
   source: string;
-  key: string;
   note: string;
   enable: boolean;
 }
@@ -135,12 +134,12 @@ function ProviderEditor({
       base_url: profile?.base_url || "",
       protocol: profile?.protocol || "openai-compatible",
       source: profile?.source || "saved",
-      key: "",
       note: profile?.note || "",
       enable: false,
     },
     true,
   );
+  const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [result, setResult] = useState("");
@@ -163,6 +162,11 @@ function ProviderEditor({
     try {
       await action();
     } catch (error) {
+      if (
+        error instanceof APIError &&
+        error.code === "reauthentication_required"
+      )
+        setSecret("");
       setError(error instanceof Error ? error.message : "操作失败。");
     } finally {
       setBusy(false);
@@ -170,7 +174,7 @@ function ProviderEditor({
   }
   function request() {
     const { enable, ...request } = form;
-    return request;
+    return { ...request, key: secret };
   }
   async function save() {
     await perform(async () => {
@@ -179,7 +183,8 @@ function ProviderEditor({
         request(),
       );
       clearFormDraft(draftID);
-      change({ ...form, key: "", enable: false });
+      setSecret("");
+      change({ ...form, enable: false });
       clearFormDraft(draftID);
       if (!profile && form.enable && form.protocol !== "search") {
         try {
@@ -200,7 +205,7 @@ function ProviderEditor({
     await perform(async () => {
       const unchanged =
         profile &&
-        !form.key &&
+        !secret &&
         form.name === profile.name &&
         form.protocol === profile.protocol &&
         form.base_url === profile.base_url &&
@@ -421,8 +426,8 @@ function ProviderEditor({
                   name="provider_api_key"
                   spellCheck={false}
                   autoComplete="new-password"
-                  value={form.key}
-                  onChange={(event) => field("key", event.target.value)}
+                  value={secret}
+                  onChange={(event) => setSecret(event.target.value)}
                 />
               </Field>
             )}

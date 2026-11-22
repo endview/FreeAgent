@@ -71,6 +71,11 @@ func (tasks *TaskService) PreviewTelegramConfirmers(ctx context.Context, bot str
 }
 
 func (tasks *TaskService) ApplyTelegramConfirmers(ctx context.Context, bot string, members []string, revision int64, operation string) (ChannelConfirmers, error) {
+	release, err := BeginPublicSettingsDecision(ctx, true)
+	if err != nil {
+		return ChannelConfirmers{}, err
+	}
+	defer release()
 	key, err := tasks.confirmerKey(bot)
 	if err != nil {
 		return ChannelConfirmers{}, err

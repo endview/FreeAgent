@@ -79,7 +79,7 @@ func runAttachedControl(ctx context.Context, client *handoff.Client, command, op
 			return err
 		}
 		return promptAndApplyAttachedControl(ctx, client, operation, conversationID, code, stdin, stdout, stderr, asJSON)
-	case "confirm", "revert-plan":
+	case "confirm", "revert-plan", "inspect":
 		operations, err := client.ControlOperations(ctx)
 		if err != nil {
 			return err
@@ -93,6 +93,9 @@ func runAttachedControl(ctx context.Context, client *handoff.Client, command, op
 		}
 		if operation.ID == "" {
 			return harness.ErrControlOperationNotFound
+		}
+		if command == "inspect" {
+			return writeJSON(stdout, operation)
 		}
 		if command == "revert-plan" {
 			operation, err = client.ControlRevertPlan(ctx, operationID, conversationID)
@@ -127,8 +130,11 @@ func promptAndApplyAttachedControl(ctx context.Context, client *handoff.Client, 
 
 func applyAttachedControl(ctx context.Context, client *handoff.Client, operation harness.ControlOperation,
 	conversationID, provided string, stdin io.Reader, stderr io.Writer) (harness.ControlResult, error) {
-	if operation.AttemptID != "" {
+	if operation.AttemptID != "" && !operation.Detached {
 		return harness.ControlResult{}, runBoundControlError(operation)
+	}
+	if conversationID == "" {
+		conversationID = operation.ConversationID
 	}
 	confirmation, err := client.ControlConfirmation(ctx, operation.ID, conversationID)
 	if err != nil {

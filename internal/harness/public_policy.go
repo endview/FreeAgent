@@ -19,6 +19,7 @@ import (
 const ControlSetPublicWeb = "public_web.set_policy"
 
 var ErrPublicLocalConfirmation = errors.New("harness: increasing the remote permission ceiling requires a local confirmation")
+var ErrPublicReauthentication = errors.New("harness: verify the current administrator password before saving this setting")
 var ErrPublicSourceBlocked = errors.New("harness: this change would block the current remote source; add its IP to the allowlist first")
 
 // PublicWebConfig describes one optional administrator entrance. It contains
@@ -137,6 +138,33 @@ func (s PublicSecurityPolicy) AllowsIP(ip string) bool {
 
 type publicEntryKey struct{}
 type PublicEntry struct{ Principal, IP string }
+type publicAdministratorKey struct{}
+type publicAdministrator struct {
+	id    string
+	begin func(bool) (func(), error)
+}
+
+// WithPublicAdministrator binds the authenticated browser session to its
+// stable account identity and a fresh decision check, without persisting the
+// browser's authorization in a Run snapshot or control journal.
+func WithPublicAdministrator(ctx context.Context, principal, ip, accountID string, begin func(bool) (func(), error)) context.Context {
+	return context.WithValue(WithPublicEntry(ctx, principal, ip), publicAdministratorKey{}, publicAdministrator{accountID, begin})
+}
+
+func publicAdministratorFrom(ctx context.Context) (publicAdministrator, bool) {
+	a, ok := ctx.Value(publicAdministratorKey{}).(publicAdministrator)
+	return a, ok && a.id != "" && a.begin != nil
+}
+
+func BeginPublicSettingsDecision(ctx context.Context, recent bool) (func(), error) {
+	if a, ok := publicAdministratorFrom(ctx); ok {
+		return a.begin(recent)
+	}
+	if _, remote := PublicEntryFrom(ctx); remote && recent {
+		return nil, ErrPublicReauthentication
+	}
+	return func() {}, nil
+}
 
 // WithPublicEntry is used only by the authenticated Unix-socket adapter. The
 // value cannot be supplied through RunOptions or a model argument.
@@ -205,6 +233,9 @@ func validatePublicControl(ctx context.Context, before, after PublicWebConfig) e
 }
 
 func (service *ControlService) validatePublicOperation(ctx context.Context, record controlRecord) error {
+	if _, remote := PublicEntryFrom(ctx); remote && (record.Operation.LocalApproval || hostSettingsWiden(record, service.core.currentConfig())) {
+		return &LocalSettingsApproval{OperationID: record.Operation.ID, ConversationID: record.Operation.ConversationID}
+	}
 	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal != "" && record.Operation.RemotePrincipal != entry.Principal {
 		return ErrControlUserInteractionRequired
 	}

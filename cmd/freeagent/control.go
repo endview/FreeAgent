@@ -85,6 +85,15 @@ func runControl(ctx context.Context, args []string, stdin io.Reader, stdout, std
 			return err
 		}
 		return writeJSON(stdout, operations)
+	case "inspect":
+		if *operationID == "" {
+			return usageErr("control inspect: --operation is required")
+		}
+		operation, err := findControlOperation(ctx, control, *operationID)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, operation)
 	case "plan":
 		if strings.TrimSpace(*kind) == "" {
 			return usageErr("control plan: --kind is required")
@@ -150,8 +159,11 @@ func findControlOperation(ctx context.Context, control *harness.ControlService, 
 
 func promptAndApplyControl(ctx context.Context, control *harness.ControlService, operation harness.ControlOperation,
 	conversationID, provided string, stdin io.Reader, stdout, stderr io.Writer, asJSON bool) error {
-	if operation.AttemptID != "" {
+	if operation.AttemptID != "" && !operation.Detached {
 		return runBoundControlError(operation)
+	}
+	if conversationID == "" {
+		conversationID = operation.ConversationID
 	}
 	capability, err := control.IssueInteractiveCapability(ctx, conversationID, "cli")
 	if err != nil {

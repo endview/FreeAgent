@@ -14,14 +14,14 @@ test('public transport cannot carry local capabilities or arbitrary attach route
 
 test('explicit login refreshes an expired one-use detection cookie before password submission', async () => {
   let validCookie = false, posts = 0;
-  const result = await loginPublicPassword('fixture password', async (path, options) => {
+  const result = await loginPublicPassword('fixture-admin', 'fixture password', async (path, options) => {
     if (path === '/api/public/session') { validCookie = true; return { ok: true, json: async () => ({ authenticated: false }) }; }
     assert.equal(path, '/api/public/login'); assert.equal(validCookie, true); validCookie = false; posts++;
-    assert.equal(JSON.parse(options.body).password, 'fixture password'); assert.equal(options.credentials, 'same-origin');
+    assert.deepEqual(JSON.parse(options.body), {username: 'fixture-admin', password: 'fixture password'}); assert.equal(options.credentials, 'same-origin');
     return { ok: true, json: async () => ({ authenticated: true, csrf: 'new' }) };
   });
   assert.equal(result.csrf, 'new'); assert.equal(posts, 1);
-  const existing = await loginPublicPassword('unused', async path => { assert.equal(path, '/api/public/session'); return { ok: true, json: async () => ({ authenticated: true, csrf: 'shared' }) }; });
+  const existing = await loginPublicPassword('admin', 'unused', async path => { assert.equal(path, '/api/public/session'); return { ok: true, json: async () => ({ authenticated: true, csrf: 'shared' }) }; });
   assert.equal(existing.csrf, 'shared');
 });
 

@@ -18,27 +18,30 @@
    已运行的代理需要在维护窗口重新启动，才能取得新增组。更新时保留相同参数；
    安装器拒绝覆盖未知 unit、管理命令或未经核对的安装目录。
 
-2. 用安装器输出的管理命令设置管理员密码。默认隐藏输入，并要求重复；秘密不放在参数里：
+2. 用安装器输出的管理命令创建实例的唯一管理账号。默认隐藏输入并要求重复；秘密不放在参数里：
 
    ```sh
-   sudo /usr/local/bin/freeagent public password
-   sudo /usr/local/bin/freeagent public status
+   sudo /usr/local/bin/freeagent admin init --username admin
+   sudo /usr/local/bin/freeagent admin status
    ```
 
    自动测试可显式使用 `--password-stdin`，从当前进程的输入管道读取一行。
    密码为 12–1024 字节，使用随机盐的 Argon2id（64 MiB，3 次，2 路）。
    `public-admin.json` 为服务用户的 0600 文件，不属于 Provider Key，
-   不进入模型请求、日志、普通配置或备份。
+   不进入模型请求、日志、普通配置或备份。用户名和账号 ID 保存在受保护的
+   .public-account/account.json，旧密码文件格式不变。已有公网用户升级后使用
+   用户名 admin 和原密码，重新登录一次。已接入的渠道不要求先创建管理账号。
 
-3. GUI 的设置页打开“公网安全设置”，逐项选择开关并填写准确的 HTTPS Origin。
-   也可以通过现有 CLI 控制目录或 AI 提案保存同一份配置：
+3. 用 CLI 开启公网入口，不需要手改配置文件。初次未指定权限上限时使用 Ask；
+   既有代理组、socket 和安全策略保留：
 
    ```sh
-   freeagent public configure --policy-json '<完整 public_web JSON>'
-   # 或：control plan --kind public_web.set_policy --arguments '<同一 JSON>'
+   sudo /usr/local/bin/freeagent public enable --origin https://bot.example.com
+   sudo /usr/local/bin/freeagent public status
    ```
 
-   CLI 会显示实际变化并提示确认。AI 提案必须由用户通过已有控制卡片/CLI
+   如需指定非默认 socket/组，使用 --socket 和 --socket-group。CLI 会显示实际变化
+   并提示确认。完整策略也可以用 public configure --policy-json 保存。AI 提案必须由用户通过已有控制卡片/CLI
    确认。密码只在直接安全表单或隐藏输入中消费，模型只能说明如何设置。
    从 `public status` 的 `config` 取得完整初始值；不要把整个状态包装对象作为 policy。
    Origin 只包含 `https://主机[:端口]`，不含路径、尾斜杠、查询或凭据。
@@ -60,6 +63,16 @@
 加入 `ReadWritePaths`。保留 `/var/lib/freeagent` 和私有运行目录的 0700。
 
 ## 登录、权限与接续
+
+登录后可在设置中更新用户名、修改密码、查看并撤销活动会话。在 Web 保存
+Provider Key、Telegram Bot Token 等安全设置前，当前会话需在 10 分钟内验密。
+超时后清空秘密输入，保留其余草稿；重新验证不会自动提交。Telegram 的「核对 Bot」
+仅调用官方 getMe，不保存 Token 或启动轮询。
+
+提高执行权限、扩大宿主目录/命令授权、引入或启用新的宿主代码，须在本机批准。
+公网待决提案可用 control inspect --operation ID 查看，使用 control confirm --operation ID
+或 control reject --operation ID 决定。MCP 测试需要本机执行；公网单项导入只准备提案。
+改密或撤销会话不会恢复已经发送或执行的操作。
 
 一个管理员，最多默认 8 个内存会话；新登录淘汰最久未交互会话。默认 30 分钟
 无交互或 12 小时绝对到期。SSE 心跳不续期。Cookie 为 Secure、HttpOnly、
@@ -93,7 +106,7 @@ Cookie 不按端口隔离。推荐专用主机名，或确认该主机没有其�
 
 密码校验最多同时 2 个；来源状态最多 512 个、登录检测最多 128 个、
 会话最多 8 个，安全事件保留最近 256 条。过载拒绝新请求，不扩大内存状态。
-计数、锁定和会话不跨重启恢复；无凭据的事件环复用现有 SQLite meta，
+计数、锁定和会话不跨重启恢复；无凭据的事件环复用现有 PostgreSQL meta，
 保存错误在运行状态中显示。上传有独立大小、并发和
 60 秒读取限制；下载逐块校验会话，并限制阻塞写入时间。
 
@@ -106,7 +119,7 @@ Cookie 不按端口隔离。推荐专用主机名，或确认该主机没有其�
 
 ```sh
 sudo /usr/local/bin/freeagent public clear-locks
-sudo /usr/local/bin/freeagent public password
+sudo /usr/local/bin/freeagent admin reset-password
 sudo /usr/local/bin/freeagent public disable
 ```
 

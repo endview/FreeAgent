@@ -13,6 +13,7 @@ import (
 
 const SessionCookie = "__Host-FreeAgent"
 const DetectionCookie = "__Host-FreeAgent-Login"
+const VerificationWindow = 10 * time.Minute
 
 type Event = harness.PublicSecurityEvent
 type EventStore interface {
@@ -31,6 +32,7 @@ type challenge struct {
 }
 type Session struct {
 	ID              string
+	AccountID       string
 	CSRF            string
 	Created, Active time.Time
 	Source, Agent   string
@@ -38,6 +40,8 @@ type Session struct {
 	cancel          context.CancelFunc
 	reads           chan struct{}
 	sources         map[string]bool
+	generation      string
+	verifiedAt      time.Time
 }
 
 func (s *Session) Context() context.Context { return s.ctx }
@@ -58,6 +62,8 @@ type Auth struct {
 	data          string
 	policy        func() harness.PublicWebConfig
 	credential    credential
+	account       accountFile
+	usable        bool
 	sessions      map[string]*Session
 	failures      map[string]*sourceFailures
 	challenges    map[string]challenge
@@ -76,12 +82,14 @@ type Auth struct {
 }
 
 func NewAuth(ctx context.Context, data string, policy func() harness.PublicWebConfig, stores ...EventStore) (*Auth, error) {
-	c, err := loadCredential(data)
+	credentialFiles.Lock()
+	account, c, err := loadAccount(data, true)
+	credentialFiles.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	a := &Auth{data: data, policy: policy, credential: c, sessions: map[string]*Session{}, failures: map[string]*sourceFailures{}, challenges: map[string]challenge{}, hashes: make(chan struct{}, 2), ctx: ctx, cancel: cancel, done: make(chan struct{}), now: time.Now}
+	a := &Auth{data: data, policy: policy, credential: c, account: account, usable: true, sessions: map[string]*Session{}, failures: map[string]*sourceFailures{}, challenges: map[string]challenge{}, hashes: make(chan struct{}, 2), ctx: ctx, cancel: cancel, done: make(chan struct{}), now: time.Now}
 	p := policy().Effective()
 	if len(stores) > 0 {
 		a.eventStore = stores[0]
@@ -149,18 +157,28 @@ func (a *Auth) revokeAllLocked() {
 func (a *Auth) revokeAll() { a.mu.Lock(); defer a.mu.Unlock(); a.revokeAllLocked() }
 
 func (a *Auth) Refresh() {
+	a.passwordMu.Lock()
+	defer a.passwordMu.Unlock()
+	a.refresh()
+}
+
+func (a *Auth) refresh() {
 	p := a.policy().Effective()
-	c, err := loadCredential(a.data)
+	credentialFiles.Lock()
+	account, c, err := loadAccount(a.data, false)
+	credentialFiles.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if err != nil || c.Generation != a.credential.Generation || !p.Enabled || p.Origin != a.origin {
+	if err != nil || account != a.account || !p.Enabled || p.Origin != a.origin {
 		if len(a.sessions) > 0 {
 			a.eventLocked("local", "sessions_revoked")
 		}
 		a.revokeAllLocked()
 	}
+	a.usable = err == nil
 	if err == nil {
 		a.credential = c
+		a.account = account
 	}
 	a.origin = p.Origin
 	a.wasEnabled = p.Enabled
@@ -291,17 +309,18 @@ func (a *Auth) failureLocked(ip string, p harness.PublicSecurityPolicy) {
 	}
 }
 
-func (a *Auth) Login(ctx context.Context, ip, agent, detection string, password []byte) (string, *Session, error) {
+func (a *Auth) Login(ctx context.Context, ip, agent, detection, username string, password []byte) (string, *Session, error) {
 	p := a.policy().Effective()
 	if !a.Allowed(ip, false) {
 		return "", nil, errors.New("login denied")
 	}
 	a.mu.Lock()
-	if len(a.failures) >= 512 && a.failures[sourceKey(ip)] == nil || p.Security.GlobalGuard && a.now().Before(a.global.Locked) && !harness.PublicIPMatches(ip, p.Security.Allowlist) || p.Security.CookieCheck && !a.consumeChallengeLocked(detection, ip) {
+	if !a.usable || len(a.failures) >= 512 && a.failures[sourceKey(ip)] == nil || p.Security.GlobalGuard && a.now().Before(a.global.Locked) && !harness.PublicIPMatches(ip, p.Security.Allowlist) || p.Security.CookieCheck && !a.consumeChallengeLocked(detection, ip) {
 		a.mu.Unlock()
 		return "", nil, errors.New("login denied")
 	}
 	c := a.credential
+	account := a.account
 	a.mu.Unlock()
 	select {
 	case a.hashes <- struct{}{}:
@@ -309,10 +328,12 @@ func (a *Auth) Login(ctx context.Context, ip, agent, detection string, password 
 	default:
 		return "", nil, errors.New("login busy")
 	}
-	valid := c.verify(password)
+	valid := c.verify(password) && username == account.Username
 	if ctx.Err() != nil {
 		return "", nil, ctx.Err()
 	}
+	a.passwordMu.Lock()
+	defer a.passwordMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if !valid {
@@ -322,7 +343,7 @@ func (a *Auth) Login(ctx context.Context, ip, agent, detection string, password 
 	// Re-read live policy after the expensive hash. A reset or disable cannot
 	// issue a session from a stale credential generation.
 	next := a.policy().Effective()
-	if !next.Enabled || !next.Security.AllowsIP(ip) || c.Generation != a.credential.Generation {
+	if !a.usable || !next.Enabled || !next.Security.AllowsIP(ip) || account != a.account {
 		return "", nil, errors.New("login denied")
 	}
 	if next.Security.GlobalGuard && a.now().Before(a.global.Locked) && !harness.PublicIPMatches(ip, next.Security.Allowlist) {
@@ -337,7 +358,7 @@ func (a *Auth) Login(ctx context.Context, ip, agent, detection string, password 
 	token := randomToken()
 	lifetime, cancel := context.WithCancel(a.ctx)
 	now := a.now()
-	s := &Session{ID: randomToken()[:32], CSRF: randomToken(), Created: now, Active: now, Source: ip, Agent: tokenHash(agent), ctx: lifetime, cancel: cancel, reads: make(chan struct{}, 4), sources: map[string]bool{ip: true}}
+	s := &Session{ID: randomToken()[:32], AccountID: account.ID, CSRF: randomToken(), Created: now, Active: now, Source: ip, Agent: tokenHash(agent), ctx: lifetime, cancel: cancel, reads: make(chan struct{}, 4), sources: map[string]bool{ip: true}, generation: account.Generation, verifiedAt: now}
 	a.sessions[tokenHash(token)] = s
 	a.eventLocked(sourceKey(ip), "login_succeeded")
 	return token, s, nil
@@ -391,6 +412,8 @@ func (a *Auth) Lookup(token, ip, agent string, touch bool) *Session {
 	return s
 }
 func (a *Auth) Logout(token string) {
+	a.passwordMu.Lock()
+	defer a.passwordMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	key := tokenHash(token)
@@ -422,36 +445,157 @@ func (a *Auth) State() map[string]any {
 	return map[string]any{"sessions": len(a.sessions), "locked_sources": sources, "global_paused_until": a.global.Locked, "events": events, "event_log_error": a.eventLogError}
 }
 
-func (a *Auth) VerifyCurrent(password []byte) bool {
-	select {
-	case a.hashes <- struct{}{}:
-		defer func() { <-a.hashes }()
-	default:
-		return false
+// BeginDecision serializes a settings decision with password changes and
+// explicit revocation. No authenticated operation retains this guard for model
+// execution; it is held only through the settings write.
+func (a *Auth) BeginDecision(s *Session, ip string, recent bool) (func(), error) {
+	a.passwordMu.Lock()
+	if err := a.checkDecision(s, ip, recent); err != nil {
+		a.passwordMu.Unlock()
+		return nil, err
 	}
-	a.mu.Lock()
-	c := a.credential
-	a.mu.Unlock()
-	return c.verify(password)
+	return a.passwordMu.Unlock, nil
 }
 
-func (a *Auth) ChangePassword(current, next []byte) error {
+func (a *Auth) checkDecision(s *Session, ip string, recent bool) error {
+	credentialFiles.Lock()
+	account, _, err := loadAccount(a.data, false)
+	credentialFiles.Unlock()
+	policy := a.policy().Effective()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now := a.now()
+	if s == nil || s.ctx.Err() != nil || err != nil || !a.usable || account != a.account || s.generation != account.Generation ||
+		!policy.Enabled || policy.Origin != a.origin || !policy.Security.AllowsIP(ip) ||
+		now.Sub(s.Active) >= time.Duration(policy.IdleMinutes)*time.Minute || now.Sub(s.Created) >= time.Duration(policy.AbsoluteHours)*time.Hour {
+		return harness.ErrControlUserInteractionRequired
+	}
+	if f := a.failures[sourceKey(ip)]; policy.Security.AutoBlacklist && f != nil && now.Before(f.Blacklisted) {
+		return harness.ErrControlUserInteractionRequired
+	}
+	if recent && !now.Before(s.verifiedAt.Add(VerificationWindow)) {
+		return harness.ErrPublicReauthentication
+	}
+	return nil
+}
+
+func (a *Auth) verifySessionPassword(s *Session, ip string, password []byte) error {
+	if err := a.checkDecision(s, ip, false); err != nil {
+		return err
+	}
 	select {
 	case a.hashes <- struct{}{}:
 		defer func() { <-a.hashes }()
 	default:
-		return errors.New("password operation busy")
+		return errors.New("password verification busy")
 	}
-	a.passwordMu.Lock()
-	defer a.passwordMu.Unlock()
-	a.mu.Lock()
-	c := a.credential
-	a.mu.Unlock()
-	if !c.verify(current) {
+	if !a.Allowed(ip, false) {
 		return errors.New("password verification failed")
 	}
-	if err := SetPassword(a.data, next); err != nil {
+	p := a.policy().Effective()
+	a.mu.Lock()
+	if p.Security.GlobalGuard && a.now().Before(a.global.Locked) && !harness.PublicIPMatches(ip, p.Security.Allowlist) {
+		a.mu.Unlock()
+		return errors.New("password verification failed")
+	}
+	c := a.credential
+	a.mu.Unlock()
+	if !c.verify(password) {
+		a.mu.Lock()
+		a.failureLocked(ip, p.Security)
+		a.mu.Unlock()
+		return errors.New("password verification failed")
+	}
+	return a.checkDecision(s, ip, false)
+}
+
+func (a *Auth) Reauthenticate(s *Session, ip string, password []byte) error {
+	a.passwordMu.Lock()
+	defer a.passwordMu.Unlock()
+	if err := a.verifySessionPassword(s, ip, password); err != nil {
 		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	s.verifiedAt = a.now()
+	a.eventLocked(s.AccountID, "administrator_reauthenticated")
+	return nil
+}
+
+func (a *Auth) ChangePassword(s *Session, ip string, current, next []byte) error {
+	a.passwordMu.Lock()
+	defer a.passwordMu.Unlock()
+	if err := a.verifySessionPassword(s, ip, current); err != nil {
+		return err
+	}
+	if err := ResetPassword(a.data, next); err != nil {
+		return err
+	}
+	a.refresh()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.eventLocked(s.AccountID, "administrator_password_changed")
+	return nil
+}
+
+// UpdateLocalAccount is called only by the authenticated local Owner handler.
+func (a *Auth) UpdateLocalAccount(update func() error) error {
+	a.passwordMu.Lock()
+	defer a.passwordMu.Unlock()
+	err := update()
+	a.refresh()
+	return err
+}
+
+func (a *Auth) Rename(s *Session, ip, username string) error {
+	release, err := a.BeginDecision(s, ip, true)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if _, err := renameAccount(a.data, username, s.generation); err != nil {
+		return err
+	}
+	a.refresh()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.eventLocked(s.AccountID, "administrator_renamed")
+	return nil
+}
+
+type SessionView struct {
+	ID      string    `json:"id"`
+	Created time.Time `json:"created"`
+	Active  time.Time `json:"active"`
+	Current bool      `json:"current"`
+}
+
+func (a *Auth) AccountSessions(current *Session) (Account, []SessionView) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	sessions := make([]SessionView, 0, len(a.sessions))
+	for _, s := range a.sessions {
+		sessions = append(sessions, SessionView{s.ID, s.Created, s.Active, s == current})
+	}
+	sort.Slice(sessions, func(i, j int) bool { return sessions[i].Created.After(sessions[j].Created) })
+	return a.account.Account, sessions
+}
+
+func (a *Auth) RevokeSession(actor *Session, ip, id string) error {
+	release, err := a.BeginDecision(actor, ip, false)
+	if err != nil {
+		return err
+	}
+	defer release()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for key, s := range a.sessions {
+		if s.ID == id {
+			s.cancel()
+			delete(a.sessions, key)
+			a.eventLocked(actor.AccountID, "administrator_session_revoked")
+			break
+		}
 	}
 	return nil
 }

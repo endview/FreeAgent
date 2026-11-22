@@ -995,11 +995,20 @@ func (server *Server) readBody(writer http.ResponseWriter, request *http.Request
 
 func userError(err error) (string, string) {
 	var failure *harness.CallError
+	var approval *harness.LocalSettingsApproval
 	switch {
 	case errors.Is(err, harness.ErrOwnerLost):
 		return "database_owner_lost", "数据库连接或执行所有权失效，Owner 已停止接收新任务。重新启动后核对保留的 UNKNOWN 记录。"
+	case errors.As(err, &approval):
+		command := "freeagent control confirm --operation " + approval.OperationID
+		if approval.ConversationID != "" {
+			command += " --conversation " + approval.ConversationID
+		}
+		return "local_confirmation_required", "提案已保留，未应用。在服务器本机执行：" + command
 	case errors.Is(err, harness.ErrPublicLocalConfirmation):
-		return "local_confirmation_required", "提高远程最高权限需要在服务器本机 GUI 或 CLI 确认。当前配置未提高。"
+		return "local_confirmation_required", "此操作需要服务器本机确认，尚未执行。"
+	case errors.Is(err, harness.ErrPublicReauthentication):
+		return "reauthentication_required", "此操作需要重新验证当前管理员密码，设置未保存。"
 	case errors.Is(err, harness.ErrPublicSourceBlocked):
 		return "current_source_blocked", "此配置会挡住当前远程来源，未保存。请先将当前来源加入白名单。"
 	case errors.Is(err, harness.ErrInvalidExecutable):

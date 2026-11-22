@@ -68,6 +68,7 @@ const { chromium, firefox, webkit } = require('playwright');
         await expectEventually(() => loginCount === before + 1 && resolvePending);
         assert.equal(sessionCount, previousSessions + 1);
         assert.equal(submitted.password, 'synthetic-password-only');
+        assert.equal(submitted.username, 'admin');
         assert.equal(await input.inputValue(), '');
         assert(await input.evaluate(e => e.readOnly));
         resolvePending({ error: message, code: 'login_failed' }); resolvePending = undefined;

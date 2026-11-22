@@ -23,7 +23,7 @@ import (
 
 const credentialName = "public-admin.json"
 
-var ErrCredential = errors.New("public Web: administrator credential is missing or invalid; use the local public password command")
+var ErrCredential = errors.New("public Web: administrator credential is missing or invalid; use the local admin status and reset-password commands")
 var credentialFiles sync.Mutex
 
 type credential struct {
@@ -48,24 +48,34 @@ func tokenHash(raw string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func loadCredential(data string) (credential, error) {
-	credentialFiles.Lock()
-	defer credentialFiles.Unlock()
-	file, err := harness.OpenUserAttachmentFile(filepath.Join(data, credentialName))
+func readProtected(path string) ([]byte, error) {
+	if _, err := os.Lstat(path); err != nil {
+		return nil, err
+	}
+	file, err := harness.OpenUserAttachmentFile(path)
 	if err != nil {
-		return credential{}, ErrCredential
+		return nil, ErrCredential
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil || runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
-		return credential{}, ErrCredential
+		return nil, ErrCredential
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, 8193))
 	if err != nil || len(raw) > 8192 {
-		return credential{}, ErrCredential
+		return nil, ErrCredential
 	}
+	return raw, nil
+}
+
+func loadCredential(data string) (credential, error) {
+	raw, err := readProtected(filepath.Join(data, credentialName))
+	if err != nil {
+		return credential{}, err
+	}
+	defer clear(raw)
 	var c credential
-	if json.Unmarshal(raw, &c) != nil || c.Version != 1 || c.Memory != 64*1024 || c.Time != 3 || c.Threads != 2 || len(c.Salt) != 16 || len(c.Hash) != 32 || len(c.Generation) != 64 {
+	if json.Unmarshal(raw, &c) != nil || c.Version != 1 || c.Memory != 64*1024 || c.Time != 3 || c.Threads != 2 || len(c.Salt) != 16 || len(c.Hash) != 32 || !validGeneration(c.Generation) {
 		return credential{}, ErrCredential
 	}
 	return c, nil
@@ -80,25 +90,24 @@ func (c credential) verify(password []byte) bool {
 	return subtle.ConstantTimeCompare(hash, c.Hash) == 1
 }
 
-// SetPassword accepts only direct secure input. It returns no hash or secret.
-func SetPassword(data string, password []byte) error {
+func makeCredential(password []byte) (credential, error) {
 	if len(password) < 12 || len(password) > 1024 || strings.ContainsAny(string(password), "\x00\r\n") {
-		return errors.New("public Web: password must contain 12–1024 bytes without line breaks")
+		return credential{}, errors.New("public Web: password must contain 12–1024 bytes without line breaks")
 	}
 	c := credential{Version: 1, Memory: 64 * 1024, Time: 3, Threads: 2, Salt: make([]byte, 16), Generation: randomToken()}
 	if _, err := rand.Read(c.Salt); err != nil {
-		return err
+		return credential{}, err
 	}
 	c.Hash = argon2.IDKey(password, c.Salt, c.Time, c.Memory, c.Threads, 32)
-	defer clear(c.Hash)
-	raw, err := json.Marshal(c)
+	return c, nil
+}
+
+func writeProtected(path string, value any) error {
+	raw, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
 	defer clear(raw)
-	credentialFiles.Lock()
-	defer credentialFiles.Unlock()
-	path := filepath.Join(data, credentialName)
 	if info, err := os.Lstat(path); err == nil {
 		if !info.Mode().IsRegular() {
 			return ErrCredential
@@ -111,7 +120,7 @@ func SetPassword(data string, password []byte) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	file, err := os.CreateTemp(data, ".public-admin-")
+	file, err := os.CreateTemp(filepath.Dir(path), ".credential-")
 	if err != nil {
 		return err
 	}
@@ -130,4 +139,10 @@ func SetPassword(data string, password []byte) error {
 	return fileops.Rename(temporary, path)
 }
 
-func CredentialReady(data string) bool { _, err := loadCredential(data); return err == nil }
+func validGeneration(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
+}

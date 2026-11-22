@@ -76,6 +76,8 @@ export async function api<T = Record<string, unknown>>(
   }
   if (!response.ok) {
     const failure = data && typeof data === "object" ? data : {};
+    if (failure.code === "reauthentication_required")
+      window.dispatchEvent(new Event("freeagent-reauthentication-required"));
     throw new APIError(
       failure.error || `请求未完成（HTTP ${response.status}）。`,
       response.status,
@@ -104,9 +106,12 @@ export async function apiText(path: string): Promise<string> {
   }
   return response.text();
 }
-export async function login(password: string): Promise<PublicSession> {
+export async function login(
+  username: string,
+  password: string,
+): Promise<PublicSession> {
   await publicSession();
-  const info = await api<PublicSession>("public/login", { password });
+  const info = await api<PublicSession>("public/login", { username, password });
   setCSRF(info.csrf || "");
   return info;
 }

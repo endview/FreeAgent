@@ -344,6 +344,14 @@ func (server *Server) testKey(writer http.ResponseWriter, request *http.Request)
 	if !server.readBody(writer, request, &body) {
 		return
 	}
+	if body.Key != "" || body.ID != "" && strings.TrimSpace(body.BaseURL) != "" {
+		release, err := harness.BeginPublicSettingsDecision(request.Context(), true)
+		if err != nil {
+			server.keyFailure(writer, err, http.StatusForbidden)
+			return
+		}
+		defer release()
+	}
 	store := server.tasks.Keys()
 	if store == nil {
 		server.keyFailure(writer, errors.New("harness: key store is not configured"), http.StatusConflict)

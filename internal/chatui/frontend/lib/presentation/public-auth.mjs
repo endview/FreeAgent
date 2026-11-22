@@ -60,7 +60,7 @@ export async function publicSession(fetcher = fetch) {
   return response.json();
 }
 
-export async function loginPublicPassword(password, fetcher = fetch) {
+export async function loginPublicPassword(username, password, fetcher = fetch) {
   // A login page may remain open longer than the one-use detection cookie.
   // Refresh only on this explicit submit, never with an authentication timer.
   const existing = await publicSession(fetcher);
@@ -70,7 +70,7 @@ export async function loginPublicPassword(password, fetcher = fetch) {
     credentials: "same-origin",
     cache: "no-store",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ username, password }),
   });
   const info = await response.json();
   if (!response.ok) throw new Error(info.error || "登录失败。");

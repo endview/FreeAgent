@@ -148,6 +148,10 @@ type ControlCatalogEntry struct {
 }
 
 type ControlOperation struct {
+	LocalApproval     bool                       `json:"local_approval_required,omitempty"`
+	RequestedBy       string                     `json:"requested_by,omitempty"`
+	RequestEntry      string                     `json:"request_entry,omitempty"`
+	DecisionEntry     string                     `json:"decision_entry,omitempty"`
 	DecidedBy         string                     `json:"decided_by,omitempty"`
 	RemotePrincipal   string                     `json:"remote_principal,omitempty"`
 	ID                string                     `json:"operation_id"`
@@ -509,6 +513,23 @@ func (service *ControlService) recoverAppliedProposals() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, record := range service.operations {
+		if localWebHandoff(record) && !record.Operation.Detached && record.Operation.Status == ControlPending && record.Operation.AttemptID != "" {
+			attempt, err := service.core.Store.GetAttempt(ctx, record.Operation.AttemptID)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if attempt.Status == "pending" {
+				run, err := service.core.Store.GetRun(ctx, attempt.RunID)
+				if err != nil {
+					return err
+				}
+				if run.Status == "waiting_confirmation" && run.StopReason == StopReasonControlProposal {
+					if err := service.detachProposal(ctx, record.Operation.ID); err != nil {
+						return err
+					}
+				}
+			}
+		}
 		if record.Operation.Detached && record.Operation.Status == ControlPending {
 			if err := service.settleDetachedProposal(ctx, record); err != nil {
 				return err
@@ -978,8 +999,12 @@ func (service *ControlService) PlanControlChange(ctx context.Context, request Co
 		}
 	}
 	record.Operation.ID = newID()
-	if entry, remote := PublicEntryFrom(ctx); remote {
-		record.Operation.RemotePrincipal = entry.Principal
+	bindPublicSettings(ctx, &record)
+	if _, remote := PublicEntryFrom(ctx); remote {
+		record.Operation.LocalApproval = hostSettingsWiden(record, service.core.currentConfig()) || request.Kind == ControlSetMCPProfile
+		if record.Operation.LocalApproval {
+			record.Operation.Preview += "\nApproval requires a trusted local administrator."
+		}
 	}
 	record.Operation.CreatedAt = nowText()
 	record.Operation.ExpiresAt = time.Now().UTC().Add(controlConfirmationTTL).Format(time.RFC3339Nano)
@@ -1017,6 +1042,11 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 	if err := ctx.Err(); err != nil {
 		return ControlOperation{}, err
 	}
+	release, err := BeginPublicSettingsDecision(ctx, true)
+	if err != nil {
+		return ControlOperation{}, err
+	}
+	release()
 	if err := service.detectExternalChange(); err != nil {
 		return ControlOperation{}, err
 	}
@@ -1075,6 +1105,7 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 			}
 			record.Operation.Preview += fmt.Sprintf(" Models referencing this credential: %v.", users)
 		}
+		bindPublicSettings(ctx, &record)
 		return service.persistKeyPlanLocked(record, nil)
 	}
 
@@ -1140,6 +1171,7 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 		Before: map[string]json.RawMessage{resource: mustJSON(views)}, After: map[string]json.RawMessage{resource: mustJSON(after)}}
 	secret := append([]byte(nil), input.Secret...)
 	clear(input.Secret)
+	bindPublicSettings(ctx, &record)
 	return service.persistKeyPlanLocked(record, secret)
 }
 
@@ -1281,6 +1313,10 @@ func (service *ControlService) PlanMCPProfileChange(ctx context.Context, request
 		config.MCPServers = map[string]MCPServerConfig{}
 	}
 	current, exists := config.MCPServers[id]
+	if _, remote := PublicEntryFrom(ctx); remote && !request.Remove && len(request.Config.Env) != 0 && !bytes.Equal(mustJSON(current.Env), mustJSON(request.Config.Env)) {
+		// Literal environment secrets cannot enter a remote handoff.
+		return ControlOperation{}, ErrPublicLocalConfirmation
+	}
 	if request.Remove {
 		if !exists {
 			return ControlOperation{}, errors.New("harness: MCP server not found")
@@ -1307,6 +1343,11 @@ func (service *ControlService) PlanMCPProfileChange(ctx context.Context, request
 		Before: map[string]json.RawMessage{resource: mustJSON(before)}, After: map[string]json.RawMessage{resource: mustJSON(after)}}
 	record.Operation.OldValues = redactedValues(record.Before)
 	record.Operation.ProposedValues = redactedValues(record.After)
+	bindPublicSettings(ctx, &record)
+	if _, remote := PublicEntryFrom(ctx); remote && !request.Remove && mcpProfileNeedsLocal(current, config.MCPServers[id], exists) {
+		record.Operation.LocalApproval = true
+		record.Operation.Preview += "\nApproval requires a trusted local administrator. No process has been started."
+	}
 	record.Operation.ID = newID()
 	record.Operation.CreatedAt = nowText()
 	record.Operation.ExpiresAt = time.Now().UTC().Add(controlConfirmationTTL).Format(time.RFC3339Nano)
@@ -1368,6 +1409,9 @@ func (service *ControlService) ReenterMCPProfile(ctx context.Context, operationI
 	candidate.MCPServers[id] = cloneMCPServerConfig(request.Config)
 	if err := candidate.Validate(); err != nil {
 		return ControlOperation{}, err
+	}
+	if !bytes.Equal(record.After["config.mcp:"+id], mustJSON(mcpControlValue(id, request.Config, true))) {
+		return ControlOperation{}, ErrControlStaleRevision
 	}
 	service.mcpProfiles[operationID] = cloneMCPServerConfig(request.Config)
 	if err := service.appendLocked("reentered", record); err != nil {
@@ -1518,6 +1562,9 @@ func (service *ControlService) renderConfirmation(ctx context.Context, operation
 	if record.Operation.ErrorCode == "expired" {
 		return ControlConfirmation{}, ErrControlExpired
 	}
+	if _, remote := PublicEntryFrom(ctx); remote && record.Operation.LocalApproval {
+		return ControlConfirmation{}, &LocalSettingsApproval{OperationID: record.Operation.ID, ConversationID: record.Operation.ConversationID}
+	}
 	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal != "" && entry.Principal != record.Operation.RemotePrincipal {
 		previous, exists := service.confirmations[operationID]
 		if record.Operation.AttemptID == "" || record.Operation.Authorization != ControlModelProposed || exists && time.Now().Before(previous.expiresAt) {
@@ -1645,6 +1692,11 @@ func (service *ControlService) rejectControlChange(ctx context.Context, operatio
 	if err := service.validateCapabilityLocked(auth); err != nil {
 		return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
 	}
+	releaseSettings, err := BeginPublicSettingsDecision(ctx, false)
+	if err != nil {
+		return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
+	}
+	defer releaseSettings()
 	if auth.ConversationID != "" && record.Operation.ConversationID != "" && auth.ConversationID != record.Operation.ConversationID {
 		return ControlResult{Operation: cloneControlOperation(record.Operation)}, ErrControlUserInteractionRequired
 	}
@@ -1657,7 +1709,7 @@ func (service *ControlService) rejectControlChange(ctx context.Context, operatio
 		}
 	}
 	record.Operation.Status = ControlRejected
-	record.Operation.DecidedBy = auth.Principal
+	recordSettingsDecision(ctx, &record, auth.Principal)
 	record.Operation.ErrorCode = "rejected"
 	service.operations[operationID] = record
 	if err := service.appendLocked("rejected", record); err != nil {
@@ -1696,6 +1748,10 @@ func (service *ControlService) PlanRevertControlChange(ctx context.Context, oper
 		Preview: "Revert " + original.Operation.Kind + " to its exact protected previous value.", RevertClass: "none", RevertOf: operationID},
 		Arguments: mustJSON(map[string]string{"operation_id": operationID}), Before: cloneRawMap(original.After), After: cloneRawMap(original.Before)}
 	record.Operation.ID, record.Operation.CreatedAt = newID(), nowText()
+	bindPublicSettings(ctx, &record)
+	if _, remote := PublicEntryFrom(ctx); remote {
+		record.Operation.LocalApproval = hostSettingsWiden(record, service.core.currentConfig())
+	}
 	record.Operation.ExpiresAt = time.Now().UTC().Add(controlConfirmationTTL).Format(time.RFC3339Nano)
 	record.Operation.Status = ControlPending
 	record.Operation.Digest = controlDigest(record)
@@ -1848,7 +1904,12 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 		}
 		defer service.gate.endControl()
 	}
-	record.Operation.DecidedBy = auth.Principal
+	releaseSettings, err := service.beginPublicControlDecision(ctx, record)
+	if err != nil {
+		return result, err
+	}
+	defer releaseSettings()
+	recordSettingsDecision(ctx, &record, auth.Principal)
 	if err := service.applyRecordLocked(ctx, &record); err != nil {
 		if errors.Is(err, ErrControlMCPReentryRequired) {
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "mcp_reentry_required"}, err
