@@ -60,24 +60,26 @@ export default function OperationHistory() {
                     核对原操作结果
                   </Button>
                 )}
-              {item.status === "pending" && !item.attempt_id && (
-                <ControlPreview
-                  key={item.operation_id}
-                  kind={item.kind}
-                  arguments={{}}
-                  initialOperation={item}
-                  onSaved={async () => {
-                    await resource.reload();
-                  }}
-                  onRejected={() =>
-                    void resource
-                      .reload()
-                      .catch((error) => setError(error.message))
-                  }
-                />
-              )}
+              {item.status === "pending" &&
+                (!item.attempt_id || item.detached) && (
+                  <ControlPreview
+                    key={item.operation_id}
+                    kind={item.kind}
+                    arguments={{}}
+                    initialOperation={item}
+                    onSaved={async () => {
+                      await resource.reload();
+                    }}
+                    onRejected={() =>
+                      void resource
+                        .reload()
+                        .catch((error) => setError(error.message))
+                    }
+                  />
+                )}
               {item.status === "pending" &&
                 item.attempt_id &&
+                !item.detached &&
                 item.conversation_id && (
                   <a
                     data-internal

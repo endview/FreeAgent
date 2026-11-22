@@ -4,8 +4,8 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-已发布 **v9.0.0-dev.2** 并更新 Hytron：新增 TG 私聊会话设置确认和每 Bot 确认名单；批准后仅下一轮生效、额外模型调用为零。W1 的收发诊断和默认不保存未唤起群文本继续保留，Core/渠道程序成对使用 v4。实际测试与部署见[W2 验收记录](docs/VALIDATION_V9_W2_2026-11-22.md)。这不是 v9 正式版，群设置确认和话题仍按计划推进。
-[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.2)
+已发布 **v9.0.0-dev.3** 并更新 Hytron：Telegram 群话题、多人排队、迁移与可选背景保留，继续支持私聊设置确认。Core/渠道程序成对使用 v4。实际测试与部署见[W3 验收记录](docs/VALIDATION_V9_W3_2026-11-22.md)。这不是 v9 正式版。
+[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.3)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 
 下一正式版目标为 **v9.0.0**：[渠道聊天 Bot 实施计划与验收](docs/FREEAGENT_V9_0_CHANNEL_CHATBOT_PLAN_2026-11-22.md)。先发 TG 群诊断，再发私聊确认；每个工作包对应一个开发版并更新 Hytron。私聊、群聊、话题、授权工具和群内设置确认全部通过后才发正式版。目前仍是计划。

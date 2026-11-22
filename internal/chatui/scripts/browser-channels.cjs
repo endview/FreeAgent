@@ -164,11 +164,9 @@ const fs = require("node:fs"),
       .waitFor();
     assert.equal(await confirmers.inputValue(), "7");
     await page.getByText("群回复与背景", { exact: true }).click();
-    const groupPanel = page
-      .locator("details")
-      .filter({
-        has: page.locator("summary").getByText("群回复与背景", { exact: true }),
-      });
+    const groupPanel = page.locator("details").filter({
+      has: page.locator("summary").getByText("群回复与背景", { exact: true }),
+    });
     const replyAll = groupPanel.getByRole("checkbox").nth(0),
       background = groupPanel.getByRole("checkbox").nth(1);
     assert.equal(await replyAll.isChecked(), false);
@@ -240,6 +238,64 @@ const fs = require("node:fs"),
         path: path.join(artifacts, "group-policy-" + width + ".png"),
       });
     }
+    const grants = (await api("channels/telegram/access")).access;
+    const groupSpace = grants.find(
+      (grant) => grant.target.chat_id === "-100",
+    ).space_id;
+    const defaultRoute = "spaces/capabilities?space=" + groupSpace;
+    const initial = await api(defaultRoute);
+    assert.equal(initial.state.configured, false);
+    await page.goto(info.origin + "/?view=settings&section=spaces#key=" + key);
+    const spaceSection = page.locator("section.settings-section").filter({
+      has: page.getByRole("heading", { name: "Telegram -100", exact: true }),
+    });
+    const defaultPanel = spaceSection.locator("details").filter({
+      has: page.getByText("新会话的默认能力", { exact: true }),
+    });
+    await defaultPanel.getByText("新会话的默认能力", { exact: true }).click();
+    const saveDefaults = defaultPanel.getByRole("button", {
+      name: "保存空间默认能力",
+      exact: true,
+    });
+    await saveDefaults.waitFor();
+    await api("spaces/capabilities", {
+      space_id: groupSpace,
+      selection: { search: "off" },
+      expected_revisions: initial.expected_revisions,
+    });
+    const staleDefaults = page.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname === "/api/spaces/capabilities" &&
+        r.request().method() === "POST",
+    );
+    await saveDefaults.click();
+    assert.equal((await staleDefaults).status(), 409);
+    const saved = (await api(defaultRoute)).state;
+    assert.equal(saved.selection.search, "off");
+    await defaultPanel
+      .getByRole("button", { name: "放弃草稿并读取默认能力", exact: true })
+      .click();
+    await defaultPanel
+      .getByRole("status")
+      .filter({ hasText: "已读取当前默认能力" })
+      .waitFor();
+    await saveDefaults.click();
+    await defaultPanel
+      .getByRole("status")
+      .filter({ hasText: "空间默认能力已保存" })
+      .waitFor();
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+        "space settings overflow at " + width,
+      );
+      await defaultPanel.screenshot({
+        path: path.join(artifacts, "space-defaults-" + width + ".png"),
+      });
+    }
     assert.equal(errors.length, 0);
     console.log(
       JSON.stringify({
@@ -250,6 +306,7 @@ const fs = require("node:fs"),
         conflict_preserves_draft: true,
         explicit_readback: true,
         group_policy_save_conflict_readback: true,
+        space_defaults_save_conflict_readback: true,
         widths: [1440, 768, 390],
         errors,
       }),

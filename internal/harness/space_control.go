@@ -29,13 +29,14 @@ type SpaceControlArguments struct {
 	Selection      *PermissionSelection `json:"selection,omitempty"`
 	Enabled        *bool                `json:"enabled,omitempty"`
 	PersonID       string               `json:"person_id,omitempty"`
+	Capabilities   *CapabilitySelection `json:"capabilities,omitempty"`
 	DisplayName    string               `json:"display_name,omitempty"`
 }
 
 func isSpaceControl(kind string) bool {
 	switch kind {
 	case ControlCreateSpace, ControlRenameSpace, ControlDeleteSpace, ControlMoveConversation,
-		ControlSpaceDefault, ControlSpaceActive, ControlSpaceMulti, ControlSetSpacePermission, ControlPersonPermission:
+		ControlSpaceDefault, ControlSpaceActive, ControlSpaceMulti, ControlSpaceCapabilities, ControlSetSpacePermission, ControlPersonPermission:
 		return true
 	}
 	return false
@@ -125,6 +126,27 @@ func (service *ControlService) buildSpaceControl(ctx context.Context, record *co
 		}
 	}
 	switch record.Operation.Kind {
+	case ControlSpaceCapabilities:
+		if args.Capabilities == nil {
+			return ErrInvalidSpace
+		}
+		selected := args.Capabilities.normalize()
+		if err := tasks.validateSpaceCapabilities(ctx, args.SpaceID, selected); err != nil {
+			return err
+		}
+		args.Capabilities = &selected
+		record.Operation.Preview = fmt.Sprintf("Set capability defaults for NEW conversations in %q. Existing selections, including explicit empty selections, remain unchanged. This does not grant resource or tool authority.", space.Title)
+		current, err := tasks.SpaceCapabilities(ctx, space.ID)
+		if err != nil {
+			return err
+		}
+		resource := spaceCapabilitiesResource(space.ID)
+		record.Operation.ResourceIDs = []string{resource}
+		record.Operation.RevertClass = "none"
+		record.Before = map[string]json.RawMessage{resource: mustJSON(current)}
+		record.After = map[string]json.RawMessage{resource: mustJSON(SpaceCapabilities{Selection: selected, Configured: true})}
+		record.Arguments = mustJSON(args)
+		return nil
 	case ControlCreateSpace:
 		if err := validateSpaceTitle(args.Title); err != nil {
 			return err
@@ -236,6 +258,24 @@ func (service *ControlService) applySpaceControl(ctx context.Context, record *co
 	if err := decodeControlJSON(record.Arguments, &args); err != nil {
 		return err
 	}
+	tasks := NewTaskService(service.core)
+	if record.Operation.Kind == ControlSpaceCapabilities {
+		if args.Capabilities == nil {
+			return ErrInvalidSpace
+		}
+		current, err := tasks.SpaceCapabilities(ctx, args.SpaceID)
+		if err != nil {
+			return err
+		}
+		if string(mustJSON(current)) != string(record.Before[spaceCapabilitiesResource(args.SpaceID)]) {
+			return ErrControlStaleRevision
+		}
+		if err := tasks.validateSpaceCapabilities(ctx, args.SpaceID, *args.Capabilities); err != nil {
+			return err
+		}
+		_, err = tasks.core.Store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "space/capabilities/"+args.SpaceID, string(mustJSON(args.Capabilities.normalize())))
+		return err
+	}
 	current, err := service.spaceControlState(ctx, args.PersonID)
 	if err != nil {
 		return err
@@ -243,7 +283,6 @@ func (service *ControlService) applySpaceControl(ctx context.Context, record *co
 	if string(current) != string(record.Before["spaces"]) {
 		return ErrControlStaleRevision
 	}
-	tasks := NewTaskService(service.core)
 	switch record.Operation.Kind {
 	case ControlCreateSpace:
 		space, err := tasks.NewSpace(ctx, args.Title, SpaceSourceLocal, "", "")

@@ -184,6 +184,7 @@ func buildControlInputSchemas() map[string]json.RawMessage {
 	schemas[ControlSpaceActive] = controlTypeSchema[SpaceControlArguments]("space_id", "conversation_id")
 	schemas[ControlSpaceDefault] = controlTypeSchema[SpaceControlArguments]("space_id", "conversation_id")
 	schemas[ControlSpaceMulti] = controlTypeSchema[SpaceControlArguments]("space_id", "enabled")
+	schemas[ControlSpaceCapabilities] = controlTypeSchema[SpaceControlArguments]("space_id", "capabilities")
 	schemas[ControlTelegramAccess] = controlTypeSchema[TelegramAccessChange]()
 	schemas[ControlPublishSkill] = controlTypeSchema[SkillPublication]("id", "document")
 	schemas[ControlScheduleDelivery] = controlTypeSchema[scheduleDeliveryArguments]("run_id", "candidate")

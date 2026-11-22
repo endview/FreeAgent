@@ -6,6 +6,7 @@ import { Choice } from "@/components/Choice";
 import { Field, Result } from "./shared";
 import type { Space } from "@/lib/api/types";
 import { useManagement } from "@/features/conversations/Management";
+import { SpaceCapabilityDefaults } from "./SpaceCapabilityDefaults";
 
 export default function SpacesSettings() {
   const state = useRuntime();
@@ -83,6 +84,7 @@ function SpaceEditor({
   return (
     <section className="settings-section">
       <h2>{space.title}</h2>
+      <SpaceCapabilityDefaults space={space.id} />
       <p className="form-hint">
         {space.source} · {space.permission || "none"}
         {space.multi_conversation_enabled ? " · 多对话已开启" : " · 单对话"}

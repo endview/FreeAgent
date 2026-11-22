@@ -636,7 +636,7 @@ function TelegramConfirmers() {
       <h2>设置确认人员</h2>
       <p className="form-hint">
         每个 Bot
-        一份名单，默认空。仅允许确认支持的会话设置，不改变聊天准入和工具权限，不能替别人审批命令。当前开发版仅支持私聊。
+        一份名单，默认空。仅允许确认支持的会话设置，不改变聊天准入和工具权限，不能替别人审批命令。群内只支持当前会话已选扩展的一个已有选项，确认人与发起人可不同。
       </p>
       {resource.value ? (
         resource.value.bots.map((bot) => (

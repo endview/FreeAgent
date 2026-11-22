@@ -6,14 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	tgpolicy "github.com/endview/freeagent/internal/connectors/telegram"
 	"net/url"
 	"slices"
 	"strings"
 	"time"
+
+	tgpolicy "github.com/endview/freeagent/internal/connectors/telegram"
 )
 
 type channelSettingBinding struct {
+	Closed         bool          `json:"closed,omitempty"`
+	Detached       bool          `json:"detached,omitempty"`
 	Generation     string        `json:"generation"`
 	AccessRevision uint64        `json:"access_revision"`
 	Person         string        `json:"person"`
@@ -57,7 +60,7 @@ func (tasks *TaskService) expireChannelSettingCards(ctx context.Context, target 
 		return err
 	}
 	prefix := "connector/telegram/" + target.ApplicationID + "/setting-card/"
-	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT m.key,m.value FROM fa.meta m JOIN fa.runs r ON r.id=m.document->>'run_id' WHERE m.key>=$1 AND m.key<$2 AND m.document#>>'{target,chat_id}'=$3 AND r.status='waiting_confirmation' LIMIT 128`, prefix, prefix+"\uffff", target.ChatID)
+	rows, err := tasks.core.Store.db.QueryContext(ctx, `SELECT m.key,m.value FROM fa.meta m JOIN fa.runs r ON r.id=m.document->>'run_id' WHERE m.key>=$1 AND m.key<$2 AND m.document#>>'{target,chat_id}'=$3 AND coalesce((m.document->>'closed')::boolean,false)=false AND (r.status='waiting_confirmation' OR m.document->>'detached'='true') LIMIT 128`, prefix, prefix+"\uffff", target.ChatID)
 	if err != nil {
 		return err
 	}
@@ -125,6 +128,9 @@ func (tasks *TaskService) expireChannelSettingCards(ctx context.Context, target 
 		if err := control.invalidateProposalLocked(ctx, &record, code); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
+		if err := tasks.closeSettingBinding(ctx, target.ApplicationID, item.op); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -150,6 +156,11 @@ func (s *channelSession) settingCard(ctx context.Context, run Run, confirmation 
 	if origin == nil || run.Permission == nil {
 		return "", nil, ErrPermissionDenied
 	}
+	space, err := s.tasks.ChannelSpace(ctx, origin.ChannelTarget)
+	if err != nil {
+		return "", nil, err
+	}
+	group := space.ChatKind == "group"
 	people, err := s.tasks.TelegramConfirmers(ctx, origin.ApplicationID)
 	if err != nil {
 		return "", nil, err
@@ -180,14 +191,28 @@ func (s *channelSession) settingCard(ctx context.Context, run Run, confirmation 
 		if previous == "" {
 			previous = "继承扩展设置"
 		}
-		text = "当前对话的扩展选项：" + previous + " → " + value + "。下一轮生效；其他能力保持原值。"
+		label := key
+		if label == "" {
+			label = "角色"
+		}
+		text = "当前对话 · " + id + " · " + label + "：" + previous + " → " + value + "。下一轮生效；其他能力保持原值。"
 	}
 	expires := time.Now().Add(telegramCallbackTTL)
 	if at, e := time.Parse(time.RFC3339Nano, record.Operation.ExpiresAt); e == nil && at.Before(expires) {
 		expires = at
 	}
-	binding, err := s.tasks.bindSettingCard(ctx, record.Operation.ID, channelSettingBinding{Run: run.ID, Target: origin.ChannelTarget, Revision: people.Revision, Expires: expires, AccessRevision: origin.AccessRevision, Person: run.Permission.PersonID, Generation: s.sessionGeneration()})
+	binding, err := s.tasks.bindSettingCard(ctx, record.Operation.ID, channelSettingBinding{Detached: group, Run: run.ID, Target: origin.ChannelTarget, Revision: people.Revision, Expires: expires, AccessRevision: origin.AccessRevision, Person: run.Permission.PersonID, Generation: s.sessionGeneration()})
 	if err != nil {
+		if errors.Is(err, ErrControlStaleRevision) {
+			control.mu.Lock()
+			saved := control.operations[record.Operation.ID]
+			e := control.invalidateProposalLocked(ctx, &saved, "connection_changed")
+			control.mu.Unlock()
+			if e != nil {
+				return "", nil, e
+			}
+			return "设置预览已失效，请按当前值重新提出。", nil, nil
+		}
 		return "", nil, err
 	}
 	expires = binding.Expires
@@ -203,10 +228,30 @@ func (s *channelSession) settingCard(ctx context.Context, run Run, confirmation 
 		}
 		buttons = append(buttons, channelButton{Text: label, Token: token})
 	}
+	if group {
+		text += "\n由本群已准入的设置确认人员决定；原发起人可撤回。等待期间可以继续聊天。"
+		token, e := s.button(channelApproval{Withdraw: true, Confirmation: confirmation, Target: origin.ChannelTarget, Person: run.Permission.PersonID, Expires: expires, SettingsRevision: people.Revision})
+		if e != nil {
+			return "", nil, e
+		}
+		buttons = append(buttons, channelButton{Text: "撤回提案", Token: token})
+	}
 	return text, buttons, nil
 }
 
 func (s *channelSession) confirmSetting(ctx context.Context, e channelEvent, item channelApproval) error {
+	run, origin, err := s.tasks.ChannelRun(ctx, item.Confirmation.RunID)
+	if err != nil || origin == nil || origin.ChannelTarget != e.Target || run.Permission == nil {
+		return ErrPermissionDenied
+	}
+	space, err := s.tasks.ChannelSpace(ctx, e.Target)
+	if err != nil {
+		return err
+	}
+	group := space.ChatKind == "group"
+	if !group && run.Permission.PersonID != e.Person || item.Withdraw && (!group || run.Permission.PersonID != e.Person) {
+		return ErrPermissionDenied
+	}
 	// Shared lock orders this decision with an owner's roster revocation.
 	// Revocation cannot commit between the last check and the setting write.
 	key, err := s.tasks.confirmerKey(e.Target.ApplicationID)
@@ -226,7 +271,7 @@ func (s *channelSession) confirmSetting(ctx context.Context, e channelEvent, ite
 	if json.Unmarshal([]byte(lockedRaw), &lockedPeople) != nil {
 		return ErrStoreFormat
 	}
-	if lockedPeople.Revision != item.SettingsRevision || !slices.Contains(lockedPeople.Members, e.Person) {
+	if lockedPeople.Revision != item.SettingsRevision || !item.Withdraw && !slices.Contains(lockedPeople.Members, e.Person) {
 		channelFeedback(ctx, "确认名单已改变，此卡不再有效；请重新提出。")
 		return ErrPermissionDenied
 	}
@@ -234,11 +279,7 @@ func (s *channelSession) confirmSetting(ctx context.Context, e channelEvent, ite
 	if err != nil {
 		return err
 	}
-	if people.Revision != item.SettingsRevision || !slices.Contains(people.Members, e.Person) {
-		return ErrPermissionDenied
-	}
-	run, origin, err := s.tasks.ChannelRun(ctx, item.Confirmation.RunID)
-	if err != nil || origin == nil || origin.ChannelTarget != e.Target || run.Permission == nil || run.Permission.PersonID != e.Person {
+	if people.Revision != item.SettingsRevision || !item.Withdraw && !slices.Contains(people.Members, e.Person) {
 		return ErrPermissionDenied
 	}
 	control, err := s.tasks.Control()
@@ -247,7 +288,8 @@ func (s *channelSession) confirmSetting(ctx context.Context, e channelEvent, ite
 	}
 	record, ok := control.operationForAttempt(item.Confirmation.Attempt)
 	if !ok {
-		return ErrControlOperationNotFound
+		channelFeedback(ctx, "这项设置已经处理或已失效，请查看当前值。")
+		return nil
 	}
 	if record.Operation.Status != ControlPending {
 		channelFeedback(ctx, "这项设置已经决定，请查看已保存值。")
@@ -268,7 +310,7 @@ func (s *channelSession) confirmSetting(ctx context.Context, e channelEvent, ite
 		}
 		return err
 	}
-	principal := "channel/" + fmt.Sprint(ctx.Value(channelEventKey{}))
+	principal := "channel/" + e.Person + "/" + fmt.Sprint(ctx.Value(channelEventKey{}))
 	capability, err := control.IssueInteractiveCapability(ctx, run.ConversationID, principal)
 	if err != nil {
 		return err
@@ -304,7 +346,51 @@ func (s *channelSession) confirmSetting(ctx context.Context, e channelEvent, ite
 		if grant.Revision != origin.AccessRevision {
 			return ErrPermissionRevoked
 		}
+		if err := s.tasks.checkChannelRunDestination(ctx, run, e.Target); err != nil {
+			return errors.Join(ErrPermissionRevoked, err)
+		}
+		if item.Approved {
+			if err := s.tasks.channelSettingRecordEligible(ctx, run, record); err != nil {
+				return errors.Join(ErrPermissionRevoked, err)
+			}
+		}
 		return nil
+	}
+	if group && record.Operation.Detached {
+		var result ControlResult
+		if item.Approved && !item.Withdraw {
+			result, err = control.confirmRunProposal(ctx, record.Operation.ID, auth)
+		} else {
+			result, err = control.rejectControlChange(ctx, record.Operation.ID, auth, true)
+		}
+		_ = rosterLock.Rollback()
+		if err != nil {
+			if errors.Is(err, ErrControlStaleRevision) || errors.Is(err, ErrControlExpired) || errors.Is(err, ErrControlAlreadyUsed) {
+				channelFeedback(ctx, "这张预览已失效，请按当前值重新提出。")
+				return nil
+			}
+			if errors.Is(err, ErrControlBusy) {
+				channelFeedback(ctx, "暂时无法提交，请稍后再点原卡。设置未修改。")
+				return nil
+			}
+			return err
+		}
+		if err = s.tasks.closeSettingBinding(ctx, e.Target.ApplicationID, record.Operation.ID); err != nil {
+			return err
+		}
+		text := "已拒绝，设置未更改。"
+		if item.Withdraw {
+			text = "提案已撤回，设置未更改。"
+		} else if result.Applied {
+			text = "已保存，下一轮生效。"
+		} else if result.ErrorCode == "target_already_satisfied" {
+			text = "已由另一笔修改完成，本提案没有再次写入。"
+		}
+		if _, err = s.tasks.core.Store.db.ExecContext(ctx, `UPDATE fa.runs SET output=$1,updated_at=$2 WHERE id=$3 AND status='completed' AND stop_reason=$4`, text, nowText(), run.ID, detachedProposalReason); err != nil {
+			return err
+		}
+		channelFeedback(ctx, text)
+		return s.plain(ctx, e, text)
 	}
 	result, err := s.tasks.ConfirmControl(ctx, run.ID, item.Confirmation, auth, item.Approved)
 	_ = rosterLock.Rollback()
@@ -324,4 +410,9 @@ func (s *channelSession) confirmSetting(ctx context.Context, e channelEvent, ite
 	}
 	s.mu.Unlock()
 	return s.Deliver(ctx, result)
+}
+
+func (tasks *TaskService) closeSettingBinding(ctx context.Context, bot, operation string) error {
+	_, err := tasks.core.Store.db.ExecContext(ctx, `UPDATE fa.meta SET value=jsonb_set(document,'{closed}','true'::jsonb,true)::text WHERE key=$1`, "connector/telegram/"+bot+"/setting-card/"+operation)
+	return err
 }

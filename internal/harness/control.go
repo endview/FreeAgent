@@ -152,6 +152,7 @@ type ControlOperation struct {
 	RemotePrincipal   string                     `json:"remote_principal,omitempty"`
 	ID                string                     `json:"operation_id"`
 	AttemptID         string                     `json:"attempt_id,omitempty"`
+	Detached          bool                       `json:"detached,omitempty"`
 	Kind              string                     `json:"kind"`
 	Authorization     ControlAuthorizationSource `json:"authorization_source"`
 	ConversationID    string                     `json:"conversation_id,omitempty"`
@@ -508,6 +509,11 @@ func (service *ControlService) recoverAppliedProposals() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, record := range service.operations {
+		if record.Operation.Detached && record.Operation.Status == ControlPending {
+			if err := service.settleDetachedProposal(ctx, record); err != nil {
+				return err
+			}
+		}
 		if record.Operation.Status == ControlRejected || record.Operation.Status == ControlStale || record.Operation.Status == ControlFailed {
 			if err := service.settleInvalidProposal(ctx, record); err != nil {
 				return err
@@ -701,6 +707,7 @@ func ControlOperationCatalog() []ControlCatalogEntry {
 		{Kind: ControlSpaceDefault, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Choose a space's default conversation.", ModelProposable: true},
 		{Kind: ControlSpaceActive, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Choose the external channel's active conversation.", ModelProposable: true},
 		{Kind: ControlSpaceMulti, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Explicitly enable or disable multiple channel conversations.", ModelProposable: true},
+		{Kind: ControlSpaceCapabilities, ResourceFamily: "spaces", Risk: ControlRiskOrdinary, Description: "Set capability defaults only for newly created conversations in a space; grants no additional authority.", ModelProposable: true},
 		{Kind: ControlPersonPermission, ResourceFamily: "people", Risk: ControlRiskAuthority, Description: "Change a platform person's permission across connected spaces; local confirmation only.", ModelProposable: true},
 		{Kind: ControlBranchConversation, ResourceFamily: "conversation.branch", Risk: ControlRiskOrdinary, Description: "Create an independent conversation branch at a verified user or completed assistant message. No filesystem rollback and no automatic branch execution.", ModelProposable: true},
 		{Kind: ControlRenameConversation, ResourceFamily: "conversation.metadata", Risk: ControlRiskOrdinary, Description: "Rename one conversation.", ModelProposable: true, Reversible: true},
@@ -1517,11 +1524,11 @@ func (service *ControlService) renderConfirmation(ctx context.Context, operation
 			return ControlConfirmation{}, ErrControlUserInteractionRequired
 		}
 		attempt, err := service.core.Store.GetAttempt(ctx, record.Operation.AttemptID)
-		if err != nil || attempt.Status != "pending" {
+		if err != nil || attempt.Status != "pending" && !record.Operation.Detached {
 			return ControlConfirmation{}, ErrControlAlreadyUsed
 		}
 		run, err := service.core.Store.GetRun(ctx, attempt.RunID)
-		if err != nil || run.Status != "waiting_confirmation" || run.ConversationID != record.Operation.ConversationID {
+		if err != nil || run.Status != "waiting_confirmation" && !(record.Operation.Detached && run.Status == "completed") || run.ConversationID != record.Operation.ConversationID {
 			return ControlConfirmation{}, ErrControlAlreadyUsed
 		}
 		record.Operation.RemotePrincipal = entry.Principal
@@ -1540,6 +1547,9 @@ func (service *ControlService) renderConfirmation(ctx context.Context, operation
 	}
 	if record.Operation.Status != ControlPending {
 		return ControlConfirmation{}, ErrControlAlreadyUsed
+	}
+	if err := service.checkDetachedExpiryLocked(ctx, &record); err != nil {
+		return ControlConfirmation{}, err
 	}
 	for resource, expected := range record.Operation.ExpectedRevisions {
 		if service.revisionLocked(resource) != expected && !boundDecision {
@@ -1638,6 +1648,14 @@ func (service *ControlService) rejectControlChange(ctx context.Context, operatio
 	if auth.ConversationID != "" && record.Operation.ConversationID != "" && auth.ConversationID != record.Operation.ConversationID {
 		return ControlResult{Operation: cloneControlOperation(record.Operation)}, ErrControlUserInteractionRequired
 	}
+	if err := service.checkDetachedExpiryLocked(ctx, &record); err != nil {
+		return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
+	}
+	if auth.revalidate != nil {
+		if err := auth.revalidate(ctx); err != nil {
+			return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
+		}
+	}
 	record.Operation.Status = ControlRejected
 	record.Operation.DecidedBy = auth.Principal
 	record.Operation.ErrorCode = "rejected"
@@ -1725,7 +1743,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 	if record.Operation.Status != ControlPending {
 		return result, ErrControlAlreadyUsed
 	}
-	if apply && !fromRun && record.Operation.AttemptID != "" {
+	if apply && !fromRun && record.Operation.AttemptID != "" && !record.Operation.Detached {
 		return result, ErrControlRunConfirmation
 	}
 	if err := service.validateCapabilityLocked(auth); err != nil {
@@ -1741,6 +1759,14 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 	}
 	if !apply {
 		return result, nil
+	}
+	if err := service.checkDetachedExpiryLocked(ctx, &record); err != nil {
+		return result, err
+	}
+	if record.Operation.Detached && auth.revalidate == nil {
+		if err := service.checkDetachedDestination(ctx, record); err != nil {
+			return result, err
+		}
 	}
 	if auth.revalidate != nil {
 		if err := auth.revalidate(ctx); err != nil {

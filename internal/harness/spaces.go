@@ -384,7 +384,7 @@ func (store *Store) DeleteSpace(ctx context.Context, id string) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE fa.conversations SET space_id=$1,updated_at=$2 WHERE space_id=$3`, LocalSpaceID, nowText(), id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 OR key LIKE $2`, "space/permission/"+id, "space/people/"+id+"/%"); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 OR key LIKE $2 OR key=$3`, "space/permission/"+id, "space/people/"+id+"/%", "space/capabilities/"+id); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM fa.spaces WHERE id=$1`, id); err != nil {

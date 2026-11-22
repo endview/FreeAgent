@@ -192,6 +192,9 @@ func (store *Store) CreateConversationInSpace(ctx context.Context, spaceID, titl
 		return Conversation{}, err
 	}
 	var defaultID string
+	if err := initializeSpaceCapabilitiesTx(ctx, tx, result.ID, spaceID); err != nil {
+		return Conversation{}, err
+	}
 	if err := tx.QueryRowContext(ctx, `SELECT default_conversation_id FROM fa.spaces WHERE id=$1`, spaceID).Scan(&defaultID); err != nil {
 		return Conversation{}, err
 	}

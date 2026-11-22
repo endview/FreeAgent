@@ -77,6 +77,9 @@ func (tasks *TaskService) channelRouteTx(ctx context.Context, tx *sql.Tx, space 
 		if err != nil {
 			return route, err
 		}
+		if err = initializeSpaceCapabilitiesTx(ctx, tx, chat, space.ID); err != nil {
+			return route, err
+		}
 	}
 	route.Default, route.Active = chat, chat
 	if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, channelRouteKey(target), string(mustJSON(route))); err != nil {

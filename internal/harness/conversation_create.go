@@ -60,6 +60,9 @@ func (store *Store) CreateActiveConversation(ctx context.Context, spaceID, title
 		return Conversation{}, err
 	}
 	if len(targets) > 0 && targets[0].ThreadID != "" {
+		if err = initializeSpaceCapabilitiesTx(ctx, tx, c.ID, spaceID); err != nil {
+			return Conversation{}, err
+		}
 		target := targets[0]
 		bound, ok := channelTarget(space)
 		if !ok || bound != target.group() {
@@ -80,8 +83,13 @@ func (store *Store) CreateActiveConversation(ctx context.Context, spaceID, title
 		if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, "channel/conversation-target/"+c.ID, string(mustJSON(target))); err != nil {
 			return Conversation{}, err
 		}
-	} else if _, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET active_conversation_id=$1,default_conversation_id=CASE WHEN default_conversation_id='' THEN $1 ELSE default_conversation_id END,updated_at=$2 WHERE id=$3`, c.ID, c.UpdatedAt, spaceID); err != nil {
-		return Conversation{}, err
+	} else {
+		if err = initializeSpaceCapabilitiesTx(ctx, tx, c.ID, spaceID); err != nil {
+			return Conversation{}, err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET active_conversation_id=$1,default_conversation_id=CASE WHEN default_conversation_id='' THEN $1 ELSE default_conversation_id END,updated_at=$2 WHERE id=$3`, c.ID, c.UpdatedAt, spaceID); err != nil {
+			return Conversation{}, err
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2)`, key, string(mustJSON(map[string]any{"fingerprint": fingerprint, "conversation": c}))); err != nil {
 		return Conversation{}, err

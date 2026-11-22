@@ -307,6 +307,7 @@ export interface PublicSession {
 }
 
 export interface ControlOperation {
+  detached?: boolean;
   old_values?: Record<string, string>;
   attempt_id?: string;
   operation_id: string;

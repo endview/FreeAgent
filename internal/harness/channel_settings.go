@@ -41,9 +41,10 @@ func (tasks *TaskService) channelSettingAgainst(ctx context.Context, run Run, ki
 	if err != nil {
 		return err
 	}
-	// W2 is deliberately private-only. W4 adds group decisions after topic and
-	// audience bindings are present; never issue a detailed group preview now.
-	if space.ChatKind != "private" {
+	if space.ChatKind != "private" && space.ChatKind != "group" {
+		return unsupported
+	}
+	if space.ChatKind == "group" && kind != ControlSetConversationCapabilities {
 		return unsupported
 	}
 	if kind != ControlSetConversationModel && kind != ControlSetConversationCapabilities {
@@ -56,8 +57,20 @@ func (tasks *TaskService) channelSettingAgainst(ctx context.Context, run Run, ki
 	if err != nil {
 		return err
 	}
-	if !slices.Contains(people.Members, run.Permission.PersonID) {
+	if space.ChatKind == "private" && !slices.Contains(people.Members, run.Permission.PersonID) {
 		return &controlFlowNotice{"此私聊尚无设置确认资格，请管理员在渠道设置中维护确认名单；设置未修改。"}
+	}
+	if space.ChatKind == "group" {
+		available := false
+		for _, person := range people.Members {
+			if _, e := tasks.CheckTelegramAccess(ctx, origin.ChannelTarget, person); e == nil {
+				available = true
+				break
+			}
+		}
+		if !available {
+			return &controlFlowNotice{"本群当前没有已准入的设置确认人员，请到认证管理页面办理；设置未修改。"}
+		}
 	}
 	var args struct {
 		Conversation string              `json:"conversation_id"`

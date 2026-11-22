@@ -128,6 +128,9 @@ func publicRoute(path, method string) (string, bool) {
 		"/api/channels": "GET PATCH", "/api/mcp": "GET POST", "/api/skills": "GET POST", "/api/extensions": "GET POST", "/api/commands/catalog": "GET",
 		"/api/mcp/import": "POST", "/api/mcp/restart": "POST", "/api/skills/trust": "POST", "/api/extensions/trust": "POST", "/api/control/reconcile-extension": "POST",
 		"/api/channels/telegram/access": "GET POST",
+		"/api/channels/telegram/confirmers": "GET POST",
+		"/api/channels/telegram/groups": "GET POST",
+		"/api/spaces/capabilities": "GET POST",
 		"/api/control/catalog":          "GET", "/api/control/config": "GET", "/api/control/state": "GET", "/api/control/operations": "GET", "/api/control/plan": "POST", "/api/control/confirmation": "GET", "/api/control/confirm": "POST", "/api/control/reject": "POST", "/api/control/revert-plan": "POST",
 	}
 	if methods, ok := allowed[path]; ok {

@@ -797,6 +797,9 @@ func (tasks *TaskService) replaceManagedRoute(ctx context.Context, tx *sql.Tx, i
 				return "", err
 			}
 		}
+		if err = initializeSpaceCapabilitiesTx(ctx, tx, replacement, space.ID); err != nil {
+			return "", err
+		}
 	} else {
 		var belongs string
 		if err = tx.QueryRowContext(ctx, `SELECT space_id FROM fa.conversations WHERE id=$1 AND fa.conversation_live(id)`, replacement).Scan(&belongs); err != nil {
@@ -1124,7 +1127,7 @@ func (tasks *TaskService) applyManagedSpaceDeletion(ctx context.Context, p Manag
 	if err = cleanupChannelSpaceTx(ctx, tx, deletedSpace); err != nil {
 		return result, err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 OR starts_with(key,$2) OR key LIKE 'telegram/access/%' AND document->>'space_id'=$3`, "space/permission/"+p.Command.SpaceID, "space/people/"+p.Command.SpaceID+"/", p.Command.SpaceID); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1 OR starts_with(key,$2) OR key LIKE 'telegram/access/%' AND document->>'space_id'=$3 OR key=$4`, "space/permission/"+p.Command.SpaceID, "space/people/"+p.Command.SpaceID+"/", p.Command.SpaceID, "space/capabilities/"+p.Command.SpaceID); err != nil {
 		return result, err
 	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM fa.spaces WHERE id=$1`, p.Command.SpaceID); err != nil {

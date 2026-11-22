@@ -17,6 +17,9 @@ type spaceView struct {
 
 func (server *Server) spacesAPI(w http.ResponseWriter, r *http.Request) bool {
 	path := r.URL.Path
+	if path == "/api/spaces/capabilities" || path == "/api/attach/spaces/capabilities" {
+		return server.spaceCapabilitiesAPI(w, r)
+	}
 	if path != "/api/spaces" && path != "/api/attach/spaces" {
 		return false
 	}

@@ -28,6 +28,7 @@ type channelEvent struct {
 	Callback, CallbackMessage         string
 }
 type channelApproval struct {
+	Withdraw         bool
 	Generation       string
 	SettingsRevision int64
 	Confirmation     Confirmation
@@ -603,7 +604,7 @@ func (s *channelSession) callback(ctx context.Context, e channelEvent) error {
 			s.mu.Unlock()
 		}
 	}
-	if !ok || item.Message == "" || item.Message != e.CallbackMessage || item.Target != e.Target || item.Person != e.Person || time.Now().After(item.Expires) {
+	if !ok || item.Message == "" || item.Message != e.CallbackMessage || item.Target != e.Target || item.Person != e.Person && item.Confirmation.ControlOperationID == "" || time.Now().After(item.Expires) {
 		if ok && time.Now().After(item.Expires) {
 			channelFeedback(ctx, "确认已过期，请重新提出。")
 		}
@@ -696,9 +697,15 @@ func (s *channelSession) button(item channelApproval) (string, error) {
 		return "", err
 	}
 	token := "fa_" + hex.EncodeToString(raw[:])
+	if item.Confirmation.ControlOperationID != "" {
+		token = "fa_" + contentHash(mustJSON([]any{s.sessionGeneration(), item.Confirmation.ControlOperationID, item.Approved, item.Withdraw}))[:36]
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item.Generation = s.generation
+	if existing, ok := s.callbacks[token]; ok && existing.Target == item.Target && existing.Confirmation.Digest == item.Confirmation.Digest {
+		return token, nil
+	}
 	for k, v := range s.callbacks {
 		if time.Now().After(v.Expires) {
 			delete(s.callbacks, k)
@@ -769,7 +776,25 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 			if err != nil {
 				return err
 			}
-			revision += "/" + confirmation.Digest
+			if len(buttons) > 0 {
+				if space, e := s.tasks.ChannelSpace(ctx, origin.ChannelTarget); e == nil && space.ChatKind == "group" {
+					control, e := s.tasks.Control()
+					if e != nil {
+						return e
+					}
+					if e = control.detachProposal(ctx, confirmation.ControlOperationID); e != nil {
+						return e
+					}
+					run, e = s.tasks.core.Store.GetRun(ctx, run.ID)
+					if e != nil {
+						return e
+					}
+					revision = "setting/" + confirmation.ControlOperationID
+				}
+			}
+			if run.StopReason != detachedProposalReason {
+				revision += "/" + confirmation.Digest
+			}
 		} else if err != nil || run.Permission == nil || run.Permission.PersonID == "" {
 			text = "操作等待本机确认，请打开 GUI 或 CLI 查看。"
 		} else if !s.buttons {
@@ -787,6 +812,19 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 					label = "批准"
 				}
 				buttons = append(buttons, channelButton{label, token})
+			}
+		}
+	}
+	if run.Status == "completed" && run.StopReason == detachedProposalReason && len(buttons) == 0 {
+		confirmation, ok, e := s.tasks.detachedSettingConfirmation(ctx, run)
+		if e != nil {
+			return e
+		}
+		if ok {
+			revision = "setting/" + confirmation.ControlOperationID
+			text, buttons, err = s.settingCard(ctx, run, confirmation)
+			if err != nil {
+				return err
 			}
 		}
 	}

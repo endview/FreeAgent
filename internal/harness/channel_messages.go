@@ -178,6 +178,9 @@ func (tasks *TaskService) bindChannelTx(ctx context.Context, tx *sql.Tx, target 
 	if err != nil {
 		return Space{}, err
 	}
+	if err = initializeSpaceCapabilitiesTx(ctx, tx, chatID, spaceID); err != nil {
+		return Space{}, err
+	}
 	return space, nil
 }
 
@@ -264,6 +267,9 @@ func (tasks *TaskService) ReceiveChannelText(ctx context.Context, source Channel
 		_, err = tx.ExecContext(ctx, `INSERT INTO fa.conversations(id,title,workspace,space_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6)`,
 			chat, space.Title, tasks.Config().Workspace, space.ID, now, now)
 		if err != nil {
+			return received, err
+		}
+		if err = initializeSpaceCapabilitiesTx(ctx, tx, chat, space.ID); err != nil {
 			return received, err
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE fa.spaces SET default_conversation_id=$1,active_conversation_id=$2 WHERE id=$3`, chat, chat, space.ID); err != nil {
