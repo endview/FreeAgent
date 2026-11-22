@@ -210,9 +210,16 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 	defer conn.inboundMu.Unlock()
 	b.mu.Lock()
 	caps := conn.capabilities
+	current := b.connections[id] == conn
 	b.mu.Unlock()
-	if caps.Format == "" || event.Target.ThreadID != "" && !caps.Topics || event.Callback != "" && !caps.Buttons {
+	if !current || caps.Format == "" || event.Target.ThreadID != "" && !caps.Topics || event.Callback != "" && !caps.Buttons {
 		return ErrPermissionDenied
+	}
+	if event.Target.Source == SpaceSourceTelegram {
+		target := ChannelTarget(event.Target)
+		if target.validate() != nil || !validTelegramTarget(target) {
+			return b.rejectTelegramRoute(ctx, id, event)
+		}
 	}
 	if event.Lifecycle != nil {
 		return b.telegramLifecycle(ctx, id, event)
@@ -357,7 +364,7 @@ func (b *ChannelBridge) Status(source string) any {
 			// Copy through JSON while locked: callers serialize after this lock
 			// is released and observations may arrive concurrently.
 			var diagnostic any
-			_ = json.Unmarshal(mustJSON(c.diagnostic), &diagnostic)
+			_ = json.Unmarshal(mustJSON(c.diagnostic.snapshot(time.Now())), &diagnostic)
 			states = append(states, map[string]any{"id": id, "source": c.config.Source, "application_id": c.config.ApplicationID, "enabled": true, "running": !c.lastSeen.IsZero() && time.Since(c.lastSeen) < 30*time.Second, "diagnostic": diagnostic})
 		}
 	}

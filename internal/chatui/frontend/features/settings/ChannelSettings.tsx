@@ -37,6 +37,12 @@ interface Diagnostic {
   can_read_all?: boolean;
   counts: Record<string, number>;
   groups: Record<string, Record<string, number>>;
+  ingress?: {
+    advanced_at?: string;
+    pending_since?: string;
+    waiting_ms?: number;
+    retries?: number;
+  };
 }
 
 const diagnosticLabels: Record<string, string> = {
@@ -48,6 +54,7 @@ const diagnosticLabels: Record<string, string> = {
   admitted: "已准入",
   not_admitted: "未准入或身份无法核实",
   admission_failed: "准入核查暂时失败，未确认接收",
+  inbound_rejected: "路由无效，已记录拒绝",
   background_ignored: "未唤起，未保存正文",
   triggered: "已唤起",
   run_finished: "执行轮次已结束",
@@ -64,10 +71,19 @@ const diagnosticLabels: Record<string, string> = {
 function ReceptionDiagnostic({
   value,
   reload,
+  telegram,
 }: {
   value?: Diagnostic;
   reload: () => void;
+  telegram: boolean;
 }) {
+  const ingress = value?.ingress;
+  const waiting = Boolean(ingress?.pending_since);
+  const seconds = Math.max(0, Math.floor((ingress?.waiting_ms ?? 0) / 1000));
+  const elapsed =
+    seconds >= 60
+      ? `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
+      : `${seconds} 秒`;
   return (
     <details className="settings-section">
       <summary>接收与投递诊断</summary>
@@ -76,6 +92,28 @@ function ReceptionDiagnostic({
           ? `本次连接的观测起点：${new Date(value.since).toLocaleString()}`
           : "尚无观测。未收到更新不代表模型或群权限有错。"}
       </p>
+      {telegram && (
+        <div role="status" aria-atomic="true">
+          <p className={waiting ? "inline-warning" : "form-hint"}>
+            <strong>
+              入站：
+              {waiting ? "等待确认" : ingress ? "无待确认更新" : "尚无观测"}
+            </strong>
+            {waiting &&
+              ` · 已等待 ${elapsed} · 连续重试 ${ingress?.retries ?? 0} 次`}
+          </p>
+          <p className="form-hint">
+            最近一次入站推进：
+            {ingress?.advanced_at ? (
+              <time dateTime={ingress.advanced_at}>
+                {new Date(ingress.advanced_at).toLocaleString()}
+              </time>
+            ) : (
+              "本次连接尚未观测到"
+            )}
+          </p>
+        </div>
+      )}
       <p className="form-hint">
         全局隐私模式：
         {value?.can_read_all === undefined
@@ -229,6 +267,7 @@ export default function ChannelSettings() {
                 {item.source} · {item.application_id}
               </p>
               <ReceptionDiagnostic
+                telegram={item.source === "telegram"}
                 value={
                   resource.value!.connections?.find(
                     (state) => state.id === item.id,

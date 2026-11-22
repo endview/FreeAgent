@@ -6,6 +6,11 @@ import "time"
 
 const Version = 4
 
+const (
+	ObservationInboundRetry   = "inbound_retry"
+	ObservationInboundAdvance = "inbound_advanced"
+)
+
 // Observation contains only bounded transport facts, never message bodies or
 // credentials. Target is optional when a filtered update cannot be attributed.
 type Observation struct {
@@ -44,6 +49,20 @@ type Acceptance struct {
 	Received    bool   `json:"received"`
 	Disposition string `json:"disposition"`
 	Feedback    string `json:"feedback,omitempty"`
+}
+
+// Ackable means the host has taken durable responsibility, or definitively
+// handled or refused the input. Unknown and pending receipts are not acks.
+func (a Acceptance) Ackable() bool {
+	if !a.Received {
+		return false
+	}
+	switch a.Disposition {
+	case "accepted", "handled", "scheduled", "rejected", "interrupted", "target_ended", "cancelled":
+		return true
+	default:
+		return false
+	}
 }
 
 type MediaRef struct {

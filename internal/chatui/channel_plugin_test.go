@@ -35,7 +35,35 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 		return harness.ModelResponse{Content: "plugin round trip"}, nil
 	}))
 	var loseAck atomic.Bool
+	var holdUnconfirmed atomic.Bool
+	var heldAttempts atomic.Int32
 	ui.http.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/channel-plugin/v1/inbound" {
+			raw, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Error(err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			var event channelwire.Event
+			if json.Unmarshal(raw, &event) == nil {
+				switch event.ID {
+				case "6":
+					// Simulate a bad projection like the former signed group-ID bug.
+					event.Target.ChatID = ""
+					raw, _ = json.Marshal(event)
+				case "7":
+					if holdUnconfirmed.Load() {
+						heldAttempts.Add(1)
+						w.WriteHeader(http.StatusAccepted)
+						_ = json.NewEncoder(w).Encode(channelwire.Acceptance{Received: true, Disposition: "pending"})
+						return
+					}
+				}
+			}
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+			r.ContentLength = int64(len(raw))
+		}
 		if r.URL.Path == "/api/channel-plugin/v1/inbound" && loseAck.CompareAndSwap(true, false) {
 			recorded := httptest.NewRecorder()
 			ui.server.ServeHTTP(recorded, r)
@@ -278,6 +306,60 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 	if calls.Load() != 2 {
 		t.Fatal("expected one private Run and one group Run", calls.Load())
 	}
+	wait("group cursor before ingress classification", func() bool {
+		raw, _ := os.ReadFile(filepath.Join(state, conn.ID+".cursor.json"))
+		return strings.Contains(string(raw), `"last":5`)
+	})
+
+	holdUnconfirmed.Store(true)
+	const privateMarker = "fixture-payload-not-to-be-retained"
+	push(6, 7, privateMarker)
+	push(7, 8, "hold this input")
+	push(8, 9, "follow the confirmed input")
+	awaitWait := func() bool {
+		code, raw := ui.request(t, "GET", "/api/channels", nil)
+		return code == 200 && bytes.Contains(raw, []byte(`"pending_since":`)) && bytes.Contains(raw, []byte(`"retries":`))
+	}
+	wait("unconfirmed input in diagnostics", awaitWait)
+	rawCursor, err := os.ReadFile(filepath.Join(state, conn.ID+".cursor.json"))
+	if err != nil || !strings.Contains(string(rawCursor), `"last":6`) || calls.Load() != 2 {
+		t.Fatal("rejection did not advance or unconfirmed update advanced", string(rawCursor), calls.Load(), err)
+	}
+	pg, err := postgres.Read(filepath.Join(ui.data, postgres.ConfigFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := postgres.SQL(pg, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var rejected, leaked int
+	if err := db.QueryRowContext(t.Context(), `SELECT count(*) FILTER (WHERE document->>'rejection'='invalid_telegram_route'),count(*) FILTER (WHERE value LIKE $1) FROM fa.meta WHERE key LIKE 'channel/inbound/%'`, "%"+privateMarker+"%").Scan(&rejected, &leaked); err != nil || rejected != 1 || leaked != 0 {
+		t.Fatal("refusal receipt missing or retained input body", rejected, leaked, err)
+	}
+	cancel()
+	if err := <-done; err != nil && err != context.Canceled {
+		t.Fatal(err)
+	}
+	beforeRestart := heldAttempts.Load()
+	cancel, done = start()
+	wait("unconfirmed ingress resumes without cursor advance", func() bool {
+		return heldAttempts.Load() > beforeRestart && awaitWait()
+	})
+	rawCursor, err = os.ReadFile(filepath.Join(state, conn.ID+".cursor.json"))
+	if err != nil || !strings.Contains(string(rawCursor), `"last":6`) || calls.Load() != 2 {
+		t.Fatal("restart skipped an unconfirmed input", string(rawCursor), calls.Load(), err)
+	}
+	holdUnconfirmed.Store(false)
+	wait("confirmed input and its successor advance", func() bool {
+		raw, _ := os.ReadFile(filepath.Join(state, conn.ID+".cursor.json"))
+		return strings.Contains(string(raw), `"last":8`)
+	})
+	wait("ingress diagnostics clear waiting state", func() bool {
+		code, raw := ui.request(t, "GET", "/api/channels", nil)
+		return code == 200 && bytes.Contains(raw, []byte(`"advanced_at":`)) && !bytes.Contains(raw, []byte(`"pending_since":`))
+	})
 	if list, err := ui.tasks.Keys().List(); err != nil || len(list) != 0 {
 		t.Fatal("channel credential leaked into Provider namespace", err)
 	}

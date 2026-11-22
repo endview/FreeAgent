@@ -109,6 +109,8 @@ const fs = require("node:fs"),
       count: 1,
       target: { source: "telegram", application_id: "1", chat_id: "-100" },
     });
+    await observe({ stage: "inbound_retry", count: 1 });
+    await observe({ stage: "inbound_retry", count: 1 });
     await page.getByRole("button", { name: "刷新诊断", exact: true }).click();
     await page
       .locator(".channel-diagnostics div")
@@ -116,6 +118,14 @@ const fs = require("node:fs"),
       .first()
       .getByText("3", { exact: true })
       .waitFor();
+    const ingressStatus = page
+      .getByRole("status")
+      .filter({ hasText: "入站：" });
+    await ingressStatus.getByText("入站：等待确认", { exact: true }).waitFor();
+    assert.match(
+      await ingressStatus.textContent(),
+      /已等待 .+ · 连续重试 2 次/,
+    );
     assert(
       (
         await page
@@ -219,6 +229,9 @@ const fs = require("node:fs"),
       [390, 844],
     ]) {
       await page.setViewportSize({ width, height });
+      await ingressStatus.screenshot({
+        path: path.join(artifacts, "ingress-wait-" + width + ".png"),
+      });
       await confirmers.scrollIntoViewIfNeeded();
       assert(
         await page.evaluate(
@@ -238,6 +251,16 @@ const fs = require("node:fs"),
         path: path.join(artifacts, "group-policy-" + width + ".png"),
       });
     }
+    await observe({ stage: "inbound_advanced", count: 1 });
+    await page.getByRole("button", { name: "刷新诊断", exact: true }).click();
+    await ingressStatus
+      .getByText("入站：无待确认更新", { exact: true })
+      .waitFor();
+    const advance = await ingressStatus
+      .locator("time")
+      .getAttribute("datetime");
+    assert(Number.isFinite(Date.parse(advance)));
+    assert.doesNotMatch(await ingressStatus.textContent(), /连续重试/);
     const grants = (await api("channels/telegram/access")).access;
     const groupSpace = grants.find(
       (grant) => grant.target.chat_id === "-100",
@@ -300,6 +323,7 @@ const fs = require("node:fs"),
     console.log(
       JSON.stringify({
         diagnostic_refresh: true,
+        ingress_wait_and_advance: true,
         privacy: true,
         group_scope: true,
         confirmers_save: true,

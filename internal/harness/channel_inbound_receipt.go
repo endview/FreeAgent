@@ -24,10 +24,41 @@ type channelInputIntent struct {
 	TargetRun      string            `json:"target_run,omitempty"`
 	Revision       uint64            `json:"revision,omitempty"`
 	RunID          string            `json:"run_id,omitempty"`
+	Rejection      string            `json:"rejection,omitempty"`
+	RejectedAt     string            `json:"rejected_at,omitempty"`
 }
 
 func channelInboundKey(connection, event string) string {
 	return "channel/inbound/" + connection + "/" + contentHash([]byte(event))
+}
+
+// Only call before admission or execution. A receipt pins the rejection to
+// this exact update, without keeping the malformed target or message body.
+func (b *ChannelBridge) rejectTelegramRoute(ctx context.Context, connection string, event channelwire.Event) error {
+	key := channelInboundKey(connection, event.ID)
+	state := channelInputIntent{Generation: b.generation, Fingerprint: contentHash(mustJSON(event)), State: "rejected", Rejection: "invalid_telegram_route", RejectedAt: nowText()}
+	db := b.tasks.core.Store.db
+	result, err := db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES($1,$2) ON CONFLICT(key) DO NOTHING`, key, string(mustJSON(state)))
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 1 {
+		b.observe(connection, "", "inbound_rejected", 1)
+		return nil
+	}
+	var raw string
+	if err := db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, key).Scan(&raw); err != nil {
+		return err
+	}
+	var prior channelInputIntent
+	if json.Unmarshal([]byte(raw), &prior) != nil || prior.Fingerprint != state.Fingerprint || prior.State != state.State || prior.Rejection != state.Rejection {
+		return ErrRequestKey
+	}
+	return nil
 }
 
 func (b *ChannelBridge) acceptInbound(ctx context.Context, c *channelConnection, id string, event channelwire.Event, e channelEvent) (returnErr error) {
@@ -200,16 +231,20 @@ func (b *ChannelBridge) acceptInbound(ctx context.Context, c *channelConnection,
 	return err
 }
 
-func (b *ChannelBridge) InputReceipt(ctx context.Context, id, event string) string {
+func (b *ChannelBridge) InputReceipt(ctx context.Context, id, event string) (string, error) {
 	var raw string
-	if b.tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, channelInboundKey(id, event)).Scan(&raw) != nil {
-		return "handled"
+	err := b.tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key=$1`, channelInboundKey(id, event)).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "handled", nil
+	}
+	if err != nil {
+		return "", err
 	}
 	var state channelInputIntent
 	if json.Unmarshal([]byte(raw), &state) != nil {
-		return "unknown"
+		return "", ErrStoreFormat
 	}
-	return state.State
+	return state.State, nil
 }
 
 func (b *ChannelBridge) completeInbound(connection, event string, result RunResult, callErr error) {

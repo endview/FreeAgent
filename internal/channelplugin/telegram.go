@@ -82,6 +82,7 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 			result = transportFailure
 		}
 	}()
+	pollDelay := time.Second
 	for ctx.Err() == nil {
 		select {
 		case err := <-outboxDone:
@@ -92,11 +93,13 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 		updates, err := api.Poll(ctx, position.Last+1, 20)
 		if err != nil {
 			_ = c.Observe(ctx, channelwire.Observation{Stage: "poll_failed", Count: 1})
-			if !wait(ctx, time.Second) {
+			if !wait(ctx, telegramRetryWait(pollDelay, err)) {
 				break
 			}
+			pollDelay = min(2*pollDelay, 30*time.Second)
 			continue
 		}
+		pollDelay = time.Second
 		if err := c.Observe(ctx, channelwire.Observation{Stage: "poll_ok", Count: len(updates)}); err != nil {
 			return err
 		}
@@ -107,13 +110,6 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 			e, ok := channels.TelegramEventFromUpdate(u, bot)
 			if e.ThreadID == "invalid-topic" {
 				ok = false
-			}
-			if ok && e.Lifecycle != nil && e.Lifecycle.Kind == "membership" && (e.Lifecycle.Status == "member" || e.Lifecycle.Status == "restricted") {
-				allowed, readErr := api.GroupCanSend(ctx, e.ChatID)
-				if readErr != nil {
-					return errors.New("channel: current group speaking permission could not be verified")
-				}
-				e.Lifecycle.CanSend = e.Lifecycle.CanSend && allowed
 			}
 			target := channelwire.Target{}
 			if e.ChatID != 0 {
@@ -145,23 +141,17 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 				}
 				event := channelwire.Event{ID: strconv.FormatInt(u.ID, 10), Target: target, Person: e.PersonID, Name: e.DisplayName, Message: strconv.FormatInt(e.MessageID, 10), Kind: kind, Text: e.Text, Trigger: e.Triggered, Callback: e.CallbackData, CallbackMessage: strconv.FormatInt(e.MessageID, 10), Media: e.Media, ReplyTo: e.ReplyTo, Lifecycle: e.Lifecycle}
 				event.Sticker, event.Reaction = e.Sticker, e.Reaction
-				var acceptance channelwire.Acceptance
-				for {
-					acceptance, err = c.InboundAccepted(ctx, event)
-					if err == nil {
-						break
-					}
-					if errors.Is(err, ErrCoreUnavailable) {
-						return err
-					}
-					if !wait(ctx, time.Second) {
-						return ctx.Err()
-					}
+				acceptance, err := receiveTelegramUpdate(ctx, c, api, e.ChatID, event)
+				if err != nil {
+					return err
 				}
 				if e.CallbackID != "" {
 					feedback := acceptance.Feedback
 					if feedback == "" || len([]rune(feedback)) > 180 {
 						feedback = "已收到。"
+						if acceptance.Disposition == "rejected" {
+							feedback = "这次操作未受理。"
+						}
 					}
 					_ = api.AnswerCallback(ctx, e.CallbackID, feedback)
 				}
@@ -170,14 +160,60 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 					return err
 				}
 			}
-			// Only Core's durable acceptance permits this platform cursor to move.
+			// A submitted update needs a definitive host receipt. Adapter-only
+			// filtering is a local decision made before a Core request.
 			position.Last = u.ID
 			if err := saveCursor(path, position); err != nil {
 				return errors.New("channel: cannot persist pull progress")
 			}
+			observeTelegramIngress(ctx, c, channelwire.ObservationInboundAdvance)
 		}
 	}
 	return ctx.Err()
+}
+
+func receiveTelegramUpdate(ctx context.Context, client *Client, api *channels.TelegramAPI, chat int64, event channelwire.Event) (channelwire.Acceptance, error) {
+	checkSpeaking := event.Lifecycle != nil && event.Lifecycle.Kind == "membership" && (event.Lifecycle.Status == "member" || event.Lifecycle.Status == "restricted")
+	for delay := time.Second; ; delay = min(delay*2, 30*time.Second) {
+		var err error
+		if checkSpeaking {
+			var allowed bool
+			allowed, err = api.GroupCanSend(ctx, chat)
+			if err == nil {
+				// Keep the same event after the first send, even if its receipt is lost.
+				event.Lifecycle.CanSend = event.Lifecycle.CanSend && allowed
+				checkSpeaking = false
+			}
+		}
+		if err == nil {
+			var ack channelwire.Acceptance
+			ack, err = client.InboundAccepted(ctx, event)
+			if err == nil || errors.Is(err, ErrCoreUnavailable) {
+				return ack, err
+			}
+		}
+		if ctx.Err() != nil {
+			return channelwire.Acceptance{}, ctx.Err()
+		}
+		observeTelegramIngress(ctx, client, channelwire.ObservationInboundRetry)
+		if !wait(ctx, telegramRetryWait(delay, err)) {
+			return channelwire.Acceptance{}, ctx.Err()
+		}
+	}
+}
+
+func telegramRetryWait(delay time.Duration, err error) time.Duration {
+	var failure *channels.TelegramError
+	if errors.As(err, &failure) {
+		return max(delay, failure.RetryAfter)
+	}
+	return delay
+}
+
+func observeTelegramIngress(ctx context.Context, client *Client, stage string) {
+	observation, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	_ = client.Observe(observation, channelwire.Observation{Stage: stage, Count: 1})
 }
 
 func telegramSend(ctx context.Context, api *channels.TelegramAPI, op channelwire.Operation) channelwire.Receipt {

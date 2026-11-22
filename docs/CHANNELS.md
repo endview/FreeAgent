@@ -261,4 +261,6 @@ Text preparation is pure local conversion. Its result is checked against the ori
 
 A confirmed Telegram rate rejection with `retry_after` delays new delivery to that Bot/chat, including other topics in the same group, without delaying unrelated chats. The outbox stores the deadline across restarts. If it extends past the original authorization, that delivery stops instead of sending early.
 
+For Telegram ingress, only a definitive receipt advances an update submitted to the Owner. A malformed route that was rejected before execution gets a durable, redacted refusal record. Network errors or unconfirmed receipts keep the cursor in place and back off. The connection's reception diagnostics separate an online transport from the age and retry count of the current waiting update; a quiet Bot without a waiting update is not stalled.
+
 The default Core dependency check is `python scripts/check-core-boundaries.py`. No configured channel means no platform connection or optional adapter process. `/analyze` is a Core source-analysis command: use an installed, enabled method explicitly authorized to this space; the transport owns no extra summary workflow.

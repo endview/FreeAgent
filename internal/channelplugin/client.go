@@ -114,7 +114,7 @@ func (c *Client) Inbound(ctx context.Context, event channelwire.Event) error {
 func (c *Client) InboundAccepted(ctx context.Context, event channelwire.Event) (channelwire.Acceptance, error) {
 	var accepted channelwire.Acceptance
 	err := c.request(ctx, http.MethodPost, "inbound", event, &accepted)
-	if err == nil && !accepted.Received {
+	if err == nil && !accepted.Ackable() {
 		err = errors.New("channel: Core did not acknowledge this input")
 	}
 	return accepted, err

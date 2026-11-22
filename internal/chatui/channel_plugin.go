@@ -104,9 +104,15 @@ func (server *Server) channelPluginAPI(w http.ResponseWriter, r *http.Request) b
 		feedback := ""
 		if err := bridge.Inbound(harness.WithChannelFeedback(r.Context(), &feedback), id, event); err != nil {
 			server.writeError(w, 409, "inbound", "Input was not accepted; retain the platform cursor.")
-		} else {
-			server.writeJSON(w, 202, channelwire.Acceptance{Received: true, Disposition: bridge.InputReceipt(r.Context(), id, event.ID), Feedback: feedback})
+			return true
 		}
+		disposition, err := bridge.InputReceipt(r.Context(), id, event.ID)
+		acceptance := channelwire.Acceptance{Received: true, Disposition: disposition, Feedback: feedback}
+		if err != nil || !acceptance.Ackable() {
+			server.writeError(w, 409, "inbound_receipt", "Input receipt is not confirmed; retain the platform cursor.")
+			return true
+		}
+		server.writeJSON(w, 202, acceptance)
 	case path == "receipt" && r.Method == http.MethodPost:
 		var receipt channelwire.Receipt
 		if !read(&receipt) {
