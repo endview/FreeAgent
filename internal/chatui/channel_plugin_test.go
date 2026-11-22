@@ -67,7 +67,12 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 	})
 	var mu sync.Mutex
 	var inbox []channels.TelegramUpdate
-	var sent []string
+	type platformReply struct {
+		Chat   int64  `json:"chat_id"`
+		Thread int64  `json:"message_thread_id"`
+		Text   string `json:"text"`
+	}
+	var sent []platformReply
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var result any
 		switch {
@@ -95,15 +100,13 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 			}
 			result = updates
 		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
-			var input struct {
-				Text string `json:"text"`
-			}
+			var input platformReply
 			_ = json.NewDecoder(r.Body).Decode(&input)
 			mu.Lock()
-			sent = append(sent, input.Text)
+			sent = append(sent, input)
 			id := len(sent) + 10
 			mu.Unlock()
-			result = map[string]any{"message_id": id}
+			result = map[string]any{"message_id": id, "chat": channels.TelegramChat{ID: input.Chat}}
 		case strings.HasSuffix(r.URL.Path, "/sendChatAction"):
 			result = true
 		default:
@@ -183,23 +186,29 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 			t.Logf("chat state: %+v; %v", view, err)
 		}
 		mu.Lock()
-		t.Logf("sent=%q model_calls=%d", sent, calls.Load())
+		t.Logf("sent=%+v model_calls=%d", sent, calls.Load())
 		mu.Unlock()
 		t.Fatal("timed out: " + what)
 	}
-	push(1, 1, "/start")
+	const groupID int64 = -1001960000001
+	group := channels.TelegramChat{ID: groupID, Type: "supergroup", Forum: true}
+	// A real Bot's signed group update can be ahead of private input in the one cursor.
+	mu.Lock()
+	inbox = append(inbox, channels.TelegramUpdate{ID: 1, MyMember: &channels.TelegramMemberUpdate{Chat: group, Date: time.Now().Unix(), New: channels.TelegramMember{Status: "administrator"}}})
+	mu.Unlock()
+	push(2, 1, "/start")
 	wait("Core admission request", func() bool { return len(ui.tasks.TelegramAccessRequests()) == 1 })
 	request := ui.tasks.TelegramAccessRequests()[0]
 	if code, raw := ui.request(t, "POST", "/api/channels/telegram/access", map[string]any{"request_id": request.ID, "enabled": true}); code != 200 {
 		t.Fatal(code, string(raw))
 	}
 	loseAck.Store(true)
-	push(2, 2, "hello Core")
+	push(3, 2, "hello Core")
 	wait("platform reply", func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		for _, s := range sent {
-			if s == "plugin round trip" {
+			if s.Chat == 90 && s.Thread == 0 && s.Text == "plugin round trip" {
 				return true
 			}
 		}
@@ -207,7 +216,7 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 	})
 	wait("durable cursor after lost ACK", func() bool {
 		raw, _ := os.ReadFile(filepath.Join(state, conn.ID+".cursor.json"))
-		return strings.Contains(string(raw), `"last":2`)
+		return strings.Contains(string(raw), `"last":3`)
 	})
 	if calls.Load() != 1 {
 		t.Fatal("lost ACK reexecuted model", calls.Load())
@@ -217,10 +226,10 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancel, done = start()
-	push(3, 2, "hello Core") // Same platform message, a different update envelope.
+	push(4, 2, "hello Core") // Same platform message, a different update envelope.
 	wait("restarted cursor", func() bool {
 		raw, _ := os.ReadFile(filepath.Join(state, conn.ID+".cursor.json"))
-		return strings.Contains(string(raw), `"last":3`)
+		return strings.Contains(string(raw), `"last":4`)
 	})
 	if calls.Load() != 1 {
 		t.Fatal("plugin restart replayed Core execution", calls.Load())
@@ -235,6 +244,39 @@ func TestChannelPluginTelegramRoundTripLostAckAndRestart(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatal("forged source reached model")
+	}
+	groupTarget := harness.ChannelTarget{Source: "telegram", ApplicationID: "1", ChatID: fmt.Sprint(groupID)}
+	grant := harness.TelegramAccessChange{Target: groupTarget, Kind: "group", Enabled: true, Members: []string{"telegram:user:7"}}
+	if code, raw := ui.request(t, "POST", "/api/channels/telegram/access", grant); code != 200 {
+		t.Fatal(code, string(raw))
+	}
+	if state, err := ui.tasks.TelegramGroup(t.Context(), groupTarget); err != nil || state.LastEvent != 1 || !state.Forum {
+		t.Fatal("group lifecycle was not committed to the signed target", state, err)
+	}
+	const thread = 41
+	mu.Lock()
+	inbox = append(inbox, channels.TelegramUpdate{ID: 5, Message: &channels.TelegramMessage{ID: 6, Date: time.Now().Unix(), Chat: group, Topic: true, ThreadID: thread, From: &channels.TelegramUser{ID: 7}, Text: "@fixture_bot hello group", Entities: []channels.TelegramEntity{{Type: "mention", Length: len("@fixture_bot")}}}})
+	mu.Unlock()
+	wait("signed group topic delivery", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.ContainsFunc(sent, func(reply platformReply) bool {
+			return reply.Chat == groupID && reply.Thread == thread && reply.Text == "plugin round trip"
+		})
+	})
+	groupTarget.ThreadID = fmt.Sprint(thread)
+	chat, err := ui.tasks.ChannelConversation(t.Context(), groupTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait("confirmed group platform receipt", func() bool {
+		groups, err := ui.tasks.ChannelDeliveries(t.Context(), chat)
+		return err == nil && slices.ContainsFunc(groups, func(group harness.DeliveryGroup) bool {
+			return group.RunID != "" && len(group.Parts) == 1 && group.Parts[0].State == "sent" && group.Parts[0].MessageID != ""
+		})
+	})
+	if calls.Load() != 2 {
+		t.Fatal("expected one private Run and one group Run", calls.Load())
 	}
 	if list, err := ui.tasks.Keys().List(); err != nil || len(list) != 0 {
 		t.Fatal("channel credential leaked into Provider namespace", err)

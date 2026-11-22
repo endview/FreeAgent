@@ -117,7 +117,8 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 			}
 			target := channelwire.Target{}
 			if e.ChatID != 0 {
-				target = channelwire.Target{Source: "telegram", ApplicationID: e.ApplicationID, ChatID: messageID(e.ChatID), ThreadID: e.ThreadID}
+				// Group chat IDs are signed; message IDs are positive only.
+				target = channelwire.Target{Source: "telegram", ApplicationID: e.ApplicationID, ChatID: strconv.FormatInt(e.ChatID, 10), ThreadID: e.ThreadID}
 			}
 			if err := c.Observe(ctx, channelwire.Observation{Target: target, Stage: "received", Count: 1}); err != nil {
 				return err
