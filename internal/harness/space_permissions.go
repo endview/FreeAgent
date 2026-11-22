@@ -182,7 +182,7 @@ func (service *Service) resolveRequestPermission(ctx context.Context, chat, pers
 }
 
 func (service *Service) checkCurrentPermission(ctx context.Context, run Run) error {
-	if err := NewTaskService(service).checkTelegramRun(ctx, run); err != nil {
+	if err := NewTaskService(service).checkChannelRun(ctx, run); err != nil {
 		return err
 	}
 	selected := service.permission

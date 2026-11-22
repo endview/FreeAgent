@@ -797,7 +797,7 @@ func (s *channelSession) Deliver(ctx context.Context, result RunResult) (returnE
 			}
 		} else if err != nil || run.Permission == nil || run.Permission.PersonID == "" {
 			text = "操作等待本机确认，请打开 GUI 或 CLI 查看。"
-		} else if !s.buttons {
+		} else if !s.supportsButtons() {
 			text = "操作等待本机 GUI 或 CLI 确认；此渠道不支持审批按钮。"
 		} else {
 			text = "需要确认：\n" + confirmation.Preview

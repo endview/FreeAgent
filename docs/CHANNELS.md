@@ -253,10 +253,12 @@ optional one-time follow-ups, and [experience summary](EXPERIENCE_SUMMARY.md)
 for the optional `/analyze` source/draft flow. These work independently of
 AffectWeave; character expression policy remains that extension's job.
 
-## Preparation and protocol revision 3
+## Preparation and protocol revision 4
 
-Core and `freeagent-channel` must be updated together. The authenticated connection registers a finite action/format declaration; stale generations and incompatible revisions are rejected. Telegram formatting, resource-name parsing, preview metadata and ordinary-reaction values are owned by the channel process, not the default Core.
+Core and `freeagent-channel` must be updated together. The authenticated connection registers its v4 action and format declaration before accepting input or claiming delivery. Unsupported actions, topics and buttons do not acquire permission through the declaration. Lark declares text, files and its existing buttons; QQ declares text only. Telegram formatting, topics, stickers and reactions are owned by the platform adapter and its host-side integration. The model/tool loop uses the shared TaskService.
 
 Text preparation is pure local conversion. Its result is checked against the original source hash, target/connection and finite bounds before Core freezes the whole group. A lost preparation receipt may be recomputed for that same input. Sending uses only frozen parts; its uncertain result is UNKNOWN and is not automatically resent. Cancellation during preparation prevents a late result from reviving the reply. Generated output, preparation and confirmed delivery are separate states.
+
+A confirmed Telegram rate rejection with `retry_after` delays new delivery to that Bot/chat, including other topics in the same group, without delaying unrelated chats. The outbox stores the deadline across restarts. If it extends past the original authorization, that delivery stops instead of sending early.
 
 The default Core dependency check is `python scripts/check-core-boundaries.py`. No configured channel means no platform connection or optional adapter process. `/analyze` is a Core source-analysis command: use an installed, enabled method explicitly authorized to this space; the transport owns no extra summary workflow.

@@ -1557,6 +1557,9 @@ func (store *Store) recover(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := recoverInterruptedWebReads(ctx, tx); err != nil {
+		return err
+	}
 	statements := []string{
 		`UPDATE fa.meta SET value=(jsonb_set(document,'{state}','"unknown"'::jsonb,true))::text WHERE (key LIKE 'channel/send/%' OR key LIKE 'channel/file-send/%' OR key LIKE 'channel/reply-file/%') AND (document #>> '{state}') IN ('dispatching','creating')`,
 		`UPDATE fa.attempts SET status='unknown', response_json=CASE WHEN response_json='' THEN 'process interrupted after dispatch marker' ELSE response_json END WHERE status='dispatched'`,

@@ -1,14 +1,17 @@
 package chatui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -252,4 +255,119 @@ func TestChannelPluginRejectsMixedCoreBeforeConnecting(t *testing.T) {
 	if err := channelplugin.RunAll(t.Context(), paths, t.TempDir()); err == nil || !strings.Contains(err.Error(), "only one Core") {
 		t.Fatal(err)
 	}
+}
+
+func TestChannelPluginMinimalTextV4UsesSharedTaskPath(t *testing.T) {
+	var calls atomic.Int32
+	ui := setupUI(t, fixtureModel(func(_ context.Context, req harness.ModelRequest, _ func(string)) (harness.ModelResponse, error) {
+		calls.Add(1)
+		if !req.DenyOperations || !slices.ContainsFunc(req.Messages, func(msg harness.ModelMessage) bool {
+			return msg.Role == "user" && strings.HasPrefix(msg.Content, "[Source lark request;") && strings.HasSuffix(msg.Content, "\nfixture input")
+		}) {
+			t.Error("connector altered the Core input or operation permissions")
+		}
+		for _, tool := range req.Tools {
+			if tool.Name != "control_read_state" && tool.Name != "control_plan_change" {
+				t.Errorf("connector granted an operational tool: %s", tool.Name)
+			}
+		}
+		return harness.ModelResponse{Content: "fixture reply"}, nil
+	}))
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	key, err := ui.tasks.ChannelKeys().Add(harness.KeyInput{Name: "text fixture", Protocol: "lark", BaseURL: "http://127.0.0.1:1", Source: "saved", Secret: []byte("FIXTURE_SECRET")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := channelwire.Connection{ID: "text-only", Source: "lark", ApplicationID: "app:tenant", Credential: key.ID, Enabled: true}
+	if status, raw := ui.request(t, "PATCH", "/api/channels", harness.ChannelsConfig{Connections: []channelwire.Connection{conn}}); status != 200 {
+		t.Fatal(status, string(raw))
+	}
+	boot, err := channelplugin.ReadBootstrap(filepath.Join(ui.data, "channel-runtime", conn.ID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := channelplugin.NewClient(boot)
+	register := func(version int) (int, string) {
+		t.Helper()
+		raw, _ := json.Marshal(channelwire.Capabilities{Version: version, Format: "plain/1", Actions: []string{"prepare_text", "text"}})
+		req, err := http.NewRequestWithContext(ctx, "POST", boot.Origin+"/api/channel-plugin/v1/capabilities", bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+boot.Token)
+		req.Header.Set("X-FreeAgent-Core", boot.CoreID)
+		req.Header.Set("X-FreeAgent-Generation", boot.Generation)
+		req.Header.Set("Origin", boot.Origin)
+		req.Header.Set("Content-Type", "application/json")
+		res, err := client.HTTP.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(res.Body, 4096))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.StatusCode, string(body)
+	}
+	if status, body := register(3); status != 409 || !strings.Contains(body, "version 3; require 4") {
+		t.Fatal(status, body)
+	}
+	target := channelwire.Target{Source: "lark", ApplicationID: conn.ApplicationID, ChatID: "oc_fixture"}
+	if _, err := ui.tasks.PairChannel(ctx, harness.ChannelTarget(target), "private", "Fixture"); err != nil {
+		t.Fatal(err)
+	}
+	inbound := channelwire.Event{ID: "fixture-message", Target: target, Person: "lark:app:tenant:open:ou_fixture", Message: "fixture-message", Kind: "private", Text: "fixture input", Trigger: true}
+	if err := client.Inbound(ctx, inbound); err == nil {
+		t.Fatal("unregistered connector reached Core")
+	}
+	if status, body := register(4); status != 200 {
+		t.Fatal(status, body)
+	}
+	undeclared := inbound
+	undeclared.Target.ThreadID = "11"
+	if err := client.Inbound(ctx, undeclared); err == nil {
+		t.Fatal("accepted an undeclared topic")
+	}
+	if err := client.Inbound(ctx, inbound); err != nil {
+		t.Fatal(err)
+	}
+	tick := time.NewTicker(15 * time.Millisecond)
+	defer tick.Stop()
+	for ctx.Err() == nil {
+		ops, err := client.Outbox(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, op := range ops {
+			if op.Target != target || op.Text != "fixture reply" || len(op.Buttons) != 0 {
+				t.Fatal("invalid text operation", op)
+			}
+			r := channelwire.Receipt{ID: op.ID, Dispatch: op.Dispatch}
+			switch op.Kind {
+			case "prepare_text":
+				r.State = "downloaded"
+				r.Data, _ = json.Marshal(channelwire.Prepared{SourceHash: op.SourceHash, Format: "plain/1", Parts: []channelwire.TextPart{{Text: op.Text}}})
+			case "text":
+				r.State, r.MessageID = "sent", "fixture-outbound"
+			default:
+				t.Fatal("undeclared action queued", op.Kind)
+			}
+			if err := client.Receipt(ctx, r); err != nil {
+				t.Fatal(err)
+			}
+			if r.State == "sent" {
+				if calls.Load() != 1 {
+					t.Fatal(calls.Load())
+				}
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+		case <-tick.C:
+		}
+	}
+	t.Fatalf("no confirmed reply through the shared path; model calls=%d", calls.Load())
 }

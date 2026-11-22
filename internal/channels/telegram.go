@@ -103,7 +103,7 @@ func (api *TelegramAPI) call(ctx context.Context, method string, input, result a
 		ErrorCode   int             `json:"error_code"`
 		Description string          `json:"description"`
 		Parameters  struct {
-			RetryAfter int `json:"retry_after"`
+			RetryAfter int64 `json:"retry_after"`
 		} `json:"parameters"`
 	}
 	if json.Unmarshal(body, &envelope) != nil {
@@ -116,12 +116,20 @@ func (api *TelegramAPI) call(ctx context.Context, method string, input, result a
 		}
 		description := strings.ToLower(envelope.Description)
 		formatting := status == 400 && (strings.Contains(description, "can't parse entities") || strings.Contains(description, "entity offset") || strings.Contains(description, "entity length"))
-		return &TelegramError{Status: status, Formatting: formatting, RetryAfter: time.Duration(min(max(envelope.Parameters.RetryAfter, 0), 3600)) * time.Second, Uncertain: delivery && status >= 500}
+		uncertain := delivery && (status >= 500 || response.StatusCode >= 500)
+		return &TelegramError{Status: status, Formatting: formatting && !uncertain, RetryAfter: telegramRetryDelay(status, envelope.Parameters.RetryAfter), Uncertain: uncertain}
 	}
 	if result != nil && json.Unmarshal(envelope.Result, result) != nil {
 		return &TelegramError{Status: response.StatusCode, Uncertain: delivery}
 	}
 	return nil
+}
+
+func telegramRetryDelay(status int, seconds int64) time.Duration {
+	if status != 429 || seconds <= 0 || seconds > (1<<63-1)/int64(time.Second) {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 type TelegramUser struct {

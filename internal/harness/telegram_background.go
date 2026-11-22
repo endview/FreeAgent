@@ -24,7 +24,9 @@ func (b *ChannelBridge) cleanupConnectorRetention(ctx context.Context) error {
 	}
 	b.lastRetention = time.Now()
 	b.mu.Unlock()
-	_, err := b.tasks.core.Store.db.ExecContext(ctx, `DELETE FROM fa.meta WHERE starts_with(key,'connector/telegram/') AND key LIKE '%/background/%' AND (document->>'expires')::bigint<=$1`, time.Now().UnixMilli())
+	_, err := b.tasks.core.Store.db.ExecContext(ctx, `DELETE FROM fa.meta WHERE
+		(starts_with(key,'connector/telegram/') AND key LIKE '%/background/%' AND (document->>'expires')::bigint<=$1)
+		OR (starts_with(key,'channel/throttle/') AND (document->>'until_ms')::bigint<=$1)`, time.Now().UnixMilli())
 	return err
 }
 

@@ -2,6 +2,7 @@ package chatui
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -57,6 +58,10 @@ func (server *Server) channelPluginAPI(w http.ResponseWriter, r *http.Request) b
 	case path == "capabilities" && r.Method == http.MethodPost:
 		var capabilities channelwire.Capabilities
 		if !read(&capabilities) {
+			return true
+		}
+		if capabilities.Version != channelwire.Version {
+			server.writeError(w, 409, "channel_protocol", fmt.Sprintf("Channel protocol version %d; require %d. Update Core and channel together.", capabilities.Version, channelwire.Version))
 			return true
 		}
 		if err := bridge.RegisterCapabilities(id, capabilities); err != nil {

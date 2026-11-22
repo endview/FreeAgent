@@ -144,7 +144,7 @@ func (s *channelSession) settingCard(ctx context.Context, run Run, confirmation 
 	if !ok {
 		return "", nil, ErrControlOperationNotFound
 	}
-	if !s.buttons || s.tasks.channelSettingRecordEligible(ctx, run, record) != nil {
+	if !s.supportsButtons() || s.tasks.channelSettingRecordEligible(ctx, run, record) != nil {
 		text := "这项设置请在认证管理页面办理，尚未应用。"
 		web := s.tasks.Config().PublicWeb.Effective()
 		if web.Enabled && web.Origin != "" {

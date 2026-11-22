@@ -59,6 +59,22 @@ type Target struct {
 	ChatID        string `json:"chat_id"`
 	ThreadID      string `json:"thread_id,omitempty"`
 }
+
+// ChatScope drops the subroute for platform limits shared by a single chat.
+func (target Target) ChatScope() Target {
+	target.ThreadID = ""
+	return target
+}
+
+func IsDelivery(kind string) bool {
+	switch kind {
+	case "text", "file", "sticker", "reaction":
+		return true
+	default:
+		return false
+	}
+}
+
 type Event struct {
 	Lifecycle       *Lifecycle `json:"lifecycle,omitempty"`
 	Sticker         *Sticker   `json:"sticker,omitempty"`

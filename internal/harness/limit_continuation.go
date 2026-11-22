@@ -168,7 +168,7 @@ func (tasks *TaskService) startLimitSuccessor(ctx context.Context, core *Service
 	if options.SpaceID != "" && options.SpaceID != chat.SpaceID {
 		return RunResult{}, ErrConversationSpace
 	}
-	if err := NewTaskService(core).checkTelegramRun(ctx, run); err != nil {
+	if err := NewTaskService(core).checkChannelRun(ctx, run); err != nil {
 		return RunResult{}, err
 	}
 	if err := core.resolvePermission(ctx, run.ConversationID, "", false); err != nil {

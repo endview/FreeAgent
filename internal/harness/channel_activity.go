@@ -17,8 +17,9 @@ func (b *ChannelBridge) Activities(ctx context.Context, id string) ([]channelwir
 		return nil, ErrPermissionDenied
 	}
 	config := c.config
+	typing := c.capabilities.Typing
 	b.mu.Unlock()
-	if config.Source != SpaceSourceTelegram || config.DisableTyping {
+	if !typing || config.DisableTyping {
 		return []channelwire.Activity{}, nil
 	}
 	rows, err := b.tasks.core.Store.db.QueryContext(ctx, `SELECT `+runColumns+` FROM fa.runs WHERE status='running' ORDER BY created_at DESC,id DESC LIMIT 16`)
@@ -46,11 +47,14 @@ func (b *ChannelBridge) Activities(ctx context.Context, id string) ([]channelwir
 		if origin == nil || origin.Source != config.Source || origin.ApplicationID != config.ApplicationID || seen[origin.ChannelTarget] {
 			continue
 		}
-		if err := b.tasks.checkTelegramRun(ctx, run); err != nil {
+		if err := b.tasks.checkChannelRun(ctx, run); err != nil {
 			continue
 		}
-		space, err := b.tasks.ChannelSpace(ctx, origin.ChannelTarget)
-		if err != nil || space.ChatKind != "private" {
+		if _, err := b.tasks.ChannelSpace(ctx, origin.ChannelTarget); err != nil {
+			continue
+		}
+		until, err := b.tasks.channelCooldown(ctx, origin.ChannelTarget)
+		if err != nil || until > time.Now().UnixMilli() {
 			continue
 		}
 		seen[origin.ChannelTarget] = true

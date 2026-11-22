@@ -44,8 +44,17 @@ func (b *ChannelBridge) RegisterCapabilities(id string, capabilities channelwire
 		return ErrApprovalChanged
 	}
 	c.capabilities = capabilities
+	c.session.mu.Lock()
+	c.session.buttons = capabilities.Buttons
+	c.session.mu.Unlock()
 	c.lastSeen = time.Now()
 	return nil
+}
+
+func (s *channelSession) supportsButtons() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buttons
 }
 
 func (b *ChannelBridge) capabilitiesFor(target ChannelTarget) channelwire.Capabilities {

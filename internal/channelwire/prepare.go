@@ -7,6 +7,9 @@ type Capabilities struct {
 	Format    string   `json:"format"`
 	Actions   []string `json:"actions"`
 	Reactions []string `json:"reactions,omitempty"`
+	Buttons   bool     `json:"buttons,omitempty"`
+	Typing    bool     `json:"typing,omitempty"`
+	Topics    bool     `json:"topics,omitempty"`
 }
 
 type Prepared struct {

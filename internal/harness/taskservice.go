@@ -1206,7 +1206,7 @@ func (tasks *TaskService) ContinueWithOptions(ctx context.Context, runID string,
 			return RunResult{}, err
 		}
 		if core.Store.channelBridge.Load() != nil {
-			if err := tasks.checkTelegramRun(ctx, run); err != nil {
+			if err := tasks.checkChannelRun(ctx, run); err != nil {
 				return RunResult{}, err
 			}
 			if _, err := core.Store.db.ExecContext(ctx, `DELETE FROM fa.meta WHERE key=$1`, "channel/run-cancelled/"+runID); err != nil {

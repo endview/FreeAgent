@@ -97,6 +97,21 @@ type ChannelRunOrigin struct {
 	RequestKey     string `json:"request_key,omitempty"`
 }
 
+// The execution loop deals in frozen origins; connector integration owns the
+// platform-specific revalidation. Sources without an admission policy add no grant.
+func (tasks *TaskService) checkChannelRun(ctx context.Context, run Run) error {
+	origin := channelOriginFromJSON(run.ConfigJSON)
+	if origin == nil {
+		return nil
+	}
+	switch origin.Source {
+	case SpaceSourceTelegram:
+		return tasks.checkTelegramRun(ctx, run)
+	default:
+		return nil
+	}
+}
+
 func channelOriginFromJSON(raw string) *ChannelRunOrigin {
 	var snapshot struct{ Channel *ChannelRunOrigin }
 	if json.Unmarshal([]byte(raw), &snapshot) != nil {

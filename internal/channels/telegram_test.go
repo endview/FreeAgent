@@ -88,6 +88,7 @@ func TestTelegramRateLimitUncertaintyAndTokenRedaction(t *testing.T) {
 		retry      time.Duration
 	}{
 		{"rate", `{"ok":false,"error_code":429,"parameters":{"retry_after":9}}`, 429, false, 9 * time.Second},
+		{"long-rate", `{"ok":false,"error_code":429,"parameters":{"retry_after":3601}}`, 429, false, 3601 * time.Second},
 		{"server", `{"ok":false,"error_code":500,"description":"` + telegramFixtureToken + `"}`, 500, true, 0},
 		{"invalid", "`" + telegramFixtureToken + "`", 200, true, 0},
 		{"wrong-target", `{"ok":true,"result":{"message_id":4,"chat":{"id":123}}}`, 200, true, 0},

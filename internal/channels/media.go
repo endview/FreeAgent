@@ -110,15 +110,22 @@ func (api *TelegramAPI) SendDocument(ctx context.Context, chat, reply int64, nam
 		return 0, &TelegramError{Status: response.StatusCode, Uncertain: true}
 	}
 	var envelope struct {
-		OK     bool            `json:"ok"`
-		Result TelegramMessage `json:"result"`
-		Code   int             `json:"error_code"`
+		OK         bool            `json:"ok"`
+		Result     TelegramMessage `json:"result"`
+		Code       int             `json:"error_code"`
+		Parameters struct {
+			RetryAfter int64 `json:"retry_after"`
+		} `json:"parameters"`
 	}
 	if json.Unmarshal(data, &envelope) != nil {
 		return 0, &TelegramError{Status: response.StatusCode, Uncertain: true}
 	}
 	if response.StatusCode != 200 || !envelope.OK {
-		return 0, &TelegramError{Status: response.StatusCode, Uncertain: response.StatusCode >= 500}
+		status := response.StatusCode
+		if envelope.Code != 0 {
+			status = envelope.Code
+		}
+		return 0, &TelegramError{Status: status, RetryAfter: telegramRetryDelay(status, envelope.Parameters.RetryAfter), Uncertain: status >= 500 || response.StatusCode >= 500}
 	}
 	if envelope.Result.ID <= 0 || envelope.Result.Chat.ID != chat {
 		return 0, &TelegramError{Status: response.StatusCode, Uncertain: true}

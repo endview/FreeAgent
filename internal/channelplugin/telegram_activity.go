@@ -40,7 +40,7 @@ func runTelegramActivities(ctx context.Context, client *Client, api *channels.Te
 					continue
 				}
 				call, done := context.WithTimeout(ctx, 2*time.Second)
-				err = api.ChatAction(call, chat, "typing")
+				err = api.ChatAction(call, chat, "typing", activity.Target.ThreadID)
 				done()
 				delay := 4 * time.Second
 				if err != nil {

@@ -24,6 +24,14 @@ func (b *ChannelBridge) migrateTelegramGroup(ctx context.Context, old ChannelTar
 		return err
 	}
 	defer tx.Rollback()
+	var cooldown int64
+	if err := tx.QueryRowContext(ctx, `SELECT (document->>'until_ms')::bigint FROM fa.meta WHERE key=$1`, channelThrottleKey(channelwire.Target(old))).Scan(&cooldown); err == nil {
+		if err := saveChannelThrottle(ctx, tx, channelwire.Target(next), cooldown); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	// The old grant/space and its alias commit together. A duplicate reverse
 	// migration update acknowledges the same fact without incrementing revision.
 	state, err := telegramGroupRead(ctx, tx, old)

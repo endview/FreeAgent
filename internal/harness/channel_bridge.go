@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -124,7 +125,7 @@ func (b *ChannelBridge) Configure() error {
 				return err
 			})
 		}
-		conn.session.buttons = c.Source != "qq"
+		conn.session.buttons = false // set by the authenticated v4 declaration
 		conn.session.download = func(ctx context.Context, e channelEvent, media channelwire.MediaRef, limit int64) ([]byte, error) {
 			op := channelwire.Operation{Kind: "download", Target: channelwire.Target(e.Target), Reply: e.Message, Media: &media, Limit: limit}
 			result, err := b.perform(ctx, c.ID, op)
@@ -207,6 +208,12 @@ func (b *ChannelBridge) Inbound(ctx context.Context, id string, event channelwir
 	}
 	conn.inboundMu.Lock()
 	defer conn.inboundMu.Unlock()
+	b.mu.Lock()
+	caps := conn.capabilities
+	b.mu.Unlock()
+	if caps.Format == "" || event.Target.ThreadID != "" && !caps.Topics || event.Callback != "" && !caps.Buttons {
+		return ErrPermissionDenied
+	}
 	if event.Lifecycle != nil {
 		return b.telegramLifecycle(ctx, id, event)
 	}
@@ -365,9 +372,16 @@ const channelOperationPrefix = "channel/operation/"
 func (b *ChannelBridge) perform(ctx context.Context, id string, op channelwire.Operation) (channelwire.Operation, error) {
 	b.mu.Lock()
 	c := b.connections[id]
+	var caps channelwire.Capabilities
+	if c != nil {
+		caps = c.capabilities
+	}
 	b.mu.Unlock()
 	if c == nil || op.Target.Source != c.config.Source || op.Target.ApplicationID != c.config.ApplicationID {
 		return op, ErrPermissionDenied
+	}
+	if caps.Format != "" && !slices.Contains(caps.Actions, op.Kind) {
+		return op, ErrToolDisabled
 	}
 	if channelwire.PurePreparation(op.Kind) && b.preparer != nil {
 		prepared, err := b.preparer(ctx, op)

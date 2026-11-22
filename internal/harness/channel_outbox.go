@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/endview/freeagent/internal/channelwire"
@@ -30,6 +31,9 @@ func (b *ChannelBridge) Outbox(ctx context.Context, id string) ([]channelwire.Op
 	defer b.mu.Unlock()
 	c := b.connections[id]
 	if c == nil {
+		return nil, ErrPermissionDenied
+	}
+	if c.capabilities.Format == "" {
 		return nil, ErrPermissionDenied
 	}
 	if c.config.Source == SpaceSourceTelegram {
@@ -60,10 +64,15 @@ func (b *ChannelBridge) Outbox(ctx context.Context, id string) ([]channelwire.Op
 	     AND NOT EXISTS(SELECT 1 FROM fa.meta WHERE key='channel/cancelled/'||$4||'/'||encode(sha256(convert_to(o.document->>'group','UTF8')),'hex'))
 	     AND g.n>=COALESCE((o.document->>'total')::int,1)
 	     AND COALESCE((o.document->>'next_dispatch_ms')::bigint,0)<=$3
+	     AND (o.document->>'kind' NOT IN ('text','file','sticker','reaction') OR NOT EXISTS (
+	       SELECT 1 FROM fa.meta t WHERE t.key='channel/throttle/'||(o.document#>>'{target,source}')||'/'||(o.document#>>'{target,application_id}')||'/'||(o.document#>>'{target,chat_id}')
+	       AND (t.document->>'until_ms')::bigint>$3))
 	     AND NOT EXISTS (SELECT 1 FROM groups a WHERE a.target=g.target AND a.id<>g.id AND a.started AND NOT a.blocked AND a.pending>0 AND (NOT g.started OR (a.created,a.id)<(g.created,g.id)))
 	     AND COALESCE((SELECT (p.document->>'confirmed_ms')::bigint FROM scoped p WHERE p.document->>'group'=o.document->>'group' AND (p.document->>'sequence')::int=(o.document->>'sequence')::int-1),0)+COALESCE((o.document->>'min_gap_ms')::int,0)<=$3
 	     AND NOT EXISTS (SELECT 1 FROM fa.meta p WHERE p.key >= $1 AND p.key < $2
-	       AND p.document->'target'=o.document->'target' AND p.document->>'state'='dispatching'
+	       AND (p.document->'target')-'thread_id'=(o.document->'target')-'thread_id' AND p.document->>'state'='dispatching'
+	       AND p.document->>'kind' IN ('text','file','sticker','reaction')
+	       AND o.document->>'kind' IN ('text','file','sticker','reaction')
 	       AND COALESCE((p.document->>'next_dispatch_ms')::bigint,0)>$3)
 	     AND NOT EXISTS (SELECT 1 FROM fa.meta p WHERE p.key >= $1 AND p.key < $2
 	       AND p.document->>'group'=o.document->>'group'
@@ -162,7 +171,21 @@ func (b *ChannelBridge) Outbox(ctx context.Context, id string) ([]channelwire.Op
 			}
 			continue
 		}
-		if targets[op.Target] || len(result) >= 8 {
+		send := channelwire.IsDelivery(op.Kind)
+		destination := op.Target.ChatScope()
+		if (send && targets[destination]) || len(result) >= 8 {
+			continue
+		}
+		if !slices.Contains(c.capabilities.Actions, op.Kind) || len(op.Buttons) != 0 && !c.capabilities.Buttons {
+			if err := b.failPendingDelivery(ctx, i.key, i.raw, op, "connector_action_unavailable"); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if !op.Proactive && op.ExpiresMS > 0 && time.Now().UnixMilli() >= op.ExpiresMS {
+			if err := b.failPendingDelivery(ctx, i.key, i.raw, op, "delivery_authorization_expired"); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		if op.Proactive {
@@ -255,7 +278,9 @@ func (b *ChannelBridge) Outbox(ctx context.Context, id string) ([]channelwire.Op
 		}
 		op.Data = data
 		result = append(result, op)
-		targets[op.Target] = true
+		if send {
+			targets[destination] = true
+		}
 		if len(data) > 0 {
 			break
 		} // Keep the bounded wire response below 24 MiB.
@@ -271,7 +296,7 @@ func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Re
 			b.observe(id, diagnosticChat, "delivery_"+r.State, 1)
 		}
 	}()
-	if !validChannelPart(r.ID) || !validChannelPart(r.Dispatch) || r.RetryAfterMS < 0 || r.RetryAfterMS > 86400000 {
+	if !validChannelPart(r.ID) || !validChannelPart(r.Dispatch) || r.RetryAfterMS < 0 || r.RetryAfterMS > (1<<63-1)/int64(time.Millisecond) {
 		return ErrPermissionDenied
 	}
 	b.mu.Lock()
@@ -325,6 +350,9 @@ func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Re
 		return ErrAttachment
 	}
 	d := &op.Dispatches[index]
+	if d.State == "failed" && r.State == "failed" && d.RetryAfterMS == r.RetryAfterMS && d.MessageID == r.MessageID {
+		return nil // repeated receipt must not extend the cooldown
+	}
 	if d.State == "sent" || d.State == "downloaded" {
 		if d.State != r.State || d.MessageID != r.MessageID {
 			return ErrRequestKey
@@ -350,6 +378,15 @@ func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Re
 		}
 		op.DataSHA256, op.DataBytes = hash, int64(len(r.Data))
 	}
+	var retryAt int64
+	if r.State == "failed" && r.RetryAfterMS > 0 {
+		retryAt = time.Now().UnixMilli() + r.RetryAfterMS
+		if op.Target.Source == SpaceSourceTelegram && channelwire.IsDelivery(op.Kind) {
+			if err = saveChannelThrottle(ctx, tx, op.Target, retryAt); err != nil {
+				return err
+			}
+		}
+	}
 	// Any real success wins over a newer uncertain dispatch; all attempt
 	// receipts remain available. A late failure cannot overwrite success.
 	if op.State != "sent" && op.State != "downloaded" {
@@ -358,9 +395,11 @@ func (b *ChannelBridge) Receipt(ctx context.Context, id string, r channelwire.Re
 			if r.State == "sent" && op.ConfirmedMS == 0 {
 				op.ConfirmedMS = time.Now().UnixMilli()
 			}
-			if r.RetryAfterMS > 0 {
-				op.NextDispatchMS = time.Now().Add(time.Duration(r.RetryAfterMS) * time.Millisecond).UnixMilli()
-				if op.State == "failed" && op.Attempts < 3 {
+			if retryAt != 0 {
+				op.NextDispatchMS = retryAt
+				if op.ExpiresMS > 0 && retryAt >= op.ExpiresMS {
+					op.SuppressedReason = "rate_limit_exceeds_authorization"
+				} else if op.Attempts < 3 {
 					op.State = "pending"
 				}
 			}

@@ -11,13 +11,18 @@ import (
 )
 
 func capabilities(connection channelwire.Connection) channelwire.Capabilities {
-	result := channelwire.Capabilities{Version: channelwire.Version, Format: "plain/1", Actions: []string{"prepare_text", "text", "file", "download"}}
-	if connection.Source == "telegram" {
+	result := channelwire.Capabilities{Version: channelwire.Version, Format: "plain/1", Actions: []string{"prepare_text", "text"}}
+	switch connection.Source {
+	case "lark":
+		result.Actions = append(result.Actions, "file", "download")
+		result.Buttons = true
+	case "telegram":
+		result.Buttons, result.Typing, result.Topics = true, !connection.DisableTyping, true
 		result.Format = channels.TelegramFormatVersion
 		if connection.PlainText {
 			result.Format += "/plain"
 		}
-		result.Actions = append(result.Actions, "prepare_resource", "sticker_set", "sticker", "reaction")
+		result.Actions = append(result.Actions, "file", "download", "prepare_resource", "sticker_set", "sticker", "reaction")
 		result.Reactions = strings.Fields(channels.TelegramReactions)
 	}
 	return result

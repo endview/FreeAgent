@@ -52,6 +52,7 @@ func validateSearchKeys(config *webaccess.Config, keys *KeyStore) error {
 type WebTools struct {
 	Config *webaccess.Config
 	Keys   *KeyStore
+	fetch  func(context.Context, string, webaccess.Config) (webaccess.Page, error)
 }
 
 type SearchDecision struct {
@@ -148,23 +149,25 @@ func (t *WebTools) Prepare(ctx context.Context, call ToolCall) (PreparedTool, er
 		if u.Hostname() == "localhost" || loopbackHTTPHost(u.Hostname()) {
 			return PreparedTool{}, errors.New("web: public page fetch cannot access localhost")
 		}
+		fetch := t.fetch
+		if fetch == nil {
+			fetch = webaccess.Fetch
+		}
 		execute := func(ctx context.Context, record func(ToolResult) error) (ToolResult, error) {
-			result := ToolResult{Content: "Public page read intent recorded", Receipts: []ToolReceipt{{Kind: "http", URL: u.String(), Status: "unknown"}}}
+			result := ToolResult{Content: "Public page read intent recorded", Receipts: []ToolReceipt{{Kind: "http", URL: u.String(), Status: "reading"}}}
 			if ctx.Err() != nil {
 				return ToolResult{IsError: true, Content: "web read cancelled before dispatch"}, &CallError{Certain: true, Message: "cancelled before dispatch"}
 			}
 			if err := record(result); err != nil {
 				return ToolResult{}, &CallError{Certain: true, Message: "web read intent could not be saved; not dispatched"}
 			}
-			page, e := webaccess.Fetch(ctx, u.String(), *t.Config)
-			result.Receipts[0].URL = page.URL
+			page, e := fetch(ctx, u.String(), *t.Config)
+			if page.URL != "" {
+				result.Receipts[0].URL = page.URL
+			}
 			if e != nil {
-				result.Content = e.Error()
+				result.Content = "Public page not read; no usable body was obtained and no automatic retry was made. " + e.Error()
 				result.IsError = true
-				var failure *webaccess.FetchError
-				if errors.As(e, &failure) && failure.Unknown {
-					return result, &CallError{Message: "web read outcome unknown; inspect before repeating"}
-				}
 				result.Receipts[0].Status = "failed"
 				return result, nil
 			}

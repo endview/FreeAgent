@@ -325,7 +325,7 @@ func receiptForError(err error) channelwire.Receipt {
 		r.State = "failed"
 	}
 	var retry interface{ RetryDelay() time.Duration }
-	if errors.As(err, &retry) {
+	if r.State == "failed" && errors.As(err, &retry) {
 		r.RetryAfterMS = retry.RetryDelay().Milliseconds()
 	}
 	return r

@@ -116,6 +116,19 @@ func (s *channelSession) queueReplyGroup(ctx context.Context, run Run, origin *C
 		gap = snapshot.Config.Delivery.IntervalMS
 	}
 	reply := s.replyMessage(ctx, run)
+	var expiresMS int64
+	if len(buttons) != 0 {
+		s.mu.Lock()
+		for _, button := range buttons {
+			if entry, ok := s.callbacks[button.Token]; ok && !entry.Expires.IsZero() {
+				at := entry.Expires.UnixMilli()
+				if expiresMS == 0 || at < expiresMS {
+					expiresMS = at
+				}
+			}
+		}
+		s.mu.Unlock()
+	}
 	person := ""
 	if run.Permission != nil {
 		person = run.Permission.PersonID
@@ -127,6 +140,7 @@ func (s *channelSession) queueReplyGroup(ctx context.Context, run Run, origin *C
 		id := contentHash(mustJSON([]any{connection, group, i + 1}))
 		claim := "channel/send/" + run.ID + "/" + contentHash([]byte(fmt.Sprintf("%s/%d", revision, i)))
 		op := channelwire.Operation{ID: id, Connection: connection, Kind: "text", Target: channelwire.Target(origin.ChannelTarget), Reply: reply, Text: part.Text, State: "pending", CreatedAt: nowText(), RunID: run.ID, ConversationID: run.ConversationID, Group: group, Sequence: i + 1, Total: total, ClaimKey: claim, Maintenance: maintenance, Entities: part.Entities, FormatVersion: format, LogicalPart: part.LogicalPart, PlatformPart: part.PlatformPart, MinGapMS: gap, Person: person, LocalOwner: person == "", AccessRevision: origin.AccessRevision}
+		op.ExpiresMS = expiresMS
 		if i == len(parts)-1 {
 			for _, button := range buttons {
 				op.Buttons = append(op.Buttons, channelwire.Button{Text: button.Text, Token: button.Token})

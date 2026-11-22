@@ -105,6 +105,9 @@ func runTelegram(parent context.Context, c *Client, key channelwire.Credential, 
 				continue
 			}
 			e, ok := channels.TelegramEventFromUpdate(u, bot)
+			if e.ThreadID == "invalid-topic" {
+				ok = false
+			}
 			if ok && e.Lifecycle != nil && e.Lifecycle.Kind == "membership" && (e.Lifecycle.Status == "member" || e.Lifecycle.Status == "restricted") {
 				allowed, readErr := api.GroupCanSend(ctx, e.ChatID)
 				if readErr != nil {

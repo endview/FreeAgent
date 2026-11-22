@@ -16,10 +16,15 @@ func newTestChannelBridge(tasks *TaskService, origin, generation string, dispatc
 	}
 	for id, c := range b.connections {
 		caps := channelwire.Capabilities{Version: channelwire.Version, Format: "plain/1", Actions: []string{"prepare_text", "text", "file", "download"}}
+		caps.Buttons = c.config.Source != "qq"
 		if c.config.Source == "telegram" {
+			caps.Typing, caps.Topics = !c.config.DisableTyping, true
 			caps.Format = channels.TelegramFormatVersion
 			caps.Actions = append(caps.Actions, "prepare_resource", "sticker_set", "sticker", "reaction")
 			caps.Reactions = strings.Fields(channels.TelegramReactions)
+		}
+		if c.config.Source == "qq" {
+			caps.Actions = []string{"prepare_text", "text"}
 		}
 		if err := b.RegisterCapabilities(id, caps); err != nil {
 			return nil, err

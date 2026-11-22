@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,5 +26,22 @@ func TestBootstrapProtocolMismatchExplainsRequiredPair(t *testing.T) {
 	_ = os.WriteFile(p, raw, 0600)
 	if _, err := ReadBootstrap(p); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestChannelV4OnlyDeclaresImplementedActions(t *testing.T) {
+	for _, fixture := range []struct {
+		source                  string
+		actions                 []string
+		buttons, topics, typing bool
+	}{
+		{"telegram", []string{"prepare_text", "text", "file", "download", "prepare_resource", "sticker_set", "sticker", "reaction"}, true, true, true},
+		{"lark", []string{"prepare_text", "text", "file", "download"}, true, false, false},
+		{"qq", []string{"prepare_text", "text"}, false, false, false},
+	} {
+		c := capabilities(channelwire.Connection{Source: fixture.source})
+		if c.Version != 4 || !slices.Equal(c.Actions, fixture.actions) || c.Buttons != fixture.buttons || c.Topics != fixture.topics || c.Typing != fixture.typing {
+			t.Fatal(fixture.source, c)
+		}
 	}
 }
