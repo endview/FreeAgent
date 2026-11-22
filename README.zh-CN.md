@@ -4,8 +4,8 @@
 取消与中断恢复。Windows GUI、CLI、Linux Web 和可选外部渠道共用 Owner、
 TaskService 与 PostgreSQL Store，基础文件操作不需要安装 MCP。
 
-已发布 **v9.0.0-dev.6** 并更新 Hytron：修复 Telegram 群 ID 转换导致群聊和私聊同时停收的问题。原有 Telegram 群话题、会话设置确认和跨重启投递限流保持不变；Core 和渠道程序成对使用 v4。实际测试与部署见 [W5 与紧急修复验收记录](docs/VALIDATION_V9_W5_2026-11-22.md)。正式版的真人话题和双账号验收仍待完成。
-[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.6)
+已发布 **v9.0.0-dev.7**：Telegram 确定拒绝先留记录，未确认的更新不跳过，诊断面板区分连接在线和入站推进。Core 和渠道程序成对使用 v4。dev.7 在 Hytron 独立验收，常驻实例仍是 dev.6。详见[渠道验收记录](docs/VALIDATION_V9_W5_2026-11-22.md)。正式版的真人话题和双账号验收仍待完成。
+[下载 Windows / Linux 便携包](https://github.com/endview/FreeAgent/releases/tag/v9.0.0-dev.7)
 · [English](README.md) · [v8.0 实施记录](docs/FREEAGENT_V7_14_TO_V8_0_IMPLEMENTATION_PROGRESS.md)。
 
 下一正式版目标为 **v9.0.0**：[渠道聊天 Bot 实施计划与验收](docs/FREEAGENT_V9_0_CHANNEL_CHATBOT_PLAN_2026-11-22.md)。先发 TG 群诊断，再发私聊确认；每个工作包对应一个开发版并更新 Hytron。私聊、群聊、话题、授权工具和群内设置确认全部通过后才发正式版。目前仍是计划。
