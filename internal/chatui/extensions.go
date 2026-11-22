@@ -203,6 +203,9 @@ func (server *Server) extensionsAPI(writer http.ResponseWriter, request *http.Re
 		if !server.readBody(writer, request, &body) {
 			return true
 		}
+		config := server.tasks.Config()
+		enabled, required := config.Extensions.Enabled[id], config.Extensions.Required[id]
+		arguments := map[string]any{"id": id}
 		if body.Enabled != nil {
 			item, err := server.tasks.Extension(request.Context(), id)
 			if err != nil {
@@ -213,42 +216,23 @@ func (server *Server) extensionsAPI(writer http.ResponseWriter, request *http.Re
 				server.extensionFailure(writer, errors.New("harness: extension is unavailable"))
 				return true
 			}
-			if !*body.Enabled && server.tasks.Config().Extensions.Required[id] {
-				server.extensionFailure(writer, errors.New("harness: required extension cannot be disabled"))
-				return true
-			}
-			if _, err := server.applyDirectControl(request.Context(), "", "", harness.ControlSetExtensionPolicy, map[string]any{
-				"id": id, "enabled": *body.Enabled,
-			}); err != nil {
-				server.extensionFailure(writer, err)
-				return true
-			}
+			enabled, arguments["enabled"] = *body.Enabled, *body.Enabled
 		}
 		if body.Required != nil {
-			config := server.tasks.Config()
-			if *body.Required && !config.Extensions.Enabled[id] {
-				server.extensionFailure(writer, errors.New("harness: required extension must be enabled"))
-				return true
-			}
-			if _, err := server.applyDirectControl(request.Context(), "", "", harness.ControlSetExtensionPolicy, map[string]any{
-				"id": id, "required": *body.Required,
-			}); err != nil {
-				server.extensionFailure(writer, err)
-				return true
-			}
+			required, arguments["required"] = *body.Required, *body.Required
+		}
+		if required && !enabled && (body.Required != nil || body.Enabled != nil) {
+			server.extensionFailure(writer, errors.New("harness: required extension must be enabled"))
+			return true
 		}
 		if body.Settings != nil {
-			if _, err := server.applyDirectControl(request.Context(), "", "", harness.ControlSetExtensionPolicy, map[string]any{
-				"id": id, "settings": body.Settings,
-			}); err != nil {
-				server.extensionFailure(writer, err)
-				return true
-			}
+			arguments["settings"] = body.Settings
 		}
 		if body.EnvFrom != nil {
-			if _, err := server.applyDirectControl(request.Context(), "", "", harness.ControlSetExtensionPolicy, map[string]any{
-				"id": id, "env_from": body.EnvFrom,
-			}); err != nil {
+			arguments["env_from"] = body.EnvFrom
+		}
+		if len(arguments) > 1 {
+			if _, err := server.applyDirectControl(request.Context(), "", "", harness.ControlSetExtensionPolicy, arguments); err != nil {
 				server.extensionFailure(writer, err)
 				return true
 			}

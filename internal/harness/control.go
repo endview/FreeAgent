@@ -1612,6 +1612,20 @@ func (service *ControlService) renderConfirmation(ctx context.Context, operation
 	if conversationID != record.Operation.ConversationID || strings.TrimSpace(principal) == "" {
 		return ControlConfirmation{}, ErrControlUserInteractionRequired
 	}
+	preview := record.Operation.Preview
+	if record.Operation.LocalApproval && record.Operation.Kind == ControlSetMCPProfile {
+		profile, ok := service.mcpProfiles[operationID]
+		if !ok {
+			return ControlConfirmation{}, ErrControlMCPReentryRequired
+		}
+		// This confirmation is local only. Keep the detailed launch arguments
+		// out of the journal and do not render environment values.
+		preview += "\nLocal launch review: " + string(mustJSON(map[string]any{
+			"command": profile.Command, "args": profile.Args, "working_directory": profile.Cwd,
+			"enabled": profile.Enabled, "environment_names": sortedStringKeys(profile.Env),
+			"environment_references": profile.EnvFrom,
+		}))
+	}
 	state, exists := service.confirmations[operationID]
 	now := time.Now().UTC()
 	// One code epoch serves every authenticated surface of this owner, so a
@@ -1629,7 +1643,7 @@ func (service *ControlService) renderConfirmation(ctx context.Context, operation
 	}
 	return ControlConfirmation{OperationID: operationID, Code: state.code,
 		ExpiresAt: state.expiresAt.Format(time.RFC3339Nano), AttemptsLeft: max(0, controlMaxCodeAttempts-state.attempts),
-		ConversationID: conversationID, Preview: record.Operation.Preview}, nil
+		ConversationID: conversationID, Preview: preview}, nil
 }
 
 func (service *ControlService) withdrawProposal(operationID, code string) error {
@@ -2165,6 +2179,9 @@ func (service *ControlService) applyMCPRecordLocked(ctx context.Context, record 
 		profile, ok := service.mcpProfiles[record.Operation.ID]
 		if !ok {
 			return ErrControlMCPReentryRequired
+		}
+		if record.Operation.LocalApproval && !bytes.Equal(record.After["config.mcp:"+args.ID], mustJSON(mcpControlValue(args.ID, profile, true))) {
+			return ErrControlStaleRevision
 		}
 		if candidate.MCPServers == nil {
 			candidate.MCPServers = map[string]MCPServerConfig{}

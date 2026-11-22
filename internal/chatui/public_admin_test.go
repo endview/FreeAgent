@@ -101,6 +101,10 @@ func TestPublicMCPImportQueuesLocalDecisionWithoutStartingProcess(t *testing.T) 
 	if operation.ID != id[1] || !operation.LocalApproval || operation.Status != harness.ControlPending || operation.RequestEntry != "public_web" {
 		t.Fatal("local proposal did not retain its identity or entry", operation)
 	}
+	local, err := control.RenderConfirmation(t.Context(), id[1], "", "cli")
+	if err != nil || !strings.Contains(local.Preview, "freeagent-mcp-fixture") || strings.Contains(operation.Preview, "freeagent-mcp-fixture") {
+		t.Fatal("local launch review is missing or written to the public journal", err)
+	}
 	capability, err := control.IssueInteractiveCapability(t.Context(), "", "cli")
 	if err != nil {
 		t.Fatal(err)

@@ -204,6 +204,10 @@ def main():
             cli(args.engine, data, 'control', 'confirm', '--operation', operation, input_text='y\n')
             require(api(client, 'GET', 'public-settings')['config']['max_permission'] == 'full', 'CLI approval was not saved')
             cli(args.engine, data, 'control', 'confirm', '--operation', operation, input_text='y\n', expect=False)
+            recovered = secrets.token_hex(24)
+            cli(args.engine, data, 'admin', 'reset-password', '--password-stdin', input_text=recovered+'\n')
+            api(client, 'GET', 'public/account', expected=401)
+            authenticate(recovered, 'isolated-admin')
         checks['fresh_cli_bootstrap_https_mock_model_write_only_token_local_approval'] = True
         for index, previous in enumerate(args.legacy):
             version = subprocess.check_output([str(previous), '--version'], text=True).split()[1].split('=')[-1]
@@ -220,8 +224,8 @@ def main():
                 api(client, 'GET', 'public/account', expected=401)
             with owner(previous, data):
                 authenticate(one, None, 401)
-                authenticate(two, None)
-                cli(previous, data, 'public', 'password', '--password-stdin', input_text=three+'\n')
+                old_client = authenticate(two, None)
+                api(old_client, 'POST', 'public/password', {'current': two, 'password': three})
                 authenticate(three, None)
             with owner(args.engine, data):
                 authenticate(two, 'carry-forward', 401)
