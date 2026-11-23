@@ -87,6 +87,9 @@ func (server *Server) channelsAPI(w http.ResponseWriter, r *http.Request) bool {
 	if source == "telegram/confirmers" {
 		return server.telegramConfirmersAPI(w, r)
 	}
+	if source == "telegram/admin-binding" {
+		return server.telegramAdminAPI(w, r)
+	}
 	if source == "telegram/groups" {
 		return server.telegramGroupsAPI(w, r)
 	}

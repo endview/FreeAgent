@@ -307,6 +307,9 @@ export interface PublicSession {
 }
 
 export interface ControlOperation {
+  request_entry?: string;
+  local_approval_required?: boolean;
+  error_code?: string;
   detached?: boolean;
   old_values?: Record<string, string>;
   attempt_id?: string;

@@ -82,7 +82,9 @@ func (tools *controlTools) readState(ctx context.Context, query controlStateQuer
 				Limits: state.Config.Limits, Models: state.Config.Models, DefaultModel: run.ModelID,
 				EnabledTools: tools.service.activeToolPolicy().EnabledTools}
 		}
-		state.Pending = slices.DeleteFunc(state.Pending, func(op ControlOperation) bool { return op.ConversationID != run.ConversationID })
+		state.Pending = slices.DeleteFunc(state.Pending, func(op ControlOperation) bool {
+			return op.ConversationID != run.ConversationID || op.RequestEntry == telegramAdminEntry
+		})
 		if scope := tools.service.controlProposalScope; scope != nil {
 			allowed := []string{}
 			if scope(ctx, run, ControlSetConversationModel, mustJSON(map[string]string{"model_id": run.ModelID})) == nil {
@@ -94,6 +96,20 @@ func (tools *controlTools) readState(ctx context.Context, query controlStateQuer
 					}
 				}
 				output["conversation_model_choices"] = choices
+			}
+			global := []string{}
+			for _, operation := range ControlOperationCatalog() {
+				if SettingsEntryRules(operation.Kind).TelegramPropose && scope(ctx, run, operation.Kind, nil) == nil {
+					global = append(global, operation.Kind)
+				}
+			}
+			if len(global) != 0 {
+				allowed = append(allowed, global...)
+				config := tools.service.currentConfig()
+				output["delegated_global_settings"] = map[string]any{
+					"operations": global, "approval": "The host decides which exact proposals can be confirmed here; other eligible proposals go to authenticated settings.",
+					"auto_compact_percent": autoCompactPercent(config), "default_model": config.DefaultModel,
+				}
 			}
 			output["available_operations"] = allowed
 			if query.Operation != "" {

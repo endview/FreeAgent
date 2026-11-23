@@ -15,6 +15,108 @@ type frontendSettingsMap struct {
 	Operations map[string]string `json:"control_operations"`
 }
 
+type settingsContractGroup struct {
+	ID, Owner, Scope, Entry, Save, Read, Revision, Effect string
+	Telegram, Why, Sensitive, Declared                    string
+	Fields, Operations, Extras                            []string
+}
+
+func TestSettingsContractCoverage(t *testing.T) {
+	paths := map[string]bool{}
+	configFieldPaths(reflect.TypeFor[harness.Config](), "", paths)
+	var mapping frontendSettingsMap
+	raw, err := os.ReadFile("frontend/settings-map.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &mapping); err != nil {
+		t.Fatal(err)
+	}
+	for field := range mapping.Fields {
+		paths[field] = true
+	}
+	ops := map[string]bool{}
+	for _, op := range harness.ControlOperationCatalog() {
+		ops[op.Kind] = true
+	}
+	for op := range mapping.Operations {
+		ops[op] = true
+	}
+	var contract struct{ Groups []settingsContractGroup }
+	raw, err = os.ReadFile("frontend/settings-contract.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&contract); err != nil {
+		t.Fatal(err)
+	}
+	groups, extras := map[string]bool{}, map[string]bool{}
+	for _, row := range contract.Groups {
+		if groups[row.ID] {
+			t.Errorf("duplicated settings contract group %s", row.ID)
+		}
+		groups[row.ID] = true
+		for field, value := range map[string]string{"id": row.ID, "owner": row.Owner, "scope": row.Scope, "entry": row.Entry,
+			"save": row.Save, "read": row.Read, "revision": row.Revision, "effect": row.Effect} {
+			if strings.TrimSpace(value) == "" {
+				t.Errorf("%s: missing %s", row.ID, field)
+			}
+		}
+		if len(row.Fields)+len(row.Operations)+len(row.Extras) == 0 {
+			t.Errorf("%s: empty settings contract", row.ID)
+		}
+		if (row.Entry == "read-only" || row.Save == "none") && (row.Why == "" || row.Save != "none" || len(row.Operations) != 0) {
+			t.Errorf("%s: read-only entry must explain why and specify no write operation", row.ID)
+		}
+		if strings.Contains(row.Entry, "dedicated") && (row.Sensitive == "" || row.Why == "") {
+			t.Errorf("%s: dedicated entry must explain its separate save path and secret handling", row.ID)
+		}
+		for _, field := range row.Fields {
+			if !paths[field] {
+				t.Errorf("%s: duplicate or unknown field %s", row.ID, field)
+			}
+			delete(paths, field)
+		}
+		for _, op := range row.Operations {
+			if !ops[op] {
+				t.Errorf("%s: duplicate or unknown operation %s", row.ID, op)
+			}
+			delete(ops, op)
+			rule := harness.SettingsEntryRules(op)
+			want := rule.TelegramDecide
+			if want == "" && rule.TelegramPropose {
+				want = "handoff"
+			}
+			if row.Telegram != want {
+				t.Errorf("%s: TG policy %q does not match Core %q", op, row.Telegram, want)
+			}
+		}
+		for _, extra := range row.Extras {
+			if extra == "" || extras[extra] {
+				t.Errorf("%s: invalid or duplicate dedicated setting %q", row.ID, extra)
+			}
+			extras[extra] = true
+		}
+		if (row.ID == "extension-state" || row.ID == "connector-state") && row.Declared == "" {
+			t.Errorf("%s: missing module declaration entry point", row.ID)
+		}
+	}
+	for path := range paths {
+		t.Errorf("settings contract missing field %s", path)
+	}
+	for op := range ops {
+		t.Errorf("settings contract missing operation %s", op)
+	}
+	for _, extra := range []string{"account.identity", "account.password", "account.sessions", "connector.credentials",
+		"telegram.group_settings", "telegram.confirmers", "telegram.admin_binding", "control.result", "control.revert"} {
+		if !extras[extra] {
+			t.Errorf("settings contract missing dedicated entry %s", extra)
+		}
+	}
+}
+
 func configFieldPaths(typ reflect.Type, prefix string, result map[string]bool) {
 	for typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()

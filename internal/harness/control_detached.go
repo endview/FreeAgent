@@ -14,6 +14,10 @@ func localWebHandoff(record controlRecord) bool {
 	return record.Operation.RequestEntry == "public_web" && record.Operation.LocalApproval
 }
 
+func detachesBeforeDelivery(record controlRecord) bool {
+	return localWebHandoff(record) || record.Operation.RequestEntry == telegramAdminEntry
+}
+
 // A host can hand off a declarative proposal without retaining the execution
 // slot. The proposal remains pending, while its original tool call is closed.
 // This is independent of channels and grants no new confirmation authority.
@@ -21,7 +25,7 @@ func (service *ControlService) detachProposal(ctx context.Context, operation str
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	record, ok := service.operations[operation]
-	if !ok || record.Operation.Status != ControlPending || record.Operation.Kind != ControlSetConversationCapabilities && !localWebHandoff(record) {
+	if !ok || record.Operation.Status != ControlPending || record.Operation.Kind != ControlSetConversationCapabilities && !detachesBeforeDelivery(record) {
 		return ErrControlAlreadyUsed
 	}
 	if !record.Operation.Detached {
@@ -60,6 +64,13 @@ func (service *ControlService) settleDetachedProposal(ctx context.Context, recor
 	if localWebHandoff(record) {
 		output = fmt.Sprintf("提案已保存，设置尚未修改。需要在服务器本机批准：\n\n%s",
 			"freeagent control confirm --operation "+record.Operation.ID)
+	}
+	if record.Operation.RequestEntry == telegramAdminEntry {
+		output = "全局设置提案已保留，尚未修改。请在认证管理入口确认。" +
+			adminProposalLink(service.core.currentPublicPolicy(), record.Operation.ID)
+		if record.Operation.LocalApproval && !service.core.currentPublicPolicy().Enabled {
+			output += "\n服务器本机：freeagent control confirm --operation " + record.Operation.ID
+		}
 	}
 	err = service.core.Store.settleControlProposal(ctx, run, attempt, result, true, detachedProposalReason, "completed", output)
 	if errors.Is(err, ErrControlAlreadyUsed) {

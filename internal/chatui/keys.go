@@ -11,18 +11,20 @@ import (
 )
 
 type keyRequest struct {
-	Protocol string  `json:"protocol"`
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	BaseURL  string  `json:"base_url"`
-	Note     *string `json:"note"`
-	Source   string  `json:"source"`
-	Key      string  `json:"key"`
+	ExpectedRevision uint64  `json:"expected_revision,omitempty"`
+	Protocol         string  `json:"protocol"`
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	BaseURL          string  `json:"base_url"`
+	Note             *string `json:"note"`
+	Source           string  `json:"source"`
+	Key              string  `json:"key"`
 }
 
 type keyDeleteRequest struct {
-	DisableModels bool   `json:"disable_models"`
-	NewDefault    string `json:"new_default"`
+	ExpectedRevision uint64 `json:"expected_revision,omitempty"`
+	DisableModels    bool   `json:"disable_models"`
+	NewDefault       string `json:"new_default"`
 }
 
 func keyNote(value *string) string {
@@ -142,7 +144,7 @@ func (server *Server) keysAPI(writer http.ResponseWriter, request *http.Request)
 		return true
 	case path == "/api/keys":
 		if request.Method == http.MethodGet {
-			server.listKeys(writer)
+			server.listKeys(writer, request)
 		} else if request.Method == http.MethodPost {
 			server.addKey(writer, request)
 		} else {
@@ -216,13 +218,18 @@ func (server *Server) keysAPI(writer http.ResponseWriter, request *http.Request)
 	return false
 }
 
-func (server *Server) listKeys(writer http.ResponseWriter) {
+func (server *Server) listKeys(writer http.ResponseWriter, request *http.Request) {
 	store := server.tasks.Keys()
 	if store == nil {
 		server.keyFailure(writer, errors.New("harness: key store is not configured"), http.StatusConflict)
 		return
 	}
-	profiles, err := store.List()
+	control, err := server.tasks.Control()
+	if err != nil {
+		server.keyFailure(writer, err, http.StatusConflict)
+		return
+	}
+	profiles, revision, err := control.CredentialSettingsSnapshot(request.Context(), "")
 	if err != nil {
 		server.keyFailure(writer, err, http.StatusConflict)
 		return
@@ -243,7 +250,7 @@ func (server *Server) listKeys(writer http.ResponseWriter) {
 		}
 		views = append(views, keyProfileView{KeyProfileView: profile, NeedsReentry: needsReentry})
 	}
-	server.writeJSON(writer, http.StatusOK, map[string]any{"profiles": views, "presets": harness.KeyPresets()})
+	server.writeJSON(writer, http.StatusOK, map[string]any{"profiles": views, "presets": harness.KeyPresets(), "revision": revision})
 }
 
 func (server *Server) addKey(writer http.ResponseWriter, request *http.Request) {
@@ -264,7 +271,7 @@ func (server *Server) addKey(writer http.ResponseWriter, request *http.Request) 
 		Name: body.Name, BaseURL: body.BaseURL, Protocol: body.Protocol, Note: keyNote(body.Note),
 		Source: body.Source, Secret: []byte(body.Key),
 	}
-	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Input: input}); err != nil {
+	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Input: input, ExpectedRevision: body.ExpectedRevision}); err != nil {
 		server.keyFailure(writer, err, http.StatusBadRequest)
 		return
 	}
@@ -327,7 +334,7 @@ func (server *Server) updateKey(writer http.ResponseWriter, request *http.Reques
 		input.Source = current.Source
 		input.EnvName = current.EnvName
 	}
-	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Ref: current.ID, Input: input, ClearNote: body.Note != nil && *body.Note == ""}); err != nil {
+	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Ref: current.ID, Input: input, ClearNote: body.Note != nil && *body.Note == "", ExpectedRevision: body.ExpectedRevision}); err != nil {
 		server.keyFailure(writer, err, http.StatusBadRequest)
 		return
 	}
@@ -673,21 +680,14 @@ func (server *Server) deleteKey(writer http.ResponseWriter, request *http.Reques
 		})
 		return
 	}
-	changes := make([]string, 0, len(affected))
-	if body.DisableModels && len(affected) != 0 {
-		for _, modelID := range affected {
-			if _, err := server.applyDirectControl(request.Context(), "", "", harness.ControlRemoveModel, map[string]string{
-				"id": modelID, "new_default": strings.TrimSpace(body.NewDefault),
-			}); err != nil {
-				server.configFailure(writer, err)
-				return
-			}
-			changes = append(changes, "models: removed "+modelID)
-		}
-	}
-	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Ref: profile.ID, Remove: true}); err != nil {
+	if _, err := server.applyDirectKeyControl(request.Context(), harness.KeyControlRequest{Ref: profile.ID, Remove: true,
+		DisableModels: body.DisableModels, NewDefault: strings.TrimSpace(body.NewDefault), ExpectedRevision: body.ExpectedRevision}); err != nil {
 		server.keyFailure(writer, err, http.StatusConflict)
 		return
+	}
+	changes := make([]string, 0, len(affected))
+	for _, modelID := range affected {
+		changes = append(changes, "models: removed "+modelID)
 	}
 	server.writeJSON(writer, http.StatusOK, map[string]any{"affected": affected, "changes": changes})
 }
@@ -707,7 +707,7 @@ func (server *Server) keyFailure(writer http.ResponseWriter, err error, fallback
 	case errors.Is(err, harness.ErrKeyNotFound):
 		status = http.StatusNotFound
 	case errors.Is(err, harness.ErrKeyNeedsReentry), errors.Is(err, harness.ErrKeysBusy),
-		errors.Is(err, harness.ErrActiveRun):
+		errors.Is(err, harness.ErrActiveRun), errors.Is(err, harness.ErrControlStaleRevision):
 		status = http.StatusConflict
 	case errors.Is(err, harness.ErrKeyNameExists), errors.Is(err, harness.ErrKeysFormat):
 		if status == http.StatusConflict {

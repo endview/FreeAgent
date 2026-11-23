@@ -5,6 +5,7 @@ import { loadNavigation } from "@/lib/store/runtime";
 import { Button } from "@/components/ui/button";
 import { Choice } from "@/components/Choice";
 import { TelegramGroupPolicy } from "./TelegramGroupPolicy";
+import { TelegramAdminBinding } from "./TelegramAdminBinding";
 import {
   Field,
   Loading,
@@ -505,6 +506,7 @@ export default function ChannelSettings() {
             <>
               <TelegramAccess />
               <TelegramConfirmers />
+              <TelegramAdminBinding />
             </>
           )}
         </>
@@ -526,16 +528,29 @@ export default function ChannelSettings() {
   );
 }
 function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
-  const resource = useResource<Credential[]>("channels/credentials");
-  const [form, change] = useFormDraft("channel-credential", {
+  const resource = useResource<{ profiles: Credential[]; revision: number }>(
+    "channels/credentials?revision=1",
+  );
+  const [form, change, dirty] = useFormDraft("channel-credential", {
     id: "",
     name: "",
     protocol: "telegram",
     base_url: origins.telegram,
+    revision: undefined as number | undefined,
   });
   const [secret, setSecret] = useState("");
   const [tested, setTested] = useState("");
   const [saved, setSaved] = useState("");
+  const baseRevision = form.revision ?? (dirty && form.id ? 0 : undefined);
+  const stale =
+    baseRevision !== undefined && baseRevision !== resource.value?.revision;
+  function edit(next: Partial<typeof form>) {
+    change({
+      ...form,
+      revision: baseRevision ?? resource.value?.revision,
+      ...next,
+    });
+  }
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function perform(action: () => Promise<void>) {
@@ -548,9 +563,11 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
     } catch (error) {
       if (
         error instanceof APIError &&
-        error.code === "reauthentication_required"
+        ["reauthentication_required", "control_stale"].includes(error.code)
       )
         setSecret("");
+      if (error instanceof APIError && error.code === "control_stale")
+        await resource.reload().catch(() => {});
       setError((error as Error).message);
     } finally {
       setBusy(false);
@@ -562,7 +579,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
       <p className="form-hint">
         独立于模型 Provider，Bot Token 不进入模型上下文。
       </p>
-      {resource.value?.map((item) => (
+      {resource.value?.profiles.map((item) => (
         <div className="setting-line" key={item.id}>
           <span>
             {item.name} · {item.protocol}
@@ -580,6 +597,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
                   name: item.name,
                   protocol: "telegram",
                   base_url: origins.telegram,
+                  revision: resource.value?.revision,
                 });
               }}
             >
@@ -596,6 +614,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
                     await api("channels/credentials", {
                       id: item.id,
                       remove: true,
+                      expected_revision: resource.value?.revision,
                     });
                   });
               }}
@@ -611,9 +630,13 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
           void perform(async () => {
             setSaved("");
             await api("channels/credentials", {
-              ...form,
+              id: form.id,
+              name: form.name,
+              protocol: form.protocol,
+              base_url: form.base_url,
               secret,
               source: "saved",
+              expected_revision: baseRevision ?? resource.value?.revision,
             });
             setSecret("");
             setTested("");
@@ -623,6 +646,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
               name: "",
               protocol: form.protocol,
               base_url: form.base_url,
+              revision: undefined,
             });
             clearFormDraft("channel-credential");
           });
@@ -634,9 +658,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
               required
               maxLength={64}
               value={form.name}
-              onChange={(event) =>
-                change({ ...form, name: event.target.value })
-              }
+              onChange={(event) => edit({ name: event.target.value })}
             />
           </Field>
           {!form.id && !remote && (
@@ -646,7 +668,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
                 value={form.protocol}
                 options={platforms}
                 onChange={(protocol) =>
-                  change({ ...form, protocol, base_url: origins[protocol] })
+                  edit({ protocol, base_url: origins[protocol] })
                 }
               />
             </Field>
@@ -657,9 +679,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
               type="url"
               value={form.base_url}
               readOnly={remote || Boolean(form.id)}
-              onChange={(event) =>
-                change({ ...form, base_url: event.target.value })
-              }
+              onChange={(event) => edit({ base_url: event.target.value })}
             />
           </Field>
           <Field label="Bot Token / 应用 Secret">
@@ -669,6 +689,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
               autoComplete="new-password"
               value={secret}
               onChange={(event) => {
+                if (baseRevision === undefined) edit({});
                 setTested("");
                 setSaved("");
                 setSecret(event.target.value);
@@ -699,7 +720,7 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
                 核对 Bot
               </Button>
             )}
-            <Button type="submit">
+            <Button type="submit" disabled={!resource.value || stale}>
               {form.id ? "保存新 Token" : "保存渠道凭据"}
             </Button>
             {form.id && (
@@ -714,7 +735,9 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
                     name: "",
                     protocol: "telegram",
                     base_url: origins.telegram,
+                    revision: undefined,
                   });
+                  clearFormDraft("channel-credential");
                 }}
               >
                 取消替换
@@ -724,6 +747,19 @@ function ChannelCredentials({ onChanged }: { onChanged: () => Promise<void> }) {
         </fieldset>
       </form>
       <Result error={error || resource.error} text={saved || tested} />
+      {stale && resource.value && (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy}
+          onClick={() => {
+            edit({ revision: resource.value?.revision });
+            setSecret("");
+          }}
+        >
+          使用最新版本重新编辑
+        </Button>
+      )}
     </section>
   );
 }

@@ -1296,7 +1296,7 @@ func (service *Service) executeToolWithContext(ctx, parent context.Context, run 
 			return err
 		}
 		if control, err := service.controlService(); err == nil {
-			if op, ok := control.operationForAttempt(attempt.ID); ok && localWebHandoff(op) {
+			if op, ok := control.operationForAttempt(attempt.ID); ok && detachesBeforeDelivery(op) {
 				if err := service.Store.FinishRun(parent, run.ID, "waiting_confirmation", StopReasonControlProposal); err != nil {
 					return err
 				}

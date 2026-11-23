@@ -21,7 +21,18 @@ func (server *Server) channelCredentials(w http.ResponseWriter, r *http.Request)
 	}
 	_, remote := publicRequestFrom(r.Context())
 	if r.Method == http.MethodGet {
-		views, err := server.tasks.ChannelKeys().List()
+		control, err := server.tasks.Control()
+		if err != nil {
+			server.fail(w, err)
+			return
+		}
+		views, revision, err := control.CredentialSettingsSnapshot(r.Context(), "channels")
+		format := func(profiles any) any {
+			if r.URL.Query().Get("revision") == "1" {
+				return map[string]any{"profiles": profiles, "revision": revision}
+			}
+			return profiles
+		}
 		if err != nil {
 			server.fail(w, err)
 		} else if remote {
@@ -29,9 +40,9 @@ func (server *Server) channelCredentials(w http.ResponseWriter, r *http.Request)
 			for _, view := range views {
 				references = append(references, map[string]string{"id": view.ID, "name": view.Name, "protocol": view.Protocol})
 			}
-			server.writeJSON(w, 200, references)
+			server.writeJSON(w, 200, format(references))
 		} else {
-			server.writeJSON(w, 200, views)
+			server.writeJSON(w, 200, format(views))
 		}
 		return
 	}
@@ -40,14 +51,15 @@ func (server *Server) channelCredentials(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var body struct {
-		ID       string `json:"id"`
-		Remove   bool   `json:"remove"`
-		Name     string `json:"name"`
-		Protocol string `json:"protocol"`
-		BaseURL  string `json:"base_url"`
-		Source   string `json:"source"`
-		EnvName  string `json:"env_name"`
-		Secret   string `json:"secret"`
+		ExpectedRevision uint64 `json:"expected_revision,omitempty"`
+		ID               string `json:"id"`
+		Remove           bool   `json:"remove"`
+		Name             string `json:"name"`
+		Protocol         string `json:"protocol"`
+		BaseURL          string `json:"base_url"`
+		Source           string `json:"source"`
+		EnvName          string `json:"env_name"`
+		Secret           string `json:"secret"`
 	}
 	if !server.readBody(w, r, &body) {
 		return
@@ -86,7 +98,8 @@ func (server *Server) channelCredentials(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-	result, err := server.applyDirectKeyControl(r.Context(), harness.KeyControlRequest{Namespace: "channels", Ref: body.ID, Remove: body.Remove, Input: harness.KeyInput{Name: body.Name, Protocol: body.Protocol, BaseURL: body.BaseURL, Source: body.Source, EnvName: body.EnvName, Secret: secret}})
+	result, err := server.applyDirectKeyControl(r.Context(), harness.KeyControlRequest{Namespace: "channels", Ref: body.ID, Remove: body.Remove,
+		ExpectedRevision: body.ExpectedRevision, Input: harness.KeyInput{Name: body.Name, Protocol: body.Protocol, BaseURL: body.BaseURL, Source: body.Source, EnvName: body.EnvName, Secret: secret}})
 	if err != nil {
 		server.fail(w, err)
 		return

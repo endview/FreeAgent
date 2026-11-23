@@ -34,6 +34,7 @@ const (
 )
 
 type Store struct {
+	adminGuard          atomic.Pointer[administratorGuard]
 	scheduledMu         sync.Mutex
 	scheduled           *scheduledOwner
 	channelBridge       atomic.Pointer[ChannelBridge]

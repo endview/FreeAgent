@@ -117,6 +117,19 @@ func CredentialReady(data string) bool {
 	return state == "ready" || state == "legacy" || state == "password_changed"
 }
 
+// LockAdministrator orders delegated settings decisions with password
+// rotation. The returned epoch is a binding identifier, not a login secret.
+func LockAdministrator(data string) (id, epoch string, release func(), err error) {
+	credentialFiles.Lock()
+	a, c, err := loadAccount(data, false)
+	if err != nil {
+		credentialFiles.Unlock()
+		return "", "", nil, err
+	}
+	clear(c.Hash)
+	return a.ID, tokenHash("telegram-admin:" + a.Generation), credentialFiles.Unlock, nil
+}
+
 func InitAccount(data, username string, password []byte) (Account, error) {
 	return writeAccountPassword(data, username, password, true, true)
 }

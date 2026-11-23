@@ -61,6 +61,72 @@ func TestPublicCredentialWritesDoNotReturnSecret(t *testing.T) {
 	}
 }
 
+func TestPublicCredentialDraftRevisionPreventsOverwritingRotation(t *testing.T) {
+	first := newPublicFixture(t, nil)
+	first.login(t)
+	second := &publicFixture{ui: first.ui, server: first.server}
+	second.login(t)
+	for _, tc := range []struct {
+		name, write, read, protocol, endpoint, secretField, firstValue, secondValue string
+	}{
+		{"model", "/api/keys", "/api/keys", "openai-compatible", "https://model.example.test/v1", "key", "fixture-only-key-one", "fixture-only-key-two"},
+		{"bot", "/api/channels/credentials", "/api/channels/credentials?revision=1", "telegram", "https://api.telegram.org", "secret", "123456789:fixture-only-one", "123456789:fixture-only-two"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			type snapshot struct {
+				Profiles []struct{ ID, Name string }
+				Revision uint64
+			}
+			read := func(f *publicFixture) snapshot {
+				w := f.request(t, "GET", tc.read, nil, nil)
+				var s snapshot
+				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &s) != nil || s.Revision == 0 ||
+					strings.Contains(w.Body.String(), tc.firstValue) || strings.Contains(w.Body.String(), tc.secondValue) {
+					t.Fatal("invalid or unsafe settings readback", w.Code)
+				}
+				return s
+			}
+			s := read(first)
+			payload := map[string]any{"name": tc.name, "protocol": tc.protocol, "base_url": tc.endpoint, "source": "saved",
+				tc.secretField: tc.firstValue, "expected_revision": s.Revision}
+			post := func(f *publicFixture, path string) (int, string) {
+				raw, err := json.Marshal(payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w := f.request(t, "POST", path, bytes.NewReader(raw), nil)
+				return w.Code, w.Body.String()
+			}
+			if code, _ := post(first, tc.write); code/100 != 2 {
+				t.Fatal("initial credential save failed", code)
+			}
+			s = read(second)
+			if len(s.Profiles) != 1 || s.Profiles[0].Name != tc.name {
+				t.Fatal("initial credential did not round-trip")
+			}
+			id := s.Profiles[0].ID
+			path := tc.write
+			if tc.name == "bot" {
+				payload["id"] = id
+			} else {
+				path += "/" + id + "/update"
+			}
+			payload["expected_revision"], payload[tc.secretField] = s.Revision, tc.secondValue
+			if code, body := post(first, path); code/100 != 2 || strings.Contains(body, tc.secondValue) {
+				t.Fatal("rotation failed or exposed secret", code)
+			}
+			payload["name"], payload[tc.secretField] = "old draft", tc.firstValue
+			if code, body := post(second, path); code != 409 || !strings.Contains(body, "control_stale") {
+				t.Fatal("old draft was not rejected", code)
+			}
+			after := read(second)
+			if after.Revision != s.Revision+1 || after.Profiles[0].Name != tc.name {
+				t.Fatal("stale draft changed the saved profile")
+			}
+		})
+	}
+}
+
 func TestPublicMCPImportQueuesLocalDecisionWithoutStartingProcess(t *testing.T) {
 	f := newPublicFixture(t, nil)
 	f.login(t)

@@ -179,6 +179,8 @@ type ControlOperation struct {
 }
 
 type ControlPlanRequest struct {
+	channelAdmin      bool
+	replaces          string
 	originRunID       string
 	Kind              string                     `json:"kind"`
 	Arguments         json.RawMessage            `json:"arguments"`
@@ -191,14 +193,15 @@ type ControlPlanRequest struct {
 // this boundary, held in owner memory until apply, and never copied into a
 // controlRecord or journal line.
 type KeyControlRequest struct {
-	ClearNote     bool
-	Namespace     string
-	Ref           string
-	Input         KeyInput
-	Remove        bool
-	Force         bool
-	DisableModels bool
-	NewDefault    string
+	ExpectedRevision uint64
+	ClearNote        bool
+	Namespace        string
+	Ref              string
+	Input            KeyInput
+	Remove           bool
+	Force            bool
+	DisableModels    bool
+	NewDefault       string
 }
 
 // MCPControlRequest carries a full MCP profile only in owner memory. The
@@ -231,6 +234,7 @@ type InteractiveControlCapability struct {
 }
 
 type ControlAuthorization struct {
+	telegramAdmin      bool
 	finishWithoutModel bool
 	acceptSatisfied    bool
 	revalidate         func(context.Context) error
@@ -338,6 +342,11 @@ func (service *ControlService) ReadControlStateForModel(ctx context.Context) (Co
 		return ControlState{}, err
 	}
 	for index := range state.Pending {
+		state.Pending[index].RequestedBy = ""
+		state.Pending[index].DecidedBy = ""
+		if state.Pending[index].RequestEntry == telegramAdminEntry {
+			state.Pending[index].Preview = "Global setting proposal pending review at an authenticated management entry."
+		}
 		state.Pending[index].RemotePrincipal = ""
 		state.Pending[index].AttemptID = ""
 		state.Pending[index].ExpectedRevisions = nil
@@ -513,7 +522,7 @@ func (service *ControlService) recoverAppliedProposals() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, record := range service.operations {
-		if localWebHandoff(record) && !record.Operation.Detached && record.Operation.Status == ControlPending && record.Operation.AttemptID != "" {
+		if detachesBeforeDelivery(record) && !record.Operation.Detached && record.Operation.Status == ControlPending && record.Operation.AttemptID != "" {
 			attempt, err := service.core.Store.GetAttempt(ctx, record.Operation.AttemptID)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
@@ -993,6 +1002,9 @@ func (service *ControlService) PlanControlChange(ctx context.Context, request Co
 	if err != nil {
 		return ControlOperation{}, err
 	}
+	if request.replaces != "" {
+		record.Operation.Preview += "\nNew preview of " + request.replaces + "; the previous decision cannot be reused."
+	}
 	for resource, expected := range record.Operation.ExpectedRevisions {
 		if current := service.revisionLocked(resource); current != expected {
 			return ControlOperation{}, ErrControlStaleRevision
@@ -1010,6 +1022,15 @@ func (service *ControlService) PlanControlChange(ctx context.Context, request Co
 	record.Operation.ExpiresAt = time.Now().UTC().Add(controlConfirmationTTL).Format(time.RFC3339Nano)
 	record.Operation.Status = ControlPending
 	record.Operation.Digest = controlDigest(record)
+	if request.channelAdmin {
+		run, err := service.core.Store.GetRun(ctx, request.originRunID)
+		if err != nil || request.Authorization != ControlModelProposed || run.ConversationID != request.ConversationID {
+			return ControlOperation{}, ErrPermissionDenied
+		}
+		if err := service.bindAdminProposalLocked(ctx, run, &record); err != nil {
+			return ControlOperation{}, err
+		}
+	}
 	if record.Operation.Risk == ControlRiskIrreversible {
 		record.Operation.RevertClass = "none"
 	} else if record.Operation.RevertClass == "" {
@@ -1059,6 +1080,9 @@ func (service *ControlService) PlanKeyProfileChange(ctx context.Context, request
 		resource = "channel.keys"
 	} else if request.Namespace != "" {
 		return ControlOperation{}, ErrPermissionDenied
+	}
+	if request.ExpectedRevision != 0 && request.ExpectedRevision != service.revisionLocked(resource) {
+		return ControlOperation{}, ErrControlStaleRevision
 	}
 	views, err := keys.List()
 	if err != nil {
@@ -1565,6 +1589,13 @@ func (service *ControlService) renderConfirmation(ctx context.Context, operation
 	if _, remote := PublicEntryFrom(ctx); remote && record.Operation.LocalApproval {
 		return ControlConfirmation{}, &LocalSettingsApproval{OperationID: record.Operation.ID, ConversationID: record.Operation.ConversationID}
 	}
+	if record.Operation.RequestEntry == telegramAdminEntry {
+		release, err := service.lockTelegramAdminDecision(ctx, record, boundDecision, false)
+		if err != nil {
+			return ControlConfirmation{}, err
+		}
+		release()
+	}
 	if entry, remote := PublicEntryFrom(ctx); remote && record.Operation.RemotePrincipal != "" && entry.Principal != record.Operation.RemotePrincipal {
 		previous, exists := service.confirmations[operationID]
 		if record.Operation.AttemptID == "" || record.Operation.Authorization != ControlModelProposed || exists && time.Now().Before(previous.expiresAt) {
@@ -1635,14 +1666,20 @@ func (service *ControlService) renderConfirmation(ctx context.Context, operation
 			return ControlConfirmation{}, err
 		}
 		state = service.confirmations[operationID]
-		record.Operation.ExpiresAt = state.expiresAt.Format(time.RFC3339Nano)
+		if !record.Operation.Detached {
+			record.Operation.ExpiresAt = state.expiresAt.Format(time.RFC3339Nano)
+		}
 		service.operations[operationID] = record
 		if err := service.appendLocked("reissued", record); err != nil {
 			return ControlConfirmation{}, err
 		}
 	}
+	expires := state.expiresAt.Format(time.RFC3339Nano)
+	if record.Operation.Detached {
+		expires = record.Operation.ExpiresAt
+	}
 	return ControlConfirmation{OperationID: operationID, Code: state.code,
-		ExpiresAt: state.expiresAt.Format(time.RFC3339Nano), AttemptsLeft: max(0, controlMaxCodeAttempts-state.attempts),
+		ExpiresAt: expires, AttemptsLeft: max(0, controlMaxCodeAttempts-state.attempts),
 		ConversationID: conversationID, Preview: preview}, nil
 }
 
@@ -1717,6 +1754,11 @@ func (service *ControlService) rejectControlChange(ctx context.Context, operatio
 	if err := service.checkDetachedExpiryLocked(ctx, &record); err != nil {
 		return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
 	}
+	releaseDelegation, err := service.lockTelegramAdminDecision(ctx, record, auth.telegramAdmin, false)
+	if err != nil {
+		return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
+	}
+	defer releaseDelegation()
 	if auth.revalidate != nil {
 		if err := auth.revalidate(ctx); err != nil {
 			return ControlResult{Operation: cloneControlOperation(record.Operation)}, err
@@ -1724,6 +1766,7 @@ func (service *ControlService) rejectControlChange(ctx context.Context, operatio
 	}
 	record.Operation.Status = ControlRejected
 	recordSettingsDecision(ctx, &record, auth.Principal)
+	recordTelegramAdminDecision(&record, auth)
 	record.Operation.ErrorCode = "rejected"
 	service.operations[operationID] = record
 	if err := service.appendLocked("rejected", record); err != nil {
@@ -1833,7 +1876,7 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 	if err := service.checkDetachedExpiryLocked(ctx, &record); err != nil {
 		return result, err
 	}
-	if record.Operation.Detached && auth.revalidate == nil {
+	if record.Operation.Detached && auth.revalidate == nil && record.Operation.RequestEntry != telegramAdminEntry {
 		if err := service.checkDetachedDestination(ctx, record); err != nil {
 			return result, err
 		}
@@ -1923,7 +1966,19 @@ func (service *ControlService) decideControlChange(ctx context.Context, operatio
 		return result, err
 	}
 	defer releaseSettings()
+	releaseDelegation, err := service.lockTelegramAdminDecision(ctx, record, auth.telegramAdmin, true)
+	if err != nil {
+		if errors.Is(err, ErrControlStaleRevision) {
+			if e := service.invalidateProposalLocked(ctx, &record, "stale_revision"); e != nil {
+				return result, e
+			}
+			result.Operation = cloneControlOperation(record.Operation)
+		}
+		return result, err
+	}
+	defer releaseDelegation()
 	recordSettingsDecision(ctx, &record, auth.Principal)
+	recordTelegramAdminDecision(&record, auth)
 	if err := service.applyRecordLocked(ctx, &record); err != nil {
 		if errors.Is(err, ErrControlMCPReentryRequired) {
 			return ControlResult{Operation: cloneControlOperation(record.Operation), ErrorCode: "mcp_reentry_required"}, err

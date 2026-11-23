@@ -191,7 +191,7 @@ func (server *Server) settingsAPI(writer http.ResponseWriter, request *http.Requ
 			server.runtimePolicyFailure(writer, err)
 			return true
 		}
-		server.writeJSON(writer, http.StatusOK, server.settingsProjection())
+		server.writeSettings(writer, request)
 	case path == "/api/runtime-tools" && request.Method == http.MethodGet:
 		server.writeRuntimeTools(writer, request)
 	default:
@@ -219,8 +219,7 @@ func (server *Server) writeSearchSettings(writer http.ResponseWriter, request *h
 	})
 }
 
-func (server *Server) settingsProjection() map[string]any {
-	config := server.tasks.Config()
+func (server *Server) settingsProjection(config harness.Config, revisions map[string]uint64) map[string]any {
 	policy := server.tasks.RuntimePolicy()
 	tools := harness.EffectiveBuiltinTools(config)
 	scope := harness.EffectiveFileScope(config)
@@ -228,10 +227,11 @@ func (server *Server) settingsProjection() map[string]any {
 	commandEnabled := tools.CommandRun && command.Enabled
 	facts, _ := harness.DefaultRuntimeFacts(config)
 	return map[string]any{
-		"schema_version": 1,
-		"revision":       policy.Generation,
-		"recovery":       map[string]any{"model_retries": config.ModelRetries, "tool_verification_rounds": 2, "retry_may_charge": true},
-		"context":        map[string]any{"context_byte_limit_mode": harness.ContextByteLimitMode(config), "automatic": harness.AutomaticCompactionEnabled(config), "summary_target_mode": harness.SummaryTargetMode(config), "task_summary_bytes": config.TaskSummaryBytes, "auto_compact_percent": config.AutoCompactAt, "max_output_tokens": config.MaxOutputTokens, "max_context_bytes": config.MaxContextBytes},
+		"schema_version":     1,
+		"revision":           policy.Generation,
+		"expected_revisions": settingsRevision(revisions, "config.limits"),
+		"recovery":           map[string]any{"model_retries": config.ModelRetries, "tool_verification_rounds": 2, "retry_may_charge": true},
+		"context":            map[string]any{"context_byte_limit_mode": harness.ContextByteLimitMode(config), "automatic": harness.AutomaticCompactionEnabled(config), "summary_target_mode": harness.SummaryTargetMode(config), "task_summary_bytes": config.TaskSummaryBytes, "auto_compact_percent": config.AutoCompactAt, "max_output_tokens": config.MaxOutputTokens, "max_context_bytes": config.MaxContextBytes},
 		"default_permission_mode": func() harness.PermissionMode {
 			if config.Execution.PermissionMode == "" {
 				return harness.PermissionAsk
@@ -277,7 +277,12 @@ func commandStatus(command harness.CommandConfig, enabled bool, permission ...ha
 }
 
 func (server *Server) writeSettings(writer http.ResponseWriter, _ *http.Request) {
-	server.writeJSON(writer, http.StatusOK, server.settingsProjection())
+	config, revisions, err := server.settingsSnapshot()
+	if err != nil {
+		server.fail(writer, err)
+		return
+	}
+	server.writeJSON(writer, http.StatusOK, server.settingsProjection(config, revisions))
 }
 
 func (server *Server) writeRuntimeTools(writer http.ResponseWriter, request *http.Request) {
@@ -341,7 +346,7 @@ func (server *Server) patchSettingsPermissions(writer http.ResponseWriter, reque
 			return
 		}
 	}
-	server.writeJSON(writer, http.StatusOK, server.settingsProjection())
+	server.writeSettings(writer, request)
 }
 
 func (server *Server) patchSettingsFileAccess(writer http.ResponseWriter, request *http.Request) {
@@ -364,7 +369,7 @@ func (server *Server) patchSettingsFileAccess(writer http.ResponseWriter, reques
 		server.runtimePolicyFailure(writer, err)
 		return
 	}
-	server.writeJSON(writer, http.StatusOK, server.settingsProjection())
+	server.writeSettings(writer, request)
 }
 
 func (server *Server) patchSettingsTools(writer http.ResponseWriter, request *http.Request) {
@@ -423,7 +428,7 @@ func (server *Server) patchSettingsTools(writer http.ResponseWriter, request *ht
 			return
 		}
 	}
-	server.writeJSON(writer, http.StatusOK, server.settingsProjection())
+	server.writeSettings(writer, request)
 }
 
 func (server *Server) patchSettingsCommand(writer http.ResponseWriter, request *http.Request) {
@@ -461,5 +466,5 @@ func (server *Server) patchSettingsCommand(writer http.ResponseWriter, request *
 		server.runtimePolicyFailure(writer, err)
 		return
 	}
-	server.writeJSON(writer, http.StatusOK, server.settingsProjection())
+	server.writeSettings(writer, request)
 }

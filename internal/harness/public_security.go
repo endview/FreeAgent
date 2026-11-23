@@ -15,8 +15,17 @@ type PublicSecurityEvent struct {
 }
 
 func (tasks *TaskService) ReadPublicSecurityEvents(ctx context.Context) ([]PublicSecurityEvent, error) {
+	return readPublicSecurityEvents(ctx, tasks.core.Store.db)
+}
+
+type securityEventWriter interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func readPublicSecurityEvents(ctx context.Context, db securityEventWriter) ([]PublicSecurityEvent, error) {
 	var raw string
-	err := tasks.core.Store.db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='public/security-events'`).Scan(&raw)
+	err := db.QueryRowContext(ctx, `SELECT value FROM fa.meta WHERE key='public/security-events'`).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return []PublicSecurityEvent{}, nil
 	}
@@ -30,13 +39,17 @@ func (tasks *TaskService) ReadPublicSecurityEvents(ctx context.Context) ([]Publi
 	return events, nil
 }
 func (tasks *TaskService) AppendPublicSecurityEvent(ctx context.Context, event PublicSecurityEvent) error {
-	if len(event.At) > 64 || len(event.Source) > 128 || len(event.Reason) > 128 || strings.ContainsAny(event.At+event.Source+event.Reason, "\x00\r\n") {
-		return errors.New("harness: invalid bounded public security event")
-	}
 	store := tasks.core.Store
 	store.securityMu.Lock()
 	defer store.securityMu.Unlock()
-	events, err := tasks.ReadPublicSecurityEvents(ctx)
+	return appendPublicSecurityEvent(ctx, store.db, event)
+}
+
+func appendPublicSecurityEvent(ctx context.Context, db securityEventWriter, event PublicSecurityEvent) error {
+	if len(event.At) > 64 || len(event.Source) > 128 || len(event.Reason) > 128 || strings.ContainsAny(event.At+event.Source+event.Reason, "\x00\r\n") {
+		return errors.New("harness: invalid bounded public security event")
+	}
+	events, err := readPublicSecurityEvents(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -44,7 +57,7 @@ func (tasks *TaskService) AppendPublicSecurityEvent(ctx context.Context, event P
 	if len(events) > 256 {
 		events = events[len(events)-256:]
 	}
-	_, err = store.db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES('public/security-events',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(mustJSON(events)))
+	_, err = db.ExecContext(ctx, `INSERT INTO fa.meta(key,value) VALUES('public/security-events',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(mustJSON(events)))
 	return err
 }
 func (service *Service) recordPublicPolicyChange(ctx context.Context) {

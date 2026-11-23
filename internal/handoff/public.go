@@ -2,6 +2,17 @@ package handoff
 
 import "context"
 
+func (c *Client) TelegramAdminBindings(ctx context.Context) ([]map[string]any, error) {
+	var result []map[string]any
+	err := c.request(ctx, "GET", "/api/channels/telegram/admin-binding", nil, &result)
+	return result, err
+}
+
+func (c *Client) SaveTelegramAdminBinding(ctx context.Context, bot, action, user string, revision int64) error {
+	return c.request(ctx, "POST", "/api/channels/telegram/admin-binding",
+		map[string]any{"bot": bot, "action": action, "user": user, "expected_revision": revision}, nil)
+}
+
 func (c *Client) PublicSettings(ctx context.Context) (map[string]any, error) {
 	var result map[string]any
 	err := c.request(ctx, "GET", "/api/public-settings", nil, &result)

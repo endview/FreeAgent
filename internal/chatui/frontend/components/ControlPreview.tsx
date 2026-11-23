@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api/client";
+import { api, APIError } from "@/lib/api/client";
 import { ApprovalView } from "./ApprovalView";
 import { Button } from "./ui/button";
 import type { Confirmation } from "@/lib/api/types";
@@ -115,15 +115,19 @@ export function ControlPreview({
       } catch (failure) {
         // A missing response is not proof that the setting was not saved.
         // Read the existing operation receipt; never replay the mutation.
-        const operations = await api<Operation[]>("control/operations").catch(
-          () => [],
-        );
-        const receipt = operations.find(
-          (item) =>
-            item.operation_id === operation.operation_id &&
-            item.digest === operation.digest,
-        );
-        if (receipt?.status !== (approved ? "applied" : "rejected"))
+        if (
+          failure instanceof APIError &&
+          failure.code === "reauthentication_required"
+        )
+          throw failure;
+        const receipt = await api<Operation>(
+          "control/operations?operation_id=" +
+            encodeURIComponent(operation.operation_id),
+        ).catch(() => null);
+        if (
+          receipt?.digest !== operation.digest ||
+          receipt?.status !== (approved ? "applied" : "rejected")
+        )
           throw failure;
       }
       setOperation(null);
@@ -174,6 +178,16 @@ export function ControlPreview({
               onClick={() => setConfirmationRetry((value) => value + 1)}
             >
               重新读取确认状态
+            </Button>
+          )}
+          {error && initialOperation && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => (onRejected ? onRejected() : void onSaved())}
+            >
+              刷新原提案状态
             </Button>
           )}
         </>

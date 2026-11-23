@@ -19,6 +19,9 @@ func runAdmin(ctx context.Context, args []string, stdin io.Reader, stdout, stder
 		return usageErr("admin <status|init|reset-password> [--data-dir DIR]")
 	}
 	action := args[0]
+	if action == "telegram" {
+		return runAdminTelegram(ctx, args[1:], stdin, stdout, stderr)
+	}
 	flags := flag.NewFlagSet("admin "+action, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	data := flags.String("data-dir", defaultDataDir(), "Owner data directory")

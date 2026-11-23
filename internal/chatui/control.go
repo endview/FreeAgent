@@ -247,12 +247,35 @@ func (server *Server) controlAPI(writer http.ResponseWriter, request *http.Reque
 		server.writeJSON(writer, http.StatusOK, harness.ControlOperationCatalog())
 		return true
 	case path == "/api/control/operations" && request.Method == http.MethodGet:
+		if id := request.URL.Query().Get("operation_id"); id != "" {
+			operation, err := control.ReadControlOperation(ctx, id)
+			if err != nil {
+				server.fail(writer, err)
+				return true
+			}
+			server.writeJSON(writer, http.StatusOK, operation)
+			return true
+		}
 		operations, err := control.ListControlOperations(request.Context())
 		if err != nil {
 			server.fail(writer, err)
 			return true
 		}
 		server.writeJSON(writer, http.StatusOK, operations)
+		return true
+	case path == "/api/control/repreview" && request.Method == http.MethodPost:
+		var body struct {
+			ID string `json:"operation_id"`
+		}
+		if !server.readBody(writer, request, &body) {
+			return true
+		}
+		operation, err := control.RepreviewTelegramHandoff(ctx, body.ID)
+		if err != nil {
+			server.fail(writer, err)
+			return true
+		}
+		server.writeJSON(writer, http.StatusAccepted, operation)
 		return true
 	case path == "/api/control/plan" && request.Method == http.MethodPost:
 		var body struct {

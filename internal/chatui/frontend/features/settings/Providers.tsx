@@ -49,8 +49,10 @@ interface Preset {
 interface Keys {
   profiles: Profile[];
   presets: Preset[];
+  revision: number;
 }
 interface KeyForm extends Record<string, unknown> {
+  revision: number;
   id: string;
   name: string;
   base_url: string;
@@ -105,6 +107,8 @@ export default function Providers() {
           key={profile?.id || "new"}
           profile={profile}
           presets={resource.value.presets}
+          revision={resource.value.revision}
+          onRead={resource.reload}
           onSaved={async (id) => {
             await resource.reload();
             choose(id);
@@ -118,10 +122,14 @@ export default function Providers() {
 function ProviderEditor({
   profile,
   presets,
+  revision,
+  onRead,
   onSaved,
 }: {
   profile?: Profile;
   presets: Preset[];
+  revision: number;
+  onRead: () => Promise<Keys>;
   onSaved: (id: string) => Promise<void>;
 }) {
   const env = useRuntime().environment;
@@ -129,6 +137,7 @@ function ProviderEditor({
   const [form, change, dirty] = useFormDraft<KeyForm>(
     draftID,
     {
+      revision,
       id: profile?.id || "",
       name: profile?.name || "",
       base_url: profile?.base_url || "",
@@ -164,17 +173,19 @@ function ProviderEditor({
     } catch (error) {
       if (
         error instanceof APIError &&
-        error.code === "reauthentication_required"
+        ["reauthentication_required", "control_stale"].includes(error.code)
       )
         setSecret("");
+      if (error instanceof APIError && error.code === "control_stale")
+        await onRead().catch(() => {});
       setError(error instanceof Error ? error.message : "操作失败。");
     } finally {
       setBusy(false);
     }
   }
   function request() {
-    const { enable, ...request } = form;
-    return { ...request, key: secret };
+    const { enable, revision, ...request } = form;
+    return { ...request, key: secret, expected_revision: revision };
   }
   async function save() {
     await perform(async () => {
@@ -483,7 +494,46 @@ function ProviderEditor({
                 <Zap size={15} />
                 测试连接
               </Button>
-              <Button type="submit">{busy ? "处理中…" : "保存配置"}</Button>
+              <Button type="submit" disabled={form.revision !== revision}>
+                {busy ? "处理中…" : "保存配置"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={busy}
+                onClick={() =>
+                  void perform(async () => {
+                    if (
+                      dirty &&
+                      !window.confirm("放弃草稿并读取已保存的 Provider 配置？")
+                    )
+                      return;
+                    const current = await onRead();
+                    const entry = current.profiles.find(
+                      (item) => item.id === profile?.id,
+                    );
+                    if (profile && !entry) {
+                      setError("此 Provider 已删除，请重新选择。");
+                      return;
+                    }
+                    setSecret("");
+                    change({
+                      revision: current.revision,
+                      id: entry?.id || "",
+                      name: entry?.name || "",
+                      base_url: entry?.base_url || "",
+                      protocol: entry?.protocol || "openai-compatible",
+                      source: entry?.source || "saved",
+                      note: entry?.note || "",
+                      enable: false,
+                    });
+                    clearFormDraft(draftID);
+                  })
+                }
+              >
+                <RefreshCw size={16} aria-hidden="true" />
+                读取已保存的配置
+              </Button>
             </div>
           </div>
         </fieldset>

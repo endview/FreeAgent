@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/endview/freeagent/internal/channelwire"
 	"github.com/endview/freeagent/internal/harness"
 	"github.com/endview/freeagent/internal/webaccess"
 
@@ -22,6 +23,42 @@ import (
 // the actual public route table, password, cookies and CSRF over isolated TLS.
 func TestPublicSearchRealBrowser(t *testing.T) {
 	runPublicBrowser(t, "browser-public-search.cjs", nil, nil)
+}
+
+func TestPublicAdminSettingsRealBrowser(t *testing.T) {
+	runPublicBrowser(t, "browser-public-admin-settings.cjs", nil, func(f *publicFixture) {
+		ctx := t.Context()
+		tasks := f.ui.tasks
+		key, err := tasks.ChannelKeys().Add(harness.KeyInput{Name: "Isolated fixture Bot", Protocol: harness.KeyProtocolTelegram,
+			BaseURL: "https://api.telegram.org", Source: harness.KeySourceSaved, Secret: []byte("1:fixture-credential-before-rotation")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = tasks.ConfigureRuntimePolicy(ctx, "", func(c *harness.Config) error {
+			c.Channels.Connections = []channelwire.Connection{{ID: "fixture", Source: "telegram", ApplicationID: "1", Credential: key.ID, Enabled: true}}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		bridge, err := harness.NewChannelBridge(tasks, f.ui.server.origin, "isolated-browser-fixture", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = bridge.Close() })
+		control, err := tasks.Control()
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := harness.ChannelTarget{Source: "telegram", ApplicationID: "1", ChatID: "7"}
+		grant := harness.TelegramAccessChange{Target: target, Kind: "private", Enabled: true, Members: []string{"telegram:user:7"}}
+		if _, err := control.ApplyDirectControlChange(ctx, harness.ControlTelegramAccess, grant, "", "cli"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tasks.ReceiveChannelText(ctx, harness.ChannelMessageSource{ChannelTarget: target, PersonID: "telegram:user:7", MessageID: "verify", Purpose: "request"}, "Fixture identity"); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestPublicSearchApprovalRealBrowser(t *testing.T) {

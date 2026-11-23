@@ -115,14 +115,19 @@ func (tools *controlTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 		if err != nil {
 			return PreparedTool{}, err
 		}
+		var channelAdmin bool
 		if scope := tools.service.controlProposalScope; scope != nil {
 			if err := scope(ctx, run, args.Kind, args.Arguments); err != nil {
 				return PreparedTool{}, err
 			}
+			channelAdmin = channelOriginFromJSON(run.ConfigJSON) != nil && SettingsEntryRules(args.Kind).TelegramPropose
 		}
 		operation, err := tools.control.PlanControlChange(ctx, ControlPlanRequest{Kind: args.Kind, Arguments: args.Arguments,
-			Authorization: ControlModelProposed, ConversationID: run.ConversationID, originRunID: run.ID, ExpectedRevisions: args.ExpectedRevisions})
+			Authorization: ControlModelProposed, ConversationID: run.ConversationID, originRunID: run.ID, channelAdmin: channelAdmin, ExpectedRevisions: args.ExpectedRevisions})
 		if err != nil {
+			if channelAdmin {
+				return PreparedTool{}, &controlFlowNotice{"本次无法提出这项全局设置。未写入设置；请在认证管理页面核对。"}
+			}
 			return PreparedTool{}, err
 		}
 		if err := tools.control.bindAttempt(operation.ID, tools.attemptID); err != nil {
@@ -136,7 +141,11 @@ func (tools *controlTools) Prepare(ctx context.Context, call ToolCall) (Prepared
 
 func (tools *controlTools) preparedProposal(operation ControlOperation) PreparedTool {
 	content := fmt.Sprintf("control proposal %s is pending user confirmation; no setting has been applied. The change takes effect only in a new Run.", operation.ID)
-	return PreparedTool{Effect: EffectModify, Preview: operation.Preview, controlProposal: true,
+	preview := operation.Preview
+	if operation.RequestEntry == telegramAdminEntry {
+		preview = "全局设置提案，等待管理员决定；尚未保存。"
+	}
+	return PreparedTool{Effect: EffectModify, Preview: preview, controlProposal: true,
 		controlOperationID: operation.ID, Items: []ApprovalItem{{Kind: "control_proposal", Target: operation.ID,
 			Fields: map[string]string{"kind": operation.Kind, "risk": string(operation.Risk), "status": string(operation.Status)}}},
 		Execute: func(context.Context) (ToolResult, error) { return ToolResult{Content: content}, nil },

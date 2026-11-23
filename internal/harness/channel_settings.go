@@ -48,6 +48,15 @@ func (tasks *TaskService) channelSettingAgainst(ctx context.Context, run Run, ki
 		return unsupported
 	}
 	if kind != ControlSetConversationModel && kind != ControlSetConversationCapabilities {
+		if space.ChatKind == "private" && SettingsEntryRules(kind).TelegramPropose {
+			identity, release, err := tasks.lockAdministrator()
+			if err == nil {
+				defer release()
+				if _, err := tasks.telegramAdminRunAuthority(ctx, run, identity); err == nil {
+					return nil
+				}
+			}
+		}
 		return unsupported
 	}
 	if _, err := tasks.CheckTelegramAccess(ctx, origin.ChannelTarget, run.Permission.PersonID); err != nil {

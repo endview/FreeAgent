@@ -20,6 +20,7 @@ import (
 	"github.com/endview/freeagent/internal/buildinfo"
 	"github.com/endview/freeagent/internal/handoff"
 	"github.com/endview/freeagent/internal/harness"
+	"github.com/endview/freeagent/internal/publicweb"
 )
 
 type Stream struct {
@@ -94,6 +95,11 @@ func newServer(ctx context.Context, tasks *harness.TaskService, origin, token, a
 		ctx: lifetime, cancel: cancel, streams: map[string]Stream{}, listeners: map[chan []byte]bool{},
 		stopRequested: make(chan struct{}), running: make(map[string]*ownerExecution)}
 	server.generation = NewToken()
+	data := tasks.DataDir()
+	tasks.SetAdministratorGuard(func() (harness.AdministratorEpoch, func(), error) {
+		id, epoch, release, err := publicweb.LockAdministrator(data)
+		return harness.AdministratorEpoch{AccountID: id, Epoch: epoch}, release, err
+	})
 	tasks.SetCommandGeneration(server.generation)
 	tasks.SetApproval(nil)
 	tasks.SetEvents(server.onEvent)
@@ -1009,6 +1015,8 @@ func userError(err error) (string, string) {
 		return "local_confirmation_required", "此操作需要服务器本机确认，尚未执行。"
 	case errors.Is(err, harness.ErrPublicReauthentication):
 		return "reauthentication_required", "此操作需要重新验证当前管理员密码，设置未保存。"
+	case errors.Is(err, harness.ErrTelegramAdminChanged):
+		return "telegram_admin_changed", "原 Telegram 管理绑定或准入已变化。此提案不能再使用。"
 	case errors.Is(err, harness.ErrPublicSourceBlocked):
 		return "current_source_blocked", "此配置会挡住当前远程来源，未保存。请先将当前来源加入白名单。"
 	case errors.Is(err, harness.ErrInvalidExecutable):

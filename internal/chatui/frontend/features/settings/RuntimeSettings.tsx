@@ -24,6 +24,7 @@ interface CommandRule {
 }
 interface Settings extends Record<string, unknown> {
   revision: string;
+  expected_revisions: Record<string, number>;
   default_permission_mode: Permission;
   enabled_tools: {
     file: boolean;
@@ -190,7 +191,13 @@ function Editor({ initial, section }: { initial: Settings; section: string }) {
       }
       const next = await api<Settings>(
         `settings/${path}`,
-        { ...body, expected_revision: value.revision },
+        {
+          ...body,
+          expected_revision: value.revision,
+          ...(section === "context" && {
+            expected_revisions: value.expected_revisions,
+          }),
+        },
         "PATCH",
       );
       change(next);

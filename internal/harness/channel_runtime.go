@@ -615,6 +615,15 @@ func (s *channelSession) callback(ctx context.Context, e channelEvent) error {
 		return ErrPermissionDenied
 	}
 	if item.Confirmation.ControlOperationID != "" {
+		if s.source == SpaceSourceTelegram {
+			control, err := s.tasks.Control()
+			if err != nil {
+				return err
+			}
+			if op, ok := control.telegramAdminOperation(item.Confirmation.ControlOperationID, item.Confirmation.Attempt); ok {
+				return s.confirmTelegramAdmin(ctx, e, item, op)
+			}
+		}
 		return s.confirmSetting(ctx, e, item)
 	}
 	if _, err := s.tasks.CheckChannelRunAction(ctx, e.Target, e.Person, item.Confirmation.RunID, "approve"); err != nil {

@@ -129,6 +129,7 @@ store-upgrade --data-dir <directory> --backup <new-backup-directory> --confirm
 --version
 
 Administrator: admin init [--username NAME] | admin status | admin reset-password.
+  admin telegram <status|bind|pause|revoke> manages the optional private Telegram delegation.
 Public Web (Linux, default off): public enable --origin https://HOST | public status|configure|disable|password|clear-locks.
   Passwords use hidden input or --password-stdin; HTTPS proxy setup: docs/PUBLIC_WEB.md.
 
