@@ -14,8 +14,8 @@ import (
 const APIOrigin = "https://api.telegram.org"
 
 type BotIdentity struct {
-	ApplicationID string `"json:"application_id""`
-	Username      string `"json:"username""`
+	ApplicationID string `json:"application_id"`
+	Username      string `json:"username"`
 }
 
 func TokenBotID(token string) (string, error) {
@@ -51,12 +51,12 @@ func ProbeBot(ctx context.Context, token string, transport http.RoundTripper) (B
 	}
 	defer res.Body.Close()
 	var envelope struct {
-		OK     bool `"json:"ok""`
+		OK     bool `json:"ok"`
 		Result struct {
-			ID       int64  `"json:"id""`
-			Bot      bool   `"json:"is_bot""`
-			Username string `"json:"username""`
-		} `"json:"result""`
+			ID       int64  `json:"id"`
+			Bot      bool   `json:"is_bot"`
+			Username string `json:"username"`
+		} `json:"result"`
 	}
 	if res.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(res.Body, 16<<10)).Decode(&envelope) != nil ||
 		!envelope.OK || !envelope.Result.Bot || strconv.FormatInt(envelope.Result.ID, 10) != id || len(envelope.Result.Username) > 64 {

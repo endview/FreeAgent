@@ -114,8 +114,14 @@ func TestProviderMetadataMultilineSSEAndParallelToolItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	var saved ModelResponse
-	if err := json.Unmarshal([]byte(before[0].ResponseJSON), &saved); err != nil || !reflect.DeepEqual(saved, response) {
-		t.Fatalf("metadata not persisted: %+v err=%v", saved, err)
+	if err := json.Unmarshal([]byte(before[0].ResponseJSON), &saved); err != nil {
+		t.Fatal(err)
+	}
+	// Dispatch measures elapsed time independently of the provider response.
+	want := response
+	want.LatencyMS = saved.LatencyMS
+	if !reflect.DeepEqual(saved, want) {
+		t.Fatalf("provider metadata not persisted: got %+v want %+v", saved, want)
 	}
 	reopenHarness(t, core)
 	backup := filepath.Join(t.TempDir(), "backup")
